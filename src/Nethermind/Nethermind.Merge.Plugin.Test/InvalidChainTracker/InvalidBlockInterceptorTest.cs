@@ -172,7 +172,10 @@ public class InvalidBlockInterceptorTest
         block.Header.Hash = block.Header.CalculateHash();
         block.StarkProof = missing ? null : [2];
         _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
-        Assert.That(HeaderValidator.ValidateHash(block.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HeaderValidator.ValidateHash(block.Header), Is.True);
+        }
 
         Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
 

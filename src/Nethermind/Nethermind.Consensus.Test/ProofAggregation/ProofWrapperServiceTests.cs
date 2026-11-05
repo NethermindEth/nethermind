@@ -64,8 +64,11 @@ public class ProofWrapperServiceTests
 
             ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
 
-            Assert.That(result.Result.IsSuccess, Is.EqualTo(!literalZero), result.Result.Error);
-            Assert.That(store.Covers(transaction), Is.EqualTo(!literalZero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.IsSuccess, Is.EqualTo(!literalZero), result.Result.Error);
+                Assert.That(store.Covers(transaction), Is.EqualTo(!literalZero));
+            }
             if (literalZero) Assert.That(result.Result.Error, Does.Contain(MempoolWrapperValidator.DepsMismatch));
         }
         Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames[0]).Single(), Is.EqualTo(raw));
@@ -128,17 +131,26 @@ public class ProofWrapperServiceTests
         byte[] wrapper = Encode();
 
         ProofWrapperAcceptance deferred = await service.AcceptDetailedAsync(wrapper);
-        Assert.That(deferred.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-        Assert.That(verifier.VerificationCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
         spec.IsEip7906Enabled = true;
         spec.IsEip8250Enabled = scenario != "scalar";
-        Assert.That((await service.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
 
         transaction.Frames![0] = new(FrameMode.DepVerify, (FrameFlags)0xff, null,
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
-        Assert.That((await service.AcceptDetailedAsync(Encode())).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "intrinsic malformed data is rejected before verification");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.AcceptDetailedAsync(Encode())).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "intrinsic malformed data is rejected before verification");
+        }
     }
 
     [Test]
@@ -221,11 +233,17 @@ public class ProofWrapperServiceTests
             Proofs = [[1]]
         }).Bytes;
         ProofWrapperAcceptance first = await service.AcceptDetailedAsync(wrapper);
-        Assert.That(first.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
         ProofWrapperAcceptance retry = await service.AcceptDetailedAsync(wrapper);
-        Assert.That(retry.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
     }
 
     // EIP-8437: proof and dependency-rule failures, including exceeding MAX_SIGS_PER_TX or another EIP-8288 dependency limit, are
@@ -328,9 +346,12 @@ public class ProofWrapperServiceTests
             Proofs = [[1]]
         }).Bytes;
         ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
-        Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-        Assert.That(store.Covers(transaction), Is.False);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(store.Covers(transaction), Is.False);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -356,8 +377,11 @@ public class ProofWrapperServiceTests
         verifier.ProofOutput = new byte[1024 * 1024];
         Assert.That(service.RefreshWrapper(), Is.EqualTo(Result.Success));
         byte[] initial = service.GetLatestWrapper().Data!;
-        Assert.That(initial.Length, Is.GreaterThan(1024 * 1024));
-        Assert.That(service.RefreshWrapper(), Is.EqualTo(Result.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initial.Length, Is.GreaterThan(1024 * 1024));
+            Assert.That(service.RefreshWrapper(), Is.EqualTo(Result.Success));
+        }
         long before = GC.GetAllocatedBytesForCurrentThread();
         Result refreshed = service.RefreshWrapper();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -387,18 +411,27 @@ public class ProofWrapperServiceTests
         Result<byte[]> initial = service.GetLatestWrapper(null, out ValueHash256 firstHash);
         Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(initial.Data!)));
         initial.Data![0] ^= 0xff;
-        Assert.That(ValueKeccak.Compute(service.GetLatestWrapper().Data!), Is.EqualTo(firstHash));
-        Assert.That(service.GetLatestWrapper(firstHash, out ValueHash256 unchanged).Data, Is.Empty);
-        Assert.That(unchanged, Is.EqualTo(firstHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ValueKeccak.Compute(service.GetLatestWrapper().Data!), Is.EqualTo(firstHash));
+            Assert.That(service.GetLatestWrapper(firstHash, out ValueHash256 unchanged).Data, Is.Empty);
+            Assert.That(unchanged, Is.EqualTo(firstHash));
+        }
         pending = [first, second];
         Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         Result<byte[]> changed = service.GetLatestWrapper(firstHash, out ValueHash256 secondHash);
-        Assert.That(changed.Data, Is.Not.Empty);
-        Assert.That(secondHash, Is.EqualTo(ValueKeccak.Compute(changed.Data!)));
-        Assert.That(secondHash, Is.Not.EqualTo(firstHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.Data, Is.Not.Empty);
+            Assert.That(secondHash, Is.EqualTo(ValueKeccak.Compute(changed.Data!)));
+            Assert.That(secondHash, Is.Not.EqualTo(firstHash));
+        }
         pending = [];
-        Assert.That(service.GetLatestWrapper(secondHash, out _).IsSuccess, Is.False);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "transaction changes sharing the same dependency reuse the proof");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.GetLatestWrapper(secondHash, out _).IsSuccess, Is.False);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "transaction changes sharing the same dependency reuse the proof");
+        }
     }
 
     [TestCase(false, true)]
@@ -413,9 +446,12 @@ public class ProofWrapperServiceTests
         FakeLeanProofVerifier backend = new(valid);
         ILeanProofVerifier verifier = decorated ? new ProductionProofCache(backend) : backend;
         ProofWrapperService service = CreateService([CreateTransaction(dependency, TestItem.KeccakA)], store, verifier);
-        Assert.That(service.BuildWrapper().IsSuccess, Is.EqualTo(valid));
-        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
-        Assert.That(backend.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.BuildWrapper().IsSuccess, Is.EqualTo(valid));
+            Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+            Assert.That(backend.ProofCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -427,8 +463,11 @@ public class ProofWrapperServiceTests
         ProductionProofCache verifier = new(backend);
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [1])] };
         Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
-        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
-        Assert.That(backend.ProofCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+            Assert.That(backend.ProofCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -703,8 +742,11 @@ public class ProofWrapperServiceTests
     {
         (ProofWrapperService service, _) = Create(10, 128 * 1024, out Transaction[] transactions);
         List<MempoolWrapper> first = [], second = [];
-        Assert.That(service.RefreshWrapper(() => first.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
-        Assert.That(service.RefreshWrapper(() => second.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.RefreshWrapper(() => first.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+            Assert.That(service.RefreshWrapper(() => second.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Has.Count.EqualTo(1));
@@ -736,8 +778,11 @@ public class ProofWrapperServiceTests
         Dictionary<FrameDependency, byte[]> witnesses = [];
         Transaction wide = WitnessedTransaction(store, witnesses, 0, sphincs: Eip8288Constants.MaxSigsPerTx, starks: 1);
         Transaction small = WitnessedTransaction(store, witnesses, 1, sphincs: 1);
-        Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
-        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
+        }
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([wide, small], store, verifier);
         List<MempoolWrapper> produced = [];
@@ -819,9 +864,12 @@ public class ProofWrapperServiceTests
         transaction.Hash = transaction.CalculateHash();
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([transaction], store, verifier);
-        Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
-        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(proof.Length));
-        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
+            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(proof.Length));
+            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
+        }
 
         Result<byte[]> result = service.BuildWrapper();
 
@@ -961,9 +1009,12 @@ public class ProofWrapperServiceTests
                 Mode = MempoolWrapper.ModeDirect,
                 Proofs = [new byte[Eip8288Constants.LeanSphincsWitnessBytes], rejectedWitness]
             }).Bytes;
-            Assert.That((await service.AcceptDetailedAsync(encoded)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-            Assert.That(store.Covers(first), Is.True);
-            Assert.That(store.Covers(later), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((await service.AcceptDetailedAsync(encoded)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+                Assert.That(store.Covers(first), Is.True);
+                Assert.That(store.Covers(later), Is.False);
+            }
         }
     }
 
@@ -982,16 +1033,22 @@ public class ProofWrapperServiceTests
         Task<ProofWrapperAcceptance> first = service.AcceptDetailedAsync(encoded);
         try
         {
-            Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
-            Assert.That(first.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
+                Assert.That(first.IsCompleted, Is.False);
+            }
             encoded[0] ^= 0xff;
             Assert.That((await service.AcceptDetailedAsync(original)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
         }
         finally { release.Set(); }
         Assert.That((await first).HasValidProof, Is.True);
         verifier.OnVerification = null;
-        Assert.That((await service.AcceptDetailedAsync(original)).HasValidProof, Is.True);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the memo belongs to the original owned bytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.AcceptDetailedAsync(original)).HasValidProof, Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the memo belongs to the original owned bytes");
+        }
     }
 
     [TestCase(1, 5_000, false, TestName = "Concurrent_admission_waits_its_turn")]
@@ -1049,8 +1106,11 @@ public class ProofWrapperServiceTests
             return AcceptTxResult.Accepted;
         });
 
-        Assert.That((await service.AcceptDetailedAsync(large)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
-        Assert.That((await second!).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.AcceptDetailedAsync(large)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That((await second!).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(submitted, Has.Count.EqualTo(ProofWrapperService.AdmissionChunk + 2));
@@ -1147,8 +1207,11 @@ public class ProofWrapperServiceTests
         for (int i = 0; i < 3; i++)
             Assert.That((await service.AcceptDetailedAsync(encoded)).Status,
                 Is.EqualTo(proofValid ? ProofWrapperAcceptanceStatus.PoolRejected : ProofWrapperAcceptanceStatus.Invalid));
-        Assert.That(store.TryGetInput([dependency], out _), Is.False);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetInput([dependency], out _), Is.False);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -1330,8 +1393,11 @@ public class ProofWrapperServiceTests
     {
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
-        Assert.That((await service.AcceptDetailedAsync(new byte[size])).Status, Is.EqualTo(expected));
-        Assert.That(verifier.VerificationCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.AcceptDetailedAsync(new byte[size])).Status, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
     }
 
     [Test]

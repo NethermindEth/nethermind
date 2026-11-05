@@ -163,9 +163,12 @@ public class BlockValidatorTests
         block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         block.StarkProof = missing ? null : [2];
         FixedLeanProofVerifier verifier = new(true);
-        Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
-        Assert.That(verifier.RecursiveCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(verifier.RecursiveCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -216,9 +219,12 @@ public class BlockValidatorTests
         Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
 
         Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
-        Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
-        Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
+            Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
+            Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+        }
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
 

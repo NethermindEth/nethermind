@@ -115,8 +115,11 @@ public partial class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.DependencyFrameInAtomicBatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.DependencyFrameInAtomicBatch));
+        }
     }
 
     [Test]

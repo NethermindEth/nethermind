@@ -78,9 +78,12 @@ public class NativeInclusionListTests
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).TestObject);
         source.ApplyInclusionList(block, attributes);
         Transaction[] offered = [.. source.GetTransactions(chain.BlockTree.Head!.Header, block.Header, block.GasLimit, attributes)];
-        Assert.That(offered.Select(tx => tx.Hash), scenario == "bad-proof"
-            ? Is.EquivalentTo(new[] { ordinary.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }));
-        Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(offered.Select(tx => tx.Hash), scenario == "bad-proof"
+                ? Is.EquivalentTo(new[] { ordinary.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }));
+            Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(3));
+        }
         using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
         {
             block.Header.GasUsedPerDimension = (0, 0);
@@ -89,10 +92,13 @@ public class NativeInclusionListTests
             Block ordinaryOnly = block.WithReplacedHeader(block.Header.Clone());
             ordinaryOnly.InclusionListTransactions = [ordinary];
             ordinaryOnly.InclusionLists = null;
-            Assert.That(checker.IsSatisfied(ordinaryOnly, ordinaryOnly, chain.MainWorldState), Is.False,
-                "the funded code-free ordinary sender is independently appendable");
-            Assert.That(checker.IsSatisfied(block, block, chain.MainWorldState), Is.False,
-                "a bad frame or package cannot excuse omitting the valid ordinary entry");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checker.IsSatisfied(ordinaryOnly, ordinaryOnly, chain.MainWorldState), Is.False,
+                    "the funded code-free ordinary sender is independently appendable");
+                Assert.That(checker.IsSatisfied(block, block, chain.MainWorldState), Is.False,
+                    "a bad frame or package cannot excuse omitting the valid ordinary entry");
+            }
         }
     }
 }

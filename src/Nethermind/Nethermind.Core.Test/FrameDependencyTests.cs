@@ -41,10 +41,13 @@ public class FrameDependencyTests
         List<FrameDependency> deps = [.. Eip8288Dependencies.ParseFrame(frame)];
 
         Assert.That(deps.Count, Is.EqualTo(2));
-        Assert.That(deps[0].Scheme, Is.EqualTo(Eip8288Constants.LeanSphincsScheme));
-        Assert.That(deps[0].DataHash.Bytes[0], Is.EqualTo(0xAA));
-        Assert.That(deps[0].VerificationKey.Bytes[0], Is.EqualTo(0xBB));
-        Assert.That(deps[1].Scheme, Is.EqualTo(Eip8288Constants.LeanStarkScheme));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deps[0].Scheme, Is.EqualTo(Eip8288Constants.LeanSphincsScheme));
+            Assert.That(deps[0].DataHash.Bytes[0], Is.EqualTo(0xAA));
+            Assert.That(deps[0].VerificationKey.Bytes[0], Is.EqualTo(0xBB));
+            Assert.That(deps[1].Scheme, Is.EqualTo(Eip8288Constants.LeanStarkScheme));
+        }
     }
 
     // EIP-8288 Inclusion Enforcement: a transaction is dependency-bearing iff it has a dependency verification frame, even one
@@ -197,8 +200,11 @@ public class FrameDependencyTests
 
         (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(deps);
 
-        Assert.That(sphincs, Is.EqualTo(2));
-        Assert.That(stark, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sphincs, Is.EqualTo(2));
+            Assert.That(stark, Is.EqualTo(1));
+        }
     }
 
     [TestCase(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsVerificationGas)]
@@ -238,8 +244,11 @@ public class FrameDependencyTests
 
         List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
 
-        Assert.That(deps.Count, Is.EqualTo(2));
-        Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deps.Count, Is.EqualTo(2));
+            Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
+        }
     }
 
     [Test]
@@ -338,14 +347,20 @@ public class FrameDependencyTests
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, SignatureHash);
         FrameDependency[] expected = [new(Eip8288Constants.LeanSphincsScheme, FrameTxSigHash.ComputeValue(first), default),
             new(Eip8288Constants.LeanSphincsScheme, FrameTxSigHash.ComputeValue(second), default)];
-        Assert.That(dependencies, Is.EqualTo(Eip8288Dependencies.Canonicalize(expected)));
-        Assert.That(calls, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dependencies, Is.EqualTo(Eip8288Dependencies.Canonicalize(expected)));
+            Assert.That(calls, Is.EqualTo(2));
+        }
 
         first.Nonce = 2;
         List<FrameDependency> changed = Eip8288Dependencies.ForTransaction(first, FrameTxSigHash.ComputeValue);
         Assert.That(changed[0].DataHash, Is.EqualTo(FrameTxSigHash.ComputeValue(first)));
-        Assert.That(changed[0].DataHash, Is.Not.EqualTo(expected[0].DataHash));
-        Assert.That(first.Hash, Is.EqualTo(TestItem.KeccakH), "dependency resolution does not trust the envelope-hash cache");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed[0].DataHash, Is.Not.EqualTo(expected[0].DataHash));
+            Assert.That(first.Hash, Is.EqualTo(TestItem.KeccakH), "dependency resolution does not trust the envelope-hash cache");
+        }
     }
 
     [Test]
@@ -355,9 +370,12 @@ public class FrameDependencyTests
         Transaction transaction = DepTx(dependency.Scheme);
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         static ValueHash256 UnexpectedHash(Transaction _) => throw new InvalidOperationException("explicit dependency must remain unchanged");
-        Assert.That(Eip8288Dependencies.ForTransaction(transaction, UnexpectedHash), Is.EqualTo((FrameDependency[])[dependency]));
-        Assert.That(Eip8288Dependencies.ForBlock(Build.A.Block.WithTransactions(transaction).TestObject, UnexpectedHash),
-            Is.EqualTo((FrameDependency[])[dependency]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForTransaction(transaction, UnexpectedHash), Is.EqualTo((FrameDependency[])[dependency]));
+            Assert.That(Eip8288Dependencies.ForBlock(Build.A.Block.WithTransactions(transaction).TestObject, UnexpectedHash),
+                Is.EqualTo((FrameDependency[])[dependency]));
+        }
     }
 
     private static Transaction DepTx(byte scheme)

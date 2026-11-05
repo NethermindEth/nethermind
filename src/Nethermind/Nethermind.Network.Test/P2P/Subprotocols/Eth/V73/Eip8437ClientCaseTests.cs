@@ -40,10 +40,13 @@ public class Eip8437ClientCaseTests
         FakeWrapperLink link = new(), fresh = new("fresh");
         WrapperPeer peer = node.Connect(link);
         node.Transport.OnAnnounce(peer, new([.. new[] { Describe(w1), Describe(w2) }.OrderBy(d => d.Hash)]));
-        Assert.That(node.Transport.PublishWrapper(w1), Is.True);
-        Assert.That(node.Transport.PublishWrapper(w2), Is.True);
-        Assert.That(node.Transport.PublishWrapper(w3), Is.True);
-        Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(w3).Hash }), "W1 and W2 came from the peer; W3 halves its verifications");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(w1), Is.True);
+            Assert.That(node.Transport.PublishWrapper(w2), Is.True);
+            Assert.That(node.Transport.PublishWrapper(w3), Is.True);
+            Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(w3).Hash }), "W1 and W2 came from the peer; W3 halves its verifications");
+        }
 
         node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(w3).Hash]));
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { w3 }));
@@ -69,13 +72,19 @@ public class Eip8437ClientCaseTests
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         node.Transport.OnAnnounce(peer, new([Describe(direct)]));
-        Assert.That(node.Transport.PublishWrapper(direct), Is.True);
-        Assert.That(node.Transport.PublishWrapper(aggregate), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(direct), Is.True);
+            Assert.That(node.Transport.PublishWrapper(aggregate), Is.True);
+        }
         node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(aggregate).Hash]));
         node.Tick(TimeSpan.FromSeconds(1));
-        Assert.That(node.Transport.PublishWrapper(another), Is.True);
-        Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(aggregate).Hash }),
-            "the first aggregate is IL-reusable where the direct witnesses are not; the second adds nothing over it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(another), Is.True);
+            Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(aggregate).Hash }),
+                "the first aggregate is IL-reusable where the direct witnesses are not; the second adds nothing over it");
+        }
     }
 
     // Before local activation, ignore wrapper messages without penalties and send none (see also Eth73ProtocolHandlerTests).

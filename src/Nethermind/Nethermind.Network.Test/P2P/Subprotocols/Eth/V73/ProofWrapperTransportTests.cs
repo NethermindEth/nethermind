@@ -57,8 +57,11 @@ public class ProofWrapperTransportTests
 
         node.Transport.OnAnnounce(peer, holderLink.Sent<NewProofWrapperHashesMessage>().Single());
         GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
-        Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
-        Assert.That(request.Compact, Is.False, "nothing was exchanged in full on this connection yet");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
+            Assert.That(request.Compact, Is.False, "nothing was exchanged in full on this connection yet");
+        }
         holder.Transport.OnGetProofWrappers(requester, request);
         ProofWrappersMessage response = holderLink.Sent<ProofWrappersMessage>().Single();
         Assert.That(response.Entries.Single().Hash, Is.EqualTo(announcement.Hash));
@@ -374,8 +377,11 @@ public class ProofWrapperTransportTests
         byte[] first = Wrapper(Eip8288Constants.MaxAggregateProofBytes, a), second = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 1, b),
             third = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 2, c);
         using WrapperTestNode node = Holder(first);
-        Assert.That(node.Transport.PublishWrapper(second), Is.True);
-        Assert.That(node.Transport.PublishWrapper(third), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(second), Is.True);
+            Assert.That(node.Transport.PublishWrapper(third), Is.True);
+        }
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         ValueHash256 unknown = TestItem.KeccakA.ValueHash256;
@@ -407,8 +413,11 @@ public class ProofWrapperTransportTests
         WrapperPeer peer = node.Connect(link);
         Assert.That(node.Transport.PublishWrapper(announced), Is.True);
         for (int i = 1; i < WrapperTransportLimits.AnnouncementsPerSecond; i++) Assert.That(node.Transport.PublishWrapper(Wrapper(64, 10 + i, a)), Is.True);
-        Assert.That(node.Transport.PublishWrapper(queued), Is.True);
-        Assert.That(node.Transport.PublishWrapper(peerOwn), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(queued), Is.True);
+            Assert.That(node.Transport.PublishWrapper(peerOwn), Is.True);
+        }
         node.Transport.OnAnnounce(peer, new([Describe(peerOwn)]));
 
         node.Transport.OnGetProofWrappers(peer, new(9, true, [Describe(announced).Hash, Describe(queued).Hash, Describe(peerOwn).Hash]));
@@ -621,8 +630,11 @@ public class ProofWrapperTransportTests
         byte[] mode0 = DirectWrapper(direct);
         using WrapperTestNode node = new(UpgradingChain());
         node.SetHead(10, 100);
-        Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
-        Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
+            Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
+        }
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
 

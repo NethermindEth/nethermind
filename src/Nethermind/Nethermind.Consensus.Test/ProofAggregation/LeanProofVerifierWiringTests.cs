@@ -70,8 +70,11 @@ public class LeanProofVerifierWiringTests
     {
         ILeanProofVerifier verifier = chain.Container.Resolve<ILeanProofVerifier>();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope();
-        Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
-        Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
+            Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+        }
         return verifier;
     }
 

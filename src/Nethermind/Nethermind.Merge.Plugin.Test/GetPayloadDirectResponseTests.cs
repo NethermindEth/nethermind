@@ -260,8 +260,11 @@ public class GetPayloadDirectResponseTests
             Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
         }
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
-        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(raw))), Is.True);
-        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(materialized))), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(raw))), Is.True);
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(materialized))), Is.True);
+        }
         (raw as IDisposable)?.Dispose();
         (materialized as IDisposable)?.Dispose();
     }
@@ -287,8 +290,11 @@ public class GetPayloadDirectResponseTests
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(plain, plain.GetType(), EthereumJsonSerializer.JsonOptions);
         byte[] actual = await WriteStreamableAsync(direct);
 
-        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
-        Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionLists"], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
+            Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionLists"], Is.Null);
+        }
     }
 
     [Test]

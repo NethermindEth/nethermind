@@ -63,12 +63,15 @@ public class InclusionListTxSourceTests
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).TestObject);
         source.ApplyInclusionList(block, attributes);
 
-        Assert.That(legacy.List, Is.SameAs(list));
-        Assert.That(block.InclusionListTransactions.Single().Nonce, Is.EqualTo(transaction.Nonce));
-        Assert.That(block.InclusionLists, Has.Count.EqualTo(1));
-        Assert.That(block.InclusionLists[0].Transactions, Is.EqualTo(block.InclusionListTransactions));
-        Assert.That(block.InclusionLists[0].StarkProof, Is.EqualTo(new byte[] { 1 }));
-        Assert.That(block.InclusionListProofInput, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(legacy.List, Is.SameAs(list));
+            Assert.That(block.InclusionListTransactions.Single().Nonce, Is.EqualTo(transaction.Nonce));
+            Assert.That(block.InclusionLists, Has.Count.EqualTo(1));
+            Assert.That(block.InclusionLists[0].Transactions, Is.EqualTo(block.InclusionListTransactions));
+            Assert.That(block.InclusionLists[0].StarkProof, Is.EqualTo(new byte[] { 1 }));
+            Assert.That(block.InclusionListProofInput, Is.Null);
+        }
     }
 
     [Test]
@@ -119,14 +122,20 @@ public class InclusionListTxSourceTests
         source.Set(list, spec, attributes.InclusionLists);
         source.Set(list, spec, attributes.InclusionLists);
         // Registering defers verification to the first build.
-        Assert.That(verifier.VerificationCalls, Is.Zero);
-        Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+            Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
+        }
         BlockToProduce firstBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
         source.ApplyInclusionList(firstBuild, attributes);
         BlockToProduce nextBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
         source.ApplyInclusionList(nextBuild, attributes);
-        Assert.That(nextBuild.InclusionListTransactions, Is.SameAs(firstBuild.InclusionListTransactions));
-        Assert.That(nextBuild.InclusionListProofInput, Is.SameAs(firstBuild.InclusionListProofInput));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextBuild.InclusionListTransactions, Is.SameAs(firstBuild.InclusionListTransactions));
+            Assert.That(nextBuild.InclusionListProofInput, Is.SameAs(firstBuild.InclusionListProofInput));
+        }
         source.Set(list, spec, attributes.InclusionLists);
         // The registered build owns its snapshot even if the caller mutates the encoded list.
         list[0][0] = 0xff;
@@ -204,8 +213,11 @@ public class InclusionListTxSourceTests
         };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
         source.Set(list, spec, attributes.InclusionLists);
-        Assert.That(GetTransactions(source, attributes), Is.Empty);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, attributes), Is.Empty);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]

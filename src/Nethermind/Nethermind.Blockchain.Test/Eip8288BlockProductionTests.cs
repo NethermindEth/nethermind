@@ -164,13 +164,19 @@ public class Eip8288BlockProductionTests
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That((await AcceptWrapper(service, wrapper, first, second)).IsSuccess, Is.True);
-        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(service, wrapper, first, second)).IsSuccess, Is.True);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
         Block? built = await chain.BlockProducer.BuildBlock();
         Assert.That(built, Is.Not.Null);
-        Assert.That(built!.Transactions, Has.Length.EqualTo(2));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the background proof already covers the final body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built!.Transactions, Has.Length.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the background proof already covers the final body");
+        }
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
         BlockToProduce repeated = new(built.Header.Clone(), built.Transactions, [], built.Withdrawals);
         Block? processed = environment.ChainProcessor.Process(repeated, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
@@ -201,13 +207,16 @@ public class Eip8288BlockProductionTests
         Assert.That(block, Is.Not.Null);
         Assert.That(block!.Transactions, Has.Length.EqualTo(1));
         ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
-        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
-        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
-        Assert.That(replacement, Is.EqualTo(block.StarkProof));
-        Block? repeated = await chain.BlockProducer.BuildBlock();
-        Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
+            Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+            Assert.That(replacement, Is.EqualTo(block.StarkProof));
+            Block? repeated = await chain.BlockProducer.BuildBlock();
+            Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -235,19 +244,28 @@ public class Eip8288BlockProductionTests
             });
             Assert.That(requested.Wait(TimeSpan.FromSeconds(5)), Is.True);
             await Task.Delay(50);
-            Assert.That(concurrent.IsCompleted, Is.False);
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(concurrent.IsCompleted, Is.False);
+                Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            }
             release.Set();
             byte[][] completed = await Task.WhenAll(initial, concurrent).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.That(completed[0], Is.EqualTo(completed[1]));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed[0], Is.EqualTo(completed[1]));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            }
             entered.Reset();
             release.Reset();
             Task<byte[]> unrelated = Task.Run(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, secondInput));
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Task<byte[]> ready = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
-            Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
-            Assert.That(unrelated.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
+                Assert.That(unrelated.IsCompleted, Is.False);
+            }
             release.Set();
             await unrelated.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(verifier.ProofCalls, Is.EqualTo(2));
@@ -275,8 +293,11 @@ public class Eip8288BlockProductionTests
         cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store);
         try
         {
-            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(cache.ObserveProduction(112, 11), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(cache.ObserveProduction(112, 11), Is.True);
+            }
         }
         finally { release.Set(); }
         for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
@@ -374,10 +395,13 @@ public class Eip8288BlockProductionTests
             }
             else
             {
-                Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
-                Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
-                    new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
-                Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
+                    Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                        new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
+                    Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+                }
             }
         }
         finally
@@ -450,13 +474,19 @@ public class Eip8288BlockProductionTests
 
         Block? empty = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(empty, Is.Not.Null);
-        Assert.That(empty!.Transactions, Is.Empty);
-        Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty!.Transactions, Is.Empty);
+            Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
         Block? restored = await chain.BlockProducer.BuildBlock();
         Assert.That(restored, Is.Not.Null);
-        Assert.That(restored!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored!.Transactions, Has.Length.EqualTo(1));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -524,8 +554,11 @@ public class Eip8288BlockProductionTests
         AggregationInput input = new() { Deps = [dependency], Witnesses = [new byte[] { 1 }] };
         Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
         verifier.WrongStatement = false;
-        Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        }
         verifier.RejectChangedWitness = true;
         AggregationInput bad = new() { Deps = [dependency], Witnesses = [new byte[] { 2 }] };
         Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, bad));
@@ -533,8 +566,11 @@ public class Eip8288BlockProductionTests
         FrameDependency changed = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cache-b"), default);
         ValueHash256 changedHash = Eip8288Dependencies.ComputeDepsHash([changed]);
         AggregationInput next = new() { Deps = [changed], Witnesses = [new byte[] { 1 }] };
-        Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        }
     }
 
     [Test]
@@ -575,8 +611,11 @@ public class Eip8288BlockProductionTests
         proofs.AddVerified([dependency], [[1]], null);
         Transaction proofBacked = CreateTransaction(chain, dependency, [UInt256.Zero]);
         Transaction plain = CreatePlainTransaction(chain);
-        Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
         try
         {
             using CancellationTokenSource deadline = new();
@@ -642,8 +681,11 @@ public class Eip8288BlockProductionTests
                 "background aggregation yields its remaining native calls to the waiting producer");
             Assert.That(await started.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
             permits.Release();
-            Assert.That(await producer.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(producedHash.ToByteArray()));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await producer.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(producedHash.ToByteArray()));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+            }
         }
         finally
         {
@@ -670,8 +712,11 @@ public class Eip8288BlockProductionTests
             cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
                 new() { Deps = [next], Witnesses = [new byte[] { 1 }] });
         }
-        Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
+        }
     }
 
     [Test]
@@ -693,10 +738,13 @@ public class Eip8288BlockProductionTests
         replacement.Hash = replacement.CalculateHash();
         Assert.That((await AcceptWrapper(service, EncodeWrapper(b, replacement), replacement)).IsSuccess, Is.True);
         Flood();
-        Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
-        Assert.That(proofs.Covers(first), Is.False);
-        Assert.That(proofs.Covers(replacement), Is.True);
-        Assert.That(chain.TxPool.RemoveTransaction(replacement.Hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
+            Assert.That(proofs.Covers(first), Is.False);
+            Assert.That(proofs.Covers(replacement), Is.True);
+            Assert.That(chain.TxPool.RemoveTransaction(replacement.Hash), Is.True);
+        }
         Flood();
         Assert.That(proofs.Covers(replacement), Is.False);
         FrameDependency c = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shutdown"), default);
@@ -708,8 +756,11 @@ public class Eip8288BlockProductionTests
         Assert.That((await AcceptWrapper(service, EncodeWrapper(c, shuttingDown), shuttingDown)).IsSuccess, Is.True);
         await ((IAsyncDisposable)chain.TxPool).DisposeAsync();
         Flood();
-        Assert.That(proofs.Covers(shuttingDown), Is.False);
-        Assert.That(proofs.Covers(otherOwner), Is.True, "shutdown releases only this pool's witness pins");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs.Covers(shuttingDown), Is.False);
+            Assert.That(proofs.Covers(otherOwner), Is.True, "shutdown releases only this pool's witness pins");
+        }
 
 
         void Flood()
@@ -735,13 +786,19 @@ public class Eip8288BlockProductionTests
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(hash.ToByteArray(), new Hash256(hash))
         }).Bytes;
-        Assert.That((await AcceptWrapper(chain.Container.Resolve<ProofWrapperService>(), wrapper, transaction)).IsSuccess, Is.True);
-        Assert.That(chain.TxPool.RemoveTransaction(transaction.Hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(chain.Container.Resolve<ProofWrapperService>(), wrapper, transaction)).IsSuccess, Is.True);
+            Assert.That(chain.TxPool.RemoveTransaction(transaction.Hash), Is.True);
+        }
         byte[] witness = new byte[64 * 1024];
         for (int i = 0; i < 1100; i++)
             proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"evict:{i}"), default)], [witness], null);
-        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? proof), Is.True);
-        Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? proof), Is.True);
+            Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+        }
     }
 
     [Test]
@@ -758,8 +815,11 @@ public class Eip8288BlockProductionTests
         proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
         Transaction covered = CreateTransaction(chain, proven, [1]);
         Transaction uncovered = CreateTransaction(chain, pending, [2]);
-        Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
         try
         {
             using CancellationTokenSource deadline = new();
@@ -1059,9 +1119,12 @@ public class Eip8288BlockProductionTests
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
         Block? processed = environment.ChainProcessor.Process(plain, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
         Assert.That(processed, Is.Not.Null);
-        Assert.That(processed!.Transactions, Is.Empty);
-        Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
-        Assert.That(processed.StarkProof, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Is.Empty);
+            Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
+            Assert.That(processed.StarkProof, Is.Empty);
+        }
     }
 
     // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
@@ -1165,8 +1228,11 @@ public class Eip8288BlockProductionTests
         Transaction first = CreateTransaction(chain, dependency, [1, 7]);
         Transaction independent = CreateTransaction(chain, dependency, [9]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, first, independent), first, independent)).IsSuccess, Is.True);
-        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, first, independent), first, independent)).IsSuccess, Is.True);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        }
         Block block = await ProduceAndImport(chain, slot: 1);
         Assert.That(block.Transactions, Has.Length.EqualTo(2));
         using (chain.MainWorldState.BeginScope(block.Header))
@@ -1248,8 +1314,11 @@ public class Eip8288BlockProductionTests
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
 
         Result<Hash256[]> admitted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
-        Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
-        Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
+            Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        }
         Block block = await ProduceAndImport(chain, slot: 1);
 
         using (Assert.EnterMultipleScope())

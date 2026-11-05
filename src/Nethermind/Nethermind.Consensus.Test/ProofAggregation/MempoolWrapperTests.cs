@@ -96,8 +96,11 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = Batch(MempoolWrapper.ModeDirect, [[Sphincs("a"), Sphincs("b")]]);
         wrapper = With(wrapper, proofs: [.. Enumerable.Repeat(new byte[] { 1 }, proofs)]);
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
+        }
     }
 
     [Test]
@@ -105,8 +108,11 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = Batch(MempoolWrapper.ModeRecursive, [[Sphincs("a")]]);
         wrapper = With(wrapper, stark: new RecursiveStark([1], Keccak.Compute("wrong")));
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsHashMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsHashMismatch));
+        }
     }
 
     // EIP-8288 Test Case 12: mode 0 accepts 16 signature dependencies. With 17 distinct dependencies across two individually
@@ -133,8 +139,11 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = RoundTrip(Batch(MempoolWrapper.ModeRecursive,
             [.. Enumerable.Range(0, 5).Select(i => Sphincses($"t{i}", Eip8288Constants.MaxSigsPerTx))]));
-        Assert.That(wrapper.Deps, Has.Count.EqualTo(5 * Eip8288Constants.MaxSigsPerTx));
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Deps, Has.Count.EqualTo(5 * Eip8288Constants.MaxSigsPerTx));
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.True, error);
+        }
     }
 
     // LEANSTARK_SCHEME, enabled here as a deviation from EIP-8288, is valid beside leanSPHINCS in both modes; mode 0 still
@@ -155,8 +164,11 @@ public class MempoolWrapperTests
     public void Per_transaction_limits_still_apply([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
     {
         MempoolWrapper wrapper = Batch(mode, [Sphincses("a", Eip8288Constants.MaxSigsPerTx + 1)]);
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TransactionLimits));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TransactionLimits));
+        }
     }
 
     // EIP-8437: exceeding a dependency limit is a dependency-rule failure, discarded without penalty, so decoding accepts it
@@ -169,8 +181,11 @@ public class MempoolWrapperTests
         Rlp encoded = Raw([Encoded(Sphincses("t", 1))], mode, canonical,
             mode == MempoolWrapper.ModeDirect ? Rlp.Encode([.. canonical.Select(static _ => Rlp.Encode(new byte[] { 1 }))]) : Rlp.Encode(new byte[] { 1 }));
         MempoolWrapper decoded = Decode(encoded);
-        Assert.That(decoded.Deps, Has.Count.EqualTo(deps.Length));
-        Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Deps, Has.Count.EqualTo(deps.Length));
+            Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out _), Is.False);
+        }
     }
 
     [Test]
@@ -182,8 +197,11 @@ public class MempoolWrapperTests
                 Rlp.Encode([Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[] { 1 })]))
             : Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, canonical, Rlp.Encode([Rlp.Encode(new byte[] { 1 })]));
         MempoolWrapper decoded = Decode(encoded);
-        Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(unsorted ? MempoolWrapperValidator.DepsMismatch : MempoolWrapperValidator.ProofCountMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(unsorted ? MempoolWrapperValidator.DepsMismatch : MempoolWrapperValidator.ProofCountMismatch));
+        }
     }
 
     [Test]
@@ -192,8 +210,11 @@ public class MempoolWrapperTests
         FrameDependency dependency = Sphincs("a");
         MempoolWrapper wrapper = Batch(MempoolWrapper.ModeDirect, [[dependency]]);
         wrapper = new MempoolWrapper { Transactions = wrapper.Transactions, Mode = MempoolWrapper.ModeDirect, Deps = [dependency, dependency], Proofs = [[1], [1]] };
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+        }
     }
 
     // EIP-8288 Test Case 12: the dependency union must match dependencies(tx), including the zero-hash substitution.
@@ -204,9 +225,12 @@ public class MempoolWrapperTests
         List<FrameDependency> claimed = [Sphincs("other")];
         wrapper = With(wrapper, deps: claimed, stark: new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(claimed))));
         FakeLeanProofVerifier verifier = new(true);
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
-        Assert.That(verifier.VerificationCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -277,8 +301,11 @@ public class MempoolWrapperTests
     {
         Rlp encoded = Raw([Encoded([Sphincs("a")])], MempoolWrapper.ModeDirect, [Sphincs("a")],
             Rlp.Encode([.. Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + 2).Select(static _ => Rlp.Encode(new byte[] { 1 }))]));
-        Assert.That(MempoolWrapperValidator.Validate(Decode(encoded), Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(Decode(encoded), Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
+        }
     }
 
     // EIP-8288 Test Case 12: MAX_WRAPPER_BYTES bounds the complete encoding, full transactions included: a wrapper exactly at
@@ -330,8 +357,11 @@ public class MempoolWrapperTests
         transaction.Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Array.Empty<byte>())];
         transaction.Hash = transaction.CalculateHash();
         MempoolWrapper wrapper = With(batch, transactions: Sorted([batch.Transactions[0], transaction]));
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.MalformedDependencyFrame));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.MalformedDependencyFrame));
+        }
     }
 
     // A mode-1 proof above the local MaxAggregateProofBytes bound is rejected before verification.
@@ -356,8 +386,11 @@ public class MempoolWrapperTests
     {
         MempoolWrapper batch = Batch(MempoolWrapper.ModeDirect, [[Sphincs("a")]]);
         MempoolWrapper wrapper = With(batch, transactions: [Build.A.Transaction.SignedAndResolved().TestObject]);
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.NotFrameTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.NotFrameTransaction));
+        }
     }
 
     // Verdicts are cached locally by proof, dependencies and AGGREGATED_VK, so the same proof arriving with another

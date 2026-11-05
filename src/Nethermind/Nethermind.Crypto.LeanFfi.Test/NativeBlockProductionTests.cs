@@ -58,8 +58,11 @@ public class NativeBlockProductionTests
         FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue).Single();
         byte[] witness = await SignMessage(resolved.DataHash);
         ILeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
-        Assert.That(verifier.VerifyLeanSphincs(resolved.DataHash, resolved.VerificationKey, witness), Is.True);
-        Assert.That(verifier.VerifyLeanSphincs(default, resolved.VerificationKey, witness), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyLeanSphincs(resolved.DataHash, resolved.VerificationKey, witness), Is.True);
+            Assert.That(verifier.VerifyLeanSphincs(default, resolved.VerificationKey, witness), Is.False);
+        }
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([resolved]);
         MempoolWrapper wrapper = new()
         {
@@ -100,8 +103,11 @@ public class NativeBlockProductionTests
         transaction.CopyTo(changed);
         changed.Nonce++;
         ValueHash256 changedHash = FrameTxSigHash.ComputeValue(changed);
-        Assert.That(changedHash, Is.Not.EqualTo(resolved.DataHash));
-        Assert.That(verifier.VerifyLeanSphincs(changedHash, resolved.VerificationKey, witness), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changedHash, Is.Not.EqualTo(resolved.DataHash));
+            Assert.That(verifier.VerifyLeanSphincs(changedHash, resolved.VerificationKey, witness), Is.False);
+        }
         changed.Hash = changed.CalculateHash();
         MempoolWrapper changedWrapper = new()
         {
@@ -111,8 +117,11 @@ public class NativeBlockProductionTests
             Proofs = wrapper.Proofs,
             RecursiveStark = wrapper.RecursiveStark
         };
-        Assert.That(MempoolWrapperValidator.Validate(changedWrapper, verifier, Eip8288Verifier.Pinned, out string error), Is.False);
-        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolWrapperValidator.Validate(changedWrapper, verifier, Eip8288Verifier.Pinned, out string error), Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+        }
     }
 
     private static async Task<byte[]> SignMessage(ValueHash256 message)
@@ -164,8 +173,11 @@ public class NativeBlockProductionTests
         Assert.That(missing.ToString(), Does.Contain("MissingDependencyProof"));
 
         byte[][] witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")];
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(signature.DataHash, signature.VerificationKey, witnesses[0]), Is.True);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanStark(stark.DataHash, stark.VerificationKey, witnesses[1]), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(signature.DataHash, signature.VerificationKey, witnesses[0]), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanStark(stark.DataHash, stark.VerificationKey, witnesses[1]), Is.True);
+        }
         proofs.AddVerified([signature, stark], witnesses, null);
         transaction.Hash = transaction.CalculateHash();
         ValidationResult wellFormed = new TxValidator(chain.SpecProvider.ChainId).IsWellFormed(transaction, Eip8288Prototype.Instance);
@@ -192,9 +204,12 @@ public class NativeBlockProductionTests
         Block block = await chain.Container.Resolve<TestBlockchainUtil>()
             .AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
         ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
-        Assert.That(block.Transactions, Has.Length.EqualTo(1));
-        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(1));
+            Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+            Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
+        }
         NativeLeanProofVerifierTests.AssertBareStarkProof(block.StarkProof!, Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue));
         (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())

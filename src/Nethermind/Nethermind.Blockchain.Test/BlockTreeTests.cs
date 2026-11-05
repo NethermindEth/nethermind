@@ -3390,8 +3390,11 @@ public class BlockTreeTests
         invalid.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
         invalid.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid.StarkProof), TestItem.KeccakA);
         tree.ReportBadBlock(invalid);
-        Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
-        Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
+            Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));
+        }
     }
 
     [Test]

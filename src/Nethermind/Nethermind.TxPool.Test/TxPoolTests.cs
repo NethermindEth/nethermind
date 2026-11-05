@@ -138,9 +138,12 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = ownsTransaction
                 ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out canRecycle)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
-            Assert.That(canRecycle, Is.EqualTo(ownsTransaction));
-            Assert.That(tx.NetworkWrapper, ownsTransaction ? Is.Null : Is.SameAs(wrapper));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(canRecycle, Is.EqualTo(ownsTransaction));
+                Assert.That(tx.NetworkWrapper, ownsTransaction ? Is.Null : Is.SameAs(wrapper));
+            }
         }
 
         internal void AssertRejectedBlobBuffersAreReusedOnlyWithoutDiscoverySubscribers(
@@ -8528,15 +8531,21 @@ namespace Nethermind.TxPool.Test
             Transaction transaction = DependencyBlobTransaction(dependency);
             store.AddVerified([dependency], [[1]], null);
             _txPool = CreateDependencyBlobPool(store, new BlobTxStorage());
-            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            }
             FloodUnpinnedProofs(store);
             Assert.That(store.Covers(transaction), Is.True, "the persistent pool inserts a light record without dependency frames");
 
             await _txPool.DisposeAsync();
             FloodUnpinnedProofs(store);
-            Assert.That(store.Covers(transaction), Is.False, "shutdown releases this pool's witness ownership");
-            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.Covers(transaction), Is.False, "shutdown releases this pool's witness ownership");
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
+            }
         }
 
         [Test]

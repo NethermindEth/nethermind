@@ -175,8 +175,11 @@ public class ExecutionPayloadV4Tests
 
         Block block = payload.TryGetBlock().Data!;
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(block.StarkProof, Is.EqualTo(proof));
-        Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.EqualTo(depsHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.StarkProof, Is.EqualTo(proof));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(depsHash));
+        }
 
         // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
         // survives the payload boundary, so the block hash reconciles (it would not if the field
@@ -241,8 +244,11 @@ public class ExecutionPayloadV4Tests
 
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
 
-        Assert.That(payload.StarkProof, Is.Null);
-        Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.StarkProof, Is.Null);
+            Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
+        }
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

@@ -86,8 +86,11 @@ public class HeaderValidatorTests
             _ => Keccak.Zero
         });
 
-        Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.EqualTo(valid));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.EqualTo(valid));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     [Test]
