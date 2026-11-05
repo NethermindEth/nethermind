@@ -172,8 +172,10 @@ public partial class DebugRpcModuleTests
         };
         bool named = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
         string name = $"native-error-result-{Guid.NewGuid():N}";
-        System.Collections.IDictionary registrations = (System.Collections.IDictionary)typeof(GethLikeNativeTracerFactory)
-            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        System.Reflection.FieldInfo? registrationsField = typeof(GethLikeNativeTracerFactory)
+            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.That(registrationsField, Is.Not.Null, "the native tracer registry is required to remove the test registration");
+        System.Collections.IDictionary registrations = (System.Collections.IDictionary)registrationsField!.GetValue(null)!;
         GethLikeNativeTracerFactory.RegisterTracer(name, static (options, _, transaction, _) => new ErrorResultNativeTracer(options, transaction.Hash!));
         try
         {
