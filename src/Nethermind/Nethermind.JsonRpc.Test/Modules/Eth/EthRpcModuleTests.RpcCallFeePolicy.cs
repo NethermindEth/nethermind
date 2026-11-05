@@ -13,7 +13,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -140,9 +139,15 @@ public partial class EthRpcModuleTests
         string fees = "\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"" + (priorityAboveCap ? "0x3" : "0x1") + "\"";
         JToken response = await FeePolicyCall(ctx, FeePolicyRequest(fees, gas), FeePolicyState(code: "0xfe"), "0x64");
         string expected = priorityAboveCap
-            ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(2, 3)
+            ? "max priority fee per gas higher than max fee per gas"
             : "max fee per gas less than block base fee";
-        Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
+            Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
+            if (priorityAboveCap)
+                Assert.That((string?)response["error"]?["message"], Does.Contain("maxPriorityFeePerGas: 3, maxFeePerGas: 2"), response.ToString());
+        }
     }
 
     [TestCase(32)]
