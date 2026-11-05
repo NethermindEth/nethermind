@@ -4,6 +4,8 @@
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -21,6 +23,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -107,6 +110,26 @@ public partial class DebugRpcModuleTests
         Assert.That(result, Has.Count.EqualTo(1));
 #pragma warning restore NUnit2045
         Assert.That((JArray)result[0], Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_iterator_uses_generated_interface_metadata()
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction())];
+        JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
+        object result = ctx.DebugRpcModule.debug_traceCallMany(bundles, BlockParameter.Latest).Data;
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        for (int i = options.TypeInfoResolverChain.Count - 1; i >= 0; i--)
+        {
+            if (options.TypeInfoResolverChain[i] is DefaultJsonTypeInfoResolver)
+                options.TypeInfoResolverChain.RemoveAt(i);
+        }
+
+        string actual = JsonSerializer.Serialize(result, RpcPayloadTypeInfo.Get(options, result.GetType()));
+
+        Assert.That(JToken.DeepEquals(JToken.Parse(actual), expected), Is.True, actual);
     }
 
     [Test]
