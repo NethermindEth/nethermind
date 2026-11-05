@@ -75,7 +75,7 @@ public class OverridableCodeInfoRepository(
     {
         CodeInfo delegatedCodeInfo = value;
         if (!DisablePrecompileOnAccountOverride &&
-            (!_codeOverrides.TryGetValue(key, out var previous) || previous.codeInfo.IsPrecompile) &&
+            (!_codeOverrides.TryGetValue(key, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) previous) || previous.codeInfo.IsPrecompile) &&
             codeInfoRepository.GetPrecompile(key, vmSpec) is { } precompile)
         {
             value = new CodeInfo(precompile, value.Code);
@@ -113,7 +113,7 @@ public class OverridableCodeInfoRepository(
     /// </remarks>
     private bool TryGetCodeOverride(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo, bool forDelegation = false)
     {
-        if (_codeOverrides.TryGetValue(address, out var entry))
+        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry))
         {
             ValueHash256 codeHash = worldState.GetCodeHash(address);
             if (codeHash == entry.codeHash)
@@ -164,7 +164,7 @@ public class OverridableCodeInfoRepository(
                 continue;
             }
 
-            var entry = _codeOverrides[address];
+            (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry = _codeOverrides[address];
             ValueHash256 codeHash = worldState.GetCodeHash(address);
             IPrecompile precompile = codeInfoRepository.GetPrecompile(address, spec)!;
             if (codeHash == entry.codeHash && ReferenceEquals(entry.codeInfo.Precompile, precompile)) continue;
