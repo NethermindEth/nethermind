@@ -135,7 +135,7 @@ public class MergeHeaderValidatorTests
 
         bool parentTotalDifficultyKnown = parentTotalDifficultySource is ParentTotalDifficultySource.Header
             or ParentTotalDifficultySource.BlockTree or ParentTotalDifficultySource.BlockTreeWithZeroOnHeader;
-        // With the TD of both unknown, nothing tells a non-terminal parent apart, so the header is classified by its difficulty.
+        // With neither total difficulty known the parent rule cannot apply, and the header is validated by its difficulty as before.
         bool expectedValid = parentKind != ParentKind.NonTerminalProofOfWork || (!childHasTotalDifficulty && !parentTotalDifficultyKnown);
 
         bool valid = ctx.Resolve<IHeaderValidator>().Validate(header, parent, isUncle, out string? error);
@@ -164,6 +164,23 @@ public class MergeHeaderValidatorTests
         validator.Validate(header, parent);
 
         blockTree.ReceivedWithAnyArgs(expectLookup ? 1 : 0).GetInfo(default, default!);
+    }
+
+    [Test]
+    public void Orphaned_pos_header_is_validated_without_the_parent_rule()
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TerminalTotalDifficulty.Returns((UInt256?)new UInt256(10));
+        poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        MergeHeaderValidator validator = new(poSSwitcher, Substitute.For<IHeaderValidator>(), blockTree, MainnetSpecProvider.Instance, Always.Valid, LimboLogs.Instance);
+        BlockHeader header = Build.A.BlockHeader.WithDifficulty(0).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.ValidateOrphaned(header, out string? error), Is.True, error);
+            Assert.That(() => blockTree.DidNotReceiveWithAnyArgs().GetInfo(default, default!), Throws.Nothing);
+        }
     }
 
     public enum ParentConsensus

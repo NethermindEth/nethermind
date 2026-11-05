@@ -337,7 +337,7 @@ public partial class BlockDownloaderTests
             Assert.That(parent.TotalDifficulty, Is.LessThan(ttd));
         }
 
-        // The proof-of-work child keeps the downloaded batch from ending at the proof-of-stake block.
+        // The chain continues past the zero-difficulty block.
         Block posBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(parent.GasLimit)
@@ -345,16 +345,16 @@ public partial class BlockDownloaderTests
             .WithNonce(0)
             .WithBaseFeePerGas(BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent)))
             .TestObject;
-        Block powChild = Build.A.Block
+        Block child = Build.A.Block
             .WithParent(posBlock)
             .WithGasLimit(posBlock.GasLimit)
             .WithDifficulty(parent.Difficulty)
             .WithBaseFeePerGas(BaseFeeCalculator.Calculate(posBlock.Header, specProvider.GetSpec(posBlock.Header)))
             .TestObject;
         remoteTree.SuggestBlock(posBlock);
-        remoteTree.SuggestBlock(powChild);
-        remoteTree.TryUpdateMainChain(powChild.Header, true, preloadedBlocks: [posBlock, powChild]);
-        Assert.That(remoteTree.Head!.Hash, Is.EqualTo(powChild.Hash));
+        remoteTree.SuggestBlock(child);
+        remoteTree.TryUpdateMainChain(child.Header, true, preloadedBlocks: [posBlock, child]);
+        Assert.That(remoteTree.Head!.Hash, Is.EqualTo(child.Hash));
 
         await using IContainer node = CreateMergeNode(builder => builder
                 .AddSingleton<IBlockTree>(localTree)
@@ -373,7 +373,7 @@ public partial class BlockDownloaderTests
         {
             Assert.That(localTree.Head!.Hash, Is.EqualTo(parent.Hash));
             Assert.That(localTree.IsKnownBlock(posBlock.Number, posBlock.Hash!), Is.False);
-            Assert.That(localTree.IsKnownBlock(powChild.Number, powChild.Hash!), Is.False);
+            Assert.That(localTree.IsKnownBlock(child.Number, child.Hash!), Is.False);
             Assert.That(() => ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed,
                 Arg.Is<string>(static details => details.Contains("A proof-of-stake block cannot follow a non-terminal proof-of-work parent."))), Throws.Nothing);
         }
