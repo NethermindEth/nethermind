@@ -392,6 +392,28 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [Test]
+    public void Copied_ethash_parameters_keep_absent_forks_off([Values] bool forksSet, [Values(0UL, 1_000_000UL)] ulong blockNumber)
+    {
+        string json = forksSet
+            ? BuildStandardGethGenesisJson(configExtra: "\"byzantiumBlock\": 0")
+            : """{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+        EthashChainSpecEngineParameters ethashParameters = LoadFromString(json).EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ReleaseSpec spec = new();
+        ethashParameters.ApplyToReleaseSpec(spec, blockNumber, null);
+        ulong? expectedTransition = forksSet ? 0 : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters.HomesteadTransition, Is.EqualTo(expectedTransition));
+            Assert.That(ethashParameters.Eip100bTransition, Is.EqualTo(expectedTransition));
+            Assert.That(spec.IsEip2Enabled, Is.EqualTo(forksSet));
+            Assert.That(spec.IsEip7Enabled, Is.EqualTo(forksSet));
+            Assert.That(spec.IsEip100Enabled, Is.EqualTo(forksSet));
+        }
+    }
+
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"byzantiumBlock\": 0", "eip158Block not enabled, but byzantiumBlock enabled at block 0")]
     [TestCase("\"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0", "petersburgBlock not enabled, but istanbulBlock enabled at block 0")]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"londonBlock\": 5", "berlinBlock not enabled, but londonBlock enabled at block 5")]
@@ -409,6 +431,26 @@ public class GethGenesisLoaderTests
         Assert.That(() => LoadFromString(json), expectedError is null
             ? Throws.Nothing
             : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
+    }
+
+    private static readonly string[] RequiredForks =
+    [
+        "homesteadBlock", "eip150Block", "eip155Block", "eip158Block", "byzantiumBlock", "constantinopleBlock",
+        "petersburgBlock", "istanbulBlock", "berlinBlock", "londonBlock", "shanghaiTime"
+    ];
+
+    [TestCaseSource(nameof(RequiredForks))]
+    public void Fork_schedule_must_set_every_required_fork(string skippedFork)
+    {
+        // Fork i is set at i + 1, with cancunTime after shanghaiTime so that every required fork has a later set fork.
+        string[] schedule = [.. RequiredForks, "cancunTime"];
+        string config = string.Join(", ", schedule
+            .Select(static (fork, i) => $"\"{fork}\": {i + 1}")
+            .Where(entry => !entry.StartsWith($"\"{skippedFork}\"", StringComparison.Ordinal)));
+        int next = Array.IndexOf(schedule, skippedFork) + 1;
+        string nextKind = schedule[next].EndsWith("Time", StringComparison.Ordinal) ? "timestamp" : "block";
+
+        Fork_schedule_must_not_skip_a_required_fork(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
     }
 
     [Test]

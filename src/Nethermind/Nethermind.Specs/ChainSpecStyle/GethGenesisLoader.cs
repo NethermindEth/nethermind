@@ -425,7 +425,12 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
                 if (targetProperty is not null && targetProperty.CanWrite)
                 {
                     object? value = sourceProperty.GetValue(source);
-                    if (value is not null && targetProperty.PropertyType.IsInstanceOfType(value))
+                    // Copy null into nullable targets too: a null fork transition means the fork never activates,
+                    // and keeping the target's default would activate it at genesis instead.
+                    bool copy = value is null
+                        ? Nullable.GetUnderlyingType(targetProperty.PropertyType) is not null
+                        : targetProperty.PropertyType.IsInstanceOfType(value);
+                    if (copy)
                     {
                         targetProperty.SetValue(target, value);
                     }
