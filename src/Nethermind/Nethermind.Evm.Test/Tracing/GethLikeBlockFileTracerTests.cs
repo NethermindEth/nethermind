@@ -119,6 +119,23 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo(gasUsed));
     }
 
+    [TestCase(Instruction.REVERT, "{\"output\":\"\",\"gasUsed\":\"0x6\",\"error\":\"execution reverted\"}")]
+    [TestCase(Instruction.RETURN, "{\"output\":\"\",\"gasUsed\":\"0x6\"}")]
+    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string summary)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string step = records[2];
+        string[] expected = exit == Instruction.REVERT
+            ? [step[..^1] + ",\"error\":\"execution reverted\"}", summary]
+            : [summary];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step, Does.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
+            Assert.That(records[3..], Is.EqualTo(expected));
+        }
+    }
+
     [Test]
     public void File_summary_preserves_output_at_buffer_boundaries([Values(127, 128, 257, 1023, 1024)] int outputLength)
     {
@@ -308,7 +325,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string[] childOpcodes = scenario switch
         {
             "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
-            "return" or "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", scenario.ToUpperInvariant()],
+            "return" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "RETURN"],
+            "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "REVERT", "REVERT"],
             "badJump" => ["PUSH1", "JUMP"],
             _ => []
         };
@@ -317,6 +335,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         {
             Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
             Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            if (scenario == "revert")
+                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain("\"error\":\"execution reverted\""));
             Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
             Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
             Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));

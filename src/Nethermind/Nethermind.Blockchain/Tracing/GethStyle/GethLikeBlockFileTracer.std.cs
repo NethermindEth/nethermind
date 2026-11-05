@@ -71,7 +71,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        DumpActionEnd(trace.ReturnValue, trace.Gas, null);
+        DumpActionEnd(trace.ReturnValue, trace.Gas, txTracer.TopLevelError);
 
         DisposeFileStreamIfAny();
 

@@ -64,6 +64,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (options.Limit < 0) StopCapture();
     }
 
+    /// <summary>The error the outermost frame ended with, which Geth reports in the transaction summary.</summary>
+    internal string? TopLevelError { get; private set; }
+
     internal void StopCapture()
     {
         _captureStopped = true;
@@ -168,7 +171,10 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
-        CompleteAction(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
+        string error = EvmExceptionType.Revert.GetEvmExceptionDescription()!;
+        if (CurrentTraceEntry?.OpcodeRaw == Instruction.REVERT)
+            WriteFault(error);
+        CompleteAction(gasLeft, output, error);
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -210,12 +216,33 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         return entry;
     }
 
+    /// <summary>
+    /// Writes the faulting opcode's record, then the same record with <paramref name="error"/>, as Geth's JSON logger
+    /// does for an opcode that fails while executing.
+    /// </summary>
+    private void WriteFault(string error)
+    {
+        if (_actionGas is null || CurrentTraceEntry is not { } entry)
+            return;
+
+        CurrentTraceEntry = null;
+        AddTraceEntry(entry);
+        entry.Error = error;
+        entry.ReturnData = null;
+        AddTraceEntry(entry);
+    }
+
     private void CompleteAction(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
     {
         if (_gasTracker.EndAction(gas) is ulong gasUsed)
             Trace.Gas = gasUsed;
 
-        if (_actionGas?.TryPop(out ulong initialGas) == true && _actionGas.Count != 0)
+        if (_actionGas?.TryPop(out ulong initialGas) != true)
+            return;
+
+        if (_actionGas.Count == 0)
+            TopLevelError = error;
+        else
         {
             // The terminal opcode (or caller's CALL for an empty child) precedes the exit record.
             if (CurrentTraceEntry is not null)
