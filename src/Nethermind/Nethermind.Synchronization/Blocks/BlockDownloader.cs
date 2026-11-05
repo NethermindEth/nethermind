@@ -318,17 +318,38 @@ namespace Nethermind.Synchronization.Blocks
             return false;
         }
 
-        /// <summary>The highest head of the peers that serve block access lists, or <c>null</c> when no such peer is connected.</summary>
-        /// <remarks>The access list allocation takes only a peer whose head is at or above the requested blocks.</remarks>
+        /// <summary>The highest head of the awake peers that serve block access lists, or <c>null</c> when no such peer is connected.</summary>
+        /// <remarks>
+        /// The access list allocation takes only an awake peer whose head is at or above the requested blocks.
+        /// A peer sleeps for lists after it answers without one, see <see cref="SleepForAccessLists"/>.
+        /// </remarks>
         private ulong? GetBlockAccessListsPeerHead()
         {
             ulong? head = null;
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                if (peer.SyncPeer.SupportsBlockAccessLists()) head = ulong.Max(head ?? 0, peer.HeadNumber);
+                if (peer.SyncPeer.SupportsBlockAccessLists() && !peer.IsAsleep(AllocationContexts.BlockAccessLists)) head = ulong.Max(head ?? 0, peer.HeadNumber);
             }
 
             return head;
+        }
+
+        /// <summary>Marks whether no awake eth/71 peer has the block, for a block that executes without its list.</summary>
+        /// <remarks>
+        /// Without such a peer every request for the list fails, so the block executes without waiting for the retries.
+        /// This is checked on each pass, so a peer that connects or wakes later serves the list. The peers are read once per pass.
+        /// </remarks>
+        private void UpdateNoAccessListPeer(BlockEntry entry, ref ulong? peerHead, ref bool peerHeadKnown)
+        {
+            if (!entry.CanExecuteMissingData) return;
+
+            if (!peerHeadKnown)
+            {
+                peerHead = GetBlockAccessListsPeerHead();
+                peerHeadKnown = true;
+            }
+
+            entry.NoAccessListPeer = peerHead is not { } head || entry.Header.Number > head;
         }
 
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
@@ -379,18 +400,7 @@ namespace Nethermind.Synchronization.Blocks
                 entry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                 parentHeader = blockHeader;
 
-                // Without an eth/71 peer that has the block every request for an optional list fails, so the block executes
-                // without waiting for the retries. This is checked on each request, so a peer that connects later serves the list.
-                if (entry.CanExecuteMissingData)
-                {
-                    if (!blockAccessListsPeerHeadKnown)
-                    {
-                        blockAccessListsPeerHead = GetBlockAccessListsPeerHead();
-                        blockAccessListsPeerHeadKnown = true;
-                    }
-
-                    entry.NoAccessListPeer = blockAccessListsPeerHead is not { } peerHead || blockHeader.Number > peerHead;
-                }
+                UpdateNoAccessListPeer(entry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
 
                 if ((requestContentType is null or BlocksRequestContentType.Bodies) && entry.NeedBodyDownload)
                 {
@@ -475,6 +485,8 @@ namespace Nethermind.Synchronization.Blocks
             try
             {
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
+                ulong? blockAccessListsPeerHead = null;
+                bool blockAccessListsPeerHeadKnown = false;
                 ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
                 for (int i = 1; i < headersSpan.Length; i++)
                 {
@@ -489,6 +501,8 @@ namespace Nethermind.Synchronization.Blocks
 
                     blockEntry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                     if (blockEntry.Block is null) break;
+                    // A peer that answered without the list sleeps for lists, so the block need not wait for the next request.
+                    UpdateNoAccessListPeer(blockEntry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
                     if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
                     if (ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) && !blockEntry.HasReceipt) break;
 
@@ -716,6 +730,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (served == 0) entry.RecordMissingAccessList();
+                if (blockAccessLists is { Count: 0 }) SleepForAccessLists(entry, peer);
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -725,6 +740,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
+                SleepForAccessLists(entry, peer);
                 bool mustServe = _balServingWindow.MustServe(header, peer?.HeadNumber ?? 0);
                 // Outside the serving window (e.g. full sync resuming far behind after downtime) a required list may be
                 // pruned on every peer, so the answer is not proof of withholding.
@@ -762,6 +778,16 @@ namespace Nethermind.Synchronization.Blocks
 
             entry.PeerInfo = peer;
             return true;
+        }
+
+        /// <summary>Puts a peer that answered without the list of a block that executes without it to sleep for lists only.</summary>
+        /// <remarks>
+        /// A retry then goes to another peer. With no other awake list peer that has the block, the block executes at once.
+        /// The pool wakes the peer later, so a peer that was still backfilling lists serves them again.
+        /// </remarks>
+        private static void SleepForAccessLists(BlockEntry entry, PeerInfo? peer)
+        {
+            if (entry.CanExecuteMissingData) peer?.PutToSleep(AllocationContexts.BlockAccessLists, DateTime.UtcNow);
         }
 
         /// <summary>Warns, at most once a minute, that a static or trusted peer did not serve a block access list it must serve.</summary>

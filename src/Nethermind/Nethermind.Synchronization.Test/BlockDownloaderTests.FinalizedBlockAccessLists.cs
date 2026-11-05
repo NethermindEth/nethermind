@@ -59,22 +59,11 @@ public partial class BlockDownloaderTests
             Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
             Assert.That(suggested, Is.False);
         }
-        for (int attempt = 0; attempt < (missingBal ? 3 : 1); attempt++)
-        {
-            balRequest.BlockAccessLists = missingBal && truncated
-                ? new ArrayPoolList<byte[]?>(0)
-                : BuildBlockAccessLists(missingBal ? null : bal);
-            downloader.HandleResponse(balRequest, peer);
-            if (missingBal && attempt < 2)
-            {
-                balRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(balRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
-                    Assert.That(suggested, Is.False);
-                }
-            }
-        }
+        balRequest.BlockAccessLists = missingBal && truncated
+            ? new ArrayPoolList<byte[]?>(0)
+            : BuildBlockAccessLists(missingBal ? null : bal);
+        // A peer that answers without the list sleeps for lists. Without another list peer, the block executes without it.
+        downloader.HandleResponse(balRequest, peer);
         if (missingBal)
         {
             BlocksRequest fastRequest = (await downloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;

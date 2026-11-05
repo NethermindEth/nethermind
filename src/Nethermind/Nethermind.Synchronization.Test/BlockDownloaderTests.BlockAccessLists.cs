@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -103,6 +104,8 @@ public partial class BlockDownloaderTests
         List<SyncResponseHandlingResult> results = [];
         foreach (byte[]?[] response in responses)
         {
+            // A peer that answers without a list the block can execute without sleeps for lists until the pool wakes it.
+            peerInfo.TryToWakeUp(DateTime.UtcNow, TimeSpan.Zero);
             using BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
             request.BlockAccessLists = BuildBlockAccessLists(response);
             results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
@@ -273,13 +276,17 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
-    public enum AccessListSource { Served, Withheld, EmptyReply, NoEth71Peer, OutsideServingWindow, Stored }
+    public enum AccessListSource { Served, Withheld, EmptyReply, ServedByOtherPeer, WithheldByAllPeers, NoEth71Peer, OutsideServingWindow, Stored }
 
     [TestCase(false, false, AccessListSource.Served)]
     [TestCase(true, false, AccessListSource.Served)]
     [TestCase(false, true, AccessListSource.Served)]
     [TestCase(true, true, AccessListSource.Withheld)]
     [TestCase(true, false, AccessListSource.EmptyReply)]
+    // A peer that answered without the list sleeps for lists, so the retry goes to another peer.
+    [TestCase(true, false, AccessListSource.ServedByOtherPeer)]
+    // Each peer is asked once, up to the retry cap.
+    [TestCase(true, false, AccessListSource.WithheldByAllPeers)]
     [TestCase(true, false, AccessListSource.NoEth71Peer)]
     [TestCase(false, true, AccessListSource.OutsideServingWindow)]
     // The list of a beacon body from engine_newPayload is already in the store.
@@ -303,8 +310,15 @@ public partial class BlockDownloaderTests
                 }
             });
         if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
-        bool served = source == AccessListSource.Served;
+        bool served = source is AccessListSource.Served or AccessListSource.ServedByOtherPeer;
         Block block = catchUp.Blocks[0];
+        PeerInfo[] peers = [catchUp.Peer, .. Enumerable.Range(0, source switch
+        {
+            AccessListSource.ServedByOtherPeer => 1,
+            AccessListSource.WithheldByAllPeers => 3,
+            _ => 0,
+        }).Select(_ => CreateBlockAccessListsPeer(block.Number))];
+        catchUp.Ctx.PeerPool.InitializedPeers.Returns(peers);
         if (source == AccessListSource.Stored) catchUp.BalStore.Insert(block.Number, block.Hash!, catchUp.Bal);
         bool suggested = false;
         catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
@@ -322,27 +336,45 @@ public partial class BlockDownloaderTests
                 Assert.That(request.ReceiptsRequests, Is.Empty);
                 Assert.That(suggested, Is.False);
             }
+            // The allocation takes the awake list peers in turn.
+            PeerInfo peer = peers[accessListRequests];
+            bool servedNow = source == AccessListSource.Served || (source == AccessListSource.ServedByOtherPeer && peer != catchUp.Peer);
             accessListRequests++;
-            request.BlockAccessLists = source == AccessListSource.EmptyReply ? BuildBlockAccessLists() : BuildBlockAccessLists(served ? catchUp.Bal : null);
-            // A weak peer sleeps, which would hold back each retry of a list that the block does not need.
-            Assert.That(catchUp.Downloader.HandleResponse(request, catchUp.Peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+            request.BlockAccessLists = source == AccessListSource.EmptyReply ? BuildBlockAccessLists() : BuildBlockAccessLists(servedNow ? catchUp.Bal : null);
+            SyncResponseHandlingResult result = catchUp.Downloader.HandleResponse(request, peer);
+            using (Assert.EnterMultipleScope())
+            {
+                // A weak peer sleeps for bodies too, which would hold back each retry of a list that the block does not need.
+                Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(peer.IsAsleep(AllocationContexts.BlockAccessLists), Is.EqualTo(!servedNow));
+            }
         }
 
         bool usesAccessLists = parallelExecution || batchRead;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(suggested, Is.True);
-            // An unserved list does not hold the block back: it executes without one after the retries, or at once without an eth/71 peer.
+            // An unserved list does not hold the block back: it executes without one when no awake list peer is left,
+            // after the retry cap, or at once without an eth/71 peer.
             Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : source switch
             {
-                AccessListSource.Served => 1,
-                AccessListSource.Withheld or AccessListSource.EmptyReply => 3,
+                AccessListSource.Served or AccessListSource.Withheld or AccessListSource.EmptyReply => 1,
+                AccessListSource.ServedByOtherPeer => 2,
+                AccessListSource.WithheldByAllPeers => 3,
                 _ => 0,
             }));
             // The store is checked once, when the block enters the download buffer, not on each request.
             Assert.That(countingStore!.ExistsCalls, Is.EqualTo(1));
             Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo((usesAccessLists && served) || source == AccessListSource.Stored));
         }
+    }
+
+    private static PeerInfo CreateBlockAccessListsPeer(ulong headNumber)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+        syncPeer.HeadNumber.Returns(headNumber);
+        return new PeerInfo(syncPeer);
     }
 
     private const ulong HeaderTimestamp = 1_000_000;
