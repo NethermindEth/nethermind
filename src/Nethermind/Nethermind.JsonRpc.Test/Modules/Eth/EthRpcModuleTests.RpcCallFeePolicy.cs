@@ -140,9 +140,13 @@ public partial class EthRpcModuleTests
         string fees = "\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"" + (priorityAboveCap ? "0x3" : "0x1") + "\"";
         JToken response = await FeePolicyCall(ctx, FeePolicyRequest(fees, gas), FeePolicyState(code: "0xfe"), "0x64");
         string expected = priorityAboveCap
-            ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(2, 3)
+            ? $"{TxErrorMessages.TipAboveFeeCap}: address {new Address(FeePolicySender).ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"
             : "max fee per gas less than block base fee";
-        Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
+        }
     }
 
     [TestCase(32)]
