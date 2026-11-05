@@ -58,9 +58,9 @@ public class PrecompileOverrideCodeInfoRepositoryTests
                 worldState.Get(new StorageCell(address, UInt256.One), out UInt256 value);
                 Assert.That(value, Is.EqualTo((UInt256)2));
             }
-            if (field == "code") Assert.That(worldState.GetCode(address), Is.EqualTo(new byte[] { (byte)Instruction.STOP }));
+            if (field == "code") Assert.That(worldState.GetCode(address).Span, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
             if (field == "balance") Assert.That(worldState.GetBalance(address), Is.EqualTo((UInt256)7));
-            if (field == "nonce") Assert.That(worldState.GetNonce(address), Is.EqualTo(3));
+            if (field == "nonce") Assert.That(worldState.GetNonce(address), Is.EqualTo(3UL));
         }
     }
 
