@@ -77,7 +77,7 @@ public sealed partial class DeferredRlpItemList
             }
 
             /// <summary>Appends an item that is already RLP-encoded, copying <paramref name="rlp"/> verbatim.</summary>
-            public void WriteRaw(ReadOnlySpan<byte> rlp)
+            public void WriteRaw(scoped ReadOnlySpan<byte> rlp)
             {
                 Builder b = _builder;
                 int offset = b._valueBuffer!.Count;
