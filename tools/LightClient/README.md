@@ -7,6 +7,10 @@ the same network ([Docker port-publishing guidance](https://docs.docker.com/engi
 The image supports `linux/amd64` and
 `linux/arm64`. Mainnet is the default network.
 
+The Compose stack runs three containers: the light client, Prometheus to retain
+metrics, and Grafana to display them. All three are configured together; no
+separate monitoring installation is needed.
+
 The client follows authenticated beacon heads, verifies execution data from P2P
 peers and runs JSON-RPC locally. See the [light-client guide](../../src/Nethermind/Nethermind.LightClient/README.md)
 for the verification model, supported RPC methods and current limitations.
@@ -52,6 +56,53 @@ still be bootstrapping or waiting for peers. RPC readiness requires
 `startupStage: "running"`, `rpcInitialized: true`, and a fresh `latest` head in
 `/status`; Grafana's **Ready** panel reports the same condition. A stale head
 must not be treated as a healthy wallet connection merely because HTTP responds.
+
+## Track JSON-RPC response times
+
+Open [the Light Client dashboard](http://127.0.0.1:3000/d/nethermind-light-client)
+and select the running network. **RPC latency by method** shows p50 and p95
+server durations for each method; **RPC requests** shows request rates and
+success, error and cancellation outcomes. Use a recent time range and keep the
+dashboard refreshing while your wallet makes requests.
+
+After the client is ready, this example generates balance requests for about
+40 seconds, enough for several of Prometheus's 15-second scrapes:
+
+```sh
+for i in $(seq 1 20); do
+  curl -sS http://127.0.0.1:8545/ \
+    -H 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xde198901C5ee4611142E0c61DfbbCEc7ab468F32","latest"]}'
+  printf '\n'
+  sleep 2
+done
+```
+
+The histogram records individual JSON-RPC items over HTTP and WebSocket,
+including initialization waits and failed requests. Batch items are measured
+separately. Durations exclude the network round trip between the wallet and
+server; p50/p95 are [histogram estimates](https://prometheus.io/docs/practices/histograms/)
+over the selected rate window, not a
+list of individual request times. Methods without traffic have no latency
+estimate. For exact per-request server timings, follow
+`docker compose logs -f light-client`.
+
+For example, paste this query into Grafana Explore to inspect p95 balance
+duration in seconds over the last five minutes:
+
+```promql
+histogram_quantile(0.95,
+  sum by (le) (
+    rate(nethermind_light_client_rpc_duration_seconds_bucket{
+      job="nethermind-light-client",network="mainnet",method="eth_getBalance"
+    }[5m])
+  )
+)
+```
+
+The same dashboard includes peers, authenticated head freshness, process CPU
+and RAM. Check these alongside latency: a fast error or an older authenticated
+head does not establish a healthy wallet connection.
 
 ## VPS ports and wallet access
 
