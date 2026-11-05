@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
@@ -130,7 +131,7 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString());
         JToken json = JToken.Parse(response);
-        bool indexing = scenario is "unfinished" or "not-started" or "horizon-next" or "uninitialized-unfinished" or "uninitialized-unfinished-history";
+        bool indexing = scenario is "unfinished" or "not-started" or "horizon-next" or "horizon-boundary" or "uninitialized-unfinished" or "uninitialized-unfinished-history";
         string message = indexing ? "transaction indexing is in progress" : "transaction not found";
         using (Assert.EnterMultipleScope())
         {
@@ -139,6 +140,59 @@ public partial class DebugRpcModuleTests
             Assert.That((string?)json["error"]?["data"], Is.EqualTo(indexing ? message : null), response);
             Assert.That(json["result"], Is.Null, response);
             Assert.That(executed, Is.Empty, "lookup failure must not execute a trace, including a deferred streaming trace");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_indexing_inflight_retained_boundary([Values] bool stream)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
+            .WithFlatDb(false)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
+            .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 1 })
+            .Build();
+        Block block = chain.BlockTree.Head!;
+        Assert.That(block.Number, Is.GreaterThan(1UL));
+        Assert.That(block.Transactions, Is.Not.Empty);
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        chain.ReceiptStorage.RemoveReceipts(block);
+        Hash256 transactionHash = block.Transactions[0].Hash!;
+        Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.Null);
+
+        chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
+        ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
+        pointers.LowestInsertedReceiptBlockNumber = null;
+        ReceiptsSyncFeed feed = (ReceiptsSyncFeed)chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
+        feed.InitializeFeed();
+        using ReceiptsSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(block.Number));
+            Assert.That(batch!.Infos[0]!.BlockNumber, Is.EqualTo(block.Number));
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactionHash.ToString());
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction indexing is in progress"), response);
+            Assert.That((string?)json["error"]?["data"], Is.EqualTo("transaction indexing is in progress"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+
+        batch!.Response = new ArrayPoolList<TxReceipt[]?>(1) { receipts };
+        Assert.That(feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.OK));
+        Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.EqualTo(block.Hash));
+        response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactionHash.ToString());
+        json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((long?)json["result"]?["gas"], Is.GreaterThan(0), response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That(json["result"]?["structLogs"], Is.TypeOf<JArray>(), response);
         }
     }
 
