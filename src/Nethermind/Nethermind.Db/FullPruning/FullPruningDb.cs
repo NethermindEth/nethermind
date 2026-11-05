@@ -87,31 +87,6 @@ namespace Nethermind.Db.FullPruning
             return memoryManager;
         }
 
-        public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-        {
-            PruningContext? pruningContext = _pruningContext;
-            if (pruningContext?.DuplicateReads != true || (flags & ReadFlags.SkipDuplicateRead) != 0)
-            {
-                return _currentDb.TryGet(key, flags, action, arg); // we are reading from the main DB
-            }
-
-            return _currentDb.TryGet(key, flags, static (value, read) =>
-            {
-                read.Db.Duplicate(read.CloningDb, read.Key, value, WriteFlags.None);
-                read.Action(value, read.Arg);
-            }, new DuplicatingRead<TArg>(this, pruningContext.CloningDb, key, action, arg));
-        }
-
-        private readonly ref struct DuplicatingRead<TArg>(FullPruningDb db, IDb cloningDb, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-            where TArg : allows ref struct
-        {
-            public readonly FullPruningDb Db = db;
-            public readonly IDb CloningDb = cloningDb;
-            public readonly ReadOnlySpan<byte> Key = key;
-            public readonly ReadOnlySpanAction<byte, TArg> Action = action;
-            public readonly TArg Arg = arg;
-        }
-
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentDb.Set(key, value, flags); // we are writing to the main DB
