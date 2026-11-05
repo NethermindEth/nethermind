@@ -507,7 +507,7 @@ ILogger GetCriticalLogger() => NLogConfigurator.GetCriticalLogger(logger);
 
 void ResolveDatabaseDirectory(string? path, string? configuredDbPath, IInitConfig initConfig)
 {
-    initConfig.BaseDbPath = DatabaseDirectory.Resolve(path, configuredDbPath, initConfig.BaseDbPath);
+    initConfig.BaseDbPath = DatabaseDirectory.Resolve(path, configuredDbPath, initConfig.BaseDbPath, logger);
 
     if (!string.IsNullOrWhiteSpace(path) && logger.IsInfo) logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(initConfig.BaseDbPath):hide}");
 }
