@@ -103,10 +103,28 @@ public abstract class BlockchainTestBase
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
-            transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
+        {
+            ForkActivation activation = test.TransitionForkActivation!.Value;
+            transitions.Add((activation, WithEip1559ForkBlock(test.Network, test.NetworkAfterTransition, activation)));
+        }
 
         return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
     }
+
+    /// <summary>
+    /// Moves the EIP-1559 fork block of <paramref name="after"/> to <paramref name="activation"/> when the transition
+    /// enables EIP-1559 at a block number.
+    /// </summary>
+    /// <remarks>
+    /// A named fork keeps the mainnet fork block (London: 12,965,000). The fork-block rules, a doubled parent gas limit
+    /// and the initial base fee, must apply at the block where the test switches to the fork, such as
+    /// <c>BerlinToLondonAt5</c>.
+    /// </remarks>
+    private static IReleaseSpec WithEip1559ForkBlock(IReleaseSpec before, IReleaseSpec after, ForkActivation activation) =>
+        !before.IsEip1559Enabled && after.IsEip1559Enabled && activation.Timestamp is null
+            && after.Eip1559TransitionBlock != activation.BlockNumber
+            ? new OverridableReleaseSpec(after) { Eip1559TransitionBlock = activation.BlockNumber }
+            : after;
 
     protected async Task<EthereumTestResult> RunTest(
         BlockchainTest test,
