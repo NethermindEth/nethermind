@@ -20,7 +20,7 @@ public class OverridableCodeInfoRepository(
     CodeOverrideStore? overrides = null,
     PrecompileOverridePolicy? precompileOverridePolicy = null) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
+    private readonly Dictionary<Address, (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash)> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
     private readonly Dictionary<Address, CodeInfo> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
@@ -35,6 +35,7 @@ public class OverridableCodeInfoRepository(
         if (TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result))
         {
             return vmSpec.IsEip7702Enabled &&
+                   !result.IsPrecompile &&
                    !result.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress) &&
                    followDelegation
@@ -52,7 +53,7 @@ public class OverridableCodeInfoRepository(
     /// A move destination resolves to its own code, not to the precompile moved there.
     /// </remarks>
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        TryGetCodeOverride(target, vmSpec, out CodeInfo? result) ? result
+        TryGetCodeOverride(target, vmSpec, out CodeInfo? result, forDelegation: true) ? result
         : vmSpec.IsPrecompile(target) ? new CodeInfo(worldState.GetCode(target))
         : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
@@ -72,16 +73,23 @@ public class OverridableCodeInfoRepository(
         Address key,
         CodeInfo value)
     {
-        if (!DisablePrecompileOnAccountOverride && !_codeOverrides.ContainsKey(key) && GetPrecompile(key, vmSpec) is not null)
-            return;
+        CodeInfo delegatedCodeInfo = value;
+        if (!DisablePrecompileOnAccountOverride &&
+            (!_codeOverrides.TryGetValue(key, out var previous) || previous.codeInfo.IsPrecompile) &&
+            codeInfoRepository.GetPrecompile(key, vmSpec) is { } precompile)
+        {
+            value = new CodeInfo(precompile, value.Code);
+        }
 
-        _codeOverrides[key] = (value, worldState.GetCodeHash(key));
+        _codeOverrides[key] = (value, delegatedCodeInfo, worldState.GetCodeHash(key));
     }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
-        _precompileOverrides[targetAddr] = this.GetCachedCodeInfo(precompileAddr, vmSpec);
-        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
+        CodeInfo source = this.GetCachedCodeInfo(precompileAddr, vmSpec);
+        _precompileOverrides[targetAddr] = new CodeInfo(source.Precompile!, worldState.GetCode(targetAddr));
+        CodeInfo origin = new(worldState.GetCode(precompileAddr));
+        _codeOverrides[precompileAddr] = (origin, origin, worldState.GetCodeHash(precompileAddr));
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -100,21 +108,32 @@ public class OverridableCodeInfoRepository(
     /// (a SELFDESTRUCT before Cancun), which does not pass through this repository. The world state journals the code
     /// hash, so a reverted change brings the override back. At a precompile's address, which an override turned into
     /// an ordinary account, an ended override leaves the world state's code, not the precompile the inner repository
-    /// would answer with.
+    /// would answer with. When native dispatch is retained, code changes and reverts refresh both cached views
+    /// instead; the native precompile itself is not replaced by that code.
     /// </remarks>
-    private bool TryGetCodeOverride(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    private bool TryGetCodeOverride(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo, bool forDelegation = false)
     {
-        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry))
+        if (_codeOverrides.TryGetValue(address, out var entry))
         {
-            if (worldState.GetCodeHash(address) == entry.codeHash)
+            ValueHash256 codeHash = worldState.GetCodeHash(address);
+            if (codeHash == entry.codeHash)
             {
-                codeInfo = entry.codeInfo;
+                codeInfo = forDelegation ? entry.delegatedCodeInfo : entry.codeInfo;
+                return true;
+            }
+
+            if (!DisablePrecompileOnAccountOverride && entry.codeInfo.IsPrecompile)
+            {
+                CodeInfo delegatedCodeInfo = codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
+                CodeInfo nativeCodeInfo = new(entry.codeInfo.Precompile!, delegatedCodeInfo.Code);
+                _codeOverrides[address] = (nativeCodeInfo, delegatedCodeInfo, codeHash);
+                codeInfo = forDelegation ? delegatedCodeInfo : nativeCodeInfo;
                 return true;
             }
 
             if (vmSpec.IsPrecompile(address))
             {
-                codeInfo = worldState.GetCodeHash(address) == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
+                codeInfo = codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
                 return true;
             }
         }
@@ -132,12 +151,27 @@ public class OverridableCodeInfoRepository(
     /// <remarks>
     /// Also drops the code overrides at <paramref name="spec"/>'s precompile addresses, moved-away origins included,
     /// so each block dispatches its precompiles again, even at an address a fork made a precompile since.
+    /// Retained native overrides keep their visible-code views, refreshing them if the account or active precompile changed.
     /// </remarks>
     public void ResetPrecompileOverrides(IReleaseSpec spec)
     {
         foreach (Address address in _codeOverrides.Keys)
         {
-            if (spec.IsPrecompile(address)) _codeOverrides.Remove(address);
+            if (!spec.IsPrecompile(address)) continue;
+            if (DisablePrecompileOnAccountOverride)
+            {
+                _codeOverrides.Remove(address);
+                continue;
+            }
+
+            var entry = _codeOverrides[address];
+            ValueHash256 codeHash = worldState.GetCodeHash(address);
+            IPrecompile precompile = codeInfoRepository.GetPrecompile(address, spec)!;
+            if (codeHash == entry.codeHash && ReferenceEquals(entry.codeInfo.Precompile, precompile)) continue;
+
+            CodeInfo delegatedCodeInfo = codeHash == entry.codeHash ? entry.delegatedCodeInfo
+                : codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
+            _codeOverrides[address] = (new CodeInfo(precompile, delegatedCodeInfo.Code), delegatedCodeInfo, codeHash);
         }
         _precompileOverrides.Clear();
     }

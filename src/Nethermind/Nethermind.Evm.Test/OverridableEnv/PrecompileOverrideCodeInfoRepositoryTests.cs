@@ -24,6 +24,152 @@ namespace Nethermind.Evm.Test.OverridableEnv;
 public class PrecompileOverrideCodeInfoRepositoryTests
 {
     [Test]
+    public void Retained_native_overrides_cache_dispatch_and_plain_code_views(
+        [Values] bool movedRepository, [Values] bool dynamicAddress, [Values] bool designatorFirst)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = dynamicAddress ? TestItem.AddressB : IdentityPrecompile.Address;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        ICodeInfoRepository inner = dynamicAddress ? Substitute.For<ICodeInfoRepository>() : new EthereumCodeInfoRepository(worldState);
+        if (dynamicAddress) inner.GetPrecompile(address, spec).Returns(IdentityPrecompile.Instance);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: false));
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+        byte[] ordinary = [(byte)Instruction.STOP];
+        byte[] designator = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+
+        foreach (byte[] code in designatorFirst ? new[] { designator, ordinary } : new[] { ordinary, designator })
+        {
+            worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = code } }, spec);
+            CodeInfo dispatch = reader.GetCachedCodeInfo(address, followDelegation: true, spec, out Address? delegated);
+            CodeInfo plain = reader.GetDelegatedCodeInfo(address, spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dispatch.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+                Assert.That(dispatch.CodeSpan, Is.SequenceEqualTo(code));
+                Assert.That(delegated, Is.Null, "a native precompile does not follow its visible designator");
+                Assert.That(plain.IsPrecompile, Is.False);
+                Assert.That(plain.CodeSpan, Is.SequenceEqualTo(code));
+                Assert.That(reader.GetPrecompile(address, spec), Is.SameAs(IdentityPrecompile.Instance));
+                Assert.That(reader.GetCachedCodeInfo(address, followDelegation: false, spec, out _), Is.SameAs(dispatch));
+                Assert.That(reader.GetDelegatedCodeInfo(address, spec), Is.SameAs(plain), "no per-lookup code-info allocation");
+            }
+        }
+    }
+
+    [Test]
+    public void Retained_native_code_views_follow_code_writes_reverts_and_env_reset()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = IdentityPrecompile.Address;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(worldState), worldState,
+            precompileOverridePolicy: new(disableOnAccountOverride: false));
+        var beforeOverride = worldState.TakeSnapshot();
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = [(byte)Instruction.STOP] } }, spec);
+        var beforeWrite = worldState.TakeSnapshot();
+        worldState.InsertCode(address, new byte[] { (byte)Instruction.INVALID }, spec);
+        CodeInfo changed = repository.GetCachedCodeInfo(address, spec);
+        CodeInfo changedPlain = repository.GetDelegatedCodeInfo(address, spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(changed.CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.INVALID }));
+            Assert.That(changedPlain.IsPrecompile, Is.False);
+            Assert.That(changedPlain.CodeSpan.SequenceEqual(changed.CodeSpan), Is.True);
+            Assert.That(repository.GetCachedCodeInfo(address, spec), Is.SameAs(changed));
+            Assert.That(repository.GetDelegatedCodeInfo(address, spec), Is.SameAs(changedPlain));
+        }
+
+        worldState.Restore(beforeWrite);
+        CodeInfo restored = repository.GetCachedCodeInfo(address, spec);
+        CodeInfo restoredPlain = repository.GetDelegatedCodeInfo(address, spec);
+        repository.ResetPrecompileOverrides(spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(restored.CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+            Assert.That(restoredPlain.IsPrecompile, Is.False);
+            Assert.That(restoredPlain.CodeSpan.SequenceEqual(restored.CodeSpan), Is.True);
+            Assert.That(repository.GetCachedCodeInfo(address, spec), Is.SameAs(restored));
+            Assert.That(repository.GetDelegatedCodeInfo(address, spec), Is.SameAs(restoredPlain));
+        }
+
+        worldState.Restore(beforeOverride);
+        repository.ResetOverrides();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetCachedCodeInfo(address, spec).Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(repository.GetCachedCodeInfo(address, spec).CodeSpan.IsEmpty, Is.True);
+            Assert.That(repository.GetDelegatedCodeInfo(address, spec).CodeSpan.IsEmpty, Is.True);
+        }
+    }
+
+    [Test]
+    public void Retained_native_views_survive_a_fork_activating_a_precompile([Values] bool movedRepository)
+    {
+        Address address = Address.FromNumber(0x0b);
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository inner = new(worldState);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: false));
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = [(byte)Instruction.STOP] } }, Cancun.Instance);
+
+        repository.ResetPrecompileOverrides(Prague.Instance);
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+        CodeInfo dispatch = reader.GetCachedCodeInfo(address, Prague.Instance);
+        CodeInfo plain = reader.GetDelegatedCodeInfo(address, Prague.Instance);
+        repository.ResetPrecompileOverrides(Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dispatch.IsPrecompile, Is.True);
+            Assert.That(dispatch.CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+            Assert.That(plain.IsPrecompile, Is.False);
+            Assert.That(plain.CodeSpan.SequenceEqual(dispatch.CodeSpan), Is.True);
+            Assert.That(reader.GetCachedCodeInfo(address, Prague.Instance), Is.SameAs(dispatch));
+            Assert.That(reader.GetDelegatedCodeInfo(address, Prague.Instance), Is.SameAs(plain));
+        }
+    }
+
+    [Test]
+    public void Explicit_move_keeps_origin_code_and_destination_native_code_views(
+        [Values] bool preservePrecompiles, [Values] bool movedRepository)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address source = IdentityPrecompile.Address;
+        Address destination = TestItem.AddressA;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository inner = new(worldState);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: !preservePrecompiles));
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [destination] = new() { Code = [(byte)Instruction.STOP] } }, spec);
+        if (preservePrecompiles)
+            worldState.ApplyStateOverridesNoCommit(repository, new() { [source] = new() { Code = [(byte)Instruction.INVALID] } }, spec);
+        worldState.ApplyStateOverridesNoCommit(repository, new()
+        {
+            [source] = new() { MovePrecompileToAddress = destination, Code = [(byte)Instruction.RETURN] }
+        }, spec);
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetCachedCodeInfo(source, spec).IsPrecompile, Is.False);
+            Assert.That(reader.GetCachedCodeInfo(source, spec).CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.RETURN }));
+            Assert.That(reader.GetPrecompile(source, spec), Is.Null);
+            Assert.That(reader.GetCachedCodeInfo(destination, spec).Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(reader.GetCachedCodeInfo(destination, spec).CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+            Assert.That(reader.GetDelegatedCodeInfo(destination, spec).IsPrecompile, Is.False);
+            Assert.That(reader.GetDelegatedCodeInfo(destination, spec).CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+        }
+    }
+
+    [Test]
     public void Account_overrides_preserve_native_dispatch_only_when_opted_in(
         [Values] bool preservePrecompiles,
         [Values("empty", "balance", "nonce", "code", "state", "stateDiff")] string field)
