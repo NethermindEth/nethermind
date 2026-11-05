@@ -3313,8 +3313,7 @@ public class TraceRpcModuleTests
         else
         {
             JToken? headerError = JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block))["error"];
-            Assert.That(headerError, Is.Not.Null);
-            Assert.That(error, Is.EqualTo(headerError).Using(JToken.EqualityComparer), response);
+            Assert.That(error, Is.Not.Null.And.EqualTo(headerError).Using(JToken.EqualityComparer), response);
         }
     }
 

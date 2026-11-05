@@ -313,38 +313,36 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> OptionsStateOverridesWithBundleOverridesCases()
     {
         const string mixed = "options.stateOverrides cannot be combined with bundle blockOverride or stateOverrides";
-        string c = TestItem.AddressC.ToString();
-        object call = new { from = TestItem.AddressD.ToString(), to = c, gas = "0x5208" };
-        Dictionary<string, string> storage = new() { [$"0x{0:x64}"] = $"0x{7:x64}" };
-        Dictionary<string, object?> options = new() { [c] = new { stateDiff = storage } };
-        object blockOverride = new { transactions = new[] { call }, blockOverride = new { } };
+        static Dictionary<UInt256, Hash256> Storage() => new() { [UInt256.Zero] = Keccak.OfAnEmptyString };
+        static Dictionary<Address, AccountOverride> Options() => new() { [TestItem.AddressC] = new() { StateDiff = Storage() } };
+        static TransactionBundle Second(BlockOverride? blockOverride = null, Dictionary<Address, AccountOverride>? stateOverrides = null, bool empty = false) =>
+            new() { Transactions = empty ? [] : [CreateTransaction()], BlockOverride = blockOverride, StateOverrides = stateOverrides };
 
-        yield return new TestCaseData(options, blockOverride, mixed).SetName("{m}(second_bundle_block_override)");
-        yield return new TestCaseData(options, new { transactions = new[] { call }, stateOverrides = new { } }, mixed).SetName("{m}(second_bundle_state_overrides)");
-        yield return new TestCaseData(options, new { transactions = System.Array.Empty<object>(), blockOverride = new { } }, mixed).SetName("{m}(empty_bundle_block_override)");
-        yield return new TestCaseData(new Dictionary<string, object?> { [c] = null }, blockOverride, mixed).SetName("{m}(null_account_in_options)");
-        yield return new TestCaseData(new Dictionary<string, object?>(), blockOverride, null).SetName("{m}(empty_options_run_the_simulation)");
-        yield return new TestCaseData(options, new { transactions = new[] { call }, stateOverrides = new Dictionary<string, object> { [TestItem.AddressB.ToString()] = new { state = new { }, stateDiff = new { } } } },
+        yield return new TestCaseData(Options(), Second(blockOverride: new()), mixed).SetName("{m}(second_bundle_block_override)");
+        yield return new TestCaseData(Options(), Second(stateOverrides: []), mixed).SetName("{m}(second_bundle_state_overrides)");
+        yield return new TestCaseData(Options(), Second(blockOverride: new(), empty: true), mixed).SetName("{m}(empty_bundle_block_override)");
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride> { [TestItem.AddressC] = null! }, Second(blockOverride: new()), mixed).SetName("{m}(null_account_in_options)");
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(blockOverride: new()), null).SetName("{m}(empty_options_run_the_simulation)");
+        yield return new TestCaseData(Options(), Second(stateOverrides: new() { [TestItem.AddressB] = new() { State = [], StateDiff = [] } }),
             $"account {TestItem.AddressB.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'").SetName("{m}(bundle_storage_conflict_comes_first)");
-        yield return new TestCaseData(new Dictionary<string, object?> { [c] = new { state = storage } }, new { transactions = new[] { call }, stateOverrides = new Dictionary<string, object> { [c] = new { stateDiff = storage } } }, mixed)
-            .SetName("{m}(options_state_and_bundle_stateDiff_are_no_conflict)");
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride> { [TestItem.AddressC] = new() { State = Storage() } },
+            Second(stateOverrides: new() { [TestItem.AddressC] = new() { StateDiff = Storage() } }), mixed).SetName("{m}(options_state_and_bundle_stateDiff_are_no_conflict)");
     }
 
     // A bundle override runs the bundles as one cumulative simulation, where options applied afresh to every call do not fit.
     [TestCaseSource(nameof(OptionsStateOverridesWithBundleOverridesCases))]
-    public async Task Debug_traceCallMany_rejects_options_state_overrides_with_bundle_overrides(Dictionary<string, object?> optionsStateOverrides, object secondBundle, string? expectedError)
+    public async Task Debug_traceCallMany_rejects_options_state_overrides_with_bundle_overrides(Dictionary<Address, AccountOverride> optionsStateOverrides, TransactionBundle secondBundle, string? expectedError)
     {
         using Context ctx = await CreateContext();
-        object firstBundle = new { transactions = new[] { new { from = TestItem.AddressD.ToString(), to = TestItem.AddressC.ToString(), gas = "0x5208" } } };
 
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { firstBundle, secondBundle }, "latest", new { stateOverrides = optionsStateOverrides });
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
+            [CreateBundle(CreateTransaction()), secondBundle], BlockParameter.Latest, new GethTraceOptions { StateOverrides = optionsStateOverrides });
 
-        JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedError is null ? (int?)null : ErrorCodes.InvalidInput), response);
-            Assert.That(json["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError), response);
-            Assert.That((json["result"] as JArray)?.Count, Is.EqualTo(expectedError is null ? 2 : (int?)null), response);
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedError is null ? 0 : ErrorCodes.InvalidInput));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.Data?.Select(static r => r.Count()).ToArray(), Is.EqualTo(expectedError is null ? new[] { 1, 1 } : null));
         }
     }
 
