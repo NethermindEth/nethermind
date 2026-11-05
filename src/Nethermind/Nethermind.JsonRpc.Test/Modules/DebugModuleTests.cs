@@ -630,11 +630,26 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
 
-        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(number));
+        AssertMissingTraceBlock(new BlockParameter(number), $"block #{number} not found", isTemporary);
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_missing_tag_preserves_temporary_status(
+        [Values("safe", "finalized")] string tag, [Values] bool isTemporary)
+    {
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
+
+        AssertMissingTraceBlock(tag == "safe" ? BlockParameter.Safe : BlockParameter.Finalized, $"{tag} block not found", isTemporary);
+    }
+
+    private void AssertMissingTraceBlock(BlockParameter selector, string message, bool isTemporary)
+    {
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(selector);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(response.Result.Error, Is.EqualTo($"block #{number} not found"));
+            Assert.That(response.Result.Error, Is.EqualTo(message));
             Assert.That(response.IsTemporary, Is.EqualTo(isTemporary));
         }
     }
