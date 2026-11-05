@@ -1509,11 +1509,16 @@ public class ProofWrapperServiceTests
             call[1] = found;
             return found is not null;
         });
+        pool.GetPendingTransactionsBySender().Returns(_ => BySender(pendingPool.GetPendingTransactions()));
+        pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(ulong.MaxValue);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
     }
+
+    private static Dictionary<AddressAsKey, Transaction[]> BySender(Transaction[] transactions) =>
+        transactions.GroupBy(static tx => tx.SenderAddress!).ToDictionary(static g => (AddressAsKey)g.Key, static g => g.OrderBy(static tx => tx.Nonce).ToArray());
 
     /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form EIP-8437
     /// transports: commitments and cell proofs, no blob data.</summary>
@@ -1663,7 +1668,8 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // The producer wraps blob-carrying dependency-bearing transactions from the blob pool in their elided network form.
+    // The producer wraps blob-carrying dependency-bearing transactions from the blob pool in their elided network form, once
+    // executable at the head as other candidates are.
     [Test]
     public void Produced_wrappers_carry_blob_transactions_in_their_elided_network_form()
     {
@@ -1675,7 +1681,7 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         ProofWrapperService service = CreateService([plain], store, new FakeLeanProofVerifier(true), pool: pool);
         Transaction light = new LightTransaction(blob);
-        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [Address.Zero] = [light] });
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [TestItem.AddressC] = [light] });
         pool.TryGetPendingTransactionWithoutBlobs(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
         {
             call[1] = blob;
@@ -1698,6 +1704,10 @@ public class ProofWrapperServiceTests
             Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Blobs, Is.Empty);
             Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob));
         }
+
+        pool.GetLatestPendingNonce(TestItem.AddressC).Returns(blob.Nonce);
+        Assert.That(Decode(service.BuildWrapper().Data!).Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { plain.Hash }),
+            "a blob transaction past a nonce gap is not aggregated");
     }
 
     private static MempoolWrapper Decode(byte[] encoded)

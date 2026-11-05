@@ -1181,6 +1181,49 @@ public class Eip8288BlockProductionTests
         Assert.That(result.IsSuccess, Is.False);
     }
 
+    // EIP-8288: aggregation covers only transactions executable at the head, with fees down to 49/64 of the next base fee. An
+    // underpriced or nonce-gapped transaction stays pooled with its direct witness until a base-fee drop or the missing nonce.
+    [Test]
+    public async Task Aggregation_waits_for_pending_transactions_to_become_executable([Values] bool gapped)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, static builder => builder.AddSingleton<IGenesisPostProcessor>(
+            new FunctionalGenesisPostProcessor(static genesis => genesis.Header.BaseFeePerGas = 64.GWei)));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        UInt256 lowestFee = BaseFeeCalculator.Calculate(chain.BlockTree.Head!.Header, Eip8288Prototype.Instance) * 49 / 64;
+        Transaction withinMargin = CreateTransaction(chain, dependency, [UInt256.Zero], tx => tx.DecodedMaxFeePerGas = lowestFee);
+        Transaction waiting = CreateTransaction(chain, dependency, [UInt256.Zero],
+            tx => tx.DecodedMaxFeePerGas = gapped ? 100.GWei : lowestFee - 1, nonce: gapped ? 1UL : 0, key: TestItem.PrivateKeyC);
+
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, withinMargin, waiting), withinMargin, waiting)).Data,
+            Is.EquivalentTo(new[] { withinMargin.Hash, waiting.Hash }), "received wrappers are admitted whether or not executable");
+        Hash256[] before = Aggregated(service);
+        Transaction? gapFill = null;
+        if (gapped)
+        {
+            gapFill = CreateTransaction(chain, dependency, [UInt256.Zero], nonce: 0, key: TestItem.PrivateKeyC);
+            Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, gapFill), gapFill)).IsSuccess, Is.True);
+        }
+        else Assert.That((await ProduceAndImport(chain, slot: 1)).Transactions, Is.Empty);
+        Hash256[] after = Aggregated(service);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(new[] { withinMargin.Hash }));
+            Assert.That(after, Is.EquivalentTo(gapped ? [withinMargin.Hash, waiting.Hash, gapFill!.Hash] : new[] { withinMargin.Hash, waiting.Hash }));
+        }
+
+        static Hash256[] Aggregated(ProofWrapperService wrappers)
+        {
+            Result<byte[]> built = wrappers.BuildWrapper();
+            if (!built.IsSuccess) return [];
+            RlpReader reader = new(built.Data!);
+            return [.. MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!)];
+        }
+    }
+
     // EIP-8437: a blob-carrying dependency-bearing transaction that reached the blob pool with its blob data is produced like a
     // type-3 blob transaction: it is included, its blob gas is charged, and its dependency is proven in the block.
     [Test]

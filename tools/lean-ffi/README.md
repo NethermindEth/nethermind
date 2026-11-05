@@ -314,7 +314,10 @@ it gets one outstanding request instead of four. It is never disconnected for it
 
 Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces mode-1
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
-one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
+one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Only
+transactions executable at the head are candidates: no nonce gap from the sender's state nonce, and
+fees per gas covering the next block's base fee after two maximal decreases (49/64 of it on mainnet);
+the others stay pooled with their direct witnesses until they qualify. Ticks
 coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
 order start as one bucket, and one that does not fit is subdivided by successive hash bits. Buckets
 do not depend on arrival order, but splits depend on the held proofs through the proving-cost

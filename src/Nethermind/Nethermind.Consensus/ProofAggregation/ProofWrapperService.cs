@@ -12,6 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -47,6 +49,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
     internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
+
+    /// <summary>Maximal EIP-1559 base-fee decreases a pending transaction may still need before it is aggregated.</summary>
+    /// <remarks>Aggregation covers only transactions executable at the head, plus those whose fees reach the next block's base
+    /// fee after this many decreases of <c>1/BASE_FEE_MAX_CHANGE_DENOMINATOR</c>, (7/8)^2 = 49/64 of it on mainnet, so a
+    /// transaction about to become includable is ready. The rest stay pooled with their direct witnesses until they qualify.</remarks>
+    internal const int MaxAwaitedBaseFeeDecreases = 2;
 
     /// <summary>How long a dependency set that waited for an offer is proven without waiting again.</summary>
     private static readonly TimeSpan OfferWaitMemory = TimeSpan.FromMinutes(1);
@@ -607,13 +615,17 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits.
     /// Buckets do not depend on arrival order, but the cost check depends on the proofs held here, so nodes with the same pool view
     /// share bucket boundaries only where their held proofs agree. A transaction exceeding the proving
-    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.</remarks>
+    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.
+    /// Only transactions executable at the head are candidates (see <see cref="AddExecutable"/>).</remarks>
     private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
     {
         WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
         RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
-        List<Transaction> pending = [.. txPool.GetPendingTransactions()];
-        AddBlobCandidates(pending);
+        UInt256 minFee = MinExecutableFeePerGas();
+        List<Transaction> pending = [];
+        foreach ((AddressAsKey sender, Transaction[] bucket) in txPool.GetPendingTransactionsBySender())
+            AddExecutable(sender, bucket, minFee, pending);
+        AddBlobCandidates(pending, minFee);
         List<Candidate> candidates = new(pending.Count);
         foreach (Transaction transaction in pending)
         {
@@ -662,6 +674,45 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<Transaction> transactions = new(end - start);
             for (int i = start; i < end; i++) transactions.Add(candidates[i].Transaction);
             return new(transactions, union, input);
+        }
+    }
+
+    /// <summary>The next block's base fee after <see cref="MaxAwaitedBaseFeeDecreases"/> maximal decreases; zero without EIP-1559.</summary>
+    private UInt256 MinExecutableFeePerGas()
+    {
+        if (blockFinder.Head is not { } head) return UInt256.Zero;
+        IReleaseSpec spec = TargetForksOf(head.Header).Target;
+        if (!spec.IsEip1559Enabled) return UInt256.Zero;
+        UInt256 fee = BaseFeeCalculator.Calculate(head.Header, spec);
+        if (spec.BaseFeeMaxChangeDenominator.IsZero) return fee;
+        for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
+        return fee;
+    }
+
+    /// <summary>Adds the frame transactions of <paramref name="sender"/>'s nonce-ordered pending <paramref name="bucket"/> executable
+    /// at the head to <paramref name="executable"/>.</summary>
+    /// <remarks>Executable means fees of at least <paramref name="minFee"/> per gas and no nonce gap from the sender's state nonce,
+    /// so an account-nonce transaction also needs every one before it to qualify. An EIP-8250 keyed transaction is judged alone:
+    /// the pool holds only keyed transactions at their current sequence.</remarks>
+    private void AddExecutable(Address sender, Transaction[] bucket, in UInt256 minFee, List<Transaction> executable)
+    {
+        if (!Array.Exists(bucket, static transaction => transaction.SupportsFrames)) return;
+        ulong? nextNonce = null;
+        bool blocked = false;
+        foreach (Transaction transaction in bucket)
+        {
+            bool priced = transaction.MaxFeePerGas >= minFee;
+            if (KeyedNonceManager.UsesKeyedNonce(transaction))
+            {
+                if (!priced) continue;
+            }
+            else
+            {
+                nextNonce ??= txPool.GetLatestPendingNonce(sender);
+                blocked |= !priced || transaction.Nonce >= nextNonce;
+                if (blocked) continue;
+            }
+            if (transaction.SupportsFrames) executable.Add(transaction);
         }
     }
 
@@ -773,13 +824,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Adds the blob pool's dependency-bearing frame transactions in the elided network form EIP-8437 carries:
     /// commitments and cell proofs without blob data, which peers retrieve as EIP-8070 cells.</summary>
-    private void AddBlobCandidates(List<Transaction> candidates)
+    private void AddBlobCandidates(List<Transaction> candidates, in UInt256 minFee)
     {
-        foreach (Transaction[] senderTransactions in txPool.GetPendingLightBlobTransactionsBySender().Values)
-            foreach (Transaction light in senderTransactions)
-                if (light.SupportsFrames && light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
-                    && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
-                    candidates.Add(elided);
+        List<Transaction> executable = [];
+        foreach ((AddressAsKey sender, Transaction[] senderTransactions) in txPool.GetPendingLightBlobTransactionsBySender())
+            AddExecutable(sender, senderTransactions, minFee, executable);
+        foreach (Transaction light in executable)
+            if (light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
+                && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
+                candidates.Add(elided);
     }
 
     /// <summary>The estimated proving cost of <paramref name="input"/>, or of extending <paramref name="parent"/> with it when
