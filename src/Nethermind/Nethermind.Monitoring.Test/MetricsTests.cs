@@ -19,6 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -103,6 +104,46 @@ public class MetricsTests
 
         public string[] Labels => [Value];
     }
+
+    // Sources for the update-isolation tests. The type names are not "Metrics", so type discovery skips them.
+    public static class IsolationMetrics
+    {
+        internal static long Value;
+        internal static Exception Error;
+        internal static readonly int[] Reads = new int[2];
+
+        public static long IsolationFailingFirst => Read(0);
+        public static long IsolationHealthyBesideFailing => Value;
+        public static long IsolationFailingSecond => Read(1);
+
+        private static long Read(int index)
+        {
+            Reads[index]++;
+            return Error is null ? Value : throw Error;
+        }
+    }
+
+    public static class IsolationHealthyMetrics
+    {
+        public static long IsolationHealthy => IsolationMetrics.Value;
+    }
+
+    private sealed class FlakyAction(Exception error)
+    {
+        public bool Fail { get; set; }
+        public int Attempts { get; private set; }
+        public int Successes { get; private set; }
+
+        public void Run()
+        {
+            Attempts++;
+            if (Fail) throw error;
+            Successes++;
+        }
+    }
+
+    private static readonly bool[] FailurePattern = [true, true, false, true];
+    private static readonly (Type Type, string Member) HealthyMetric = (typeof(IsolationHealthyMetrics), nameof(IsolationHealthyMetrics.IsolationHealthy));
 
     private static int _testMetricId;
 
@@ -365,12 +406,14 @@ public class MetricsTests
                 Enabled = true,
                 EnableDetailedMetric = true
             };
+            TestErrorLogManager logManager = new();
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new MonitoringModule())
                 .AddSingleton<IMetricsConfig>(metricsConfig)
                 .AddSingleton<ISyncConfig>(new SyncConfig())
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton<ILogManager>(logManager)
                 .Build();
             MetricsController metricsController = (MetricsController)container.Resolve<IMetricsController>();
             metricsController.UpdateAllMetrics();
@@ -388,6 +431,19 @@ public class MetricsTests
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotEvictions)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
+                Assert.That(logManager.Errors, Is.Empty);
+            }
+
+            // The module's factory must hand its log manager to the controller.
+            InvalidOperationException error = new("action failure");
+            int healthyRuns = 0;
+            metricsController.AddMetricsUpdateAction(() => throw error);
+            metricsController.AddMetricsUpdateAction(() => healthyRuns++);
+            metricsController.UpdateAllMetrics();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(healthyRuns, Is.EqualTo(1));
+                AssertEachLoggedOnce(logManager, error, "action #0 (");
             }
         }
         finally
@@ -419,7 +475,8 @@ public class MetricsTests
             typeof(Shutter.Metrics),
             typeof(History.Metrics)
         ];
-        MetricsController metricsController = new(metricsConfig);
+        TestErrorLogManager logManager = new();
+        MetricsController metricsController = new(metricsConfig, logManager);
         List<Type> metrics = [.. TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics))];
         metrics.AddRange(knownMetricsTypes);
 
@@ -432,6 +489,7 @@ public class MetricsTests
 
             metricsController.UpdateAllMetrics();
         });
+        Assert.That(logManager.Errors, Is.Empty);
     }
 
     [Test]
@@ -471,6 +529,169 @@ public class MetricsTests
         });
 
         await Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void UpdateAllMetrics_isolates_failing_actions_retries_them_and_logs_each_once([Values] bool metricsEnabled)
+    {
+        try
+        {
+            SetIsolationSources(Interlocked.Increment(ref _testMetricId) * 1000L);
+            TestErrorLogManager logManager = new();
+            MetricsController controller = new(new MetricsConfig { Enabled = metricsEnabled }, logManager);
+            controller.RegisterMetrics(typeof(IsolationHealthyMetrics));
+            double gaugeStart = GaugeValue(controller, HealthyMetric);
+            InvalidOperationException error = new("action failure");
+            FlakyAction first = new(error);
+            FlakyAction second = new(error);
+            // Kept as objects, so the second controller below registers the very same delegates.
+            Action[] flakyActions = [first.Run, second.Run];
+            int healthyRuns = 0;
+            controller.AddMetricsUpdateAction(flakyActions[0]);
+            controller.AddMetricsUpdateAction(flakyActions[1]);
+            controller.AddMetricsUpdateAction(() => { healthyRuns++; IsolationMetrics.Value++; });
+
+            int successfulTicks = 0;
+            for (int tick = 1; tick <= FailurePattern.Length; tick++)
+            {
+                first.Fail = second.Fail = FailurePattern[tick - 1];
+                if (!first.Fail) successfulTicks++;
+                controller.UpdateAllMetrics();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(first.Attempts, Is.EqualTo(tick));
+                    Assert.That(second.Attempts, Is.EqualTo(tick));
+                    Assert.That(first.Successes + second.Successes, Is.EqualTo(2 * successfulTicks));
+                    Assert.That(healthyRuns, Is.EqualTo(tick));
+                    Assert.That(GaugeValue(controller, HealthyMetric), Is.EqualTo(metricsEnabled ? IsolationMetrics.Value : gaugeStart));
+                }
+            }
+
+            string flakyName = $"{typeof(FlakyAction).FullName}.{nameof(FlakyAction.Run)}";
+            AssertEachLoggedOnce(logManager, error, $"#0 ({flakyName})", $"#1 ({flakyName})");
+
+            TestErrorLogManager otherLogManager = new();
+            MetricsController otherController = new(new MetricsConfig { Enabled = metricsEnabled }, otherLogManager);
+            otherController.AddMetricsUpdateAction(flakyActions[0]);
+            otherController.AddMetricsUpdateAction(flakyActions[1]);
+            otherController.UpdateAllMetrics();
+            AssertEachLoggedOnce(otherLogManager, error, $"#0 ({flakyName})", $"#1 ({flakyName})");
+        }
+        finally
+        {
+            SetIsolationSources(0);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void UpdateAllMetrics_isolates_failing_updaters_retries_them_and_logs_each_once([Values] bool metricsEnabled)
+    {
+        try
+        {
+            SetIsolationSources(Interlocked.Increment(ref _testMetricId) * 1000L);
+            InvalidOperationException error = new("getter failure");
+            TestErrorLogManager logManager = new();
+            MetricsController controller = new(new MetricsConfig { Enabled = metricsEnabled }, logManager);
+            controller.RegisterMetrics(typeof(IsolationMetrics));
+            controller.RegisterMetrics(typeof(IsolationHealthyMetrics));
+            int callbackRuns = 0;
+            controller.AddMetricsUpdateAction(() => { callbackRuns++; IsolationMetrics.Value++; });
+            (Type Type, string Member)[] failing =
+            [
+                (typeof(IsolationMetrics), nameof(IsolationMetrics.IsolationFailingFirst)),
+                (typeof(IsolationMetrics), nameof(IsolationMetrics.IsolationFailingSecond)),
+            ];
+            (Type Type, string Member)[] healthy = [(typeof(IsolationMetrics), nameof(IsolationMetrics.IsolationHealthyBesideFailing)), HealthyMetric];
+            double[] failingExpected = [.. failing.Select(m => GaugeValue(controller, m))];
+            double[] healthyStart = [.. healthy.Select(m => GaugeValue(controller, m))];
+
+            for (int tick = 1; tick <= FailurePattern.Length; tick++)
+            {
+                IsolationMetrics.Error = FailurePattern[tick - 1] ? error : null;
+                controller.UpdateAllMetrics();
+                if (metricsEnabled && IsolationMetrics.Error is null) Array.Fill(failingExpected, IsolationMetrics.Value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(callbackRuns, Is.EqualTo(tick));
+                    Assert.That(IsolationMetrics.Reads, Is.All.EqualTo(metricsEnabled ? tick : 0));
+                    for (int i = 0; i < failing.Length; i++)
+                    {
+                        Assert.That(GaugeValue(controller, failing[i]), Is.EqualTo(failingExpected[i]), failing[i].Member);
+                    }
+
+                    for (int i = 0; i < healthy.Length; i++)
+                    {
+                        Assert.That(GaugeValue(controller, healthy[i]), Is.EqualTo(metricsEnabled ? IsolationMetrics.Value : healthyStart[i]), healthy[i].Member);
+                    }
+                }
+            }
+
+            string[] failingNames = metricsEnabled ? [.. failing.Select(static m => $"{m.Type.FullName}.{m.Member} ")] : [];
+            AssertEachLoggedOnce(logManager, error, failingNames);
+        }
+        finally
+        {
+            SetIsolationSources(0);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void UpdateAllMetrics_lets_cancellation_escape_without_logging([Values] bool fromUpdater, [Values] bool taskCanceled)
+    {
+        try
+        {
+            SetIsolationSources(Interlocked.Increment(ref _testMetricId) * 1000L);
+            OperationCanceledException cancellation = taskCanceled ? new TaskCanceledException() : new OperationCanceledException();
+            TestErrorLogManager logManager = new();
+            MetricsController controller = new(new MetricsConfig { Enabled = true }, logManager);
+            int laterActionRuns = 0;
+            if (fromUpdater) IsolationMetrics.Error = cancellation;
+            else controller.AddMetricsUpdateAction(() => throw cancellation);
+            controller.AddMetricsUpdateAction(() => laterActionRuns++);
+            controller.RegisterMetrics(typeof(IsolationMetrics));
+            controller.RegisterMetrics(typeof(IsolationHealthyMetrics));
+            double healthyStart = GaugeValue(controller, HealthyMetric);
+
+            OperationCanceledException thrown = Assert.Catch<OperationCanceledException>(controller.UpdateAllMetrics);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(thrown, Is.SameAs(cancellation));
+                Assert.That(laterActionRuns, Is.EqualTo(fromUpdater ? 1 : 0));
+                Assert.That(IsolationMetrics.Reads.Sum(), Is.EqualTo(fromUpdater ? 1 : 0));
+                Assert.That(GaugeValue(controller, HealthyMetric), Is.EqualTo(healthyStart));
+                Assert.That(logManager.Errors, Is.Empty);
+            }
+        }
+        finally
+        {
+            SetIsolationSources(0);
+        }
+    }
+
+    [Test]
+    public async Task RunTimer_with_canceled_token_completes_without_updating()
+    {
+        TestErrorLogManager logManager = new();
+        MetricsController controller = new(new MetricsConfig { Enabled = true }, logManager);
+        int callbackRuns = 0;
+        controller.AddMetricsUpdateAction(() => callbackRuns++);
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+
+        Task timer = controller.RunTimer(cts.Token);
+
+        Assert.That(timer.IsCompleted, Is.True);
+        await timer;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(timer.IsCompletedSuccessfully, Is.True);
+            Assert.That(callbackRuns, Is.Zero);
+            Assert.That(logManager.Errors, Is.Empty);
+        }
     }
 
     [Test]
@@ -530,4 +751,27 @@ public class MetricsTests
         Assert.That(scrape.Split('\n').Select(static line => line.TrimEnd('\r')), Does.Contain(expectedLine));
 
     private static string CreateTestMetricName(string prefix) => $"nethermind_metrics_test_{prefix}_{Interlocked.Increment(ref _testMetricId)}";
+
+    private static void SetIsolationSources(long value)
+    {
+        IsolationMetrics.Value = value;
+        IsolationMetrics.Error = null;
+        Array.Clear(IsolationMetrics.Reads);
+    }
+
+    private static double GaugeValue(MetricsController controller, (Type Type, string Member) metric) =>
+        ((MetricsController.GaugeMetricUpdater)controller._individualUpdater[$"{metric.Type.Name}.{metric.Member}"]).Gauge.Value;
+
+    private static void AssertEachLoggedOnce(TestErrorLogManager logManager, Exception error, params string[] items)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logManager.Errors, Has.Count.EqualTo(items.Length));
+            Assert.That(logManager.Errors.Select(static e => e.Exception), Is.All.SameAs(error));
+            foreach (string item in items)
+            {
+                Assert.That(logManager.Errors.Count(e => e.Text.Contains(item)), Is.EqualTo(1), item);
+            }
+        }
+    }
 }
