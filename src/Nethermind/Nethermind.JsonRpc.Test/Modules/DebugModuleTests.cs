@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,8 +40,11 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.History;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
@@ -72,7 +77,12 @@ public class DebugModuleTests
         new BlocksConfig(),
         _blockFinder,
         new BlockForRpcFactory(),
-        _codeInfoRepository);
+        _codeInfoRepository,
+        new ReceiptConfig(),
+        Substitute.For<ISyncPointers>(),
+        Substitute.For<ISyncProgressResolver>(),
+        new SyncConfig(),
+        Substitute.For<IHistoryPruner>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
