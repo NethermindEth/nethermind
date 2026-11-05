@@ -192,7 +192,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 // A record from before the flag reads an empty keys list as no set.
                 if (ctx.Position < end && ctx.DecodeBool()) nonceKeys ??= [];
                 // Written only for a dependency-bearing record; a record without the slot is read as unknown.
-                if (ctx.Position < end) dependencyBearing = ctx.DecodeBool();
+                if (ctx.Position < end && ctx.PeekByte() == 1) dependencyBearing = true;
             }
 
             // Anything a later build appended is skipped, so a new slot costs this one that field rather than
