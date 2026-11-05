@@ -783,6 +783,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>AND follows the sequence.</summary>
         internal readonly struct AndShape : ICodeShape { public static int Kind => 8; }
 
+        /// <summary>GAS, LT, PUSH1 and JUMPI follow.</summary>
+        internal readonly struct GasTestShape : ICodeShape { public static int Kind => 13; }
+
         /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition, TShape}"/> runs it.</summary>
         internal interface IStackCondition
         {
@@ -1844,10 +1847,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static ulong ReadBigEndianLimb(ref byte bytes, nint index) =>
             ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, index * sizeof(ulong)));
 
-        /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
+        /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them, with a POP, and with the gas test GAS LT PUSH1 JUMPI.</summary>
         /// <remarks>
         /// Fuses on the same conditions: a destination the incremental bitmap already holds, or a zero JUMPI
-        /// condition that never reads it. A taken jump into the code that the bitmap does not hold yet pushes and goes
+        /// condition that never reads it. A POP after it leaves only the gas of the pair. A taken jump into the code that the bitmap does not hold yet pushes and goes
         /// to <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>. Every case that could fault - short gas, a
         /// full stack or a fused jump's condition missing - runs the shared PUSH2 handler instead.
         /// </remarks>
@@ -1875,6 +1878,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             byte following = TShape.Kind == TestedShape.Kind ? Unsafe.Add(ref opcode, 3)
                 : TShape.Kind == JumpShape.Kind || TShape.Kind == VerifiedJumpShape.Kind ? (byte)Instruction.JUMP
                 : TShape.Kind == JumpIShape.Kind || TShape.Kind == VerifiedJumpIShape.Kind ? (byte)Instruction.JUMPI
+                : TShape.Kind == PopShape.Kind ? (byte)Instruction.POP
+                : TShape.Kind == GasTestShape.Kind ? (byte)Instruction.GAS
                 : (byte)Instruction.STOP;
             // A verified variant's destination passed the bound and the bitmap tests before; the bytes do not change.
             bool verified = TShape.Kind == VerifiedJumpShape.Kind || TShape.Kind == VerifiedJumpIShape.Kind;
@@ -1939,6 +1944,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
                     goto Dispatch;
+                }
+            }
+            else if (following == (byte)Instruction.POP)
+            {
+                // The POP drops the word pushed: only the gas of both is left, and the stack has room for the push.
+                if (!TryCharge(ref gas, pushGas + BaseGasCost.GasCost))
+                    goto Shared;
+
+                ip = ref Unsafe.Add(ref ip, 4);
+                goto Dispatch;
+            }
+            else if (following == (byte)Instruction.GAS && (TShape.Kind == GasTestShape.Kind || (Unsafe.Add(ref opcode, 4) == (byte)Instruction.LT
+                && Unsafe.Add(ref opcode, 5) == (byte)Instruction.PUSH1 && Unsafe.Add(ref opcode, 7) == (byte)Instruction.JUMPI)))
+            {
+                // PUSH2 c GAS LT PUSH1 d JUMPI, the test of a loop that runs while gasleft() >= c: the stack ends as it
+                // began, two words deeper at most, which the test above leaves room for. Only the comparison of c with
+                // the gas GAS reads remains, and with gas for the opcodes either way the fused step needs no other test.
+                ulong readGas = pushGas + BaseGasCost.GasCost;
+                ulong fallGas = readGas + 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
+                if (gas >= (nuint)(fallGas + JumpDestGasCost.GasCost))
+                {
+                    if (gas - (nuint)readGas >= value)
+                    {
+                        gas -= (nuint)fallGas;
+                        ip = ref Unsafe.Add(ref ip, 8);
+                        goto Dispatch;
+                    }
+
+                    nuint destination = Unsafe.Add(ref opcode, 6);
+                    if (destination < (nuint)AlignedStack(ref stack).CodeLength && AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
+                    {
+                        gas -= (nuint)(fallGas + JumpDestGasCost.GasCost);
+                        ip = ref Unsafe.Add(ref code, (nint)destination + 1);
+                        goto Dispatch;
+                    }
                 }
             }
 

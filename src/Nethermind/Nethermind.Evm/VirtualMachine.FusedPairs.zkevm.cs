@@ -948,6 +948,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     byte branch = Unsafe.Add(ref ip, 3);
                     return branch == (byte)Instruction.JUMP ? Entry(&ExecutePush2<JumpShape>)
                         : branch == (byte)Instruction.JUMPI ? Entry(&ExecutePush2<JumpIShape>)
+                        : branch == (byte)Instruction.POP ? Entry(&ExecutePush2<PopShape>)
+                        : branch == (byte)Instruction.GAS && Unsafe.Add(ref ip, 4) == (byte)Instruction.LT && Unsafe.Add(ref ip, 5) == (byte)Instruction.PUSH1 &&
+                            Unsafe.Add(ref ip, 7) == (byte)Instruction.JUMPI ? Entry(&ExecutePush2<GasTestShape>)
                         : Entry(&ExecutePush2<NoFusionShape>);
                 case Instruction.ISZERO:
                     return ConditionHandler<IsZeroCondition>(ref ip);
