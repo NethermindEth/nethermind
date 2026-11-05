@@ -36,8 +36,11 @@ public class MainProcessingModuleTests
         Assert.That(chain.ReceiptStorage, Is.TypeOf<TransientReceiptStorage>());
         await chain.BuildSomeBlocks(1);
         Block block = chain.BlockTree.Head!;
-        Assert.That(chain.ReceiptStorage.Get(block), Has.Length.EqualTo(1));
-        Assert.That(chain.ReceiptStorage.FindBlockHash(block.Transactions[0].Hash!), Is.EqualTo(block.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ReceiptStorage.Get(block), Has.Length.EqualTo(1));
+            Assert.That(chain.ReceiptStorage.FindBlockHash(block.Transactions[0].Hash!), Is.EqualTo(block.Hash));
+        }
     }
 
     private sealed class TransientReceiptsBlockchain : BasicTestBlockchain
@@ -80,8 +83,10 @@ public class MainProcessingModuleTests
             if (e.BlockHeader.Hash == block.Hash && !e.WasRemoved) notified.Set();
             if (e.BlockHeader.Number == 2 && !e.WasRemoved) emptyNotified.Set();
         };
+#pragma warning disable NUnit2045 // Canonicalization and delivery must succeed before inspecting filter results.
         Assert.That(tree.TryUpdateMainChain(block.Header, true), Is.True);
         Assert.That(notified.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         using Nethermind.Core.Collections.ArrayPoolList<FilterLog> foundLogs = filters.PollLogs(logs.Id);
         using Nethermind.Core.Collections.ArrayPoolList<Hash256> foundHashes = filters.PollBlockHashes(hashes.Id);
         using (Assert.EnterMultipleScope())
@@ -94,8 +99,10 @@ public class MainProcessingModuleTests
         Block empty = Build.A.Block.WithParent(block).WithNumber(2).TestObject;
         storage.Insert(empty, [], ensureCanonical: false);
         tree.SuggestBlock(empty);
+#pragma warning disable NUnit2045 // Canonicalization and delivery must succeed before inspecting filter results.
         Assert.That(tree.TryUpdateMainChain(empty.Header, true), Is.True);
         Assert.That(emptyNotified.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         using Nethermind.Core.Collections.ArrayPoolList<Hash256> emptyHashes = filters.PollBlockHashes(hashes.Id);
         Assert.That(emptyHashes, Does.Contain(empty.Hash));
         tree.ForkChoiceUpdated(block.Hash, block.Hash);

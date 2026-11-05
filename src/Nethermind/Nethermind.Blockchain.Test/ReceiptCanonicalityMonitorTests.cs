@@ -202,7 +202,9 @@ public class ReceiptCanonicalityMonitorTests
         {
             release.Set();
         }
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting the captured receipts.
         Assert.That(delivered.Wait(Timeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(received, Is.EqualTo(new[] { receipt }));
     }
 

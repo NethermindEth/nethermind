@@ -1590,17 +1590,26 @@ public class TransientReceiptStorageTests
             notified.Signal();
         };
         ctx.Tree.ForkChoiceUpdated(second.Hash, second.Hash);
-        Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.True);
-        Assert.That(ctx.Storage.HasBlock(second.Number, second.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.True);
+            Assert.That(ctx.Storage.HasBlock(second.Number, second.Hash!), Is.True);
+        }
+#pragma warning disable NUnit2045 // Canonicalization and delivery must succeed before inspecting the notifications.
         Assert.That(ctx.Tree.TryUpdateMainChain(second.Header, true), Is.True);
         Assert.That(notified.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delivered.Select(e => e.BlockHeader.Hash), Is.EqualTo(new[] { first.Hash, second.Hash }));
             Assert.That(delivered.Select(e => e.TxReceipts.Single().Logs!.Single().Address),
                 Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressA }));
-            Assert.That(delivered.First().Transactions, Is.SameAs(first.Transactions));
-            Assert.That(delivered.Last().Transactions, Is.SameAs(second.Transactions));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().Hash),
+                Is.EqualTo(new[] { first.Transactions[0].Hash, second.Transactions[0].Hash }));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().GasPrice),
+                Is.EqualTo(new[] { first.Transactions[0].GasPrice, second.Transactions[0].GasPrice }));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().GasLimit),
+                Is.EqualTo(new[] { first.Transactions[0].GasLimit, second.Transactions[0].GasLimit }));
             Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.False);
             Assert.That(ctx.Storage.HasBlock(second.Number, second.Hash!), Is.False);
         }
@@ -1681,8 +1690,12 @@ public class TransientReceiptStorageTests
         ctx.Canonicalize(replacement);
         ctx.Storage.RemoveReceipts(first);
         Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.EqualTo(replacement.Hash));
-        Assert.That(ctx.Tree.TryRewindHead(ctx.Genesis.Hash!), Is.True);
-        Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+        bool rewound = ctx.Tree.TryRewindHead(ctx.Genesis.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewound, Is.True);
+            Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+        }
     }
 
     [Test]
