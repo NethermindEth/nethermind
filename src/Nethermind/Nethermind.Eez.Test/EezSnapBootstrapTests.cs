@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 
 namespace Nethermind.Eez.Test;
 
@@ -153,6 +154,100 @@ public class EezSnapBootstrapTests
     }
 
     [Test]
+    public async Task Prepare_DurableHeadBehindForkchoice_PreservesStoredHeads([Values] bool atPivot)
+    {
+        await _bootstrap.Prepare(CancellationToken.None);
+        Block durable = atPivot ? _pivot : Next(_pivot.Header, 102);
+        if (!atPivot)
+        {
+            Store(durable);
+            Assert.That(_blocks.TryUpdateMainChain(durable.Header, true, true, durable), Is.True);
+        }
+        Block finalized = Build.A.Block.WithParent(durable.Header).WithTimestamp(durable.Timestamp + 1)
+            .WithStateRoot(TestItem.KeccakD).WithWithdrawals([]).TestObject;
+        Store(finalized);
+        Assert.That(_blocks.TryUpdateMainChain(finalized.Header, true, true, finalized), Is.True);
+        Block safe = Build.A.Block.WithParent(finalized.Header).WithTimestamp(finalized.Timestamp + 1)
+            .WithStateRoot(TestItem.KeccakE).WithWithdrawals([]).TestObject;
+        Store(safe);
+        Assert.That(_blocks.TryUpdateMainChain(safe.Header, true, true, safe), Is.True);
+        _blocks.ForkChoiceUpdated(finalized.Hash, safe.Hash);
+
+        using ILifetimeScope restarted = RestartAt(durable);
+        IBlockTree blocks = restarted.Resolve<IBlockTree>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Head!.Hash, Is.EqualTo(durable.Hash));
+            Assert.That(blocks.SafeHash, Is.EqualTo(safe.Hash));
+            Assert.That(blocks.FinalizedHash, Is.EqualTo(finalized.Hash));
+            Assert.That(restarted.Resolve<IStateReader>().HasStateForBlock(safe.Header), Is.False);
+        }
+
+        await restarted.Resolve<EezSnapBootstrap>().Prepare(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Head!.Hash, Is.EqualTo(durable.Hash));
+            Assert.That(blocks.SafeHash, Is.EqualTo(safe.Hash));
+            Assert.That(blocks.FinalizedHash, Is.EqualTo(finalized.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Prepare_InvalidForkchoiceAheadOfDurableHead_RefusesWithoutRewriting([Values] ForkchoiceCorruption corruption)
+    {
+        await _bootstrap.Prepare(CancellationToken.None);
+        Block durable = Next(_pivot.Header, 102);
+        Store(durable);
+        Assert.That(_blocks.TryUpdateMainChain(durable.Header, true, true, durable), Is.True);
+        BlockHeader parent = durable.Header;
+        if (corruption == ForkchoiceCorruption.Intermediate)
+        {
+            Block intermediate = Next(parent, 103);
+            Store(intermediate);
+            Assert.That(_blocks.TryUpdateMainChain(intermediate.Header, false, false, intermediate), Is.True);
+            parent = intermediate.Header;
+        }
+        Block ahead = Next(parent, parent.Timestamp + 1);
+        Store(ahead);
+        Assert.That(_blocks.TryUpdateMainChain(ahead.Header, corruption != ForkchoiceCorruption.Unprocessed,
+            corruption != ForkchoiceCorruption.Unprocessed, ahead), Is.True);
+        if (corruption == ForkchoiceCorruption.Noncanonical)
+            Assert.That(_blocks.TryUpdateMainChain(durable.Header, true, true, durable), Is.True);
+        Hash256 safe = corruption == ForkchoiceCorruption.Order ? durable.Hash! : ahead.Hash!;
+        _blocks.ForkChoiceUpdated(ahead.Hash, safe);
+
+        using ILifetimeScope restarted = RestartAt(durable);
+        IBlockTree blocks = restarted.Resolve<IBlockTree>();
+        await Assert.ThrowsAsync<EezFollowerException>(() => restarted.Resolve<EezSnapBootstrap>().Prepare(CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Head!.Hash, Is.EqualTo(durable.Hash));
+            Assert.That(blocks.SafeHash, Is.EqualTo(safe));
+            Assert.That(blocks.FinalizedHash, Is.EqualTo(ahead.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Prepare_PartialForkchoiceAtPivot_RefusesWithoutRepair([Values] bool onlySafe)
+    {
+        await _bootstrap.Prepare(CancellationToken.None);
+        Hash256? finalized = onlySafe ? null : _pivot.Hash;
+        Hash256? safe = onlySafe ? _pivot.Hash : null;
+        _blocks.ForkChoiceUpdated(finalized, safe);
+
+        await Assert.ThrowsAsync<EezFollowerException>(() => _bootstrap.Prepare(CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blocks.Head!.Hash, Is.EqualTo(_pivot.Hash));
+            Assert.That(_blocks.SafeHash, Is.EqualTo(safe));
+            Assert.That(_blocks.FinalizedHash, Is.EqualTo(finalized));
+        }
+    }
+
+    [Test]
     public async Task Prepare_InvalidDescendant_RefusesWithoutRewinding([Values] DescendantCorruption corruption)
     {
         await _bootstrap.Prepare(CancellationToken.None);
@@ -263,6 +358,19 @@ public class EezSnapBootstrapTests
     [Test]
     public void EnsureSnapBootstrapConfig_NativeBootstrapDisabledByDefault_LeavesOtherChainsUnchanged() =>
         Assert.That(new EezConfig().SnapBootstrapEnabled, Is.False);
+
+    private ILifetimeScope RestartAt(Block durable) => _container.BeginLifetimeScope(builder => builder
+        .AddSingleton<IStateBoundary>(new TestStateBoundary { BestPersistedState = durable.Number })
+        .AddSingleton<IBlockTree, BlockTree>()
+        .AddSingleton<EezSnapBootstrap>());
+
+    public enum ForkchoiceCorruption
+    {
+        Unprocessed,
+        Intermediate,
+        Noncanonical,
+        Order,
+    }
 
     private void Store(Block block)
     {

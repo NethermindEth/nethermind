@@ -60,7 +60,9 @@ internal sealed class EezSnapBootstrap(
             throw Refused("A SNAP download cannot replace an existing processed chain.");
         EezL1Block anchor = await Authorize(token);
         Hash256 hash = new(sync.PivotHash!);
-        if (!sync.SynchronizationEnabled && blocks.Head is { } descendant && descendant.Number > sync.PivotNumber)
+        if (!sync.SynchronizationEnabled && blocks.Head is { } descendant
+            && (descendant.Number > sync.PivotNumber
+                || descendant.Number == sync.PivotNumber && (blocks.SafeHash is not null || blocks.FinalizedHash is not null)))
         {
             BlockHeader held = blocks.FindHeader(hash) ?? throw Refused("The bootstrap pivot header is missing.");
             ValidatePivotHeader(held, hash);
@@ -121,18 +123,19 @@ internal sealed class EezSnapBootstrap(
     private void VerifyDescendant(Block head, CancellationToken token)
     {
         Block pivot = _pivot!;
-        if (blocks.GetInfo(head.Number, head.Hash!).Info is not { WasProcessed: true }
-            || !state.HasStateForBlock(head.Header)
-            || blocks.SafeHash is not { } safeHash || blocks.FindHeader(safeHash) is not { } safe
+        if (!IsProcessedCanonical(head.Header) || !state.HasStateForBlock(head.Header))
+            throw Refused("The existing descendant does not have usable processed state.");
+        if (blocks.SafeHash is not { } safeHash || blocks.FindHeader(safeHash) is not { } safe
             || blocks.FinalizedHash is not { } finalizedHash || blocks.FindHeader(finalizedHash) is not { } finalized
-            || finalized.Number < pivot.Number || finalized.Number > safe.Number || safe.Number > head.Number
-            || !blocks.IsMainChain(safe) || !blocks.IsMainChain(finalized))
-            throw Refused("The existing descendant does not have usable processed state and compatible safe/finalized heads.");
-        BlockHeader current = head.Header;
+            || finalized.Number < pivot.Number || finalized.Number > safe.Number
+            || !IsProcessedCanonical(safe) || !IsProcessedCanonical(finalized))
+            throw Refused("The existing descendant does not have compatible processed safe/finalized heads.");
+        // Startup loads Head from durable state; stored forkchoice can be ahead until native recovery replays it.
+        BlockHeader current = safe.Number > head.Number ? safe : head.Header;
         while (current.Number > pivot.Number)
         {
             token.ThrowIfCancellationRequested();
-            if (current.CalculateHash() != current.Hash || !blocks.IsMainChain(current))
+            if (current.CalculateHash() != current.Hash || !IsProcessedCanonical(current))
                 throw Refused("The processed descendant has invalid ancestry.");
             BlockHeader parent = blocks.FindHeader(current.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 ?? throw Refused("The processed descendant ancestry is incomplete.");
@@ -142,6 +145,12 @@ internal sealed class EezSnapBootstrap(
         }
         if (current.Hash != pivot.Hash || current.CalculateHash() != pivot.Hash || !blocks.IsMainChain(current))
             throw Refused("The processed head does not descend from the authorized pivot.");
+    }
+
+    private bool IsProcessedCanonical(BlockHeader header)
+    {
+        (BlockInfo? info, ChainLevelInfo? level) = blocks.GetInfo(header.Number, header.Hash!);
+        return info is { WasProcessed: true } && level?.MainChainBlock?.BlockHash == header.Hash;
     }
 
     private void VerifySnapshot(CancellationToken token)
