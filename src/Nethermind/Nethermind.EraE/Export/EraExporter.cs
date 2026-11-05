@@ -91,6 +91,17 @@ public sealed class EraExporter(
         Dictionary<string, ValueHash256> cachedAccumulators = LoadHashFile(Path.Combine(destinationPath, AccumulatorFileName));
         Dictionary<ulong, List<EpochFile>> earlierEpochFiles = FindEpochFiles(destinationPath, startEpoch, endEpoch);
 
+        // Check every epoch before writing any, so a rejected epoch leaves the directory as it was.
+        EpochFile[][] earlierFiles = new EpochFile[epochCount][];
+        for (ulong i = 0; i < epochCount; i++)
+        {
+            ulong epoch = startEpoch + i;
+            (ulong writeFrom, ulong writeTo) = GetWriteRange(epoch, from, to);
+            earlierFiles[i] = ReadEpochFiles(earlierEpochFiles.GetValueOrDefault(epoch));
+            if (FindReusableFile(earlierFiles[i], writeFrom, writeTo) is null)
+                EnsureNoBlocksLost(earlierFiles[i], epoch, writeFrom, writeTo);
+        }
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = concurrency,
@@ -122,29 +133,20 @@ public sealed class EraExporter(
         fileSystem.File.Delete(checksumFilePath);
         await WriteLines(checksumFilePath, manifest.Values, static e => $"0x{e.Checksum.ToString(false)}", cancellation);
 
+        // Only now, with every epoch exported and the manifests naming the new files, delete the files they replace.
+        for (int i = 0; i < fileNames.Count; i++)
+            DeleteSupersededFiles(earlierFiles[i], Path.Combine(destinationPath, fileNames[i]));
+
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
         async Task WriteEpoch(ulong epochIdx, CancellationToken cancel)
         {
             int idx = (int)epochIdx;
             ulong epoch = startEpoch + epochIdx;
-            // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
-            // Clamp to [from, to] to handle partial first and last epochs.
-            ulong epochBlockStart = epoch * _eraSize;
-            ulong writeFrom = Math.Max(epochBlockStart, from);
-            ulong writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
+            (ulong writeFrom, ulong writeTo) = GetWriteRange(epoch, from, to);
 
-            EpochFile[] earlierFiles = ReadEpochFiles(earlierEpochFiles.GetValueOrDefault(epoch));
-            if (TrySkipExistingEpoch(earlierFiles, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
+            if (TrySkipExistingEpoch(earlierFiles[idx], epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
-
-            // The new file replaces the earlier ones, so it must hold every block they hold.
-            if (earlierFiles.Any(f => !f.IsPlaceholder && (f.First < writeFrom || f.Last > writeTo)))
-                throw new EraException(
-                    $"Cannot export blocks {writeFrom}-{writeTo} of epoch {epoch}: replacing " +
-                    string.Join(", ", earlierFiles.Where(static f => !f.IsPlaceholder).Select(static f => $"{Path.GetFileName(f.Path)} (blocks {f.First}-{f.Last})")) +
-                    " would lose blocks. " +
-                    "Export a range that contains them, or export into another directory.");
 
             string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
@@ -214,9 +216,15 @@ public sealed class EraExporter(
                 fileSystem.File.Delete(placeholderPath);
                 throw;
             }
-
-            DeleteSupersededFiles(earlierFiles, finalPath);
         }
+    }
+
+    // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
+    // Clamp to [from, to] to handle partial first and last epochs.
+    private (ulong WriteFrom, ulong WriteTo) GetWriteRange(ulong epoch, ulong from, ulong to)
+    {
+        ulong epochBlockStart = epoch * _eraSize;
+        return (Math.Max(epochBlockStart, from), Math.Min(epochBlockStart + _eraSize - 1, to));
     }
 
     // Follows the same convention as FullPruningMaxDegreeOfParallelism / VisitingOptions.AdjustMaxDegreeOfParallelism:
@@ -243,17 +251,7 @@ public sealed class EraExporter(
         Dictionary<string, ValueHash256> cachedAccumulators,
         ref ulong totalProcessed)
     {
-        // Reuse a finished file only when it holds the requested blocks and the blocks of every other file of the epoch,
-        // so removing the others loses nothing. Prefer the canonical extension, then the first name.
-        EpochFile? reusable = null;
-        foreach (EpochFile candidate in earlierFiles)
-        {
-            if (candidate.IsPlaceholder || candidate.First > writeFrom || candidate.Last < writeTo) continue;
-            if (!earlierFiles.All(other => other.IsPlaceholder || (candidate.First <= other.First && other.Last <= candidate.Last))) continue;
-            if (reusable is null || (EraPathUtils.IsCanonicalEraFile(candidate.Path) && !EraPathUtils.IsCanonicalEraFile(reusable.Value.Path)))
-                reusable = candidate;
-        }
-
+        EpochFile? reusable = FindReusableFile(earlierFiles, writeFrom, writeTo);
         if (reusable is null)
             return false;
 
@@ -282,10 +280,40 @@ public sealed class EraExporter(
             checksums[idx] = reader.CalculateChecksum();
         }
 
-        DeleteSupersededFiles(earlierFiles, existingFile);
         Interlocked.Add(ref totalProcessed, writeTo - writeFrom + 1);
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
+    }
+
+    /// <summary>
+    /// Finds a finished file that holds the requested blocks and the blocks of every other file of the epoch, so removing
+    /// the others loses nothing. Prefers the canonical extension, then the first name.
+    /// </summary>
+    private static EpochFile? FindReusableFile(EpochFile[] earlierFiles, ulong writeFrom, ulong writeTo)
+    {
+        EpochFile? reusable = null;
+        foreach (EpochFile candidate in earlierFiles)
+        {
+            if (candidate.IsPlaceholder || candidate.First > writeFrom || candidate.Last < writeTo) continue;
+            if (!earlierFiles.All(other => other.IsPlaceholder || (candidate.First <= other.First && other.Last <= candidate.Last))) continue;
+            if (reusable is null || (EraPathUtils.IsCanonicalEraFile(candidate.Path) && !EraPathUtils.IsCanonicalEraFile(reusable.Value.Path)))
+                reusable = candidate;
+        }
+
+        return reusable;
+    }
+
+    /// <summary>
+    /// A new file replaces the earlier ones, so it must hold every block they hold.
+    /// </summary>
+    private static void EnsureNoBlocksLost(EpochFile[] earlierFiles, ulong epoch, ulong writeFrom, ulong writeTo)
+    {
+        if (earlierFiles.Any(f => !f.IsPlaceholder && (f.First < writeFrom || f.Last > writeTo)))
+            throw new EraException(
+                $"Cannot export blocks {writeFrom}-{writeTo} of epoch {epoch}: replacing " +
+                string.Join(", ", earlierFiles.Where(static f => !f.IsPlaceholder).Select(static f => $"{Path.GetFileName(f.Path)} (blocks {f.First}-{f.Last})")) +
+                " would lose blocks. " +
+                "Export a range that contains them, or export into another directory.");
     }
 
     /// <summary>

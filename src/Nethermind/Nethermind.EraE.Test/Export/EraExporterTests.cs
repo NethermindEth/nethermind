@@ -214,7 +214,7 @@ public class EraExporterTests
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, rewrite ? 8UL : 0UL, 15);
-        CopyToUpperCaseHash(Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Single());
+        RenameToUpperCaseHash(Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Single(), keepOriginal: !rewrite);
 
         await sut.Export(directory, 0, 15);
 
@@ -225,24 +225,9 @@ public class EraExporterTests
     [Test]
     public async Task Export_WhenMoveFails_KeepsEarlierFile()
     {
-        IFileSystem real = new RealFileSystem();
         bool failMoves = false;
-        IFile file = Substitute.For<IFile>();
-        file.Exists(Arg.Any<string>()).Returns(static c => File.Exists(c.Arg<string>()));
-        file.Create(Arg.Any<string>()).Returns(c => real.File.Create(c.Arg<string>()));
-        file.ReadAllLines(Arg.Any<string>()).Returns(static c => File.ReadAllLines(c.Arg<string>()));
-        file.When(static f => f.Delete(Arg.Any<string>())).Do(static c => File.Delete(c.Arg<string>()));
-        file.When(static f => f.Move(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())).Do(c =>
-        {
-            if (failMoves) throw new IOException("move failed");
-            File.Move(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<bool>(2));
-        });
-        IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        fileSystem.File.Returns(file);
-        fileSystem.Directory.Returns(real.Directory);
-        fileSystem.FileStream.Returns(real.FileStream);
-
-        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48).AddSingleton(fileSystem).Build();
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48)
+            .AddSingleton(CreateFaultyFileSystem(_ => failMoves, static _ => false)).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, 32, 40);
@@ -251,6 +236,41 @@ public class EraExporterTests
 
         Assert.That(() => sut.Export(directory, 32, 47), Throws.TypeOf<IOException>());
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [Test]
+    public async Task Export_WhenLastEpochWouldLoseBlocks_ChangesNothing()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        await sut.Export(directory, 36, 47);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+
+        // Epoch 1 alone could be rewritten as 16-31, but epoch 2 can neither reuse 36-47 nor replace it without losing 41-47.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 36-47)"));
+        Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Export_WhenExportFails_DeletesNoEarlierFile(bool failManifest)
+    {
+        bool fail = false;
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48)
+            .AddSingleton(CreateFaultyFileSystem(
+                path => fail && !failManifest && Path.GetFileName(path).Contains("-00002-"),
+                path => fail && failManifest && Path.GetFileName(path) == EraExporter.AccumulatorFileName)).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+        fail = true;
+
+        // Epoch 1 is rewritten as 16-31 and supersedes its earlier file, then epoch 2 or the manifests fail.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<IOException>());
+        Assert.That(before.Keys.Where(File.Exists).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
     [Test]
@@ -463,15 +483,41 @@ public class EraExporterTests
         }
     }
 
-    /// <summary>Copies an era file to the name with its hash in upper case, a second file only on a case-sensitive file system.</summary>
-    private static void CopyToUpperCaseHash(string file)
+    /// <summary>Copies or moves an era file to the name with its hash in upper case, a separate name only on a case-sensitive file system.</summary>
+    private static void RenameToUpperCaseHash(string file, bool keepOriginal)
     {
         string name = Path.GetFileName(file);
         string hash = name.Split('-')[2][..8];
         string variant = Path.Combine(Path.GetDirectoryName(file)!, name.Replace(hash, hash.ToUpperInvariant()));
         Assume.That(variant, Is.Not.EqualTo(file));
         Assume.That(File.Exists(variant), Is.False, "needs a case-sensitive file system");
-        File.Copy(file, variant);
+        if (keepOriginal) File.Copy(file, variant);
+        else File.Move(file, variant);
+    }
+
+    /// <summary>The real file system, except that File.Move and File.Delete throw for the paths the predicates select.</summary>
+    private static IFileSystem CreateFaultyFileSystem(Func<string, bool> failMove, Func<string, bool> failDelete)
+    {
+        IFileSystem real = new RealFileSystem();
+        IFile file = Substitute.For<IFile>();
+        file.Exists(Arg.Any<string>()).Returns(static c => File.Exists(c.Arg<string>()));
+        file.Create(Arg.Any<string>()).Returns(c => real.File.Create(c.Arg<string>()));
+        file.ReadAllLines(Arg.Any<string>()).Returns(static c => File.ReadAllLines(c.Arg<string>()));
+        file.When(static f => f.Delete(Arg.Any<string>())).Do(c =>
+        {
+            if (failDelete(c.Arg<string>())) throw new IOException("delete failed");
+            File.Delete(c.Arg<string>());
+        });
+        file.When(static f => f.Move(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())).Do(c =>
+        {
+            if (failMove(c.ArgAt<string>(1))) throw new IOException("move failed");
+            File.Move(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<bool>(2));
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        fileSystem.Directory.Returns(real.Directory);
+        fileSystem.FileStream.Returns(real.FileStream);
+        return fileSystem;
     }
 
     /// <summary>Makes a rewrite of these blocks fail, so an export that succeeds proves the epoch was reused.</summary>

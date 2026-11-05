@@ -98,6 +98,13 @@ public class EraExporter(
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> accumulatorEntries = ReadEarlierEntries(accumulatorPath);
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> checksumEntries = ReadEarlierEntries(checksumPath);
 
+        // Check every epoch before writing any, so a rejected epoch leaves the directory as it was.
+        for (ulong epochIdx = 0; epochIdx < epochCount; epochIdx++)
+        {
+            (ulong startingIndex, ulong endingIndex) = GetWriteRange(epochIdx);
+            EnsureNoBlocksLost(earlierEpochFiles.GetValueOrDefault(startEpoch + epochIdx), startEpoch + epochIdx, startingIndex, endingIndex);
+        }
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
@@ -122,6 +129,13 @@ public class EraExporter(
         fileSystem.File.Delete(checksumPath);
         await WriteFileAsync(checksumPath, checksumEntries, cancellation);
 
+        // Only now, with every epoch exported and the manifests naming the new files, delete the files they replace.
+        for (int i = 0; i < fileNames.Count; i++)
+        {
+            if (earlierEpochFiles.TryGetValue(startEpoch + (ulong)i, out List<(string Path, bool IsPlaceholder)>? files))
+                DeleteSupersededFiles(files.Select(static f => f.Path), Path.Combine(destinationPath, fileNames[i]));
+        }
+
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
         // Keeps the entries of an earlier export into this directory whose epochs still have an era file,
@@ -140,36 +154,18 @@ public class EraExporter(
             return entries;
         }
 
+        // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
+        // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
+        (ulong StartingIndex, ulong EndingIndex) GetWriteRange(ulong epochIdx)
+        {
+            ulong startingIndex = from + epochIdx * era1Size;
+            return (startingIndex, Math.Min(startingIndex + era1Size - 1, to));
+        }
+
         async Task WriteEpoch(ulong epochIdx)
         {
-            // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
-            // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
             ulong epoch = startEpoch + epochIdx;
-            ulong startingIndex = from + epochIdx * era1Size;
-            ulong endingIndex = Math.Min(startingIndex + era1Size - 1, to);
-
-            // The new file replaces the earlier files of the epoch, so it must hold every block they hold.
-            List<(string Path, bool IsPlaceholder)> epochFiles = earlierEpochFiles.GetValueOrDefault(epoch) ?? [];
-            foreach ((string earlierPath, bool isPlaceholder) in epochFiles)
-            {
-                if (isPlaceholder) continue;
-
-                ulong first, last;
-                try
-                {
-                    using E2StoreReader reader = new(earlierPath);
-                    (first, last) = (reader.First, reader.LastBlock);
-                }
-                catch (Exception e) when (e is EraException or ArgumentException)
-                {
-                    throw new EraException($"Cannot read the block range of {Path.GetFileName(earlierPath)}: {e.Message} Remove or repair it before exporting this epoch.", e);
-                }
-
-                if (first < startingIndex || last > endingIndex)
-                    throw new EraException(
-                        $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: replacing {Path.GetFileName(earlierPath)} (blocks {first}-{last}) would lose blocks. " +
-                        "Export a range that contains them, or export into another directory.");
-            }
+            (ulong startingIndex, ulong endingIndex) = GetWriteRange(epochIdx);
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -223,8 +219,33 @@ public class EraExporter(
                     await Task.Delay(100 * (attempt + 1), cancellation);
                 }
             }
+        }
+    }
 
-            DeleteSupersededFiles(epochFiles.Select(static f => f.Path), rename);
+    /// <summary>
+    /// A new file replaces the earlier files of the epoch, so it must hold every block they hold.
+    /// </summary>
+    private static void EnsureNoBlocksLost(List<(string Path, bool IsPlaceholder)>? earlierFiles, ulong epoch, ulong startingIndex, ulong endingIndex)
+    {
+        foreach ((string earlierPath, bool isPlaceholder) in earlierFiles ?? [])
+        {
+            if (isPlaceholder) continue;
+
+            ulong first, last;
+            try
+            {
+                using E2StoreReader reader = new(earlierPath);
+                (first, last) = (reader.First, reader.LastBlock);
+            }
+            catch (Exception e) when (e is EraException or ArgumentException)
+            {
+                throw new EraException($"Cannot read the block range of {Path.GetFileName(earlierPath)}: {e.Message} Remove or repair it before exporting this epoch.", e);
+            }
+
+            if (first < startingIndex || last > endingIndex)
+                throw new EraException(
+                    $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: replacing {Path.GetFileName(earlierPath)} (blocks {first}-{last}) would lose blocks. " +
+                    "Export a range that contains them, or export into another directory.");
         }
     }
 

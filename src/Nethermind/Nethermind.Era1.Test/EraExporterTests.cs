@@ -173,13 +173,44 @@ public class EraExporterTests
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, 0, 15);
-        CopyToUpperCaseHash(Directory.GetFiles(directory, "*.era1").Single());
+        RenameToUpperCaseHash(Directory.GetFiles(directory, "*.era1").Single(), keepOriginal: false);
 
         await sut.Export(directory, 0, 15);
 
         Assert.That(Directory.GetFiles(directory, "*.era1"), Has.Length.EqualTo(1));
         using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
         Assert.That(async () => await eraStore.FindBlockAndReceipts(15), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Export_WhenLastEpochWouldLoseBlocks_ChangesNothing()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        await sut.Export(directory, 32, 47);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+
+        // Epoch 1 alone could be rewritten as 16-31, but epoch 2 would lose blocks 41-47.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 32-47)"));
+        Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [Test]
+    public async Task Export_WhenAnEpochFails_DeletesNoEarlierFile()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+        for (ulong number = 32; number <= 40; number++)
+            container.Resolve<IReceiptStorage>().RemoveReceipts(container.Resolve<IBlockTree>().FindBlock(number, BlockTreeLookupOptions.None)!);
+
+        // Epoch 1 is rewritten as 16-31 and supersedes its earlier file, then epoch 2 fails on its missing receipts.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>().With.Message.Contains("receipts"));
+        Assert.That(before.Keys.Where(File.Exists).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
     [Test]
@@ -225,14 +256,15 @@ public class EraExporterTests
         Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
     }
 
-    /// <summary>Copies an era file to the name with its hash in upper case, a second file only on a case-sensitive file system.</summary>
-    private static void CopyToUpperCaseHash(string file)
+    /// <summary>Copies or moves an era file to the name with its hash in upper case, a separate name only on a case-sensitive file system.</summary>
+    private static void RenameToUpperCaseHash(string file, bool keepOriginal)
     {
         string name = Path.GetFileName(file);
         string hash = name.Split('-')[2][..8];
         string variant = Path.Combine(Path.GetDirectoryName(file)!, name.Replace(hash, hash.ToUpperInvariant()));
         Assume.That(variant, Is.Not.EqualTo(file));
         Assume.That(File.Exists(variant), Is.False, "needs a case-sensitive file system");
-        File.Copy(file, variant);
+        if (keepOriginal) File.Copy(file, variant);
+        else File.Move(file, variant);
     }
 }
