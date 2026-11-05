@@ -40,6 +40,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
@@ -767,7 +768,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsInvalidInput()
+    public void DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsStateUnavailable()
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
@@ -776,18 +777,17 @@ public class DebugModuleTests
         _blockFinder.HasBlock(header.Number, blockHash).Returns(true);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(parent).Returns(true);
-        NotSupportedException refusal = new("Intermediate roots are unavailable");
         _debugBridge
             .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
-            .Returns(_ => throw refusal);
+            .Returns(_ => throw new StateNotRetainedException("trie-less"));
 
         ResultWrapper<IReadOnlyCollection<Hash256>> actual = CreateModule().debug_intermediateRoots(blockHash);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(actual.Result.Error, Is.EqualTo(refusal.Message));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Is.EqualTo($"No state available for block {parent.ToString(BlockHeader.Format.FullHashAndNumber)}"));
         }
     }
 

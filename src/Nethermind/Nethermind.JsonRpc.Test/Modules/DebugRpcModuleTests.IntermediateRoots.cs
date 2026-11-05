@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -51,6 +52,7 @@ public partial class DebugRpcModuleTests
         }
         Assert.That(result.Data, Is.Unique, "each tx mutates state, producing a distinct post-tx root");
         Assert.That(result.Data, Does.Not.Contain(Keccak.Zero));
+        Assert.That(result.Data.Last(), Is.EqualTo(context.Blockchain.BlockTree.Head!.StateRoot), "nothing after the last tx changes state");
     }
 
     [Test]

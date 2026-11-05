@@ -221,7 +221,7 @@ public class HistoricalTraceReExecutionTests
         tracer.StartNewBlockTrace(block);
 
         Assert.That(() => tracer.StartNewTxTrace(block.Transactions[0]),
-            Throws.TypeOf<NotSupportedException>().With.Message.Contains("Intermediate roots are unavailable"));
+            Throws.TypeOf<StateNotRetainedException>());
     }
 
     [Test]

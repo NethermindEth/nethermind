@@ -747,9 +747,13 @@ public class DebugRpcModule(
         {
             roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
         }
-        catch (Exception e) when (e is GenesisNotTraceableException or NotSupportedException)
+        catch (GenesisNotTraceableException e)
         {
             return ResultWrapper<IReadOnlyCollection<Hash256>>.Fail(e.Message, ErrorCodes.InvalidInput);
+        }
+        catch (StateNotRetainedException)
+        {
+            return GetStateFailureResult<IReadOnlyCollection<Hash256>>(blockFinder.FindParentHeader(header!, BlockTreeLookupOptions.None)!);
         }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_intermediateRoots)} request {blockHash}, roots: {roots.Count}");
