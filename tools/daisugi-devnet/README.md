@@ -12,19 +12,19 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 From a clone of this branch, on Linux x86_64 with Docker:
 
 1. Build both images: step 1 below.
-2. Start a throwaway single-host chain and wait for finality past the fork (about 4 minutes):
+2. Start a throwaway single-host chain and wait for finality past the fork (about 9 minutes):
 
    ```bash
    cd tools/daisugi-devnet
    export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
    NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
-   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
+   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3
    ./up.sh run/devnet-1 $NM $LH
    ./check.sh run/devnet-1
    ```
 
 3. Send a proof-bearing transaction: step 4.
-4. Stop: `docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
+4. Stop: `GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
 
 To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` then shows whether the chain still crosses the fork, produces the 25-field header and finalizes.
 
@@ -115,7 +115,7 @@ LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
 | Validator client | `daisugi-validator` | none | none |
 
 - Peering: discovery off on both layers, no bootnodes (`boot_enr.yaml` is `[]`). Extra nodes join through static peers, see step 5.
-- `check.sh` waits for finality past the fork epoch (about 4 minutes after genesis). Expected output:
+- `check.sh` waits for finality past the fork epoch (about 7 minutes after genesis). Expected output:
 
 ```text
 EL genesis hash 0x… matches the CL genesis state
@@ -200,7 +200,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 ## Stop and clean up
 
 ```bash
-docker compose --profile replay --profile sync down
+GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down
 rm -rf run/devnet-1
 ```
 
