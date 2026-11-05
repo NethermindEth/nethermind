@@ -83,7 +83,7 @@ public class BlockAccessListStore : IBlockAccessListStore
         // Reuse the block's owned encoding. The fallback must also be owned because the overlay and its
         // non-owning read views can outlive this call, so a pool-rented buffer could be returned too early.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
-            : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
+            : block.BlockAccessList is { } bal && !Exists(block.Number, blockHash) ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
 
         block.GeneratedBlockAccessList = null;

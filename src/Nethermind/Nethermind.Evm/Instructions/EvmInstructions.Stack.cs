@@ -146,7 +146,7 @@ public static partial class EvmInstructions
                 : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
+            ushort destination = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
             // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
@@ -1185,13 +1185,22 @@ public static partial class EvmInstructions
     {
         VmState<TGasPolicy> vmState = vm.VmState;
         // Logging is not permitted in static call contexts.
-        if (vmState.IsStatic) goto StaticCallViolation;
+        if (vmState.IsStatic)
+        {
+            // Geth raises write protection while executing LOG, after a step that carries no error.
+            vm.TraceOperationReady(0);
+            goto StaticCallViolation;
+        }
 
         // Pop memory offset and length for the log data.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
         ulong topicsCount = (ulong)TOpCount.Count;
+        ulong emissionCost = GasCostOf.Log + topicsCount * GasCostOf.LogTopic;
+        if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart)
+            && length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+            vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
 
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;

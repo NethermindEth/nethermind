@@ -17,7 +17,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
         byte[] expectedBytes = Bytes.FromHexString("f863a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
 
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
@@ -29,7 +29,7 @@ public class GetBlockBodiesMessageSerializerTests
             Assert.That(deserialized.BlockHashes[i], Is.EqualTo(message.BlockHashes[i]), $"hash {i}");
         }
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.Test(serializer, message);
     }
 
     [Test]
@@ -37,7 +37,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(CreateHashes(hashCount));
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
 
         using GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
 
@@ -49,7 +49,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(CreateHashes(1025));
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
 
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(bytes));
     }

@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Overlay;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -97,6 +98,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .AddSingleton<HashesOnlyBlockReader>()
+            .AddSingleton<IBatchConcurrencyStrategy, EthCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
@@ -114,17 +116,23 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
+            // Overlay
+            .RegisterBoundedJsonRpcModule<IOverlayRpcModule, OverlayModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IOverlayRpcModule, OverlayRpcModule>()
+
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
             // Each instance holds two full block-processing scopes for the life of the process, and they are built on
             // demand and never released, so the default stays where it was: parallel tracing shares one pool across
             // instances and does not need more of them. Operators who want more ask for them.
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? 2, jsonRpcConfig.Timeout)
+            .AddSingleton<IBatchConcurrencyStrategy, TraceTransactionBatchConcurrency>()
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.GetTraceModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceBatchConcurrency>()
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()

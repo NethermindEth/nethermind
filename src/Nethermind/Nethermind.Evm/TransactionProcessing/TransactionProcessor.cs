@@ -873,17 +873,18 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult == AuthorizationTupleResult.Valid)
                 {
                     bool accountExists = WorldState.AccountExists(authority);
-                    bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
-
-                    delegatedBeforeTx ??= [];
-                    if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
-                    {
-                        delegatedBefore = hasDelegation;
-                        delegatedBeforeTx[authority] = delegatedBefore;
-                    }
 
                     if (spec.IsEip8037Enabled)
                     {
+                        delegatedBeforeTx ??= [];
+                        if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
+                        {
+                            delegatedBefore = hasDelegation;
+                            delegatedBeforeTx[authority] = delegatedBefore;
+                        }
+
+                        bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
+
                         if (!accountExists && !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
                         {
                             return false;
@@ -1214,7 +1215,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate
                 && !SkipSenderChecks
-                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!, _codeInfoRepository))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
@@ -1933,10 +1934,11 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             UInt256 fees = premiumPerGas * spentGas;
 
-            // n.b. destroyed accounts already set to zero balance
-            // EIP-8037: always pay coinbase — deferred finalization will burn the balance
-            bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
+            // Without EIP-8037 the destroy list is already finalized, so a destroyed beneficiary of a successful tx is not paid,
+            // even with EIP-8246.
+            // EIP-8037 always pays it. With EIP-7708 too, finalization runs after PayFees and burns the fee with the balance
+            // (EIP-8246 keeps it). Without EIP-7708 the account is already destroyed, so it keeps the fee.
+            if (statusCode == StatusCode.Failure || !substate.DestroyListContains(header.GasBeneficiary) || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotEmpty(header.GasBeneficiary!, fees, spec);
             }

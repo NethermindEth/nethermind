@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Ethash
             base.Load(builder);
 
             builder
-                .AddSingleton<IRewardCalculatorSource, RewardCalculator>()
+                .AddSingleton<IRewardCalculator, RewardCalculator>()
                 .AddSingleton<IDifficultyCalculator, EthashDifficultyCalculator>()
                 .AddSingleton<IEthash, Ethash>()
                 .AddSingleton<ISealValidator, EthashSealValidator>()

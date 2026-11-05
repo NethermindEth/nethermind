@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
@@ -61,4 +62,18 @@ public class Bswap64Tests
         BinaryPrimitives.WriteUInt64BigEndian(expected.AsSpan(offset), value);
         Assert.That(buffer, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void Reads_a_big_endian_uint256_at_any_offset([Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[40];
+        for (int i = 0; i < 32; i++) buffer[offset + i] = (byte)(0xA0 + i);
+        ReadOnlySpan<byte> word = buffer.AsSpan(offset, 32);
+
+        Assert.That(Bytes.ReadUInt256BigEndian(word), Is.EqualTo(new UInt256(word, isBigEndian: true)));
+    }
+
+    [Test]
+    public void Rejects_a_uint256_span_that_is_not_32_bytes([Values(0, 31, 33)] int length) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => Bytes.ReadUInt256BigEndian(new byte[length]));
 }

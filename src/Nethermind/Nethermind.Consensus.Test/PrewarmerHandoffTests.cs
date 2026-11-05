@@ -340,6 +340,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             preWarmer,
             new PrewarmerState(caches, isPrewarmer: false),
             ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
             LimboLogs.Instance);
 
         Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
@@ -733,7 +734,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
             index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
+#pragma warning restore NUnit2045
         Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
     }
 
@@ -1982,6 +1985,7 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
             preWarmer,
             new PrewarmerState(caches, isPrewarmer: false),
             ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
             LimboLogs.Instance);
         preWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => preWarmer.SpeculativeMarkerPublished);
         late.SenderAddress = null;

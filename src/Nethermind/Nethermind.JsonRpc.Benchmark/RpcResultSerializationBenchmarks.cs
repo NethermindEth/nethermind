@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -236,8 +237,9 @@ public class RpcResultSerializationBenchmarks
         }
 
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(block.Header);
+        UInt256? feePerBlobGas = null;
         return new(receipts, transactions, logIndexPerReceipt: false, (target, receipt, transaction, logIndexStart) =>
-            target.Populate(transaction.Hash!, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), logIndexStart));
+            target.Populate(transaction.Hash!, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header, ref feePerBlobGas), logIndexStart));
     }
 
     private static Block BuildBlock(int count)

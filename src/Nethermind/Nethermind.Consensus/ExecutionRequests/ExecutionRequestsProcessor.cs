@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.ExecutionRequests;
 
 public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
-    public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    public static readonly AbiSignature<(byte[], byte[], byte[], byte[], byte[])> DepositEventAbi = new AbiSignature("DepositEvent").With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes);
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
 
@@ -196,29 +196,39 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         if (!spec.DepositsEnabled)
             return;
 
-        using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
-        depositRequests.Add((byte)ExecutionRequestType.Deposit);
-
+        ArrayPoolListRef<byte> depositRequests = new(0);
         Span<byte> depositRequestBuffer = stackalloc byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
-        for (int i = 0; i < receipts.Length; i++)
+        try
         {
-            LogEntry[]? logEntries = receipts[i].Logs;
-            if (logEntries is not null)
+            for (int i = 0; i < receipts.Length; i++)
             {
-                for (int j = 0; j < logEntries.Length; j++)
+                LogEntry[]? logEntries = receipts[i].Logs;
+                if (logEntries is not null)
                 {
-                    LogEntry log = logEntries[j];
-                    if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
+                    for (int j = 0; j < logEntries.Length; j++)
                     {
-                        DecodeDepositRequest(block, log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer);
+                        LogEntry log = logEntries[j];
+                        if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
+                        {
+                            DecodeDepositRequest(block, log, depositRequestBuffer);
+                            if (depositRequests.Count == 0)
+                            {
+                                depositRequests = new(receipts.Length * 2 + 1);
+                                depositRequests.Add((byte)ExecutionRequestType.Deposit);
+                            }
+                            depositRequests.AddRange(depositRequestBuffer);
+                        }
                     }
                 }
             }
-        }
 
-        if (depositRequests.Count > 1)
-            requests.Add(depositRequests.ToArray());
+            if (depositRequests.Count > 1)
+                requests.Add(depositRequests.ToArray());
+        }
+        finally
+        {
+            depositRequests.Dispose();
+        }
     }
 
     private static void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)

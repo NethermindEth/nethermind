@@ -63,7 +63,10 @@ class ShutterKeyValidatorTests
 
         IShutterKeyValidator.ValidatedKeys? result = null;
         Assert.DoesNotThrow(() => result = api.KeyValidator.ValidateKeys(keys));
-        Assert.That(result, Is.Null);
-        Assert.That(api.KeysValidated, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(api.KeysValidated, Is.EqualTo(1));
+        }
     }
 }

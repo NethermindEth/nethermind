@@ -11,10 +11,10 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.TurboPForBindings;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
+using Testably.Abstractions;
 using static Nethermind.Db.LogIndex.LogIndexStorage;
 
 namespace Nethermind.Db.Test.LogIndex
@@ -99,6 +100,11 @@ namespace Nethermind.Db.Test.LogIndex
             Assert.That(storage.HasBackgroundError, Is.False);
         }
 
+        [Test]
+        public void Rejects_compression_parallelism_below_one([Values(0, -1)] int parallelism) =>
+            Assert.That(() => CreateLogIndexStorage(compressionParallelism: parallelism),
+                Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{nameof(ILogIndexConfig.MaxCompressionParallelism)}"));
+
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
             string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
@@ -137,7 +143,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
-            _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new TestLogManager(), _dbPath);
+            _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new RealFileSystem(), new TestLogManager(), _dbPath);
         }
 
         [TearDown]
@@ -274,8 +280,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        }
                     }
                 });
 
@@ -286,8 +295,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        }
                     }
                 });
 

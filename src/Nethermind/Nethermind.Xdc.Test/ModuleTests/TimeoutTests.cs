@@ -26,8 +26,11 @@ public class TimeoutTests
 
         Timeout expectedTimeoutMsg = XdcTestHelper.BuildSignedTimeout(blockchain.Signer.Key!, ctx.CurrentRound, 0);
 
-        Assert.That(ctx.TimeoutCounter, Is.EqualTo(1));
-        Assert.That(tcManager.GetTimeoutsCount(expectedTimeoutMsg), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.TimeoutCounter, Is.EqualTo(1));
+            Assert.That(tcManager.GetTimeoutsCount(expectedTimeoutMsg), Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -66,13 +69,19 @@ public class TimeoutTests
         }
 
         // Sanity check: round hasn’t advanced, HighestTC not set to this round yet
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round));
+            Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        }
 
         // Send timeout message with wrong gap so it doesn't reach threshold yet
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(signers.Last(), round, 1350));
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round));
+            Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
+        }
 
         // One more timeout (reaches threshold) -> HighestTC set, round increments
         Timeout lastTimeoutMsg = XdcTestHelper.BuildSignedTimeout(signers.Last(), round, gap);
@@ -80,7 +89,10 @@ public class TimeoutTests
         signatures.Add(lastTimeoutMsg.Signature!);
 
         TimeoutCertificate expectedTC = new(round, signatures.ToArray(), gap);
-        Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcComparer());
-        Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.HighestTC, Is.EqualTo(expectedTC).UsingXdcComparer());
+            Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
+        }
     }
 }

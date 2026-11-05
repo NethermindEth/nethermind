@@ -4,9 +4,11 @@
 #nullable enable
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -77,6 +79,22 @@ public class ProcessingBranchBuilderTests
             Assert.That(canonical.BaseBlock?.Hash, Is.EqualTo(persisted.Hash));
         }
         Assert.Throws<InvalidOperationException>(() => builder.PrepareProcessingBranch(side4, ProcessingOptions.None));
+    }
+
+    [Test]
+    public void First_block_parent_is_taken_from_the_branch_base()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(5).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(parent).Returns(true);
+        ProcessingBranchBuilder builder = new(blockTree, stateReader, [], LimboLogs.Instance.GetClassLogger<ProcessingBranchBuilder>());
+        using ProcessingBranch branch = new(parent, new ArrayPoolList<Block>(1) { block });
+
+        builder.PrepareBlocksToProcess(block, ProcessingOptions.None, branch, CancellationToken.None);
+
+        stateReader.Received(1).HasStateForBlock(parent);
     }
 
     private static IStateReader StateOnlyFor(Block? block = null)

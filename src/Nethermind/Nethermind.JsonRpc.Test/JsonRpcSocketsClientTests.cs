@@ -67,8 +67,11 @@ public class JsonRpcSocketsClientTests
             Assert.That(response[0], Is.EqualTo((byte)'['));
         }
 
-        Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
-        Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
+            Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+        }
     }
 
     [TestCase(RpcEndpoint.Ws, true)]
@@ -416,7 +419,9 @@ public class JsonRpcSocketsClientTests
         InvalidOperationException failure = new("serialization failed");
         using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new FlushingStreamable(chunks: 0, failure) }, default);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Assert.CatchAsync(async () => await server.Client.SendJsonRpcResult(failed)), Is.SameAs(failure));
+#pragma warning restore NUnit2045
         Assert.That(stream.ToArray(), Is.Empty, "the failure must precede any stream write");
 
         using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
@@ -916,9 +921,22 @@ public class JsonRpcSocketsClientTests
             }
 
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
-            completeSource.SetResult();
 
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            // A client can close its send side after the last request and still expect every response.
+            pair.SendSocket.Shutdown(SocketShutdown.Send);
+            completeSource.SetResult();
+            await receiver;
+
+            int responses = 0;
+            byte[] buffer = new byte[1024];
+            while (responses < concurrencyLevel)
+            {
+                int read = await pair.SendSocket.ReceiveAsync(buffer, pair.Cts.Token);
+                if (read == 0) break;
+                responses += buffer.AsSpan(0, read).Count((byte)'\n');
+            }
+
+            Assert.That(responses, Is.EqualTo(concurrencyLevel));
         }
 
         [Test]
@@ -1179,8 +1197,11 @@ public class JsonRpcSocketsClientTests
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
 
-            Assert.That(received, Is.EqualTo(sent));
-            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received, Is.EqualTo(sent));
+                Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
+            }
         }
 
         private static async Task SendAndAssertPayloads(string wireData, IReadOnlyList<string> expectedPayloads, int timeout = 5000, int chunkSize = 0)

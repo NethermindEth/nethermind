@@ -51,8 +51,11 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(null));
-        Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(null));
+            Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(null));
+        }
     }
 
     [Test]

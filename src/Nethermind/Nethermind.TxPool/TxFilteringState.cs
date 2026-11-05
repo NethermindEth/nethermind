@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
@@ -10,6 +11,7 @@ namespace Nethermind.TxPool;
 public ref struct TxFilteringState(Transaction tx, IAccountStateProvider accounts, IReleaseSpec headSpec)
 {
     private AccountStruct _senderAccount;
+    private bool? _senderHasDelegatedCode;
 
     /// <summary>Set once every <c>frame_signatures</c> entry has verified against the head spec.</summary>
     /// <remarks>Lets a downstream filter assert pre-validation from what actually ran rather than from
@@ -37,7 +39,7 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
 
-    /// <summary>Whether a filter has recorded this transaction's EIP-8298 code dependencies and still owes their release.</summary>
+    /// <summary>Whether a filter has recorded this transaction's code dependencies (EIP-8298, EIP-8151) and still owes their release.</summary>
     internal bool CodeDependenciesReserved;
 
     /// <summary>Whether a filter has reserved this transaction's EIP-8141 payer exposure and still owes its release.</summary>
@@ -91,4 +93,7 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
             return _senderAccount;
         }
     }
+
+    internal bool SenderHasDelegatedCode(IReadOnlyStateProvider worldState) =>
+        _senderHasDelegatedCode ??= SenderAccount.HasCode && worldState.IsDelegatedCode(SenderAccount.CodeHash);
 }

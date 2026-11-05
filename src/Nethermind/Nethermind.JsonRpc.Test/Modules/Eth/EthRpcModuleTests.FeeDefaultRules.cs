@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
@@ -20,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -165,6 +167,56 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
         _ = oracle.Received(estimatesGasPrice ? 1 : 0).GetGasPriceEstimate();
         oracle.Received(estimatesPriorityFee ? 1 : 0).GetMaxPriorityGasFeeEstimate();
+    }
+
+    [TestCase("{}", true)]
+    [TestCase("""{"accessList":[]}""", false)]
+    public async Task Send_without_gas_and_fees_fills_them(string feeFields, bool dynamicFee)
+    {
+        UInt256 suggestedFee = 1_000_000_000;
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetGasPriceEstimate().Returns(new ValueTask<UInt256>(suggestedFee));
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
+        ITxSender txSender = Substitute.For<ITxSender>();
+        Transaction? sent = null;
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithGasPriceOracle(oracle).WithTxSender(txSender).Build(new TestSpecProvider(London.Instance));
+
+        JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
+        request["from"] = TestItem.AddressC.ToString();
+        request["to"] = FeeRecipient;
+        request["value"] = "0x1";
+        string serialized = await test.TestEthRpc("eth_sendTransaction", JsonSerializer.Deserialize<object>(request.ToJsonString()));
+
+        BlockHeader head = test.BlockTree.Head!.Header;
+        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, test.SpecProvider.GetSpecFor1559(head.Number + 1));
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent!.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
+            Assert.That(sent.Supports1559, Is.EqualTo(dynamicFee));
+            Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
+            Assert.That(sent.MaxFeePerGas, Is.EqualTo(dynamicFee ? 2 * nextBaseFee + suggestedFee : suggestedFee),
+                "a dynamic fee cap must be twice the next base fee plus the tip");
+        }
+    }
+
+    [Test]
+    public async Task Send_does_not_fill_a_blob_transaction()
+    {
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithGasPriceOracle(oracle).Build(new TestSpecProvider(Cancun.Instance));
+
+        await test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(
+            """{"type":"0x3","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""",
+            HeldAccount));
+
+        _ = oracle.DidNotReceive().GetGasPriceEstimate();
+        oracle.DidNotReceive().GetMaxPriorityGasFeeEstimate();
     }
 
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)

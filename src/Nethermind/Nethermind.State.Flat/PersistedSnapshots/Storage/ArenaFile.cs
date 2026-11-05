@@ -25,7 +25,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// next session.
 /// </para>
 /// </summary>
-public sealed unsafe class ArenaFile : RefCountingDisposable
+public sealed unsafe partial class ArenaFile : RefCountingDisposable
 {
     private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
@@ -33,8 +33,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     private const int MADV_POPULATE_READ = 22;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
-    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
-    private static extern int Madvise(void* addr, nuint length, int advice);
+    [LibraryImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static partial int Madvise(void* addr, nuint length, int advice);
 
     private readonly SafeFileHandle _handle;
     private MemoryMappedFile _mmf;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Int256;
 using System.Linq;
 using Google.Protobuf;
@@ -13,7 +14,6 @@ using System.Collections.Generic;
 using Nethermind.Shutter.Dto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Abi;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
@@ -29,9 +29,7 @@ public class ShutterEventSimulator
     private readonly Random _rnd;
     private readonly ulong _chainId;
     private readonly ulong _threshold;
-    private readonly IAbiEncoder _abiEncoder;
     private readonly Address _sequencerContractAddress;
-    private readonly AbiEncodingInfo _transactionSubmittedAbi;
     private ulong _slot;
     protected ulong _eon;
     private ulong _txPointer; // for tracking which keys are released
@@ -44,7 +42,6 @@ public class ShutterEventSimulator
         ulong chainId,
         ulong threshold,
         ulong slot,
-        IAbiEncoder abiEncoder,
         Address sequencerContractAddress
     )
     {
@@ -54,9 +51,7 @@ public class ShutterEventSimulator
         _slot = slot;
         _txPointer = 0;
         _threshold = threshold;
-        _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
-        _transactionSubmittedAbi = new SequencerContract(sequencerContractAddress).TransactionSubmittedAbi;
         _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / DefaultGasLimit);
 
         _eventSource = EmitEvents();
@@ -201,18 +196,18 @@ public class ShutterEventSimulator
         ulong txIndex,
         UInt256 gasLimit)
     {
-        byte[] logData = _abiEncoder.Encode(_transactionSubmittedAbi, [
+        byte[] logData = AbiCodec.Encode(SequencerContract.TransactionSubmittedData, (
             eon,
             txIndex,
             identityPreimage[..32].ToArray(),
             new Address(identityPreimage[32..]),
             encryptedTransaction.ToArray(),
             gasLimit
-        ]);
+        ));
 
         return Build.A.LogEntry
             .WithAddress(_sequencerContractAddress)
-            .WithTopics(_transactionSubmittedAbi.Signature.Hash)
+            .WithTopics(SequencerContract.TransactionSubmittedHash)
             .WithData(logData)
             .TestObject;
     }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Messages;
+
 namespace Evm.T8n.Errors;
 
 public class GethErrorMappings
@@ -8,7 +10,7 @@ public class GethErrorMappings
     private const string WrongTransactionNonceError = "wrong transaction nonce";
     private const string WrongTransactionNonceGethError = "nonce too low: address {0}, tx: {1} state: {2}";
 
-    private const string MissingTxToError = "TxMissingTo: Must be set.";
+    private const string MissingTxToError = TxErrorMessages.TxMissingTo;
     private const string MissingTxToGethError = "rlp: input string too short for common.Address, decoding into (types.Transaction)(types.BlobTx).To";
 
     public static string GetErrorMapping(string error, params object[] arguments) => error switch

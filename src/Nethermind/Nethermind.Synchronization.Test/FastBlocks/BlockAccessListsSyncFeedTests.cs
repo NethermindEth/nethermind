@@ -137,7 +137,9 @@ public class BlockAccessListsSyncFeedTests
         _blockAccessListStore.DidNotReceive().Exists(Arg.Any<ulong>(), TestItem.KeccakB);
         Assert.That(_feed.IsFinished, Is.True);
         _feed.Activate();
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await _feed.PrepareRequest(), Is.Null);
+#pragma warning restore NUnit2045
         Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
         Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
 
@@ -206,8 +208,11 @@ public class BlockAccessListsSyncFeedTests
 
         selector.Update();
 
-        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+        }
 
         BlockInfo block3Info = new(TestItem.KeccakC, 3) { BlockNumber = 3 };
         BlockInfo block2Info = new(TestItem.KeccakB, 2) { BlockNumber = 2 };
@@ -233,8 +238,11 @@ public class BlockAccessListsSyncFeedTests
 
         selector.Update();
 
-        Assert.That(selector.Current, Is.EqualTo(SyncMode.Full | SyncMode.FastBlockAccessLists));
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selector.Current, Is.EqualTo(SyncMode.Full | SyncMode.FastBlockAccessLists));
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
+        }
 
         using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
         Assert.That(batch, Is.Not.Null);

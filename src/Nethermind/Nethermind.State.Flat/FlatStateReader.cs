@@ -6,8 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -15,9 +14,7 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    ITrieNodeCache trieNodeCache,
-    IHistoricalTrieVisitor historicalTrieVisitor,
-    ILogManager logManager
+    IHistoricalTrieVisitor historicalTrieVisitor
 ) : IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
@@ -38,6 +35,17 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
         value = slot.GetValueOrDefault();
+    }
+
+    public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+    {
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        int selfDestructSnapshotIdx = reader.DetermineSelfDestructSnapshotIdx(address);
+        for (int i = 0; i < indexes.Length; i++)
+        {
+            reader.GetSlot(address, indexes[i], selfDestructSnapshotIdx, out UInt256? slot);
+            values[i] = slot.GetValueOrDefault();
+        }
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
@@ -65,9 +73,8 @@ public class FlatStateReader(
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
-            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }
 

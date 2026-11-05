@@ -241,6 +241,9 @@ jobs:
             echo "skip_docker_build=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Capture workflow dispatch time
+        run: echo "DISCOVER_SINCE=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
       - name: Trigger Docker Build Action with Cleaned Ref
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
         uses: benc-uk/workflow-dispatch@v1
@@ -256,6 +259,11 @@ jobs:
             "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
             }'
 
+      - name: Set up .NET for CI scripts
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: 10.0.x
+
       - name: Wait for Docker Build Action to complete
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
         env:
@@ -268,8 +276,7 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ inputs.nethermind_repo_ref || github.ref }}
         run: |
-          chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh
+          dotnet run --file scripts/wait-for-workflow.cs
         working-directory: ${{ github.workspace }}
 
   trigger_node_and_vm_creation:
@@ -328,6 +335,9 @@ jobs:
           echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
           echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
 
+      - name: Capture workflow dispatch time
+        run: echo "DISCOVER_SINCE=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
       - name: Trigger Node creation Repo Action
         uses: benc-uk/workflow-dispatch@v1
         with:
@@ -346,6 +356,11 @@ jobs:
             "additional_l2_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"l2_node_image\":\"${{ steps.extract_variables.outputs.l2_node_image}}\", \"l2_el_image\":\"${{ steps.extract_variables.outputs.l2_el_image}}\", \"l2_el_extra_flags\":\"${{ steps.extract_variables.outputs.l2_el_extra_flags}}\", \"l2_cl_extra_flags\":\"${{ steps.extract_variables.outputs.l2_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
             }'
 
+      - name: Set up .NET for CI scripts
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: 10.0.x
+
       - name: Wait for creation of node
         id: wait_node
         env:
@@ -357,12 +372,11 @@ jobs:
           ORG_NAME: "NethermindEth"
           REPO_NAME: "post-merge-smoke-tests"
           NAME_FILTER: ${{ env.BASE_TAG }}
-          # Must track the ref the run was dispatched to: wait-for-workflow.sh matches on
+          # Must track the ref the run was dispatched to: wait-for-workflow.cs matches on
           # head_branch, so a mismatch here times out even though the run started.
           REF: "${{ inputs.smoke_tests_ref || 'main' }}"
         run: |
-          chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh | tee script-output.txt
+          dotnet run --file scripts/wait-for-workflow.cs | tee script-output.txt
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV

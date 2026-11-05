@@ -53,7 +53,9 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             Block firstBlock = blocksToProcess[0];
             if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
+                BlockHeader? parentOfFirstBlock = processingBranch.BaseBlock is { } baseBlock && baseBlock.Hash == firstBlock.ParentHash
+                    ? baseBlock
+                    : _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     ThrowOrphanedBlock(firstBlock);

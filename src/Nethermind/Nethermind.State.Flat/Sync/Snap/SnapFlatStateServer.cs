@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -23,10 +24,12 @@ public class SnapFlatStateServer(
 
     private readonly ILogger _logger = logManager.GetClassLogger<SnapFlatStateServer>();
 
-    // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
-    private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
+    // Range walks visit trie nodes in path order, which is the key order of the flat trie columns, so on a
+    // FullScan reader they are served by readahead iterators instead of a point get per node, as on HalfPath.
+    // Those iterators do not fill the block cache; HintCacheMiss keeps their point-get fallback out of it too.
+    private const ReadFlags RangeReadFlags = ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss;
 
-    private bool TryGetBundle(Hash256 rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId)
+    private bool TryGetBundle(Hash256 rootHash, ReaderFlags readerFlags, out ReadOnlySnapshotBundle bundle, out StateId stateId)
     {
         if (!stateRootIndex.TryGetStateId(rootHash, out stateId))
         {
@@ -36,7 +39,7 @@ public class SnapFlatStateServer(
 
         try
         {
-            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId, readerFlags);
             return true;
         }
         catch (StateUnavailableException)
@@ -51,7 +54,7 @@ public class SnapFlatStateServer(
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.None, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return EmptyByteArrayList.Instance;
 
         using (bundle)
@@ -95,11 +98,10 @@ public class SnapFlatStateServer(
                                 requestedPath[0].Length == Hash256.Size
                                     ? requestedPath[0]
                                     : requestedPath[0].PadRight(Hash256.Size));
-                            Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), requestedPath[0]);
+                            Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), requestedPath[0]);
                             lookups++;
-                            if (account is not null)
+                            if (storageRoot is not null)
                             {
-                                Hash256? storageRoot = account.StorageRoot;
                                 StorageTree sTree = new(trieStore.GetStorageTrieStore(storagePath), storageRoot, logManager);
 
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; reqStorage++)
@@ -131,7 +133,7 @@ public class SnapFlatStateServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.FullScan, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
@@ -163,7 +165,7 @@ public class SnapFlatStateServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.FullScan, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
@@ -196,8 +198,8 @@ public class SnapFlatStateServer(
                     break;
                 }
 
-                Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
-                if (account is null)
+                Hash256? storageRoot = GetStorageRootByPath(tree, stateId.StateRoot.ToCommitment(), accounts[i].Path.Bytes);
+                if (storageRoot is null)
                 {
                     break;
                 }
@@ -212,7 +214,7 @@ public class SnapFlatStateServer(
                     limitHash1,
                     byteLimit - responseSize,
                     storagePath,
-                    account.StorageRoot,
+                    storageRoot,
                     pathWithStorageCollector,
                     cancellationToken);
 
@@ -249,7 +251,7 @@ public class SnapFlatStateServer(
     {
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
         PatriciaTree tree = new(trieStore, logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: RangeReadFlags, cancellationToken);
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
@@ -257,13 +259,29 @@ public class SnapFlatStateServer(
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private static Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
+    private static Hash256? GetStorageRootByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            RlpReader reader = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : AccountDecoder.Instance.Decode(ref reader);
+            if (bytes.IsNullOrEmpty())
+            {
+                return null;
+            }
+
+            try
+            {
+                if (!AccountDecoder.Instance.TryDecodeStruct(bytes, out AccountStruct account))
+                {
+                    return null;
+                }
+
+                return account.HasStorage ? account.StorageRoot.ToCommitment() : Keccak.EmptyTreeHash;
+            }
+            catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                return AccountDecoder.Instance.Decode(bytes)?.StorageRoot;
+            }
         }
         catch (TrieNodeException)
         {
