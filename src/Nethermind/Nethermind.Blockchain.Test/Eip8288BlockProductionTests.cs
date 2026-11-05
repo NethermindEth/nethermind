@@ -42,7 +42,7 @@ public class Eip8288BlockProductionTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256);
-        Transaction transaction = CreateTransaction(chain, raw, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, raw, []);
         FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)[0];
         byte[] encoded = TxDecoder.Instance.Encode(transaction).Bytes;
         proofs.AddVerified([raw], [[1]], null);
@@ -197,7 +197,7 @@ public class Eip8288BlockProductionTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("rejected-cache"), default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         proofs.AddVerified([dependency], [[1]], null);
         Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         proofs.AddCachedRecursive([dependency], [0xee]);
@@ -444,13 +444,14 @@ public class Eip8288BlockProductionTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             ChainId = chain.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
@@ -609,7 +610,7 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline"), default);
         proofs.AddVerified([dependency], [[1]], null);
-        Transaction proofBacked = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction proofBacked = CreateTransaction(chain, dependency, []);
         Transaction plain = CreatePlainTransaction(chain);
         using (Assert.EnterMultipleScope())
         {
@@ -726,14 +727,15 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
         FrameDependency a = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-a"), default);
         FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-b"), default);
-        Transaction first = CreateTransaction(chain, a, [UInt256.Zero]);
+        Transaction first = CreateTransaction(chain, a, []);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         Assert.That((await AcceptWrapper(service, EncodeWrapper(a, first), first)).IsSuccess, Is.True);
         Flood();
         Assert.That(proofs.Covers(first), Is.True);
-        Transaction replacement = CreateTransaction(chain, b, [UInt256.Zero]);
+        Transaction replacement = CreateTransaction(chain, b, []);
         replacement.GasPrice = 2.GWei;
         replacement.DecodedMaxFeePerGas = 200.GWei;
+        replacement.MaxFee = 2.Ether;
         FrameTxTestFrames.SignSecp256k1(replacement, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         replacement.Hash = replacement.CalculateHash();
         Assert.That((await AcceptWrapper(service, EncodeWrapper(b, replacement), replacement)).IsSuccess, Is.True);
@@ -749,8 +751,8 @@ public class Eip8288BlockProductionTests
         Assert.That(proofs.Covers(replacement), Is.False);
         FrameDependency c = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shutdown"), default);
         FrameDependency unrelated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other-owner"), default);
-        Transaction shuttingDown = CreateTransaction(chain, c, [UInt256.Zero]);
-        Transaction otherOwner = CreateTransaction(chain, unrelated, [UInt256.Zero]);
+        Transaction shuttingDown = CreateTransaction(chain, c, []);
+        Transaction otherOwner = CreateTransaction(chain, unrelated, []);
         proofs.AddVerified([unrelated], [[1]], null);
         proofs.PinPending(otherOwner);
         Assert.That((await AcceptWrapper(service, EncodeWrapper(c, shuttingDown), shuttingDown)).IsSuccess, Is.True);
@@ -778,7 +780,7 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-recursive"), default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [transaction],
@@ -941,14 +943,14 @@ public class Eip8288BlockProductionTests
         // The proven transactions wait behind the added one's nonce, so the statement covers the whole body.
         FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
         proofs.AddVerified([added], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, []), TxHandlingOptions.PersistentBroadcast),
             Is.EqualTo(AcceptTxResult.Accepted));
         FrameDependency[] proven = new FrameDependency[provenCount];
         for (int i = 0; i < proven.Length; i++)
         {
             proven[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"extend-proven:{i}"), default);
             proofs.AddVerified([proven[i]], [[1]], null);
-            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [UInt256.Zero], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.Accepted));
         }
         List<FrameDependency> provenSet = Eip8288Dependencies.Canonicalize(proven);
@@ -1062,8 +1064,8 @@ public class Eip8288BlockProductionTests
         proofs.AddCachedRecursive([second], Eip8288Dependencies.ComputeDepsHash([second]).ToByteArray());
         proofs.AddCachedRecursive([shared], Eip8288Dependencies.ComputeDepsHash([shared]).ToByteArray());
         Transaction sharedTransaction = CreateTransaction(chain, shared, [1]);
-        Transaction blocking = CreateTransaction(chain, first, [UInt256.Zero]);
-        Transaction blocked = CreateTransaction(chain, second, [UInt256.Zero], nonce: 1);
+        Transaction blocking = CreateTransaction(chain, first, []);
+        Transaction blocked = CreateTransaction(chain, second, [], nonce: 1);
         foreach (Transaction transaction in (Transaction[])[sharedTransaction, blocking, blocked])
             Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1090,8 +1092,8 @@ public class Eip8288BlockProductionTests
         List<FrameDependency> gapped = Eip8288Dependencies.Canonicalize([a, c]);
         proofs.AddCachedRecursive(gapped, Eip8288Dependencies.ComputeDepsHash(gapped).ToByteArray());
         Transaction includable = CreateTransaction(chain, a, [1]);
-        Transaction first = CreateTransaction(chain, b, [UInt256.Zero]);
-        Transaction second = CreateTransaction(chain, c, [UInt256.Zero], nonce: 1);
+        Transaction first = CreateTransaction(chain, b, []);
+        Transaction second = CreateTransaction(chain, c, [], nonce: 1);
         foreach (Transaction transaction in (Transaction[])[includable, first, second])
             Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1112,7 +1114,7 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(template, Is.Not.Null);
         Block plain = new(template!.Header, [transaction], [], template.Withdrawals);
@@ -1151,7 +1153,7 @@ public class Eip8288BlockProductionTests
         }
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("inclusion-list"), default);
         proofs.AddVerified([dependency], null, [1]);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         Assert.That(proofs.Covers(transaction), Is.False);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-surplus"), default);
@@ -1252,6 +1254,7 @@ public class Eip8288BlockProductionTests
     [Test]
     public async Task Aggregation_waits_for_pending_transactions_to_become_executable([Values] bool gapped)
     {
+        const long SignatureGasMargin = 1_000;
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs, static builder => builder.AddSingleton<IGenesisPostProcessor>(
@@ -1259,9 +1262,9 @@ public class Eip8288BlockProductionTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         UInt256 lowestFee = BaseFeeCalculator.Calculate(chain.BlockTree.Head!.Header, Eip8288Prototype.Instance) * 49 / 64;
-        Transaction withinMargin = CreateTransaction(chain, dependency, [UInt256.Zero], tx => tx.DecodedMaxFeePerGas = lowestFee);
-        Transaction waiting = CreateTransaction(chain, dependency, [UInt256.Zero],
-            tx => tx.DecodedMaxFeePerGas = gapped ? 100.GWei : lowestFee - 1, nonce: gapped ? 1UL : 0, key: TestItem.PrivateKeyC);
+        Transaction withinMargin = Priced(CreateTransaction(chain, dependency, []), TestItem.PrivateKeyB, SignatureGasMargin);
+        Transaction waiting = CreateTransaction(chain, dependency, [], nonce: gapped ? 1UL : 0, key: TestItem.PrivateKeyC);
+        if (!gapped) waiting = Priced(waiting, TestItem.PrivateKeyC, -SignatureGasMargin);
 
         Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, withinMargin, waiting), withinMargin, waiting)).Data,
             Is.EquivalentTo(new[] { withinMargin.Hash, waiting.Hash }), "received wrappers are admitted whether or not executable");
@@ -1269,7 +1272,7 @@ public class Eip8288BlockProductionTests
         Transaction? gapFill = null;
         if (gapped)
         {
-            gapFill = CreateTransaction(chain, dependency, [UInt256.Zero], nonce: 0, key: TestItem.PrivateKeyC);
+            gapFill = CreateTransaction(chain, dependency, [], nonce: 0, key: TestItem.PrivateKeyC);
             Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, gapFill), gapFill)).IsSuccess, Is.True);
         }
         else Assert.That((await ProduceAndImport(chain, slot: 1)).Transactions, Is.Empty);
@@ -1279,6 +1282,16 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(before, Is.EqualTo(new[] { withinMargin.Hash }));
             Assert.That(after, Is.EquivalentTo(gapped ? [withinMargin.Hash, waiting.Hash, gapFill!.Hash] : new[] { withinMargin.Hash, waiting.Hash }));
+        }
+
+        // max_fee over max_gas, off by a margin since re-signing changes the signature bytes max_gas prices.
+        Transaction Priced(Transaction tx, PrivateKey key, long gasMargin)
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8288Prototype.Instance, out _, out _, out ulong maxGas), Is.True);
+            tx.MaxFee = lowestFee * (ulong)((long)maxGas + gasMargin);
+            FrameTxTestFrames.SignSecp256k1(tx, key, key.Address);
+            tx.Hash = tx.CalculateHash();
+            return tx;
         }
 
         static Hash256[] Aggregated(ProofWrapperService wrappers)
@@ -1301,14 +1314,13 @@ public class Eip8288BlockProductionTests
         ((TestBlockProducer)chain.BlockProducer).PrepareBlobFields = true;
         await KzgPolynomialCommitments.InitializeAsync();
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], static tx =>
+        Transaction transaction = CreateTransaction(chain, dependency, [], static tx =>
         {
             IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
             ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]]);
             proofsManager.ComputeProofsAndCommitments(wrapper);
             tx.NetworkWrapper = wrapper;
             tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
-            tx.MaxFeePerBlobGas = 1.GWei;
         });
         Assert.That(transaction.CarriesBlobs, Is.True);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
@@ -1354,7 +1366,7 @@ public class Eip8288BlockProductionTests
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
         Action<Transaction>? beforeSigning, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
-        ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
+        ulong stateGas = keys.Length == 0 ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
         [
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
@@ -1374,7 +1386,8 @@ public class Eip8288BlockProductionTests
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         beforeSigning?.Invoke(transaction);
         FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);

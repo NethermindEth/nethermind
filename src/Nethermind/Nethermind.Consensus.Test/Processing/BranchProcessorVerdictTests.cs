@@ -95,11 +95,12 @@ public class BranchProcessorVerdictTests
             Type = TxType.FrameTx,
             ChainId = 1,
             SenderAddress = TestItem.AddressA,
-            NonceKeys = [0],
+            NonceKeys = [],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, TestItem.AddressA);
         tx.Hash = tx.CalculateHash();

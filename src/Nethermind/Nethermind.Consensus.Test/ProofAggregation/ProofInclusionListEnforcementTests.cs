@@ -108,12 +108,13 @@ public class ProofInclusionListEnforcementTests
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
             Nonce = scenario == "nonce" ? 1UL : 0UL,
-            NonceKeys = [0],
+            NonceKeys = [],
             SenderAddress = sender,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyA, sender);
         transaction.Hash = transaction.CalculateHash();
@@ -177,12 +178,13 @@ public class ProofInclusionListEnforcementTests
             {
                 Type = TxType.FrameTx,
                 ChainId = chain.SpecProvider.ChainId,
-                NonceKeys = [0],
+                NonceKeys = [],
                 SenderAddress = TestItem.PrivateKeyC.Address,
                 Frames = extraFrames,
                 GasLimit = FrameTxValidation.TotalGasLimit(extraFrames),
                 GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 100.GWei
+                DecodedMaxFeePerGas = 100.GWei,
+                MaxFee = 1.Ether
             };
             FrameTxTestFrames.SignSecp256k1(bad, TestItem.PrivateKeyC, bad.SenderAddress);
             if (scenario.StartsWith("mixed-malformed", System.StringComparison.Ordinal))

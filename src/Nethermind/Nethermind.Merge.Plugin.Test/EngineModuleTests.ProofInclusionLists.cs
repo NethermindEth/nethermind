@@ -441,12 +441,13 @@ public partial class EngineModuleTests
             Type = TxType.FrameTx,
             ChainId = chainId,
             SenderAddress = TestItem.AddressA,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
     }
 
@@ -465,11 +466,12 @@ public partial class EngineModuleTests
             Type = TxType.FrameTx,
             ChainId = chainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
