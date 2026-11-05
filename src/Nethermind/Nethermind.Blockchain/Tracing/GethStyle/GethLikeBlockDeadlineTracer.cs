@@ -31,12 +31,14 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public bool IsTracingRewards => inner.IsTracingRewards;
 
     internal static IBlockTracer<GethLikeTxTrace> Wrap(
-        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external)
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external, bool streaming = false)
     {
         if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null
-            || !SupportsExecutionDeadline(options.Tracer, options.TracerConfig)) return createTracer(options);
+            || !streaming && !SupportsExecutionDeadline(options.Tracer, options.TracerConfig)) return createTracer(options);
         GethTraceDeadlineScope scope = new();
-        return new GethLikeBlockDeadlineTracer(createTracer(options with { DeadlineScope = scope }), options, external, scope);
+        GethLikeBlockDeadlineTracer tracer = new(createTracer(options with { DeadlineScope = scope }), options, external, scope);
+        scope.BeforeEmission = tracer.CompleteExecution;
+        return tracer;
     }
 
     private static bool SupportsExecutionDeadline(string tracer, JsonElement? config)
@@ -148,6 +150,13 @@ internal sealed class GethLikeBlockDeadlineTracer(
         return result;
     }
 
+    private void CompleteExecution()
+    {
+        CheckDeadline();
+        ReleaseDeadline();
+        CheckDeadline();
+    }
+
     private void ReleaseDeadline()
     {
         _scope.Current = null;
@@ -194,6 +203,7 @@ internal sealed class GethTraceDeadlineScope
 {
     internal GethTraceDeadline? Current { get; set; }
     internal bool HasRecoverableSetupFailure { get; set; }
+    internal Action? BeforeEmission { get; set; }
     internal CancellationToken External { get; set; }
 }
 

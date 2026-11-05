@@ -414,11 +414,11 @@ public class GethStyleTracer(
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         long destroyRefund = (long)spec.GasCosts.DestroyRefund;
-        IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? GethLikeBlockDeadlineTracer.Wrap(
-                effective => CreateOptionsTracer(block.Header, filtered with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex),
-                options with { TxHash = txHash }, cancellationToken)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
+        IBlockTracer<GethLikeTxTrace> tracer = GethLikeBlockDeadlineTracer.Wrap(
+            effective => writer is null
+                ? CreateOptionsTracer(block.Header, filtered with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
+                : new GethLikeBlockStreamingMemoryTracer(filtered with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
+            options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
 
         try
         {
@@ -497,7 +497,7 @@ public class GethStyleTracer(
             Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
                 (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
                     effective => CreateOptionsTracer(block.Header, effective, state, specProvider, parallelLogIndex),
-                    options with { TxHash = txHash }, cancellationToken);
+                    options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
@@ -534,13 +534,13 @@ public class GethStyleTracer(
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         Func<Block, Transaction, BlockLogIndex>? logIndex = sharedLogIndex is null ? null : (_, _) => sharedLogIndex;
-        IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? GethLikeBlockDeadlineTracer.Wrap(
-                effective => CreateOptionsTracer(block.Header, options with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex),
-                options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken)
-            : streamsNative
-                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
-                : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
+        IBlockTracer<GethLikeTxTrace> tracer = GethLikeBlockDeadlineTracer.Wrap(
+            effective => writer is null
+                ? CreateOptionsTracer(block.Header, options with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex)
+                : streamsNative
+                    ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(effective, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken, effective.DeadlineScope)
+                    : new GethLikeBlockEnvelopeStreamingTracer(options with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
+            options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken, streaming: writer is not null);
 
         try
         {
