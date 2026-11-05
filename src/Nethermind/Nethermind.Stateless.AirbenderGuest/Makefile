@@ -21,10 +21,12 @@ AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
 BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 
-# Airbender's ROM is 4 MiB: favour size, and leave the reflection data out (about
-# 0.9 MB). The symbols stay: bflat's post-link patch reads them.
+# Airbender's ROM is 4 MiB: favour size. The reflection data stays (about 240 KB):
+# without it the type loader cannot resolve a generic virtual call the compiler
+# left to run time, and the guest fails. The symbols stay too: bflat's post-link
+# patch reads them.
 OPT_FLAGS := -Os
-TRIM_FLAGS := --no-stacktrace-data --no-reflection
+TRIM_FLAGS := --no-stacktrace-data
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
