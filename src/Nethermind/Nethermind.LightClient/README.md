@@ -17,7 +17,7 @@ For a VPS, use the [Docker Compose deployment](../../../tools/LightClient/README
 It includes a persistent light client, Prometheus and provisioned Grafana
 dashboards. RPC and dashboards bind to the host's loopback interface; only
 P2P ports are public. The image has its own release version, starting at
-`nethermindeth/light-client:1.0.0`.
+`nethermindeth/nethermind:light-client-1.0.0`.
 
 Install the SDK selected by the repository's `global.json`, then run from the
 repository root:

@@ -168,7 +168,7 @@ Run from the repository root. The build context must contain the source tree:
 ```sh
 docker build --file tools/LightClient/Dockerfile \
   --build-arg VERSION=1.0.0 \
-  --tag nethermindeth/light-client:1.0.0 .
+  --tag nethermindeth/nethermind:light-client-1.0.0 .
 ```
 
 For both supported architectures with a configured Buildx builder:
@@ -191,7 +191,7 @@ docker run --rm --name nethermind-lc \
   -p 30303:30303/tcp -p 30303:30303/udp \
   -p 9050:9050/tcp -p 9050:9050/udp -p 9051:9051/udp \
   -v nethermind-lc-data:/data \
-  nethermindeth/light-client:1.0.0 \
+  nethermindeth/nethermind:light-client-1.0.0 \
   --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
 
@@ -200,13 +200,13 @@ publishes the release using these inputs:
 
 ```sh
 gh workflow run publish-docker.yml --ref YOUR_RELEASE_REF \
-  -f image-name=light-client -f tag=1.0.0 \
+  -f image-name=nethermind -f tag=light-client-1.0.0 \
   -f dockerfile=tools/LightClient/Dockerfile \
   -f version-file=src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj
 ```
 
 The selected ref must contain the deployment and independent LC version. The
-workflow publishes `nethermindeth/light-client:1.0.0` using the repository's
+workflow publishes `nethermindeth/nethermind:light-client-1.0.0` using the repository's
 configured registry credentials.
 
 ## Check the deployment

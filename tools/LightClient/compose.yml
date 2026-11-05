@@ -11,7 +11,7 @@ x-logging: &logging
 
 services:
   light-client:
-    image: ${LC_IMAGE:-nethermindeth/light-client:1.0.0}
+    image: ${LC_IMAGE:-nethermindeth/nethermind:light-client-1.0.0}
     command:
       - --network
       - ${LC_NETWORK:-mainnet}
