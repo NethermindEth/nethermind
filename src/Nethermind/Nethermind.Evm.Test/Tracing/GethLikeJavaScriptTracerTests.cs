@@ -1939,7 +1939,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         };
         GethTraceOptions options = GethTraceOptions.Default with
         {
-            Tracer = script, CaptureJavaScriptErrors = capture, ExecutionCancellationToken = request.Token, Timeout = TimeSpan.FromSeconds(30)
+            Tracer = script,
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
         };
 
         Stopwatch elapsed = Stopwatch.StartNew();
