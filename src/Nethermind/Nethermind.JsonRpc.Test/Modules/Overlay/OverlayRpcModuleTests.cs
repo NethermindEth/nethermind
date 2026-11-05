@@ -480,11 +480,11 @@ public class OverlayRpcModuleTests
 
     private static void AssertStorageConflict(JsonDocument response, Address address)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(response.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"));
-        }
+        JsonElement root = response.RootElement;
+        string actual = root.TryGetProperty("error", out JsonElement error)
+            ? $"{error.GetProperty("code").GetInt32()} {error.GetProperty("message").GetString()}"
+            : root.GetRawText();
+        Assert.That(actual, Is.EqualTo($"{ErrorCodes.InvalidInput} account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"));
     }
 
     private static long LogIndex(JsonElement log) => long.Parse(log.GetProperty("logIndex").GetString()![2..], NumberStyles.HexNumber);
