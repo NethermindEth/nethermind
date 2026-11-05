@@ -104,6 +104,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 // the trace timeout is armed on the same source only after setup.
                 _cts = _external.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(_external) : new CancellationTokenSource();
                 _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+                _external.ThrowIfCancellationRequested();
             }
             Engine.CurrentEngine = _engine;
             _tracer = engine.CreateTracer(options.Tracer);

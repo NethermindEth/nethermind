@@ -1919,7 +1919,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [Test]
     public void Javascript_request_cancellation_interrupts_a_busy_tracer(
-        [Values("expression", "setup", "result", "render")] string phase, [Values] bool capture)
+        [Values("expression", "setup", "result", "nested", "render")] string phase, [Values] bool capture)
     {
         using CancellationTokenSource request = new();
         using Engine engine = new(Shanghai.Instance);
@@ -1935,6 +1935,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             "expression" => "{fault: function() {}, result: (function() {" + busy + "})()}",
             "setup" => "{fault: function() {}, result: function() { return 1; }, setup: function() {" + busy + "}}",
             "result" => "{fault: function() {}, result: function() {" + busy + "}}",
+            // The host helper re-enters a busy replacement of Uint8Array, and the script catches what it throws.
+            "nested" => "{fault: function() {}, result: function() { enteredForTest(); Uint8Array = function() { var e = Date.now() + 1000; while (Date.now() < e) {} };"
+                + " var end = Date.now() + 5000; while (Date.now() < end) { try { toWord('0x01'); } catch (e) {} } throw new Error('escape'); }}",
             _ => "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { enteredForTest(); return 1; }, rest: o}; }}"
         };
         GethTraceOptions options = GethTraceOptions.Default with
@@ -1958,6 +1961,41 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+    }
+
+    [Test]
+    public void Javascript_interrupt_while_no_script_runs_stops_the_next_script(
+        [Values("construction", "result", "trace timeout")] string before, [Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        // V8 drops an interrupt that arrives while no script runs; the engine has to stop the script entered after it.
+        const string busy = "var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = before == "construction"
+                ? "{fault: function() {}, result: (function() {" + busy + "})()}"
+                : "{fault: function() {}, result: function() {" + busy + "}}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(before == "trace timeout" ? 50 : 30_000)
+        };
+
+        if (before == "construction") engine.Interrupt();
+        Stopwatch elapsed = Stopwatch.StartNew();
+        Exception failure = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            if (before == "result") engine.Interrupt();
+            else if (before == "trace timeout") Thread.Sleep(250);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)));
         }
     }
 
