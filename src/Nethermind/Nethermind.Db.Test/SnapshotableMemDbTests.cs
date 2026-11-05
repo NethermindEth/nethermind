@@ -460,6 +460,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Snapshot_survives_disposal_of_another_snapshot_at_the_same_version([Values] bool newerSnapshotOpen)
+        {
+            SnapshotableMemDb memDb = new();
+            memDb.Set(TestItem.KeccakA, _sampleValue);
+            using IKeyValueStoreSnapshot snapshot = memDb.CreateSnapshot();
+            IKeyValueStoreSnapshot sameVersionSnapshot = memDb.CreateSnapshot();
+            memDb.Set(TestItem.KeccakA, _sampleValue2);
+            memDb.Set(TestItem.KeccakB, _sampleValue2);
+            using IKeyValueStoreSnapshot? newerSnapshot = newerSnapshotOpen ? memDb.CreateSnapshot() : null;
+
+            sameVersionSnapshot.Dispose();
+            sameVersionSnapshot.Dispose();
+
+            Assert.That(snapshot.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+        }
+
+        [Test]
         public void NeverPrune_option_disables_pruning()
         {
             SnapshotableMemDb memDb = new(neverPrune: true);
