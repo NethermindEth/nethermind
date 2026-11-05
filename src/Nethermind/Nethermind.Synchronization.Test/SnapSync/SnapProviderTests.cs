@@ -927,25 +927,62 @@ public class SnapProviderTests
             new ByteArrayListAdapter(ProveStorage(stateTree, account.Path, Keccak.Zero, slots[^1].Path).ToPooledList())), Is.EqualTo(AddRangeResult.OK));
     }
 
-    [Test]
-    public void AddCodes_ShouldPersistOnlyRequestedCodes()
+    // A, B, A again and M are requested; U never is, and no response serves M. Each letter of a response is one item.
+    // Only requested, distinct codes are stored and counted, and every requested hash left unserved is queued again.
+    [TestCase("", "", TestName = "{m} (empty)")]
+    [TestCase("UU", "", TestName = "{m} (padding only)")]
+    [TestCase("UAA", "A", TestName = "{m} (partial, padded, duplicate)")]
+    [TestCase("UBABA", "AB", TestName = "{m} (two distinct codes)")]
+    [NonParallelizable]
+    public void AddCodes_ShouldPersistOnlyRequestedCodes(string response, string expectedStored)
     {
-        using IContainer container = CreateContainer();
-        SnapProvider snapProvider = container.Resolve<SnapProvider>();
-        IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
-
-        byte[] requestedCode = [0x60, 0x01, 0x60, 0x02];
-        byte[] unrequestedCode = [0x60, 0x03];
-        ValueHash256 requestedHash = ValueKeccak.Compute(requestedCode);
-        ValueHash256 unrequestedHash = ValueKeccak.Compute(unrequestedCode);
-
-        using IByteArrayList codes = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { unrequestedCode, requestedCode });
-        snapProvider.AddCodes([requestedHash, TestItem.ValueKeccaks[0]], codes);
-
-        using (Assert.EnterMultipleScope())
+        const long codesBaseline = 17, bytesBaseline = 29;
+        Dictionary<char, byte[]> code = new()
         {
-            Assert.That(codeDb.Get(requestedHash.Bytes), Is.EqualTo(requestedCode));
-            Assert.That(codeDb.KeyExists(unrequestedHash.Bytes), Is.False);
+            ['A'] = [0x60, 0x01, 0x60, 0x02],
+            ['B'] = [0x60, 0x03, 0x60, 0x04, 0x01, 0x00, 0x00],
+            ['M'] = [0x60, 0x05, 0x00],
+            ['U'] = [0x60, 0x06],
+        };
+        ValueHash256 Hash(char c) => ValueKeccak.Compute(code[c]);
+
+        long savedCodes = Metrics.SnapSyncedCodes, savedBytes = Metrics.SnapStateSynced;
+        Metrics.SnapSyncedCodes = codesBaseline;
+        Metrics.SnapStateSynced = bytesBaseline;
+        try
+        {
+            using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+                .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+                .Build();
+            SnapProvider snapProvider = container.Resolve<SnapProvider>();
+            ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+            IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
+            DrainAccountRangePartition(progressTracker);
+
+            ArrayPoolList<byte[]> items = new(response.Length);
+            foreach (char c in response) items.Add(code[c]);
+            using IByteArrayList codes = new ByteArrayListAdapter(items);
+
+            snapProvider.AddCodes([Hash('A'), Hash('B'), Hash('A'), Hash('M')], codes);
+
+            progressTracker.IsFinished(out SnapSyncBatch? retry);
+            using (retry)
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (char c in "ABMU")
+                {
+                    Assert.That(codeDb.Get(Hash(c).Bytes), expectedStored.Contains(c) ? Is.EqualTo(code[c]) : Is.Null, $"code {c} in the DB");
+                }
+
+                Assert.That(Metrics.SnapSyncedCodes - codesBaseline, Is.EqualTo(expectedStored.Length), "SnapSyncedCodes delta");
+                Assert.That(Metrics.SnapStateSynced - bytesBaseline, Is.EqualTo(expectedStored.Sum(c => code[c].Length)), "SnapStateSynced delta");
+                Assert.That(retry?.CodesRequest?.ToArray() ?? [], Is.EquivalentTo("ABM".Where(c => !expectedStored.Contains(c)).Select(Hash)), "codes queued again");
+            }
+        }
+        finally
+        {
+            Metrics.SnapSyncedCodes = savedCodes;
+            Metrics.SnapStateSynced = savedBytes;
         }
     }
 
