@@ -40,6 +40,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
+        _ctx.Coinbase = block.Header.GasBeneficiary ?? Address.Zero;
         _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
         _index = options.TxHash is { } txHash ? block.GetTransactionIndex(txHash.ValueHash256) : 0;

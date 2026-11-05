@@ -1327,6 +1327,19 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
 
+    [Test]
+    public void Ctx_coinbase_is_the_block_beneficiary()
+    {
+        const string coinbaseTracer = @"{
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return (ctx.coinbase instanceof Uint8Array) + ':' + toHex(ctx.coinbase); }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(coinbaseTracer), MStore(), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+
+        AssertResult(trace, $"true:{Miner}");
+    }
+
     [TestCase("5b600056", null, "out of gas")]
     [TestCase("600056", null, "invalid jump destination")]
     [TestCase(null, 2, "out of gas")]
