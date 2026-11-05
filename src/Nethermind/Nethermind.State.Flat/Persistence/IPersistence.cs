@@ -41,6 +41,15 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+
+        /// <summary>Whether the account at <paramref name="address"/> must be read by walking the state trie, as <see cref="GetAccount"/> may miss it.</summary>
+        /// <remarks>For a reader whose flat state is incomplete, as during a migration into flat; the trie nodes are still read through it.</remarks>
+        bool ShouldReadWithTrie(Address address) => false;
+
+        /// <summary>Whether the <paramref name="slot"/> of <paramref name="address"/> must be read by walking its storage trie, as <see cref="TryGetSlot"/> may miss it.</summary>
+        /// <inheritdoc cref="ShouldReadWithTrie(Address)" path="/remarks"/>
+        bool ShouldReadWithTrie(Address address, in UInt256 slot) => false;
+
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);

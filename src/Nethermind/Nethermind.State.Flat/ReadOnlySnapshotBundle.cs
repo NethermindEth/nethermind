@@ -11,9 +11,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -76,6 +80,10 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
     private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
+    private static readonly ReadOnlySpanAction<byte, Span<Account?>> DecodeAccount = static (value, account) => account[0] = AccountDecoder.Instance.Decode(value);
+    private static readonly ReadOnlySpanAction<byte, Span<UInt256>> DecodeSlot = static (value, slot) =>
+        slot[0] = new UInt256(new RlpReader(value).DecodeByteArraySpan(), isBigEndian: true);
+
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
@@ -115,7 +123,7 @@ public sealed class ReadOnlySnapshotBundle(
             return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? account = persistenceReader.GetAccount(address);
+        Account? account = persistenceReader.ShouldReadWithTrie(address) ? GetAccountWithTrie(address) : persistenceReader.GetAccount(address);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -171,7 +179,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -235,7 +243,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -348,6 +356,42 @@ public sealed class ReadOnlySnapshotBundle(
         return found;
     }
 
+    private bool TryGetPersistedSlot(Address address, in UInt256 index, ref UInt256 value) =>
+        persistenceReader.ShouldReadWithTrie(address, index)
+            ? TryGetSlotWithTrie(address, index, ref value)
+            : persistenceReader.TryGetSlot(address, index, ref value);
+
+    /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Account? GetAccountWithTrie(Address address)
+    {
+        Account? account = null;
+        TryGetWithTrie(null, StateRoot, address.ToAccountPath, DecodeAccount, new Span<Account?>(ref account));
+        return account;
+    }
+
+    /// <summary>Reads a slot the persistence reader cannot read flat, from the storage trie of the account in this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TryGetSlotWithTrie(Address address, in UInt256 index, ref UInt256 value)
+    {
+        if (GetAccount(address) is not { HasStorage: true } account) return false;
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(index, ref slotPath);
+        return TryGetWithTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, slotPath, DecodeSlot, new Span<UInt256>(ref value));
+    }
+
+    /// <summary>Passes the value at <paramref name="key"/> of the trie at <paramref name="root"/> to <paramref name="action"/>, starting at the root record the state's snapshot finds by hash, as block processing does.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>Whether the trie has a value at <paramref name="key"/>.</returns>
+    /// <exception cref="MissingTrieNodeException">A node on the path is in none of this bundle's tiers.</exception>
+    private bool TryGetWithTrie<TArg>(Hash256? address, in ValueHash256 root, in ValueHash256 key, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct =>
+        NodeRecordTrie.TryGet(new TrieNodes(this, address), address, (root, StateSnapshot?.ResolveRoot(address, root) ?? 0), key, action, arg);
+
+    /// <summary>The state root of this bundle's state: its newest snapshot's, otherwise persistence's.</summary>
+    private ValueHash256 StateRoot => (StateSnapshot?.To ?? persistedSnapshots.To ?? persistenceReader.CurrentState).StateRoot;
+
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
     // snapshots it walks nor the filter it publishes can be cleaned up under it.
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -418,5 +462,23 @@ public sealed class ReadOnlySnapshotBundle(
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
         bufferPin?.Dispose();
+    }
+
+    /// <summary>One trie of this bundle's state: the buffer records of its in-memory snapshot, then the nodes the persisted snapshots and persistence hold.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    private sealed class TrieNodes(ReadOnlySnapshotBundle bundle, Hash256? address) : INodeRecordStore
+    {
+        private readonly INodeRecordBuffer? _buffer = bundle.StateSnapshot?.BufferPin?.Buffer;
+
+        public bool TryLocate(ulong pointer, out NodeRecord record)
+        {
+            record = default;
+            return pointer != 0 && _buffer is not null && _buffer.TryLocate(pointer, out record);
+        }
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => throw new NotSupportedException();
+
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            bundle.TryLoadPersistedRlp(address, path, hash, ReadFlags.None, action, arg);
     }
 }

@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -155,10 +156,11 @@ public class WorldStateDbDeciderModuleTests
         // As StartPruningTrieStateMigration does: the empty flat DB points at the trie state.
         persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, patricia.RootHash)).Dispose();
 
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), persistence.CreateReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), bufferPin: null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account));
             Assert.That(worldStateManager.VerifyTrie(Build.A.BlockHeader.TestObject, CancellationToken.None), Is.False, "verification is refused while migrating");
             Assert.That(container.Resolve<FlatTrieVerifier>().Stats, Is.EqualTo(default(FlatTrieVerifier.VerificationStats)), "nothing is verified");
         }

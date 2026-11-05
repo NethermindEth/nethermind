@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
@@ -163,10 +164,12 @@ public class ImportFlatDbTests
         }
 
         using IPersistence.IPersistenceReader reader = persistence.Value.CreateReader();
+        using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), persistence.Value.CreateReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), bufferPin: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(head)));
-            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account), "served from the patricia trie state");
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account), "served from the patricia trie state");
             persistenceManager.Received(1).ResetPersistedStateId();
             Assert.That(scheduler.ReceivedCalls(), Is.Not.Empty, "the copy is started");
         }
