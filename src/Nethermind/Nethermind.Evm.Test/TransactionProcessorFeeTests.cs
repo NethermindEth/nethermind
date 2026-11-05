@@ -420,7 +420,7 @@ public class TransactionProcessorFeeTests
             Assert.That(ReadFeeWord(tracer, 1), Is.EqualTo((UInt256)2));
             Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(1.Ether - 7));
             Assert.That(ReadFeeWord(tracer, 3), Is.EqualTo((UInt256)130));
-            Assert.That(processor.GasPurchases, Is.Zero);
+            Assert.That(processor.ReservedGasPayment, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.RefundsPaid, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.SenderAfterFees, Is.EqualTo(1.Ether - 7));
             Assert.That(processor.BeneficiaryAfterFees, Is.EqualTo(UInt256.Zero));
@@ -449,7 +449,7 @@ public class TransactionProcessorFeeTests
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
             Assert.That(ReadFeeWord(tracer, 0), Is.EqualTo(typed ? (UInt256)5 : price));
             Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(UInt256.Zero));
-            Assert.That(processor.GasPurchases, Is.Zero);
+            Assert.That(processor.ReservedGasPayment, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.RefundsPaid, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.BeneficiaryAfterFees, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.CollectorAfterFees, Is.EqualTo(UInt256.Zero));
@@ -485,6 +485,52 @@ public class TransactionProcessorFeeTests
     }
 
     [Test]
+    public void Fee_free_call_keeps_blob_fee_cap_validation([Values] bool capBelowBlobFee)
+    {
+        ObservingFeeProcessor processor = CreateObservingFeeProcessor();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBaseFee(2).WithGasLimit(1_000_000).WithBeneficiary(TestItem.AddressE)
+            .WithExcessBlobGas(_spec.BlobBaseFeeUpdateFraction).TestObject;
+        UInt256 feePerBlobGas = BlobGasCalculator.TryCalculateFeePerBlobGas(header, _spec.BlobBaseFeeUpdateFraction, out UInt256 fee) ? fee : UInt256.Zero;
+        Assert.That(feePerBlobGas, Is.GreaterThan(UInt256.One));
+        Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
+            .WithSenderAddress(TestItem.AddressD).WithTo(TestItem.AddressB).WithGasLimit(100_000)
+            .WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(1).WithValue(UInt256.Zero)
+            .WithMaxFeePerBlobGas(capBelowBlobFee ? feePerBlobGas - 1 : feePerBlobGas).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, _spec));
+        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, FeeFreeCall);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(!capBelowBlobFee), result.ErrorDescription);
+            if (capBelowBlobFee) Assert.That(result.ErrorDescription, Does.Contain("max fee per blob gas less than block blob gas fee"));
+            Assert.That(processor.ReservedGasPayment, Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressD), Is.False);
+        }
+    }
+
+    [Test]
+    public void Fee_free_call_from_system_sender_keeps_system_value_semantics([Values] bool chargeFees)
+    {
+        ObservingFeeProcessor processor = CreateObservingFeeProcessor();
+        Transaction tx = FeeCallTransaction(Address.SystemUser, typed: false, 10, value: 7);
+        CallOutputTracer tracer = new();
+        ExecutionOptions options = chargeFees ? ExecutionOptions.CommitAndRestore : FeeFreeCall;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
+        TransactionResult result = processor.Process(tx, tracer, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok), result.ErrorDescription);
+            // The system processor neither checks nor debits the sender's value on a restoring call, with or without fees.
+            Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(UInt256.Zero));
+            Assert.That(ReadFeeWord(tracer, 3), Is.EqualTo((UInt256)130));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)123));
+        }
+    }
+
+    [Test]
     public void Call_fee_charge_and_legacy_base_fee_validation_are_independent([Values] bool chargeFees, [Values] bool validateLegacy)
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
@@ -499,7 +545,7 @@ public class TransactionProcessorFeeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Error, Is.EqualTo(validateLegacy ? TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee : TransactionResult.ErrorType.None));
-            Assert.That(processor.GasPurchases, Is.EqualTo(chargeFees ? 1 : 0));
+            Assert.That(processor.ReservedGasPayment > UInt256.Zero, Is.EqualTo(chargeFees && !validateLegacy));
             Assert.That(processor.RefundsPaid > 0, Is.EqualTo(chargeFees && !validateLegacy));
             Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
         }
@@ -531,7 +577,7 @@ public class TransactionProcessorFeeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(processor.GasPurchases, Is.EqualTo(1));
+            Assert.That(processor.ReservedGasPayment, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.RefundsPaid, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.BeneficiaryAfterFees, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.CollectorAfterFees, Is.GreaterThan(UInt256.Zero));
@@ -557,7 +603,7 @@ public class TransactionProcessorFeeTests
         {
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
             // The exact SkipValidation route is a system call, whose original fee semantics are no-op.
-            Assert.That(processor.GasPurchases, Is.EqualTo(options == ExecutionOptions.SkipValidation ? 0 : 1));
+            Assert.That(processor.ReservedGasPayment > UInt256.Zero, Is.EqualTo(options != ExecutionOptions.SkipValidation));
             Assert.That(processor.RefundsPaid > 0, Is.EqualTo(options != ExecutionOptions.SkipValidation));
         }
     }
@@ -589,7 +635,7 @@ public class TransactionProcessorFeeTests
         ISpecProvider specProvider, IWorldState worldState, IVirtualMachine vm, ICodeInfoRepository repository)
         : EthereumTransactionProcessorBase(BlobBaseFeeCalculator.Instance, specProvider, worldState, vm, repository, LimboLogs.Instance)
     {
-        public int GasPurchases { get; private set; }
+        public UInt256 ReservedGasPayment { get; private set; }
         public UInt256 RefundsPaid { get; private set; }
         public UInt256 SenderAfterFees { get; private set; }
         public UInt256 BeneficiaryAfterFees { get; private set; }
@@ -598,8 +644,9 @@ public class TransactionProcessorFeeTests
         protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
         {
-            GasPurchases++;
-            return base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+            TransactionResult result = base.BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
+            ReservedGasPayment += senderReservedGasPayment;
+            return result;
         }
 
         protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
