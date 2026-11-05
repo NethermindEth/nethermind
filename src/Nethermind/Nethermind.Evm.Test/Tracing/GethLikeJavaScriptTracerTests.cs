@@ -2212,8 +2212,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             CaptureJavaScriptErrors = capture
         });
 
-    // Keeps about 126 MB alive and leaves 16 MB of garbage per step, so the heap is over the 128 MiB soft limit when
-    // the next step starts and back under it after the collection that enforces the limit.
+    // Keeps 120 MB of arrays alive (about 116 MiB of heap after a collection) and leaves 16 MB of garbage per step,
+    // so the heap is over the 128 MiB soft limit when the next step starts and back under it after the collection
+    // that enforces the limit.
     private const string HoveringTracer = @"{
                     live: null,
                     steps: 0,
