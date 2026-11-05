@@ -102,6 +102,8 @@ public class EraStore : IEraStore
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
+            if (_epochs.TryGetValue(epoch, out string? other))
+                throw new EraException($"Epoch {epoch} has more than one era1 file: {Path.GetFileName(other)} and {Path.GetFileName(file)}.");
             _epochs[epoch] = file;
             hasEraFile = true;
             if (epoch > LastEpoch)

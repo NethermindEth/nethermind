@@ -85,6 +85,16 @@ public class EraExporter(
             if (earlierFiles.Count == 0 || epoch < firstEarlierEpoch) firstEarlierEpoch = epoch;
             earlierFiles[epoch] = Path.GetFileName(file);
         }
+        Dictionary<ulong, List<(string Path, bool IsPlaceholder)>> earlierEpochFiles = [];
+        foreach (string file in fileSystem.Directory.EnumerateFiles(destinationPath).Order(StringComparer.Ordinal))
+        {
+            if (!EraPathUtils.TryParseEpochFile(file, _networkName, out ulong epoch, out bool isPlaceholder) || epoch < startEpoch || epoch >= startEpoch + epochCount)
+                continue;
+
+            if (!earlierEpochFiles.TryGetValue(epoch, out List<(string Path, bool IsPlaceholder)>? files))
+                earlierEpochFiles[epoch] = files = [];
+            files.Add((file, isPlaceholder));
+        }
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> accumulatorEntries = ReadEarlierEntries(accumulatorPath);
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> checksumEntries = ReadEarlierEntries(checksumPath);
 
@@ -136,6 +146,30 @@ public class EraExporter(
             // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
             ulong epoch = startEpoch + epochIdx;
             ulong startingIndex = from + epochIdx * era1Size;
+            ulong endingIndex = Math.Min(startingIndex + era1Size - 1, to);
+
+            // The new file replaces the earlier files of the epoch, so it must hold every block they hold.
+            List<(string Path, bool IsPlaceholder)> epochFiles = earlierEpochFiles.GetValueOrDefault(epoch) ?? [];
+            foreach ((string earlierPath, bool isPlaceholder) in epochFiles)
+            {
+                if (isPlaceholder) continue;
+
+                ulong first, last;
+                try
+                {
+                    using E2StoreReader reader = new(earlierPath);
+                    (first, last) = (reader.First, reader.LastBlock);
+                }
+                catch (Exception e) when (e is EraException or ArgumentException)
+                {
+                    throw new EraException($"Cannot read the block range of {Path.GetFileName(earlierPath)}: {e.Message} Remove or repair it before exporting this epoch.", e);
+                }
+
+                if (first < startingIndex || last > endingIndex)
+                    throw new EraException(
+                        $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: replacing {Path.GetFileName(earlierPath)} (blocks {first}-{last}) would lose blocks. " +
+                        "Export a range that contains them, or export into another directory.");
+            }
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -147,7 +181,7 @@ public class EraExporter(
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (ulong y = startingIndex; y < startingIndex + era1Size && y <= to; y++)
+                for (ulong y = startingIndex; y <= endingIndex; y++)
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
@@ -188,6 +222,12 @@ public class EraExporter(
                 {
                     await Task.Delay(100 * (attempt + 1), cancellation);
                 }
+            }
+
+            foreach ((string earlierPath, _) in epochFiles)
+            {
+                if (!string.Equals(Path.GetFileName(earlierPath), Path.GetFileName(rename), StringComparison.OrdinalIgnoreCase))
+                    fileSystem.File.Delete(earlierPath);
             }
         }
     }

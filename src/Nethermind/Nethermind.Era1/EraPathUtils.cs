@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -91,5 +92,27 @@ public static class EraPathUtils
         string[] parts = Path.GetFileName(fileName).Split(separator);
         epoch = 0;
         return parts.Length == 3 && long.TryParse(parts[1], out epoch);
+    }
+
+    /// <summary>
+    /// Recognizes an era1 file of <paramref name="network"/> that an export may replace:
+    /// <c>&lt;network&gt;-&lt;epoch&gt;-&lt;8 hex digits&gt;.era1</c>. Stricter than <see cref="TryGetEpoch"/>, so it never
+    /// matches a file that is not an era1 file.
+    /// </summary>
+    /// <param name="isPlaceholder">The root part is zero: the file an export writes before it knows the accumulator root.</param>
+    internal static bool TryParseEpochFile(string path, string network, out ulong epoch, out bool isPlaceholder)
+    {
+        epoch = 0;
+        isPlaceholder = false;
+        if (!Path.GetExtension(path.AsSpan()).Equals(".era1", StringComparison.OrdinalIgnoreCase)) return false;
+
+        string[] parts = Path.GetFileNameWithoutExtension(path).Split(separator);
+        if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase)
+            || !ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out epoch)
+            || parts[2].Length != 8 || !parts[2].All(char.IsAsciiHexDigit))
+            return false;
+
+        isPlaceholder = parts[2] == "00000000";
+        return true;
     }
 }

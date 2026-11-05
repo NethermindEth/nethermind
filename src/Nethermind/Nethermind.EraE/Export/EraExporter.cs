@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
+using Nethermind.EraE.E2Store;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
@@ -88,6 +89,7 @@ public sealed class EraExporter(
         // accumulator roots by filename — O(1) per epoch — instead of reading each era file.
         Dictionary<string, ValueHash256> cachedChecksums = LoadHashFile(Path.Combine(destinationPath, ChecksumsSHA256FileName));
         Dictionary<string, ValueHash256> cachedAccumulators = LoadHashFile(Path.Combine(destinationPath, AccumulatorFileName));
+        Dictionary<ulong, List<EpochFile>> earlierEpochFiles = FindEpochFiles(destinationPath, startEpoch, endEpoch);
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
@@ -132,8 +134,17 @@ public sealed class EraExporter(
             ulong writeFrom = Math.Max(epochBlockStart, from);
             ulong writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
-            if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
+            EpochFile[] earlierFiles = ReadEpochFiles(earlierEpochFiles.GetValueOrDefault(epoch));
+            if (TrySkipExistingEpoch(earlierFiles, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
+
+            // The new file replaces the earlier ones, so it must hold every block they hold.
+            if (earlierFiles.Any(f => !f.IsPlaceholder && (f.First < writeFrom || f.Last > writeTo)))
+                throw new EraException(
+                    $"Cannot export blocks {writeFrom}-{writeTo} of epoch {epoch}: replacing " +
+                    string.Join(", ", earlierFiles.Where(static f => !f.IsPlaceholder).Select(static f => $"{Path.GetFileName(f.Path)} (blocks {f.First}-{f.Last})")) +
+                    " would lose blocks. " +
+                    "Export a range that contains them, or export into another directory.");
 
             string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
@@ -203,6 +214,8 @@ public sealed class EraExporter(
                 fileSystem.File.Delete(placeholderPath);
                 throw;
             }
+
+            DeleteSupersededFiles(earlierFiles, finalPath);
         }
     }
 
@@ -218,7 +231,7 @@ public sealed class EraExporter(
     };
 
     private bool TrySkipExistingEpoch(
-        string destinationPath,
+        EpochFile[] earlierFiles,
         ulong epoch,
         int idx,
         ulong writeFrom,
@@ -230,21 +243,21 @@ public sealed class EraExporter(
         Dictionary<string, ValueHash256> cachedAccumulators,
         ref ulong totalProcessed)
     {
-        string? existingFile = null;
-        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
+        // Reuse a finished file only when it holds the requested blocks and the blocks of every other file of the epoch,
+        // so removing the others loses nothing. Prefer the canonical extension, then the first name.
+        EpochFile? reusable = null;
+        foreach (EpochFile candidate in earlierFiles)
         {
-            if (!EraPathUtils.IsEraFile(f)) continue;
-            if (EraPathUtils.IsCanonicalEraFile(f))
-            {
-                existingFile = f;
-                break;
-            }
-            existingFile ??= f;
+            if (candidate.IsPlaceholder || candidate.First > writeFrom || candidate.Last < writeTo) continue;
+            if (!earlierFiles.All(other => other.IsPlaceholder || (candidate.First <= other.First && other.Last <= candidate.Last))) continue;
+            if (reusable is null || (EraPathUtils.IsCanonicalEraFile(candidate.Path) && !EraPathUtils.IsCanonicalEraFile(reusable.Value.Path)))
+                reusable = candidate;
         }
 
-        if (existingFile is null)
+        if (reusable is null)
             return false;
 
+        string existingFile = reusable.Value.Path;
         string fileName = Path.GetFileName(existingFile);
         fileNames[idx] = fileName;
 
@@ -269,9 +282,65 @@ public sealed class EraExporter(
             checksums[idx] = reader.CalculateChecksum();
         }
 
+        DeleteSupersededFiles(earlierFiles, existingFile);
         Interlocked.Add(ref totalProcessed, writeTo - writeFrom + 1);
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
+    }
+
+    /// <summary>
+    /// Lists the era files of this network for the epochs of an export, sorted by name, before anything is written.
+    /// </summary>
+    private Dictionary<ulong, List<EpochFile>> FindEpochFiles(string destinationPath, ulong startEpoch, ulong endEpoch)
+    {
+        Dictionary<ulong, List<EpochFile>> result = [];
+        foreach (string file in fileSystem.Directory.EnumerateFiles(destinationPath).Order(StringComparer.Ordinal))
+        {
+            if (!EraPathUtils.TryParseEpochFile(file, _networkName, out ulong epoch, out bool isPlaceholder) || epoch < startEpoch || epoch > endEpoch)
+                continue;
+
+            if (!result.TryGetValue(epoch, out List<EpochFile>? files))
+                result[epoch] = files = [];
+            files.Add(new EpochFile(file, isPlaceholder, 0, 0));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Reads the block range of each finished file. A placeholder left by an interrupted export is never reused, so it
+    /// is not read. A finished file that cannot be read fails the export and is kept.
+    /// </summary>
+    private static EpochFile[] ReadEpochFiles(List<EpochFile>? files)
+    {
+        if (files is null) return [];
+
+        EpochFile[] result = [.. files];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (result[i].IsPlaceholder) continue;
+
+            try
+            {
+                using E2StoreReader reader = new(result[i].Path);
+                result[i] = result[i] with { First = reader.First, Last = reader.LastBlock };
+            }
+            catch (Exception e) when (e is EraException or ArgumentException)
+            {
+                throw new EraException($"Cannot read the block range of {Path.GetFileName(result[i].Path)}: {e.Message} Remove or repair it before exporting this epoch.", e);
+            }
+        }
+
+        return result;
+    }
+
+    private void DeleteSupersededFiles(EpochFile[] earlierFiles, string survivor)
+    {
+        foreach (EpochFile earlier in earlierFiles)
+        {
+            if (!string.Equals(Path.GetFileName(earlier.Path), Path.GetFileName(survivor), StringComparison.OrdinalIgnoreCase))
+                fileSystem.File.Delete(earlier.Path);
+        }
     }
 
     /// <summary>
@@ -312,4 +381,6 @@ public sealed class EraExporter(
     }
 
     private readonly record struct ManifestEntry(string FileName, ValueHash256 Checksum, ValueHash256 Accumulator);
+
+    private readonly record struct EpochFile(string Path, bool IsPlaceholder, ulong First, ulong Last);
 }

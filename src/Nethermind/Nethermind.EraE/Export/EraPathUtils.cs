@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
 using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -93,5 +94,28 @@ public static class EraPathUtils
         string[] parts = Path.GetFileNameWithoutExtension(fileName).Split(_separator);
         epoch = 0;
         return parts.Length >= 3 && long.TryParse(parts[1], out epoch);
+    }
+
+    /// <summary>
+    /// Recognizes an era file of <paramref name="network"/> that an export may reuse or replace:
+    /// <c>&lt;network&gt;-&lt;epoch&gt;-&lt;8 hex digits&gt;[-&lt;profile&gt;...]</c> with the <c>.ere</c> or legacy
+    /// <c>.erae</c> extension. Stricter than <see cref="TryGetEpoch"/>, so it never matches a file that is not an era file.
+    /// </summary>
+    /// <param name="isPlaceholder">The hash part is zero: the file an export writes before it knows the last block hash.</param>
+    internal static bool TryParseEpochFile(string path, string network, out ulong epoch, out bool isPlaceholder)
+    {
+        epoch = 0;
+        isPlaceholder = false;
+        if (!IsEraFile(path)) return false;
+
+        string[] parts = Path.GetFileNameWithoutExtension(path).Split(_separator);
+        if (parts.Length < 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase)
+            || !ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out epoch)
+            || parts[2].Length != 8 || !parts[2].All(char.IsAsciiHexDigit)
+            || parts.Skip(3).Any(static profile => profile.Length == 0 || !profile.All(char.IsAsciiLetterOrDigit)))
+            return false;
+
+        isPlaceholder = parts[2] == "00000000";
+        return true;
     }
 }

@@ -74,6 +74,20 @@ public class EraStoreTests
         }
     }
 
+    [TestCase("00000000")]
+    [TestCase("deadbeef")]
+    public async Task Create_WhenEpochHasTwoFiles_ThrowsNamingBoth(string hash)
+    {
+        await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(64);
+        string directory = ctx.ResolveTempDirPath();
+        string file = Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00002-*.era1").Single();
+        string duplicate = $"{EraTestModule.TestNetwork}-00002-{hash}.era1";
+        File.Copy(file, Path.Combine(directory, duplicate));
+
+        Assert.That(() => ctx.Resolve<IEraStoreFactory>().Create(directory, null), Throws.TypeOf<EraException>()
+            .With.Message.Contains("Epoch 2").And.Message.Contains(Path.GetFileName(file)).And.Message.Contains(duplicate));
+    }
+
     [Test]
     public async Task FindBlockAndReceipts_EpochWithoutChecksumEntry_ThrowsEraVerificationException()
     {

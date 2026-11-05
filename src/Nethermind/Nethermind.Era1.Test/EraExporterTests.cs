@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using NSubstitute;
@@ -67,6 +68,7 @@ public class EraExporterTests
     [TestCase(0UL, 31UL, 32UL, 63UL, true, false)]
     [TestCase(32UL, 63UL, 16UL, 31UL, false, true)]
     [TestCase(16UL, 47UL, 48UL, 63UL, false, true)]
+    [TestCase(0UL, 40UL, 0UL, 63UL, false, false)]
     public async Task Export_IntoDirectoryWithEarlierExport_WritesManifestsOfWholeDirectory(
         ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile, bool hashOnly)
     {
@@ -114,11 +116,60 @@ public class EraExporterTests
                     Is.EqualTo(await File.ReadAllLinesAsync(Path.Combine(reference.Path, manifest))), manifest);
             }
 
+            Assert.That(Directory.GetFiles(directory, "*.era1"), Has.Length.EqualTo((int)((64 - from) / eraSize)), "one file per epoch");
             for (ulong block = from; block < 64; block += eraSize)
             {
                 Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
             }
+
+            Block source = container.Resolve<IBlockTree>().FindBlock(45, BlockTreeLookupOptions.None)!;
+            (Block? read, TxReceipt[]? receipts) = await eraStore.FindBlockAndReceipts(45);
+            Assert.That(read?.Hash, Is.EqualTo(source.Hash));
+            Assert.That(receipts?.Select(static r => r.GasUsedTotal), Is.EqualTo(container.Resolve<IReceiptStorage>().Get(source).Select(static r => r.GasUsedTotal)));
         }
+    }
+
+    [Test]
+    public async Task Export_WhenEpochHasFinishedPlaceholder_ReplacesItAndKeepsUnrelatedFiles()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 15);
+        string finalName = Path.GetFileName(Directory.GetFiles(directory, "*.era1").Single());
+
+        // Finished and listed by the manifests: only its name tells that the export never published it.
+        string placeholderName = EraPathUtils.Filename(EraTestModule.TestNetwork, 0, Keccak.Zero);
+        File.Move(Path.Combine(directory, finalName), Path.Combine(directory, placeholderName));
+        foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+        {
+            string path = Path.Combine(directory, manifest);
+            await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path)).Replace(finalName, placeholderName));
+        }
+
+        string hash = finalName.Split('-')[2][..8];
+        string[] unrelated = [$"xyz-00000-{hash}.era1", $"abc-00001-{hash}.era1", $"abc-00000-{hash}-noproofs.ere", $"abc-00000-{hash}.txt", $"abc-00000-{hash}.era1.bak"];
+        foreach (string name in unrelated) File.Copy(Path.Combine(directory, placeholderName), Path.Combine(directory, name));
+
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory).Select(Path.GetFileName),
+            Is.EquivalentTo(unrelated.Append(finalName).Concat([EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName])));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+        Assert.That(async () => await eraStore.FindBlockAndReceipts(15), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Export_WhenItWouldLoseBlocksOfEarlierFile_ThrowsBeforeWriting()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 32, 47);
+        string[] before = Directory.GetFiles(directory);
+
+        Assert.That(() => sut.Export(directory, 32, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 32-47)"));
+        Assert.That(Directory.GetFiles(directory), Is.EquivalentTo(before));
     }
 
     [TestCase(1, 1UL)]
