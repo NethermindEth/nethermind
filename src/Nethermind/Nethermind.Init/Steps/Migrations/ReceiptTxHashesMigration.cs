@@ -49,7 +49,6 @@ public sealed class ReceiptTxHashesMigration(
     internal static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ProcessingPause = TimeSpan.FromMilliseconds(200);
     internal static readonly Hash256 NextBlockKey = Keccak.Compute("ReceiptTxHashesMigrationNextBlock");
-    private const ulong Completed = 0;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ReceiptTxHashesMigration>();
     private readonly ProgressLogger _progress = new("Receipt hashes", logManager, timestamper);
@@ -108,9 +107,16 @@ public sealed class ReceiptTxHashesMigration(
 
     private async Task Migrate(CancellationToken cancellationToken)
     {
-        ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? Completed;
+        ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? 0;
+        // Until the pruner loads its pointers, the lowest block reads as at least the configured ancient barrier. Blocks below it
+        // can still hold receipts, and a position saved below it would read as done.
+        BlockHeader? oldest = historyPruner.OldestBlockHeader;
         ulong lowest = GetLowestBlock();
-        if (next < lowest) return;
+        if (next < lowest)
+        {
+            if (oldest is null && _logger.IsDebug) _logger.Debug($"Receipt hashes: the history pruner has not loaded its pointers; blocks from #{next} down wait for a later start.");
+            return;
+        }
 
         if (_logger.IsInfo) _logger.Info($"Adding transaction hashes to stored receipts, blocks {lowest} to {next}.");
 
@@ -152,15 +158,10 @@ public sealed class ReceiptTxHashesMigration(
         if (next < lowest) _progress.TargetValue = _progress.CurrentValue;
         _progress.MarkEnd();
         _progress.LogProgress();
-        if (next < lowest)
-        {
-            WriteNextBlock(Completed);
-            if (_logger.IsInfo) _logger.Info($"Transaction hashes added to stored receipts of {rewritten} blocks, {bytesAdded} bytes added.");
-        }
-        else
-        {
-            WriteNextBlock(next);
-        }
+        // A position below the lowest block reads as done. It is kept rather than a fixed marker: until the pruner loads its
+        // pointers the lowest block can still be the barrier, and a later start continues from here once it drops.
+        WriteNextBlock(next);
+        if (next < lowest && _logger.IsInfo) _logger.Info($"Transaction hashes added to stored receipts of {rewritten} blocks, {bytesAdded} bytes added.");
     }
 
     private ulong GetLowestBlock()

@@ -52,7 +52,12 @@ public partial class DebugRpcModuleTests
     public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
         AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
 
-    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
+    [Test]
+    public Task Buffered_deadline_raw_block_resets_per_transaction_and_stops_on_expiry(
+        [Values] bool filtered, [Values("reset", "before", "after")] string expiry) =>
+        AssertBufferedDeadlineRoute(indexed: false, filtered, expiry, byHash: false, raw: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash, bool raw = false)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -85,8 +90,9 @@ public partial class DebugRpcModuleTests
             DeadlineClock = clock,
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
-        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => byHash
-            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => raw
+            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes, options)
+            : byHash ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
             : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
         budget.Wait(CancellationToken.None);
@@ -110,7 +116,7 @@ public partial class DebugRpcModuleTests
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(probe.Attempts, Is.EqualTo(filtered ? 0 : 1), "the full-block RPC must reach the production parallel route");
+            Assert.That(probe.Attempts, Is.EqualTo(raw || filtered ? 0 : 1), "only retained full-block RPCs take the production parallel route");
             Assert.That(probe.Completed, Is.EqualTo(indexed && !filtered && expiry == "reset" ? 1 : 0), "a successful seeded trace must not silently fall back");
             if (expiry == "reset")
             {
@@ -122,9 +128,13 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
                 Assert.That(response.Result.Error, Is.EqualTo("execution timeout"));
+                Assert.That(response.Data, Is.Null, "an expired buffered trace must not expose partial results");
                 Assert.That(clock.Calls, indexed && !filtered ? Is.InRange(2, 3) : Is.EqualTo(filtered ? indexed ? 1 : 3 : 2),
                     "indexed workers may acquire the execution permit out of transaction order");
             }
+            if (raw)
+                Assert.That(clock.Timers, Has.Count.EqualTo(filtered ? 1 : expiry == "reset" ? 3 : 2),
+                    "each traced transaction owns a fresh budget; expiry prevents later transactions from starting");
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }

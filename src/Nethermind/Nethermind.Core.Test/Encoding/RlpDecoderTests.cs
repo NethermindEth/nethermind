@@ -275,6 +275,32 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Decode_delegate_lists_reject_a_null_decoded_reference_element([Values] bool pooled)
+    {
+        void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+            if (pooled) context.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull()!).Dispose();
+            else context.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccakOrNull()!);
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_delegate_lists_reject_a_null_decoded_nullable_value_element([Values] bool pooled)
+    {
+        void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+            if (pooled) context.DecodeNonNullArrayPoolList<int?>(static (ref RlpReader c) => { c.Position++; return null; }).Dispose();
+            else context.DecodeNonNullArray<int?>(static (ref RlpReader c) => { c.Position++; return null; });
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
     public void Decode_delegate_array_legacy_api_uses_value_type_default()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
