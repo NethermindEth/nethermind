@@ -1,0 +1,114 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using NUnit.Framework;
+
+namespace Ethereum.Legacy.Transition.Test;
+
+/// <summary>
+/// A retesteth <c>{from}To{to}AtDiff{hex}</c> network moves to proof of stake at a terminal total difficulty rather
+/// than at a block number or timestamp.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class TotalDifficultyTransitionTests : BlockchainTestBase
+{
+    private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    private const string WrongPosException = "BlockException.IMPORT_IMPOSSIBLE_PARIS_WRONG_POS";
+    private const string WrongPosBlockHash = "0x4c655cdc61ae3d4619e2e17fde7ba217ee475b8d27657b1ff3ded66630d63283";
+
+    private static string BlockRejectionFixture =>
+        Path.Combine(AppContext.BaseDirectory, "Tests", "bcArrowGlacierToParis", "powToPosBlockRejection.json");
+
+    [TestCase("ArrowGlacierToParisAtDiffC0000", 0xC0000UL)]
+    [TestCase("ArrowGlacierToParisAtDiff1", 1UL)]
+    [TestCase("ArrowGlacierToParisAtDiffabc", 0xABCUL)]
+    public void Network_at_a_total_difficulty_reads_it_as_the_terminal_total_difficulty(string network, ulong expected)
+    {
+        BlockchainTest test = Load(network);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.TransitionTerminalTotalDifficulty, Is.EqualTo((UInt256)expected));
+            Assert.That(test.TransitionForkActivation, Is.Null, "a total difficulty is not a block number");
+            Assert.That(test.Network, Is.SameAs(ArrowGlacier.Instance));
+            Assert.That(test.NetworkAfterTransition, Is.SameAs(Paris.Instance));
+        }
+    }
+
+    [TestCase("ArrowGlacierToParisAtDiff")]
+    [TestCase("ArrowGlacierToParisAtDiffC000G")]
+    [TestCase("ArrowGlacierToParisAtDiff0xC0000")]
+    public void Network_at_a_total_difficulty_without_hex_digits_does_not_load(string network) =>
+        Assert.Throws<FormatException>(() => Load(network));
+
+    [Test]
+    public void Network_at_a_block_number_keeps_its_block_activation()
+    {
+        BlockchainTest test = Load("BerlinToLondonAt5");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.TransitionForkActivation, Is.EqualTo(new ForkActivation(5)));
+            Assert.That(test.TransitionTerminalTotalDifficulty, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Spec_provider_carries_the_terminal_total_difficulty_and_keeps_the_pre_merge_fork()
+    {
+        ISpecProvider specProvider = CreateSpecProvider(Load("ArrowGlacierToParisAtDiffC0000"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.TerminalTotalDifficulty, Is.EqualTo((UInt256)0xC0000));
+            Assert.That(specProvider.MergeBlockNumber, Is.Null, "the merge block is found while the chain runs");
+            Assert.That(specProvider.GetSpec(new ForkActivation(1)), Is.SameAs(ArrowGlacier.Instance));
+            Assert.That(specProvider.GetSpec(new ForkActivation(1_000_000)), Is.SameAs(ArrowGlacier.Instance));
+        }
+    }
+
+    [TestCase("BerlinToLondonAtDiffC0000", Description = "ends before the merge")]
+    [TestCase("ParisToShanghaiAtDiffC0000", Description = "starts after the merge")]
+    public void Spec_provider_refuses_a_total_difficulty_transition_other_than_to_Paris(string network)
+    {
+        BlockchainTest test = Load(network);
+
+        Assert.Throws<NotSupportedException>(() => CreateSpecProvider(test));
+    }
+
+    /// <remarks>
+    /// The fixture's PoS block before the terminal total difficulty never reaches the main chain either way. With
+    /// its expected exception removed, the run fails only if pre-validation rejects it: the block tree would
+    /// otherwise keep it unprocessed and the run would still end at the expected last block.
+    /// </remarks>
+    [Test]
+    public async Task Proof_of_stake_block_before_the_terminal_total_difficulty_is_rejected_by_pre_validation()
+    {
+        JsonNode fixture = JsonNode.Parse(await File.ReadAllTextAsync(BlockRejectionFixture))!;
+        JsonObject testJson = fixture.AsObject().Single().Value!.AsObject();
+        JsonObject wrongPos = testJson["blocks"]!.AsArray()
+            .Single(static b => b!["expectException"]?.GetValue<string>() == WrongPosException)!.AsObject();
+        wrongPos.Remove("expectException");
+
+        BlockchainTest test = JsonToEthereumTest.ConvertToBlockchainTests(fixture.ToJsonString()).Single();
+        test.Name = BlockRejectionFixture;
+
+        AssertionException exception = await Assert.CatchAsync<AssertionException>(() => RunTest(test));
+
+        Assert.That(exception.Message, Does.Contain($"Unexpected invalid block {WrongPosBlockHash}"));
+    }
+
+    private static BlockchainTest Load(string network) =>
+        JsonToEthereumTest.ConvertToBlockchainTests(
+            $$"""{ "atDiff": { "network": "{{network}}", "lastblockhash": "{{ZeroHash}}", "pre": {} } }""").Single();
+}

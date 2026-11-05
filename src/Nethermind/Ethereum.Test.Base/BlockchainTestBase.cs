@@ -102,10 +102,37 @@ public abstract class BlockchainTestBase
             ? [((ForkActivation)0, test.Network)]
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
+        if (test.TransitionTerminalTotalDifficulty is { } terminalTotalDifficulty)
+        {
+            // A total-difficulty transition has no block or timestamp to activate at. The pre-merge fork's rules stay
+            // in force, and PoSSwitcher (from the merge module, see RunTest) classifies each block against the
+            // terminal total difficulty: that decides the PoW/PoS header rules, block rewards and PREVRANDAO, which
+            // is everything Paris changes over the forks it can follow.
+            EnsureTotalDifficultyTransitionIsSupported(test);
+            CustomSpecProvider provider = new(test.ChainId, test.ChainId, transitions.ToArray());
+            provider.UpdateMergeTransitionInfo(null, terminalTotalDifficulty);
+            return provider;
+        }
+
         if (test.NetworkAfterTransition is not null)
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
 
         return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+    }
+
+    /// <summary>
+    /// Refuses a total-difficulty transition whose forks differ in more than the merge, which a provider keyed on
+    /// block numbers cannot switch to at a total difficulty.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The transition starts post-merge or does not end at Paris.</exception>
+    private static void EnsureTotalDifficultyTransitionIsSupported(BlockchainTest test)
+    {
+        if (IsPostMergeSpec(test.Network!) || test.NetworkAfterTransition is not Paris)
+        {
+            throw new NotSupportedException(
+                $"Total-difficulty transition from {test.Network!.Name} to {test.NetworkAfterTransition?.Name} is not supported: " +
+                "only a pre-merge fork to Paris is.");
+        }
     }
 
     protected async Task<EthereumTestResult> RunTest(
@@ -115,11 +142,11 @@ public abstract class BlockchainTestBase
         ITestBlockTracer? tracer = null,
         ISpecProvider? specProvider = null)
     {
-        QuarantinedFixtures.IgnoreIfQuarantined(test);
         Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
-            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
+            _logger.Info($"Network after transition: [{test.NetworkAfterTransition.Name}] at " +
+                (test.TransitionTerminalTotalDifficulty is { } ttd ? $"total difficulty {ttd}" : $"{test.TransitionForkActivation}"));
 
         specProvider ??= CreateSpecProvider(test);
 
@@ -184,7 +211,11 @@ public abstract class BlockchainTestBase
         // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
         // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
         // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
-        if (isEngineTest || isPostMerge)
+        // A total-difficulty transition needs the merge module too: its PoSSwitcher moves the chain to PoS at the
+        // terminal total difficulty, and its decorators then apply the PoS header rules, drop block rewards and skip
+        // the PoW seal check for the post-merge blocks only.
+        bool isTotalDifficultyTransition = test.TransitionTerminalTotalDifficulty is not null;
+        if (isEngineTest || isPostMerge || isTotalDifficultyTransition)
         {
             containerBuilder.AddModule(new TestMergeModule());
         }
@@ -374,6 +405,13 @@ public abstract class BlockchainTestBase
 
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
+            // Across a total-difficulty transition the merge rules classify a header by its total difficulty, which a
+            // decoded block lacks. Without it a zero-difficulty block counts as PoS whatever its parent, so one that
+            // arrives before the terminal total difficulty would pass pre-validation. Fill it in from the parent, as
+            // SyncServer does before the same validation; tests without a TTD keep the header as decoded.
+            if (test.TransitionTerminalTotalDifficulty is not null)
+                SetTotalDifficultyFromParent(correctRlp[i].Block.Header, parentHeader);
+
             bool expectsException = correctRlp[i].ExpectedException is not null;
             // Validate block structure first (mimics SyncServer validation). Pre-validation is
             // not authoritative for invalid-block fixtures: many EEST exceptions (state root,
@@ -413,6 +451,16 @@ public abstract class BlockchainTestBase
         return lastBlockError is null
             ? Result<BlockHeader>.Success(parentHeader)
             : Result<BlockHeader>.Fail(lastBlockError, parentHeader);
+    }
+
+    /// <summary>
+    /// Sets <paramref name="header"/>'s total difficulty to its parent's plus its own difficulty, when
+    /// <paramref name="parent"/> is its parent and has a total difficulty; otherwise leaves it unset.
+    /// </summary>
+    private static void SetTotalDifficultyFromParent(BlockHeader header, BlockHeader parent)
+    {
+        if (parent.Hash == header.ParentHash && parent.TotalDifficulty is { } parentTotalDifficulty)
+            header.TotalDifficulty = parentTotalDifficulty + header.Difficulty;
     }
 
     private static readonly Dictionary<int, int> NewPayloadParamCounts = BuildNewPayloadParamCounts();
