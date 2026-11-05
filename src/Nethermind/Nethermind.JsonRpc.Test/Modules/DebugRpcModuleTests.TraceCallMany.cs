@@ -327,7 +327,20 @@ public partial class DebugRpcModuleTests
             $"account {TestItem.AddressB.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'").SetName("{m}(bundle_storage_conflict_comes_first)");
         yield return new TestCaseData(new Dictionary<Address, AccountOverride> { [TestItem.AddressC] = new() { State = Storage() } },
             Second(stateOverrides: new() { [TestItem.AddressC] = new() { StateDiff = Storage() } }), mixed).SetName("{m}(options_state_and_bundle_stateDiff_get_the_combination_error)");
-        yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), mixed, new BlockOverride { Time = 1 }).SetName("{m}(options_block_override)");
+
+        (string Field, BlockOverride Override)[] blockOverrides =
+        [
+            ("number", new() { Number = 1 }), ("prevRandao", new() { PrevRandao = Keccak.Zero }), ("time", new() { Time = 1 }),
+            ("gasLimit", new() { GasLimit = 1 }), ("feeRecipient", new() { FeeRecipient = TestItem.AddressA }),
+            ("baseFeePerGas", new() { BaseFeePerGas = UInt256.One }), ("blobBaseFee", new() { BlobBaseFee = UInt256.One }),
+            ("beaconRoot", new() { BeaconRoot = Keccak.Zero }), ("empty_withdrawals", new() { Withdrawals = [] }),
+            ("withdrawals", new() { Withdrawals = [new Withdrawal { Address = TestItem.AddressC, AmountInGwei = 1 }] }),
+        ];
+        foreach ((string field, BlockOverride blockOverride) in blockOverrides)
+        {
+            yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), mixed, blockOverride).SetName($"{{m}}(options_block_override_{field})");
+        }
+
         yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), null, new BlockOverride()).SetName("{m}(empty_options_block_override_runs_the_simulation)");
     }
 
