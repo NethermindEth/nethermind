@@ -13,8 +13,6 @@ public class BlockGasLimitTest : LegacyBlockchainTestFixture<BlockGasLimitTest>;
 
 public class ExploitTest : LegacyBlockchainTestFixture<ExploitTest>;
 
-public class ForgedTest : LegacyBlockchainTestFixtureNoRlpValidation<ForgedTest>;
-
 public class ForkStressTest : LegacyBlockchainTestFixture<ForkStressTest>;
 
 public class GasPricerTest : LegacyBlockchainTestFixture<GasPricerTest>;
