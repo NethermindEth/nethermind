@@ -11,9 +11,8 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>Checks the paths of witness nodes of the state and storage tries, whose keys are keccaks of 64 nibbles.</summary>
 /// <remarks>
-/// Two checks stand in for a walk of every witness node reachable from a root: each witness node's own path is checked once
-/// (<see cref="ValidateWitnessNode"/>), and each node a trie operation visits is checked against its depth, so a node off
-/// every visited path is never checked against one.
+/// Each witness node's own path is checked once (<see cref="ValidateWitnessNode"/>), and each node a trie operation visits
+/// against its depth. A node off every visited path is checked against its depth by <see cref="WitnessTriePaths"/>' walk.
 /// </remarks>
 internal static class SecuredTriePath
 {
@@ -62,7 +61,7 @@ internal static class SecuredTriePath
 
     /// <summary>Gets the length of the hex-prefix path of a leaf or an extension.</summary>
     /// <returns>Whether <paramref name="rlp"/> is a list of two items whose first is a non-empty string.</returns>
-    private static bool TryGetPath(ReadOnlySpan<byte> rlp, out int nibbles, out bool isLeaf)
+    internal static bool TryGetPath(ReadOnlySpan<byte> rlp, out int nibbles, out bool isLeaf)
     {
         nibbles = 0;
         isLeaf = false;
@@ -85,7 +84,7 @@ internal static class SecuredTriePath
     /// <param name="start">Where the item's content starts: the item itself for a single byte below 0x80.</param>
     /// <param name="end">Where the item ends.</param>
     /// <returns>Whether the item lies within <paramref name="rlp"/>.</returns>
-    private static bool TryReadItem(ReadOnlySpan<byte> rlp, int position, out bool isList, out int start, out int end)
+    internal static bool TryReadItem(ReadOnlySpan<byte> rlp, int position, out bool isList, out int start, out int end)
     {
         isList = false;
         start = end = 0;

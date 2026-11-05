@@ -130,7 +130,16 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
+    {
+        // Ahead of the load, whose witness tag the trie node reads straight after it.
+        if (address is not null) StorageNodeLoading?.OnStorageNodeLoading(keccak);
+
+        return Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
+    }
+
+    /// <summary>Told the keccak of each storage trie's node before <see cref="Get"/> loads it.</summary>
+    /// <remarks>By keccak alone: the guest's trie leaves the path untracked, as nothing here reads it.</remarks>
+    internal WitnessTriePaths? StorageNodeLoading { get; set; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[]? Find(in NodeKey key)

@@ -21,6 +21,12 @@ internal static partial class WitnessNodeStorage
         return new HashKeyedNodeStorage(nodes);
     }
 
-    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage.</summary>
-    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state) => new RawTrieStore(Create(state));
+    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage, which reports each storage node it loads to
+    /// <paramref name="paths"/>.</summary>
+    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state, out WitnessTriePaths paths)
+    {
+        HashKeyedNodeStorage nodes = (HashKeyedNodeStorage)Create(state);
+        nodes.StorageNodeLoading = paths = new WitnessTriePaths(nodes, state.AsSpan());
+        return new RawTrieStore(nodes);
+    }
 }

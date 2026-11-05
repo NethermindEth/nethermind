@@ -16,7 +16,19 @@ internal static partial class WitnessNodeStorage
     /// <summary>Builds a hash-keyed node storage holding the witness' state nodes.</summary>
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     /// <remarks>Checks each node's own path, and each node it serves against its depth (see <see cref="SecuredTriePath"/>).</remarks>
-    public static INodeStorage Create(IOwnedReadOnlyList<byte[]> state)
+    public static INodeStorage Create(IOwnedReadOnlyList<byte[]> state) => new DepthCheckingNodeStorage(CreateWitnessNodes(state));
+
+    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage that also checks each inlined node a trie
+    /// operation visits against its depth, and reports each storage node it loads to <paramref name="paths"/>.</summary>
+    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state, out WitnessTriePaths paths)
+    {
+        INodeStorage nodes = CreateWitnessNodes(state);
+        paths = new WitnessTriePaths(nodes, state.AsSpan());
+        return new DepthCheckingTrieStore(new DepthCheckingNodeStorage(nodes) { StorageNodeLoading = paths });
+    }
+
+    /// <summary>Builds the node storage holding the witness' state nodes, each checked against its own path only.</summary>
+    private static INodeStorage CreateWitnessNodes(IOwnedReadOnlyList<byte[]> state)
     {
         IKeyValueStore db = MemDb.WithCapacity(state.Count);
         foreach (byte[] stateElement in state)
@@ -26,12 +38,8 @@ internal static partial class WitnessNodeStorage
             db.Set(hash, stateElement);
         }
 
-        return new DepthCheckingNodeStorage(new NodeStorage(db, INodeStorage.KeyScheme.Hash));
+        return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
     }
-
-    /// <summary>Builds a trie store over <see cref="Create"/>'s node storage that also checks each inlined node a trie
-    /// operation visits against its depth.</summary>
-    public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state) => new DepthCheckingTrieStore(Create(state));
 
     /// <remarks>Re-implements <see cref="ITrieStore.GetTrieStore"/>, which <see cref="RawTrieStore"/> does not let a
     /// subclass override.</remarks>
@@ -50,7 +58,8 @@ internal static partial class WitnessNodeStorage
         public void OnEmbeddedNodeResolving(in TreePath path, ReadOnlySpan<byte> rlp) => SecuredTriePath.ValidateAtDepth(rlp, path.Length);
     }
 
-    /// <summary>Checks each node it serves against the depth of the path it is read at.</summary>
+    /// <summary>Checks each node it serves against the depth of the path it is read at, and reports each storage node to
+    /// <see cref="StorageNodeLoading"/> ahead of loading it.</summary>
     /// <remarks>The host's trie walks track the full path of the node they load, so its length is the node's depth. A node
     /// inlined in its parent is not loaded here; <see cref="DepthCheckingScopedTrieStore"/> checks it.</remarks>
     private sealed class DepthCheckingNodeStorage(INodeStorage inner) : INodeStorage
@@ -63,8 +72,12 @@ internal static partial class WitnessNodeStorage
 
         public bool RequirePath => inner.RequirePath;
 
+        public WitnessTriePaths? StorageNodeLoading { get; init; }
+
         public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         {
+            if (address is not null) StorageNodeLoading?.OnStorageNodeLoading(keccak);
+
             byte[]? node = inner.Get(address, path, keccak, readFlags);
             if (node is not null) SecuredTriePath.ValidateAtDepth(node, path.Length);
             return node;

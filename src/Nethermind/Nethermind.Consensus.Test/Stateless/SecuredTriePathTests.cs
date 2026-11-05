@@ -23,20 +23,23 @@ namespace Nethermind.Consensus.Test.Stateless;
 public class SecuredTriePathTests
 {
     private const int KeyNibbles = 64;
+    private const int BranchChildren = 16;
     private static readonly byte[] StorageValue = Rlp.Encode(new byte[] { 0x01 }).Bytes;
     private static readonly byte[] AccountKey = Nibbles.BytesToNibbleBytes(Keccak.Compute(TestItem.AddressA.Bytes).Bytes);
     private static readonly StorageCell Cell = new(TestItem.AddressA, UInt256.One);
 
-    /// <remarks>The node sits in a branch slot no lookup reaches, so only its own path is checked, never its depth.</remarks>
+    /// <remarks>The node sits in a branch slot no lookup reaches, so only the walk of the state trie checks it against its depth.</remarks>
     [TestCase(true, KeyNibbles - 1, true, TestName = "Leaf ending at the key")]
-    [TestCase(true, KeyNibbles, true, TestName = "Leaf exceeding the key across the branch")]
+    [TestCase(true, KeyNibbles - 2, false, TestName = "Leaf ending before the key")]
+    [TestCase(true, KeyNibbles, false, TestName = "Leaf exceeding the key across the branch")]
     [TestCase(true, KeyNibbles + 1, false, TestName = "Leaf exceeding the key by a nibble")]
     [TestCase(true, KeyNibbles + 3, false, TestName = "Leaf exceeding the key by an odd count")]
     [TestCase(false, 1, true, TestName = "Extension of a nibble")]
-    [TestCase(false, KeyNibbles - 1, true, TestName = "Extension short of the key")]
+    [TestCase(false, KeyNibbles - 2, true, TestName = "Extension short of the key")]
+    [TestCase(false, KeyNibbles - 1, false, TestName = "Extension reaching the key across the branch")]
     [TestCase(false, 0, false, TestName = "Empty extension")]
     [TestCase(false, KeyNibbles, false, TestName = "Extension of the key's length")]
-    public void Witness_node_is_checked_against_its_own_path_only(bool isLeaf, int nibbles, bool valid)
+    public void Unread_witness_node_is_checked_against_its_depth(bool isLeaf, int nibbles, bool valid)
     {
         byte[] accountLeaf = AccountLeaf(0);
         byte[] unreadNode = isLeaf
@@ -58,7 +61,8 @@ public class SecuredTriePathTests
 
     public enum StorageAccess { Read, Write, Clear, ClearThenWrite }
 
-    /// <remarks>The slot's leaf is checked once a read or a write visits it; a clear discards the old storage unvisited.</remarks>
+    /// <remarks>The slot's leaf is checked once a read or a write decodes the storage trie; a clear discards the old storage
+    /// undecoded.</remarks>
     [Test]
     public void Storage_leaf_is_checked_once_visited([Values] StorageAccess access, [Values] bool overlong)
     {
@@ -70,9 +74,10 @@ public class SecuredTriePathTests
             overlong && access is StorageAccess.Read or StorageAccess.Write ? Throws.TypeOf<TrieException>() : Throws.Nothing);
     }
 
-    /// <remarks>Deleting the slot collapses the branch into the sibling, which only then is visited.</remarks>
+    /// <remarks>A write decodes the storage trie, whose walk reaches the sibling whether or not a delete collapses the branch
+    /// into it.</remarks>
     [Test]
-    public void Sibling_is_checked_once_a_delete_collapses_into_it([Values] bool overlong, [Values] bool delete)
+    public void Sibling_is_checked_once_its_storage_trie_is_decoded([Values] bool overlong, [Values] bool delete)
     {
         byte[] slotKey = SlotKey();
         byte[] sibling = Leaf(new byte[KeyNibbles - (overlong ? 0 : 1)], StorageValue);
@@ -80,7 +85,7 @@ public class SecuredTriePathTests
         byte[] storageRoot = Branch((slotKey[0], slotLeaf), (slotKey[0] ^ 1, sibling));
 
         Assert.That(() => AccessStorage(storageRoot, [slotLeaf, sibling], StorageAccess.Write, delete ? UInt256.Zero : 2),
-            overlong && delete ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+            overlong ? Throws.TypeOf<TrieException>() : Throws.Nothing);
     }
 
     public enum InlinedNode { SlotLeaf, Sibling }
@@ -89,11 +94,10 @@ public class SecuredTriePathTests
 
     /// <remarks>
     /// Below an extension of 60 nibbles, a branch and its leaves are short enough to be inlined in their parents, so they are
-    /// resolved from that RLP rather than loaded. An overlong slot leaf is visited by every access; an overlong sibling only
-    /// by a delete that collapses the branch into it.
+    /// resolved from that RLP rather than loaded. Every access decodes the storage trie, whose walk reaches both leaves.
     /// </remarks>
     [Test]
-    public void Inlined_leaf_is_checked_once_visited([Values] InlinedNode overlong, [Values] SlotAccess access)
+    public void Inlined_leaf_is_checked_once_its_storage_trie_is_decoded([Values] InlinedNode overlong, [Values] SlotAccess access)
     {
         const int ExtensionNibbles = 60;
         byte[] slotKey = SlotKey();
@@ -104,17 +108,16 @@ public class SecuredTriePathTests
         byte[] extension = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(slotKey[..ExtensionNibbles], isLeaf: false)), Reference(branch)).Bytes;
         Assert.That(branch, Has.Length.LessThan(Hash256.Size), "the branch and its leaves must be inlined");
 
-        bool visited = overlong == InlinedNode.SlotLeaf || access == SlotAccess.Delete;
         Assert.That(() => AccessStorage(extension, [], access == SlotAccess.Read ? StorageAccess.Read : StorageAccess.Write, access == SlotAccess.Delete ? UInt256.Zero : 2),
-            visited ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+            Throws.TypeOf<TrieException>());
     }
 
     /// <remarks>
-    /// An empty extension over an inlined branch is short enough to be inlined too, so only the walk that visits it can reject
-    /// it. On the slot's path every access visits it; as the slot leaf's sibling only a delete that collapses the branch into it.
+    /// An empty extension over an inlined branch is short enough to be inlined too, so only a walk that reaches it can reject
+    /// it. On the slot's path or off it, every access decodes the storage trie, whose walk reaches it.
     /// </remarks>
     [Test]
-    public void Inlined_empty_extension_is_rejected_once_visited([Values] bool onSlotPath, [Values] SlotAccess access)
+    public void Inlined_empty_extension_is_rejected_once_its_storage_trie_is_decoded([Values] bool onSlotPath, [Values] SlotAccess access)
     {
         const int ExtensionNibbles = 60;
         byte[] slotKey = SlotKey();
@@ -138,7 +141,46 @@ public class SecuredTriePathTests
 
         byte[] storageRoot = Extension(slotKey[..ExtensionNibbles], extensionChild);
         Assert.That(() => AccessStorage(storageRoot, onSlotPath ? [] : [extensionChild], access == SlotAccess.Read ? StorageAccess.Read : StorageAccess.Write, access == SlotAccess.Delete ? UInt256.Zero : 2),
-            onSlotPath || access == SlotAccess.Delete ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+            Throws.TypeOf<TrieException>());
+    }
+
+    /// <remarks>The path of each node a lookup reaches ends at the key, but the branch's other child, a leaf as long as a key,
+    /// would end a nibble past it, as in the zkEVM fixture <c>cumulative_path_exceeds_key_length</c>.</remarks>
+    [Test]
+    public void Scope_opens_only_when_every_state_trie_path_ends_at_the_key([Values] bool valid)
+    {
+        byte[] accountLeaf = AccountLeaf(0);
+        byte[] unreadLeaf = Leaf(new byte[KeyNibbles - (valid ? 1 : 0)], StorageValue);
+        byte[] root = Branch((AccountKey[0], accountLeaf), (AccountKey[0] ^ 1, unreadLeaf));
+
+        Assert.That(() => OpenScope(root, accountLeaf, unreadLeaf), valid ? Throws.Nothing : Throws.TypeOf<TrieException>());
+    }
+
+    /// <remarks>Every path to the leaf is checked, yet each node once per depth once the walk has read twice the witness'
+    /// bytes: walked path by path, this tree of 16^16 leaves would not finish. The leaf is short enough to be inlined in the
+    /// branch above it.</remarks>
+    [Test]
+    public void Scope_checks_a_node_every_child_shares_once_per_depth([Values] bool valid)
+    {
+        const int Levels = 16;
+        byte[] node = Leaf(new byte[KeyNibbles - Levels + (valid ? 0 : 1)], [0x01]);
+        byte[][] state = new byte[Levels + 1][];
+        state[0] = node;
+        for (int level = 1; level <= Levels; level++)
+        {
+            (int, byte[])[] children = new (int, byte[])[BranchChildren];
+            for (int i = 0; i < BranchChildren; i++) children[i] = (i, node);
+            state[level] = node = Branch(children);
+        }
+
+        Assert.That(() => OpenScope(node, state), valid ? Throws.Nothing : Throws.TypeOf<TrieException>());
+    }
+
+    private static void OpenScope(byte[] root, params byte[][] nodes)
+    {
+        using Witness witness = CreateWitness([.. nodes, root]);
+        StatelessBlockProcessingEnv env = new(witness, new TestSpecProvider(Amsterdam.Instance), Always.Valid, NullLogManager.Instance);
+        using IDisposable scope = env.WorldState.BeginScope(Build.A.BlockHeader.WithStateRoot(Keccak.Compute(root)).TestObject);
     }
 
     private static void ReadBalance(byte[] root, params byte[][] nodes)
