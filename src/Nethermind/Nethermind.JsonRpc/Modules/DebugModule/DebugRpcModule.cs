@@ -570,7 +570,7 @@ public class DebugRpcModule(
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
         // The block tree's pending hash aliases the head, not a next-block candidate.
-        if (blockNumber?.Type == BlockParameterType.Pending)
+        if (blockNumber.Type == BlockParameterType.Pending)
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("pending block is not available", ErrorCodes.InvalidInput);
 
         BlockHeader? header = TryGetHeader(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
@@ -579,7 +579,7 @@ public class DebugRpcModule(
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
                 && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
             {
-                string? message = blockNumber?.Type switch
+                string? message = blockNumber.Type switch
                 {
                     BlockParameterType.BlockNumber => $"block #{blockNumber.BlockNumber} not found",
                     BlockParameterType.Safe => "safe block not found",
