@@ -89,7 +89,7 @@ NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
 ## 2. Genesis and fork schedule
 
 ```bash
-LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
+LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3
 ```
 
 - Arguments: output directory (must not exist), genesis timestamp, Daisugi fork epoch.
@@ -195,7 +195,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 | `DEVNET_PREFIX`, `EL_RPC_PORT`, `CL_HTTP_PORT` | compose, `check.sh` | `daisugi`, `28545`, `25052` |
 | `EL_RPC` | `proof.sh send` | `http://127.0.0.1:28545` |
 | `BLOBS_SUPPORT` | compose, Nethermind `TxPoolConfig.BlobsSupport` | `StorageWithReorgs`; `Disabled` lets the node negotiate eth/73 before PeerDAS |
-| `GENESIS_DIR`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `DEVNET_USER`, `BEACON_MULTIADDR` | compose | set by the scripts |
+| `GENESIS_DIR`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `DEVNET_USER`, `BEACON_MULTIADDR` | compose | set by the scripts; set them by hand for a manual `docker compose` call |
 
 ## Stop and clean up
 
