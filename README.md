@@ -149,6 +149,15 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
 
+Read-only execution environments use geth's precompile override behavior by default:
+any account override replaces the native precompile with the account's code.
+An extension can register `PrecompileOverridePolicy(disableOnAccountOverride: false)`
+from `Nethermind.State.OverridableEnv` to retain native dispatch while still applying
+storage, balance, nonce and code changes to the overridden state. Explicit precompile
+moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
+original revert bytes through `eth_call` and `eth_estimateGas`, even when an
+extension does not also set the redundant `Revert` exception marker.
+
 ## Getting help
 
 Check out the [docs][docs] first. If the answer is not there, see:

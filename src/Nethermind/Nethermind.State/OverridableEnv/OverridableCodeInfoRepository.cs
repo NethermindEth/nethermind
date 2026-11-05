@@ -14,12 +14,17 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, CodeOverrideStore? overrides = null) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(
+    ICodeInfoRepository codeInfoRepository,
+    IWorldState worldState,
+    CodeOverrideStore? overrides = null,
+    PrecompileOverridePolicy? precompileOverridePolicy = null) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
     private readonly Dictionary<Address, CodeInfo> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
+    public bool DisablePrecompileOnAccountOverride => precompileOverridePolicy?.DisableOnAccountOverride ?? true;
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
@@ -65,7 +70,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = (value, worldState.GetCodeHash(key));
+        CodeInfo value)
+    {
+        if (!DisablePrecompileOnAccountOverride && !_codeOverrides.ContainsKey(key) && GetPrecompile(key, vmSpec) is not null)
+            return;
+
+        _codeOverrides[key] = (value, worldState.GetCodeHash(key));
+    }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {

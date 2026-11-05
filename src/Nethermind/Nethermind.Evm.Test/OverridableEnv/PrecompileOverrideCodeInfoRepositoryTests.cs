@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
@@ -20,6 +23,93 @@ namespace Nethermind.Evm.Test.OverridableEnv;
 [Parallelizable(ParallelScope.All)]
 public class PrecompileOverrideCodeInfoRepositoryTests
 {
+    [Test]
+    public void Account_overrides_preserve_native_dispatch_only_when_opted_in(
+        [Values] bool preservePrecompiles,
+        [Values("empty", "balance", "nonce", "code", "state", "stateDiff")] string field)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = IdentityPrecompile.Address;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository inner = new(worldState);
+        OverridableCodeInfoRepository repository = preservePrecompiles
+            ? new(inner, worldState, precompileOverridePolicy: new(disableOnAccountOverride: false))
+            : new(inner, worldState);
+        Dictionary<UInt256, Hash256> storage = new() { [UInt256.One] = Hash256.FromBytesWithPadding([2]) };
+        AccountOverride accountOverride = field switch
+        {
+            "balance" => new() { Balance = 7 },
+            "nonce" => new() { Nonce = 3 },
+            "code" => new() { Code = [(byte)Instruction.STOP] },
+            "state" => new() { State = storage },
+            "stateDiff" => new() { StateDiff = storage },
+            _ => new()
+        };
+
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = accountOverride }, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetCachedCodeInfo(address, spec).IsPrecompile, Is.EqualTo(preservePrecompiles));
+            Assert.That(repository.GetPrecompile(address, spec), Is.EqualTo(preservePrecompiles ? IdentityPrecompile.Instance : null));
+            if (field is "state" or "stateDiff")
+            {
+                worldState.Get(new StorageCell(address, UInt256.One), out UInt256 value);
+                Assert.That(value, Is.EqualTo((UInt256)2));
+            }
+            if (field == "code") Assert.That(worldState.GetCode(address).Span, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+            if (field == "balance") Assert.That(worldState.GetBalance(address), Is.EqualTo((UInt256)7));
+            if (field == "nonce") Assert.That(worldState.GetNonce(address), Is.EqualTo(3UL));
+        }
+    }
+
+    [Test]
+    public void Preserving_precompiles_does_not_block_ordinary_code_overrides([Values] bool preservePrecompiles)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(worldState), worldState,
+            precompileOverridePolicy: new(disableOnAccountOverride: !preservePrecompiles));
+
+        worldState.ApplyStateOverridesNoCommit(repository, new()
+        {
+            [TestItem.AddressA] = new() { Code = [(byte)Instruction.STOP] }
+        }, spec);
+
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, spec).CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+    }
+
+    [Test]
+    public void Explicit_moves_still_allow_code_at_the_removed_native_origin([Values] bool preservePrecompiles, [Values] bool dynamicAddress)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        Address source = dynamicAddress ? TestItem.AddressB : IdentityPrecompile.Address;
+        ICodeInfoRepository inner = dynamicAddress ? Substitute.For<ICodeInfoRepository>() : new EthereumCodeInfoRepository(worldState);
+        if (dynamicAddress)
+        {
+            inner.GetPrecompile(source, spec).Returns(IdentityPrecompile.Instance);
+            inner.GetCachedCodeInfo(source, false, spec, out _).ReturnsForAnyArgs(new CodeInfo(IdentityPrecompile.Instance));
+        }
+        OverridableCodeInfoRepository repository = new(inner, worldState,
+            precompileOverridePolicy: new(disableOnAccountOverride: !preservePrecompiles));
+
+        worldState.ApplyStateOverridesNoCommit(repository, new()
+        {
+            [source] = new() { MovePrecompileToAddress = TestItem.AddressA, Code = [(byte)Instruction.STOP] }
+        }, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetPrecompile(source, spec), Is.Null);
+            Assert.That(repository.GetCachedCodeInfo(source, spec).CodeSpan, Is.SequenceEqualTo(new byte[] { (byte)Instruction.STOP }));
+            Assert.That(repository.GetPrecompile(TestItem.AddressA, spec), Is.SameAs(IdentityPrecompile.Instance));
+        }
+    }
+
     /// <summary>
     /// A simulated block that crosses into a fork adding a precompile must dispatch it, even at an address whose code
     /// an earlier block overrode.
