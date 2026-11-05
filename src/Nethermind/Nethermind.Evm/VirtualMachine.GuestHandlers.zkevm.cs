@@ -1955,11 +1955,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ip = ref Unsafe.Add(ref ip, 4);
                 goto Dispatch;
             }
-            else if (following == (byte)Instruction.GAS && (TShape.Kind == GasTestShape.Kind || (Unsafe.Add(ref opcode, 4) == (byte)Instruction.LT
-                && Unsafe.Add(ref opcode, 5) == (byte)Instruction.PUSH1 && Unsafe.Add(ref opcode, 7) == (byte)Instruction.JUMPI)))
+            else if (following == (byte)Instruction.GAS && head < EvmStack.MaxStackSize - 2 && (TShape.Kind == GasTestShape.Kind
+                || (Unsafe.Add(ref opcode, 4) == (byte)Instruction.LT && Unsafe.Add(ref opcode, 5) == (byte)Instruction.PUSH1
+                    && Unsafe.Add(ref opcode, 7) == (byte)Instruction.JUMPI)))
             {
                 // PUSH2 c GAS LT PUSH1 d JUMPI, the test of a loop that runs while gasleft() >= c: the stack ends as it
-                // began, two words deeper at most, which the test above leaves room for. Only the comparison of c with
+                // began, two words deeper at most, which the test of head leaves room for. Only the comparison of c with
                 // the gas GAS reads remains, and with gas for the opcodes either way the fused step needs no other test.
                 ulong readGas = pushGas + BaseGasCost.GasCost;
                 ulong fallGas = readGas + 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
