@@ -731,6 +731,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, new[] { expected, expected });
     }
 
+    // Recipient 0x9429…, sender 0xb770…, AddressC 0x76e6…
+    [TestCase(Instruction.CALL, "0x76e68a8696537e4141926f3e528733af9e237d69:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")]
+    [TestCase(Instruction.CALLCODE, "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358")]
+    [TestCase(Instruction.DELEGATECALL, "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xb7705ae4c6f81b66cdb323c65f4e8133690fc099")]
+    public void log_contract_in_child_frame_matches_the_executing_account(Instruction callOpcode, string expected)
+    {
+        const string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        if (log.getDepth() === 2) this.retVal.push(toHex(log.contract.getAddress()) + ':' + toHex(log.contract.getCaller()));
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        Prepare code = callOpcode switch
+        {
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressC, 50000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50000),
+            _ => Prepare.EvmCode.Call(TestItem.AddressC, 50000)
+        };
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code.Op(Instruction.STOP).Done,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        AssertResult(traces, new[] { expected });
+    }
+
     [Test]
     public void post_step_fires_once_per_step()
     {

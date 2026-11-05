@@ -261,9 +261,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
         }
 
-        _log.contract = callType == ExecutionType.DELEGATECALL
-            ? new Log.Contract(_log.contract.Caller, from, value, input)
-            : new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        _log.contract = callType switch
+        {
+            ExecutionType.DELEGATECALL => new Log.Contract(_log.contract.Caller, from, value, input),
+            // CALLCODE runs the callee's code in the caller's account.
+            ExecutionType.CALLCODE => new Log.Contract(from, from, value, input),
+            _ => new Log.Contract(from, to, value, isAnyCreate ? null : input)
+        };
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
