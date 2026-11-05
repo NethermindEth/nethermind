@@ -14,6 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
@@ -149,7 +150,7 @@ public partial class EthRpcModuleTests
     public async Task RpcCallFeePolicy_huge_legacy_price_does_not_multiply_fees_or_require_funding(int hexDigits)
     {
         using Context ctx = await FeePolicyContext();
-        string quantity = new string('f', hexDigits);
+        string quantity = new('f', hexDigits);
         JToken response = await FeePolicyCall(ctx, FeePolicyRequest($"\"gasPrice\":\"0x{quantity}\""));
         AssertFeePolicyOutput(response, "0x" + quantity.PadLeft(64, '0') + FeePolicyWords(1, 0, 0, 7, 0)[2..]);
     }
@@ -190,9 +191,12 @@ public partial class EthRpcModuleTests
         Assert.That((string?)response["error"]?["message"], Does.Contain("invalid opcode"), response.ToString());
         ExecutionOptions[] options = executions.Options.ToArray();
         Assert.That(options.Length, Is.GreaterThanOrEqualTo(2), "the real processor must execute the diagnostic rerun");
-        Assert.That(options, Is.All.EqualTo(options[0]));
-        Assert.That(options[0].HasFlag(ExecutionOptions.SkipTransactionFees), Is.True);
-        Assert.That(options[0].HasFlag(ExecutionOptions.SkipLegacyGasPriceValidation), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options, Is.All.EqualTo(options[0]));
+            Assert.That(options[0].HasFlag(ExecutionOptions.SkipTransactionFees), Is.True);
+            Assert.That(options[0].HasFlag(ExecutionOptions.SkipLegacyGasPriceValidation), Is.True);
+        }
         AssertFeePolicyOutput(await FeePolicyCall(ctx, FeePolicyRequest(), FeePolicyState(code: "0x60005460005260206000f3")), FeePolicyWords(0));
     }
 
@@ -208,8 +212,11 @@ public partial class EthRpcModuleTests
                 FeePolicyWords(20, 1, 0, 0, 12, 5));
             AssertFeePolicyOutput(await FeePolicyCall(ctx, FeePolicyRequest(FeePolicy1559)), FeePolicyWords(4, 1, 0, 0, 7, 0));
         }
-        Assert.That(await ctx.Test.TestEthRpc("eth_getBalance", FeePolicySender, "latest"), Is.EqualTo(balanceBefore));
-        Assert.That(await ctx.Test.TestEthRpc("eth_getBalance", FeePolicyTarget, "latest"), Is.EqualTo(targetBefore));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await ctx.Test.TestEthRpc("eth_getBalance", FeePolicySender, "latest"), Is.EqualTo(balanceBefore));
+            Assert.That(await ctx.Test.TestEthRpc("eth_getBalance", FeePolicyTarget, "latest"), Is.EqualTo(targetBefore));
+        }
         JToken unoverridden = JToken.Parse(await ctx.Test.TestEthRpc("eth_call", FeePolicyRequest(""), "latest"));
         AssertFeePolicyOutput(unoverridden, "0x");
     }
