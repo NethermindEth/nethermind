@@ -10,7 +10,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -31,7 +30,7 @@ namespace Nethermind.State.Flat.Migration;
 /// <para>
 /// Chunks run on <see cref="IBackgroundTaskScheduler"/>, which cancels them when block processing starts, except while the node is
 /// syncing, when they run alongside it. A cancelled chunk, a persist holding the lock or a persist since the walk drops the chunk,
-/// which is walked again a little later.
+/// and the job schedules it again, which the scheduler holds until block processing ends.
 /// </para>
 /// </remarks>
 public sealed class HalfPathMigrator(
@@ -42,16 +41,14 @@ public sealed class HalfPathMigrator(
     IBlockTree blockTree,
     IFlatDbConfig flatDbConfig,
     IBackgroundTaskScheduler scheduler,
-    ITimerFactory timerFactory,
     IProcessExitSource processExitSource,
-    ILogManager logManager) : IDisposable
+    ILogManager logManager)
 {
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
 
     private readonly ILogger _logger = logManager.GetClassLogger<HalfPathMigrator>();
-    private readonly Core.Timers.ITimer _retryTimer = timerFactory.CreateTimer(RetryDelay);
     private readonly Chunk _chunk = new();
     private long _nextProgressLog;
 
@@ -71,8 +68,6 @@ public sealed class HalfPathMigrator(
 
         if (current == StateId.PreGenesis) PointAtHead();
         if (_logger.IsInfo) _logger.Info("Copying the HalfPath trie state into the flat DB in the background.");
-        _retryTimer.AutoReset = false;
-        _retryTimer.Elapsed += (_, _) => Schedule();
         Schedule();
     }
 
@@ -98,17 +93,20 @@ public sealed class HalfPathMigrator(
         persistenceManager.ResetPersistedStateId();
     }
 
-    /// <inheritdoc/>
-    public void Dispose() => _retryTimer.Dispose();
-
     private void Schedule()
     {
         if (processExitSource.Token.IsCancellationRequested) return;
-        if (!scheduler.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) ScheduleLater();
+        if (!scheduler.TryScheduleTask(default(ChunkRequest), RunChunk, ChunkTimeout)) ScheduleAfterDelay();
     }
 
-    /// <summary>Schedules the next chunk after <see cref="RetryDelay"/>; chunks run one at a time, so one timer serves them all.</summary>
-    private void ScheduleLater() => _retryTimer.Start();
+    /// <summary>Schedules the next chunk after <see cref="RetryDelay"/>, giving a full queue time to drain.</summary>
+    /// <remarks>Fire-and-forget: the spawned task only waits, then schedules.</remarks>
+    private void ScheduleAfterDelay() =>
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(RetryDelay, processExitSource.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            Schedule();
+        });
 
     private Task RunChunk(ChunkRequest request, CancellationToken token)
     {
@@ -150,8 +148,7 @@ public sealed class HalfPathMigrator(
                 written = true;
             }))
         {
-            ScheduleLater();
-            return false;
+            return true;
         }
 
         if (!written) return false;

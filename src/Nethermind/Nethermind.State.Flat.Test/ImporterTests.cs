@@ -13,7 +13,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -505,11 +504,9 @@ public class ImporterTests
     private sealed class MigrationRun
     {
         private readonly Queue<Func<Task>> _scheduled = new();
-        private readonly Nethermind.Core.Timers.ITimer _retryTimer = Substitute.For<Nethermind.Core.Timers.ITimer>();
         private readonly HalfPathMigrator _migrator;
         private readonly IDb _metadata;
         private int _rejectedWrites;
-        private bool _retryPending;
 
         public HalfPathMigrationCursor Cursor { get; }
 
@@ -533,32 +530,19 @@ public class ImporterTests
                 return true;
             });
 
-            _retryTimer.When(static timer => timer.Start()).Do(_ => _retryPending = true);
             _migrator = new HalfPathMigrator(persistence, persistenceManager, Cursor, halfPath, Substitute.For<IBlockTree>(),
                 new FlatDbConfig { MigrationChunkNodes = chunkNodes }, new InlineScheduler(_scheduled),
-                new FunctionalTimerFactory(_ => _retryTimer), Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+                Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         }
 
-        /// <summary>Runs the scheduled chunks, firing the retry timer whenever it is due, until nothing is left to run.</summary>
+        /// <summary>Runs the scheduled chunks until nothing is left to run.</summary>
         public async Task Run()
         {
             _migrator.Start();
-            while (Cursor.Current is not null)
+            while (Cursor.Current is not null && _scheduled.TryDequeue(out Func<Task>? chunk))
             {
-                if (_scheduled.TryDequeue(out Func<Task>? chunk))
-                {
-                    await chunk();
-                    Assert.That(BasePersistence.ReadMigrationCursor(_metadata), Is.EqualTo(Cursor.Current), "saved with the chunk it covers");
-                }
-                else if (_retryPending)
-                {
-                    _retryPending = false;
-                    _retryTimer.Elapsed += Raise.Event();
-                }
-                else
-                {
-                    return;
-                }
+                await chunk();
+                Assert.That(BasePersistence.ReadMigrationCursor(_metadata), Is.EqualTo(Cursor.Current), "saved with the chunk it covers");
             }
         }
     }

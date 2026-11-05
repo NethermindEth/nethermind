@@ -16,7 +16,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Init.Steps;
@@ -151,7 +150,7 @@ public class ImportFlatDbTests
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
         Lazy<HalfPathMigrator> migrator = new(() => new HalfPathMigrator(persistence.Value, persistenceManager, migrationCursor.Value, _nodeStorage, blockTree,
-            new FlatDbConfig(), scheduler, Substitute.For<ITimerFactory>(), Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
+            new FlatDbConfig(), scheduler, Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
         StartPruningTrieStateMigration step = new(policy, migrationCursor, migrator);
 
         await step.Execute(CancellationToken.None);
