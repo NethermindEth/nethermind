@@ -299,6 +299,49 @@ public class ForwardedNonceTrackerTests
     }
 
     [Test]
+    public void Pending_nonce_read_under_the_gate_takes_a_head_nonce_past_the_entry()
+    {
+        ReorgingHead head = new();
+        head.MoveTo(7);
+        ForwardedNonceTracker tracker = head.Tracker;
+        Address sender = TestItem.AddressA;
+        // Each optimistic read sees a send record a forward below the head nonce 7, so the fourth read holds the gate.
+        head.AfterStateRead = reads =>
+        {
+            if (reads <= ForwardedNonceTracker.OptimisticPendingReads)
+            {
+                using (tracker.LockSenderAsync(sender).GetAwaiter().GetResult())
+                    tracker.OnForwarded(sender, (ulong)reads);
+            }
+        };
+
+        ulong pending = tracker.GetPendingNonce(sender);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.StateReads, Is.EqualTo(ForwardedNonceTracker.OptimisticPendingReads + 1), "the last read held the gate");
+            Assert.That(pending, Is.EqualTo(7UL), "the head nonce 7 is past the entry 4");
+        }
+    }
+
+    [Test]
+    public void Pending_nonce_without_a_head_is_the_entry_or_zero()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns((Block?)null);
+        ForwardedNonceTracker tracker = new(blockFinder, Substitute.For<IStateReader>());
+
+        ulong nothingTracked = tracker.GetPendingNonce(TestItem.AddressA);
+        tracker.OnForwarded(TestItem.AddressB, 4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nothingTracked, Is.EqualTo(0UL), "the ordinary startup state answers 0, as NullTxPool did");
+            Assert.That(tracker.GetPendingNonce(TestItem.AddressB), Is.EqualTo(5UL));
+        }
+    }
+
+    [Test]
     public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
     {
         ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();
