@@ -1249,8 +1249,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return BuyGas(tx, spec, tracer, opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
 
             premiumPerGas = senderReservedGasPayment = blobBaseFee = UInt256.Zero;
-            TransactionResult result = ValidateGasPrice(tx, opts, VirtualMachine.BlockExecutionContext.Header, out _);
-            if (!result) return result;
+            if (tx.Supports1559 || !HasRestoringCallOption(opts, ExecutionOptions.SkipLegacyGasPriceValidation))
+            {
+                TransactionResult result = ValidateGasPrice(tx, opts, VirtualMachine.BlockExecutionContext.Header, out _);
+                if (!result) return result;
+            }
 
             // Gas has no monetary cost, but the sender must still fund its actual value transfer.
             return WorldState.GetBalance(tx.SenderAddress!) < tx.ValueRef
