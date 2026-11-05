@@ -157,14 +157,18 @@ Read-only execution environments use geth's precompile override behavior by defa
 any account override replaces the native precompile with the account's code.
 An extension can register `PrecompileOverridePolicy(disableOnAccountOverride: false)`
 from `Nethermind.State.OverridableEnv` to retain native dispatch while still applying
-storage, balance, nonce and code changes to the overridden state. Explicit precompile
-moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
+storage, balance, nonce and code changes to the overridden state. Native dispatch
+and the plain bytecode/delegation view share the overridden bytes and are cached
+once per override. Code introspection sees those bytes; calling the native address
+does not follow an overridden EIP-7702 designator, while an ordinary account
+delegating to it executes its visible code without following delegation twice.
+Explicit precompile moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
 original revert bytes through `eth_call` and `eth_estimateGas`, even when an
 extension does not also set the redundant `Revert` exception marker.
 
 Decorators implementing `IOverridableCodeInfoRepository` must forward
 `DisablePrecompileOnAccountOverride`. The override layer uses this policy before
-allocating replacement code wrappers that native-preserving execution would discard.
+allocating unused replacement code wrappers for non-code account overrides.
 RPC tests exercise both default and container-registered policies with empty, balance,
 nonce, code, state and state-diff account overrides.
 
