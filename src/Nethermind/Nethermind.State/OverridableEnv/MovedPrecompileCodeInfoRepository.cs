@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -84,7 +85,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     /// <remarks>No transaction can change the code at a precompile address, so the env's copy is current.</remarks>
     private bool TryGetOverriddenPrecompileAddress(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo, bool forDelegation = false)
     {
-        if (overrides.Code.Count != 0 && overrides.Code.TryGetValue(codeSource, out var entry) &&
+        if (overrides.Code.Count != 0 && overrides.Code.TryGetValue(codeSource, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry) &&
             (vmSpec.IsPrecompile(codeSource) || entry.codeInfo.IsPrecompile))
         {
             codeInfo = forDelegation ? entry.delegatedCodeInfo : entry.codeInfo;

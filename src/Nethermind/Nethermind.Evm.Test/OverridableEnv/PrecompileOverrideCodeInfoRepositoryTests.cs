@@ -68,9 +68,9 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
         OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(worldState), worldState,
             precompileOverridePolicy: new(disableOnAccountOverride: false));
-        var beforeOverride = worldState.TakeSnapshot();
+        Snapshot beforeOverride = worldState.TakeSnapshot();
         worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = [(byte)Instruction.STOP] } }, spec);
-        var beforeWrite = worldState.TakeSnapshot();
+        Snapshot beforeWrite = worldState.TakeSnapshot();
         worldState.InsertCode(address, new byte[] { (byte)Instruction.INVALID }, spec);
         CodeInfo changed = repository.GetCachedCodeInfo(address, spec);
         CodeInfo changedPlain = repository.GetDelegatedCodeInfo(address, spec);
