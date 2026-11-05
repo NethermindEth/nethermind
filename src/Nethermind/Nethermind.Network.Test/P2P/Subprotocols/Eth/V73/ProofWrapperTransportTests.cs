@@ -197,12 +197,20 @@ public class ProofWrapperTransportTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(Wrapper(64, FrameTransaction(1)))]));
+        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, 64).Select(FrameTransaction)]);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
         long issued = link.Sent<GetProofWrappersMessage>().Single().RequestId;
         node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
-        node.Transport.OnProofWrappers(peer, new(issued, []));
-        Assert.That(link.Penalties, Is.Empty, "a response after expiry is discarded");
-        node.Transport.OnProofWrappers(peer, new(issued + 100, []));
+        ProofWrappersMessage late = new(issued, [Entry(wrapper)]);
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        node.Transport.OnProofWrappers(peer, late);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty, "a response after expiry is discarded");
+            Assert.That(allocated, Is.LessThan(wrapper.Length / 4), "a late response is discarded before its bodies are parsed");
+        }
+        node.Transport.OnProofWrappers(peer, new(issued + 100, [Entry(wrapper)]));
         Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
 

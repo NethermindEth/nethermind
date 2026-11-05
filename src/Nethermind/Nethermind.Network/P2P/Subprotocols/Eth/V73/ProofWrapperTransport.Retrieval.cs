@@ -146,8 +146,21 @@ public sealed partial class ProofWrapperTransport
     internal void OnProofWrappers(WrapperPeer peer, ProofWrappersMessage message)
     {
         ProofWrapperEntry[] entries = message.Entries;
-        Returned[] returned = Resolve(peer, message);
         Outbox outbox = new();
+        bool outstanding;
+        lock (_gate)
+        {
+            if (peer.Closed) return;
+            // Resolution parses and hashes every body, so a response to no outstanding request is settled before it.
+            outstanding = peer.Requests.ContainsKey(message.RequestId);
+            if (!outstanding) TakeRequest(peer, message.RequestId, outbox);
+        }
+        if (!outstanding)
+        {
+            outbox.Flush();
+            return;
+        }
+        Returned[] returned = Resolve(peer, message);
         lock (_gate)
         {
             if (peer.Closed) return;
