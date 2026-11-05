@@ -1451,17 +1451,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (outcome == CreateOutcome.AddressCollision)
-        {
-            Assert.That(trace.CustomTracerResult, Is.Null,
-                "address-collision path never enters the EVM; no call frame should be produced");
-            return;
-        }
-
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (outcome == CreateOutcome.Success)
+        if (outcome == CreateOutcome.AddressCollision)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.EqualTo("contract address collision"));
+                Assert.That(frame.To, Is.Null);
+                Assert.That(frame.Gas, Is.EqualTo(100000UL));
+                Assert.That(frame.GasUsed, Is.EqualTo(100000UL), "a collision consumes all the gas");
+                Assert.That(frame.Input.ToArray(), Is.EqualTo(initCode));
+            }
+        }
+        else if (outcome == CreateOutcome.Success)
         {
             using (Assert.EnterMultipleScope())
             {
