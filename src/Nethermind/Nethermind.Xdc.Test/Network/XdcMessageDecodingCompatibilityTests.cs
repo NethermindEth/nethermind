@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Test.P2P;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.P2P.Messages;
 using Nethermind.Xdc.RLP;
