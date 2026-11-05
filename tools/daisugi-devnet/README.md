@@ -7,6 +7,27 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 - Disposable: every run directory holds its own mnemonic, validator keystores and JWT secret. Nothing secret is committed. Never reuse a run's keys elsewhere.
 - Temporary home. Long-term home: AA-PQ, with pinned published images instead of local builds.
 
+## Quick start
+
+From a clone of this branch, on Linux x86_64 with Docker:
+
+1. Build both images: step 1 below.
+2. Start a throwaway single-host chain and wait for finality past the fork (about 4 minutes):
+
+   ```bash
+   cd tools/daisugi-devnet
+   export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
+   NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
+   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
+   ./up.sh run/devnet-1 $NM $LH
+   ./check.sh run/devnet-1
+   ```
+
+3. Send a proof-bearing transaction: step 4.
+4. Stop: `docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
+
+To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` then shows whether the chain still crosses the fork, produces the 25-field header and finalizes.
+
 ## Pinned sources
 
 | Component | Source | Revision |
