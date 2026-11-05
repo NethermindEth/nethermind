@@ -5,12 +5,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.Tools.ProfilingMcp;
-using Nethermind.Tools.ProfilingMcp.DotTrace;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 
 if (args is [ContainerSidecar.IdleOption])
 {
-    await Task.Delay(Timeout.Infinite);
+    await ContainerSidecar.IdleAsync();
     return;
 }
 
@@ -26,9 +25,6 @@ ContainerRouter router = new();
 builder.Services
     .AddSingleton(paths)
     .AddSingleton(router)
-    .AddSingleton<DotTraceLocator>()
-    .AddSingleton<DotTraceSessionManager>()
-    .AddSingleton<Reporter>()
     .AddSingleton<NetTraceReader>()
     .AddMcpServer(static options => options.ServerInstructions = ServerInstructions.Text)
     .WithStdioServerTransport()

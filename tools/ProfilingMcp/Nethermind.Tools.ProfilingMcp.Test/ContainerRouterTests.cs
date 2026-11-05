@@ -55,11 +55,59 @@ public class ContainerRouterTests
     public void Selects_the_engine(string? dockerHost, string[] expected) =>
         Assert.That(ContainerSidecar.EngineArguments(dockerHost), Is.EqualTo(expected));
 
-    [TestCase("1.0.0+4f761854596684de2666471afc8d8c6f694b3a12", ExpectedResult = "nethermindeth/profiling-mcp:4f761854596684de2666471afc8d8c6f694b3a12")]
-    [TestCase("1.0.0", ExpectedResult = null)]
-    [TestCase("1.0.0+", ExpectedResult = null)]
-    [TestCase(null, ExpectedResult = null)]
-    public string? Names_the_published_sidecar_image_by_commit(string? serverVersion) => ContainerSidecar.PublishedImage(serverVersion);
+    [TestCase("linux/amd64", ExpectedResult = "linux-x64")]
+    [TestCase("linux/arm64", ExpectedResult = "linux-arm64")]
+    [TestCase("windows/amd64", ExpectedResult = null)]
+    public string? Picks_the_linux_build_for_the_engine(string platform) => ContainerSidecar.BuildFolder(platform);
+
+    [TestCase("/nethermind-hoodi", ExpectedResult = "nethermind-hoodi")]
+    [TestCase("nethermind-hoodi", ExpectedResult = "nethermind-hoodi")]
+    public string Names_the_container_as_the_cli_does(string inspectedName) => ContainerSidecar.ContainerName(inspectedName);
+
+    [TestCase("/profmcp/Nethermind.Tools.ProfilingMcp\0", ExpectedResult = true)]
+    [TestCase("/profmcp/Nethermind.Tools.ProfilingMcp\0--sidecar-idle\0", ExpectedResult = false)]
+    [TestCase("/nethermind/nethermind\0--config=hoodi\0", ExpectedResult = false)]
+    [TestCase("", ExpectedResult = false)]
+    public bool Tells_servers_from_the_idle_process_and_the_target(string cmdline) => ContainerSidecar.IsServer(cmdline);
+
+    [TestCase(null, ExpectedResult = 30)]
+    [TestCase("", ExpectedResult = 30)]
+    [TestCase("5", ExpectedResult = 5)]
+    [TestCase("0", ExpectedResult = 0)]
+    [TestCase("-1", ExpectedResult = 30)]
+    public double Reads_the_sidecar_idle_limit(string? minutes) => ContainerSidecar.IdleLimit(minutes).TotalMinutes;
+
+    [Test]
+    [CancelAfter(30_000)]
+    public void Stops_a_command_that_hangs()
+    {
+        (string command, string[] arguments) = OperatingSystem.IsWindows() ? ("ping", new[] { "-n", "30", "127.0.0.1" }) : ("sleep", new[] { "30" });
+
+        Assert.That(async () => await ContainerSidecar.RunAsync(command, arguments, TimeSpan.FromSeconds(1)),
+            Throws.InvalidOperationException.With.Message.Contains("did not finish within"));
+    }
+
+    [Test]
+    public async Task Replaces_a_sidecar_that_is_gone_before_calling_it()
+    {
+        int starts = 0;
+        ContainerRouter router = new((_, _) =>
+        {
+            starts++;
+            return Task.FromException<ModelContextProtocol.Client.McpClient>(new InvalidOperationException("container restarted"));
+        });
+
+        Lazy<Task<ModelContextProtocol.Client.McpClient>> first = await router.LiveSidecarAsync((null, "node"));
+        _ = first.Value;
+        Lazy<Task<ModelContextProtocol.Client.McpClient>> second = await router.LiveSidecarAsync((null, "node"));
+        _ = second.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(starts, Is.EqualTo(2));
+        }
+    }
 
     [TestCase(null, ExpectedResult = "/tmp")]
     [TestCase("", ExpectedResult = "/tmp")]

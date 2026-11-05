@@ -3,7 +3,7 @@
 
 using System.Globalization;
 using System.Text;
-using Nethermind.Tools.ProfilingMcp.DotTrace;
+using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 
 namespace Nethermind.Tools.ProfilingMcp.Native;

@@ -35,6 +35,14 @@ internal sealed class ContainerRouter : IAsyncDisposable
     private static readonly HashSet<string> Unrouted = ["list_containers"];
 
     private readonly ConcurrentDictionary<(string? DockerHost, string Container), Lazy<Task<McpClient>>> _sidecars = new();
+    private readonly Func<string?, string, Task<McpClient>> _start;
+
+    public ContainerRouter() : this(ContainerSidecar.StartAsync)
+    {
+    }
+
+    /// <param name="start">Starts a sidecar for an engine and container and connects to it.</param>
+    internal ContainerRouter(Func<string?, string, Task<McpClient>> start) => _start = start;
 
     /// <summary>Adds the container and engine arguments to the tools' input schemas.</summary>
     public static McpRequestHandler<ListToolsRequestParams, ListToolsResult> AddTargetArguments(McpRequestHandler<ListToolsRequestParams, ListToolsResult> next) =>
@@ -69,8 +77,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
                 return await next(request, cancellationToken);
 
             (string?, string) key = (dockerHost, container!);
-            Lazy<Task<McpClient>> sidecar = _sidecars.GetOrAdd(key, static key =>
-                new(() => ContainerSidecar.StartAsync(key.DockerHost, key.Container, CancellationToken.None)));
+            Lazy<Task<McpClient>> sidecar = await LiveSidecarAsync(key);
             try
             {
                 McpClient client = await sidecar.Value.WaitAsync(cancellationToken);
@@ -79,11 +86,30 @@ internal sealed class ContainerRouter : IAsyncDisposable
             catch (Exception e) when (e is not OperationCanceledException && IsGone(sidecar.Value))
             {
                 // A sidecar that failed to start, or ended with its container, is started afresh by the next call.
-                if (_sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)) && sidecar.Value.IsCompletedSuccessfully)
-                    await sidecar.Value.Result.DisposeAsync();
+                await DropAsync(key, sidecar);
                 throw;
             }
         };
+
+    /// <summary>Returns the sidecar for a target, replacing one known to be gone, such as after its target restarted, before it fails a call.</summary>
+    internal async Task<Lazy<Task<McpClient>>> LiveSidecarAsync((string? DockerHost, string Container) key)
+    {
+        Lazy<Task<McpClient>> sidecar = Add(key);
+        if (!sidecar.IsValueCreated || !IsGone(sidecar.Value))
+            return sidecar;
+
+        await DropAsync(key, sidecar);
+        return Add(key);
+    }
+
+    private Lazy<Task<McpClient>> Add((string? DockerHost, string Container) key) =>
+        _sidecars.GetOrAdd(key, key => new(() => _start(key.DockerHost, key.Container)));
+
+    private async Task DropAsync((string?, string) key, Lazy<Task<McpClient>> sidecar)
+    {
+        if (_sidecars.TryRemove(new KeyValuePair<(string?, string), Lazy<Task<McpClient>>>(key, sidecar)) && sidecar.Value.IsCompletedSuccessfully)
+            await sidecar.Value.Result.DisposeAsync();
+    }
 
     /// <summary>Whether a sidecar failed to start or its connection closed, as opposed to one call failing while others still use it.</summary>
     internal static bool IsGone(Task<McpClient> sidecar) =>

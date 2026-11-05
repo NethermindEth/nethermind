@@ -134,7 +134,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         ? "  None reached; the instances are unreachable and will be freed by the next full GC.\n"
         : $"  None found within the {Count(maxVisited)} objects visited; the instances may still be reachable. Raise maxVisited to search further.\n";
 
-    [McpServerTool(Name = "alloc_sample", Title = "Sample allocations by type and code", ReadOnly = true, OpenWorld = false)]
+    [McpServerTool(Name = "alloc_sample", Title = "Sample allocations by type and code", Destructive = false, OpenWorld = false)]
     [Description("Samples what a running process allocates over a time window, using the runtime's allocation tick events (about one per 100 KB) with their call stacks: " +
                  "the types allocated, the methods allocating them (innermost frame outside System.* and Microsoft.*), and the heaviest call stacks. " +
                  "Use it to find allocation hotspots that drive GC pressure; include narrows it to the allocations of one component.")]
@@ -206,7 +206,9 @@ public sealed class MemoryTools(WorkspacePaths paths)
 
     [McpServerTool(Name = "write_dump", Title = "Write a process dump", Destructive = false, OpenWorld = false)]
     [Description("Writes a dump with the full managed heap of a running process, for repeated offline analysis with heap_stats and heap_retention " +
-                 "without pausing the process again. The file is roughly as large as the process's memory.")]
+                 "without pausing the process again. The process is frozen while the dump is written, for tens of seconds: a Nethermind node at 2 GB RSS " +
+                 "was paused for about 40 s and wrote a 5 GB file. That is long enough for a node to miss Engine API deadlines and its validator to miss duties, " +
+                 "so ask before dumping a production node, and prefer heap_stats and heap_retention on the PID. The file is roughly as large as the process's memory.")]
     public async Task<string> WriteDumpAsync([Description("Process ID.")] int pid, CancellationToken cancellationToken = default)
     {
         string path = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}", ".dmp"));
@@ -232,7 +234,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         return $"Dump written: {path} ({Size(new FileInfo(path).Length)})";
     }
 
-    [McpServerTool(Name = "native_memory", Title = "Where a process's memory is", ReadOnly = true, OpenWorld = false)]
+    [McpServerTool(Name = "native_memory", Title = "Where a process's memory is", Destructive = false, OpenWorld = false)]
     [Description("Splits the resident memory (RSS) of a Linux process into what holds it: the GC heap by generation, the .NET runtime's own heaps and JIT code, " +
                  "thread stacks, glibc malloc (arenas and large blocks), other anonymous mmaps such as other allocators' (RocksDB may bring jemalloc), and mapped files. " +
                  "Answers whether memory growth is managed or native; use heap_stats for what is in the GC heap. " +
@@ -281,8 +283,9 @@ public sealed class MemoryTools(WorkspacePaths paths)
                          "malloc keeps freed memory in its arenas, so arena RSS is the native heap's high-water mark rather than what is in use.\n").ToString();
     }
 
-    private const string LiveHeapNote = "For a process ID, the runtime runs one full blocking GC and reports the objects that survive it, so only live objects count; " +
-                                        "the pause is reported. It needs no ptrace and works in containers. Expect seconds per GB of heap.";
+    private const string LiveHeapNote = "For a process ID, the runtime runs one full blocking GC and reports the objects that survive it, so only live objects count. " +
+                                        "The process is paused for that GC: about 0.5 s per GB of live heap (390-550 ms on a Nethermind node with 811 MB live), and the pause is reported. " +
+                                        "It needs no ptrace and works in containers.";
 
     private static string Describe(GcHeapDumpResult dump)
     {

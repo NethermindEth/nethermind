@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Tools.ProfilingMcp.DotTrace;
+namespace Nethermind.Tools.ProfilingMcp.Analysis;
 
 /// <summary>One method reached through one call path, with the time measured there.</summary>
 public sealed class CallTreeNode(string name)
@@ -32,12 +32,12 @@ public sealed class CallTreeNode(string name)
     }
 }
 
-/// <summary>Builds a call tree from the per-method call stacks of a dotTrace report.</summary>
+/// <summary>Builds a call tree from the per-method call stacks of a trace.</summary>
 internal static class CallTree
 {
     /// <remarks>
-    /// Reporter lists each method once per distinct call path, so every path becomes one node. A path prefix that Reporter
-    /// does not list gets the sum of its children's times.
+    /// Each method is listed once per distinct call path, so every path becomes one node. A path prefix that is not listed
+    /// gets the sum of its children's times.
     /// </remarks>
     public static CallTreeNode Build(IEnumerable<FunctionStat> functions, Func<string, bool> isWait)
     {
@@ -52,7 +52,7 @@ internal static class CallTree
 
                 node.TotalTime = stack.TotalTime;
                 node.OwnTime = stack.OwnTime;
-                node.Samples = stack.Samples ?? stack.Calls;
+                node.Samples = stack.Samples;
             }
         }
 

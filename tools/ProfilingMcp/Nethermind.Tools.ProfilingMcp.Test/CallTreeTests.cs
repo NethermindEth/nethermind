@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Tools.ProfilingMcp.DotTrace;
+using Nethermind.Tools.ProfilingMcp.Analysis;
 using NUnit.Framework;
 
 namespace Nethermind.Tools.ProfilingMcp.Test;
@@ -59,7 +59,7 @@ public class CallTreeTests
         FunctionStat[] functions = [Function("Evil</script><b>", Stack(5, 5, "Evil</script><b>"))];
         CallTreeNode tree = CallTree.Build(functions, IsWait);
 
-        string html = HtmlReport.Render("snapshot.dtp", functions, tree, CallTree.Count(tree), IsWait);
+        string html = HtmlReport.Render("trace.nettrace", functions, tree, CallTree.Count(tree), IsWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -70,7 +70,7 @@ public class CallTreeTests
     }
 
     private static FunctionStat Function(string name, params CallStackStat[] stacks) =>
-        new(name, stacks.Sum(static s => s.TotalTime), stacks.Sum(static s => s.OwnTime), null, 1, stacks);
+        new(name, stacks.Sum(static s => s.TotalTime), stacks.Sum(static s => s.OwnTime), 1, stacks);
 
-    private static CallStackStat Stack(double total, double own, params string[] frames) => new(frames, total, own, null, 1);
+    private static CallStackStat Stack(double total, double own, params string[] frames) => new(frames, total, own, 1);
 }

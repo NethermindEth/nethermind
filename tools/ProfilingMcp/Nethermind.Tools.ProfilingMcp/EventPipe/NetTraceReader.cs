@@ -8,7 +8,7 @@ using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 using Microsoft.Diagnostics.Tracing.Stacks;
-using Nethermind.Tools.ProfilingMcp.DotTrace;
+using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.Memory;
 
 namespace Nethermind.Tools.ProfilingMcp.EventPipe;
@@ -17,8 +17,8 @@ namespace Nethermind.Tools.ProfilingMcp.EventPipe;
 /// <param name="ThrowSite">The innermost frame outside the framework (<c>System.*</c>, <c>Microsoft.*</c>, <c>Interop</c>), or the innermost frame when there is none.</param>
 public sealed record ExceptionStat(string Type, string Message, int Count, string ThrowSite);
 
-/// <summary>What a <c>.nettrace</c> file contains, in the shape the dotTrace analysis uses.</summary>
-/// <param name="Functions">Per-method times in milliseconds with every call path, like a dotTrace report with full call stacks.</param>
+/// <summary>What a <c>.nettrace</c> file contains, in the shape the trace analysis uses.</summary>
+/// <param name="Functions">Per-method times in milliseconds with every call path, with full call stacks.</param>
 /// <param name="Exceptions">Thrown exceptions grouped by type and message, most frequent first.</param>
 public sealed record NetTraceProfile(
     IReadOnlyList<FunctionStat> Functions,
@@ -68,7 +68,7 @@ public sealed partial class NetTraceReader
     /// <remarks>
     /// Thread times come from TraceEvent's <see cref="SampleProfilerThreadTimeComputer"/>, which <c>dotnet-trace convert</c> also uses.
     /// It ends each stack with a <c>CPU_TIME</c> or <c>UNMANAGED_CODE_TIME</c> pseudo-frame; both are folded into the managed frame
-    /// above them, so a thread blocked in native code shows as own time of the wait method that called it, as in dotTrace.
+    /// above them, so a thread blocked in native code shows as own time of the wait method that called it.
     /// Unresolved frames (<c>?</c>), mostly P/Invoke stubs such as the socket engine's epoll wait, are folded the same way.
     /// </remarks>
     private static NetTraceProfile Load(string path)
@@ -143,7 +143,7 @@ public sealed partial class NetTraceReader
         frame.StartsWith("Activity ", StringComparison.Ordinal) ||
         frame.StartsWith("Process", StringComparison.Ordinal);
 
-    /// <summary>Turns <c>module!Namespace.Type`1[Arg].Method(args)</c> into <c>Namespace.Type`1.Method</c>, the form dotTrace reports.</summary>
+    /// <summary>Turns <c>module!Namespace.Type`1[Arg].Method(args)</c> into <c>Namespace.Type`1.Method</c>, the form every trace analysis uses.</summary>
     internal static string CleanFrameName(string frame)
     {
         // Arguments go first: a frame without a module, as in event stacks, has its only '!' in them, e.g. Start(!!0&).
@@ -180,7 +180,7 @@ public sealed partial class NetTraceReader
             // A recursive method counts its outermost call only, so its total time is not counted twice.
             bool outermost = path.IndexOf(node.Name) == path.Count - 1;
             functions[node.Name] = (outermost ? total + node.Total : total, own + node.Own, outermost ? samples + node.TotalSamples : samples, stacks);
-            stacks.Add(new CallStackStat([.. path], node.Total, node.Own, null, node.TotalSamples));
+            stacks.Add(new CallStackStat([.. path], node.Total, node.Own, node.TotalSamples));
 
             foreach (PathNode child in node.Children)
                 Visit(child);
@@ -193,7 +193,7 @@ public sealed partial class NetTraceReader
 
         List<FunctionStat> result = [];
         foreach ((string name, (double total, double own, long samples, List<CallStackStat> stacks)) in functions)
-            result.Add(new FunctionStat(name, total, own, null, samples, stacks));
+            result.Add(new FunctionStat(name, total, own, samples, stacks));
         return result;
     }
 

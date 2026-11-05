@@ -3,7 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using Nethermind.Tools.ProfilingMcp.DotTrace;
+using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 using NUnit.Framework;
 
@@ -16,13 +16,13 @@ public class NetTraceTests
     [TestCase("Nethermind.Consensus!Scheduler.Activity`1+<Do>d__14[Wrapper+Request`1[System.Int32]].MoveNext()", ExpectedResult = "Scheduler.Activity`1+<Do>d__14.MoveNext")]
     [TestCase("System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[System.__Canon](!!0&)", ExpectedResult = "System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start")]
     [TestCase("?", ExpectedResult = "?")]
-    public string Cleans_frame_names_to_the_dottrace_form(string frame) => NetTraceReader.CleanFrameName(frame);
+    public string Cleans_frame_names_to_type_and_method(string frame) => NetTraceReader.CleanFrameName(frame);
 
     [Test]
     public void Diff_subtracts_baseline_and_keeps_methods_present_in_one_trace_only()
     {
-        FunctionStat[] baseline = [new("A", 10, 4, null, 1, []), new("Gone", 3, 3, null, 1, [])];
-        FunctionStat[] current = [new("A", 7, 5, null, 1, []), new("New", 2, 2, null, 1, [])];
+        FunctionStat[] baseline = [new("A", 10, 4, 1, []), new("Gone", 3, 3, 1, [])];
+        FunctionStat[] current = [new("A", 7, 5, 1, []), new("New", 2, 2, 1, [])];
 
         Dictionary<string, (double, double)> deltas = TraceTools.Diff(baseline, current).ToDictionary(static f => f.Name, static f => (f.TotalTime, f.OwnTime));
 

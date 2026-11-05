@@ -113,7 +113,7 @@ public static class NativeSampler
         }
         catch (Win32Exception)
         {
-            throw new InvalidOperationException("perf is not installed. The sidecar image includes it; on a Linux host install linux-perf or linux-tools for the running kernel.");
+            throw new InvalidOperationException("perf is not installed. A sidecar image has it unless it was built on a base image without apt; on a Linux host install linux-perf or linux-tools for the running kernel.");
         }
 
         using (process)

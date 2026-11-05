@@ -4,9 +4,9 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Nethermind.Tools.ProfilingMcp.DotTrace;
+namespace Nethermind.Tools.ProfilingMcp.Analysis;
 
-/// <summary>Renders a dotTrace snapshot as a self-contained HTML page with a hotspot table and a flame graph.</summary>
+/// <summary>Renders a CPU trace as a self-contained HTML page with a hotspot table and a flame graph.</summary>
 /// <remarks>
 /// The page embeds its data and script and loads nothing, so it opens offline and can be shared as a single file.
 /// The JSON is written with the default encoder, which escapes <c>&lt;</c>, so method names cannot close the script element.
@@ -52,7 +52,7 @@ internal static class HtmlReport
                 json.WriteNumberValue(Id(f.Name));
                 json.WriteNumberValue(f.OwnTime);
                 json.WriteNumberValue(f.TotalTime);
-                json.WriteNumberValue(f.Samples ?? f.Calls ?? 0);
+                json.WriteNumberValue(f.Samples ?? 0);
                 json.WriteNumberValue(isWait(f.Name) ? 1 : 0);
                 json.WriteEndArray();
             }
@@ -152,7 +152,6 @@ internal static class HtmlReport
           <div class="controls">
             <input type="search" id="search" placeholder="Search methods (regex), e.g. BlockProcessor|TransactionProcessor">
             <label><input type="checkbox" id="hide-waits" checked> Hide blocking waits</label>
-            <label><input type="checkbox" id="hide-pseudo"> Hide profiler pseudo-frames</label>
           </div>
           <section>
             <h2>Flame graph</h2>
@@ -183,14 +182,14 @@ internal static class HtmlReport
         // Tree node: [name, total, own, wait, samples, children]; parent links are added for breadcrumbs.
         (function link(n, p) { n.parent = p; for (const c of n[5]) link(c, n); })(D.tree, null);
 
-        // n.x is the part of a node's time that the active filters hide: blocking waits and pseudo-frames such as [Native or optimized code].
-        const waitIds = new Set(D.waits), isPseudo = id => N[id].startsWith('[');
-        let hideWaits = true, hidePseudo = false, search = null, zoom = D.tree;
+        // n.x is the part of a node's time that the blocking-wait filter hides.
+        const waitIds = new Set(D.waits);
+        let hideWaits = true, search = null, zoom = D.tree;
         function recompute() {
           (function hidden(n) {
             let x = 0;
             for (const c of n[5]) x += hidden(c);
-            if ((hideWaits && waitIds.has(n[0])) || (hidePseudo && isPseudo(n[0]))) x = n[1];
+            if (hideWaits && waitIds.has(n[0])) x = n[1];
             return n.x = x;
           })(D.tree);
         }
@@ -198,21 +197,16 @@ internal static class HtmlReport
 
         $('meta').textContent = `${D.snapshot} · captured ${D.captured} · report generated ${D.generated}`;
         const active = D.totalTime - D.waitTime;
-        const pseudo = D.tree[5].filter(c => isPseudo(c[0])).reduce((s, c) => s + c[1], 0);
-        // Pseudo-frames start hidden when they would squeeze the managed call tree into slivers.
-        hidePseudo = $('hide-pseudo').checked = pseudo > active / 2;
         $('cards').innerHTML = [
           [fmt(D.totalTime / 1000) + ' s', 'Sampled time, all threads'],
           [pct(D.waitTime, D.totalTime), 'Blocked in waits'],
           [fmt(active / 1000) + ' s', 'Time outside waits'],
-          [pct(pseudo, active), 'Of that in pseudo-frames'],
           [D.methods.toLocaleString('en-US'), 'Methods'],
           [D.nodes.toLocaleString('en-US'), 'Call-tree nodes shown'],
         ].map(([v, k]) => `<div class="card"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
         $('flame-note').textContent =
-          `Times are wall-clock milliseconds summed over all threads. ${D.nodesBeforePruning - D.nodes} of ${D.nodesBeforePruning} call paths are too small to draw and are omitted. ` +
-          `Bracketed frames such as [Native or optimized code] are profiler pseudo-frames; on Linux they also hold time that native threads spend blocked, ` +
-          `so they start hidden when they exceed half of the time outside waits.`;
+          `Times are milliseconds summed over all threads: wall time for EventPipe traces, CPU time for native stacks. ` +
+          `${D.nodesBeforePruning - D.nodes} of ${D.nodesBeforePruning} call paths are too small to draw and are omitted.`;
 
         // Flame graph (icicle: callers on top).
         const canvas = $('flame'), ctx = canvas.getContext('2d'), tip = $('tip');
@@ -307,7 +301,7 @@ internal static class HtmlReport
         let sortKey = 1, sortDesc = true;
         function table() {
           const basis = value(D.tree);
-          let rows = D.functions.filter(f => !(hideWaits && f[4]) && !(hidePseudo && isPseudo(f[0])) && (!search || search.test(N[f[0]])));
+          let rows = D.functions.filter(f => !(hideWaits && f[4]) && (!search || search.test(N[f[0]])));
           const key = sortKey === 'p' ? 1 : sortKey;
           rows.sort((a, b) => (key === 0 ? N[a[0]].localeCompare(N[b[0]]) : a[key] - b[key]) * (sortDesc ? -1 : 1));
           const top = Math.max(...rows.map(f => f[1]), 1);
@@ -348,7 +342,6 @@ internal static class HtmlReport
         }
         $('search').oninput = applySearch;
         $('hide-waits').onchange = e => { hideWaits = e.target.checked; recompute(); applySearch(); };
-        $('hide-pseudo').onchange = e => { hidePseudo = e.target.checked; recompute(); applySearch(); };
         window.addEventListener('resize', draw);
         recompute(); draw(); table();
         })();
