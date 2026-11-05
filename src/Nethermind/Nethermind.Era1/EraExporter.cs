@@ -102,7 +102,7 @@ public class EraExporter(
         for (ulong epochIdx = 0; epochIdx < epochCount; epochIdx++)
         {
             (ulong startingIndex, ulong endingIndex) = GetWriteRange(epochIdx);
-            EnsureNoBlocksLost(earlierEpochFiles.GetValueOrDefault(startEpoch + epochIdx), startEpoch + epochIdx, startingIndex, endingIndex);
+            EnsureNoBlocksLost(earlierEpochFiles.GetValueOrDefault(startEpoch + epochIdx), startEpoch + epochIdx, startingIndex, endingIndex, from, to, era1Size);
         }
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
@@ -225,7 +225,7 @@ public class EraExporter(
     /// <summary>
     /// A new file replaces the earlier files of the epoch, so it must hold every block they hold.
     /// </summary>
-    private static void EnsureNoBlocksLost(List<(string Path, bool IsPlaceholder)>? earlierFiles, ulong epoch, ulong startingIndex, ulong endingIndex)
+    private static void EnsureNoBlocksLost(List<(string Path, bool IsPlaceholder)>? earlierFiles, ulong epoch, ulong startingIndex, ulong endingIndex, ulong from, ulong to, ulong era1Size)
     {
         foreach ((string earlierPath, bool isPlaceholder) in earlierFiles ?? [])
         {
@@ -241,6 +241,13 @@ public class EraExporter(
             {
                 throw new EraException($"Cannot read the block range of {Path.GetFileName(earlierPath)}: {e.Message} Remove or repair it before exporting this epoch.", e);
             }
+
+            // The request holds the file, but this export's epochs start at another offset within an era.
+            if ((first < startingIndex || last > endingIndex) && first >= from && last <= to)
+                throw new EraException(
+                    $"Cannot export blocks {startingIndex}-{endingIndex} as epoch {epoch}: era1 epochs start at the export's first block, " +
+                    $"and {Path.GetFileName(earlierPath)} (blocks {first}-{last}) does not fit in that window. " +
+                    $"Start the export at a block with the same offset within an era ({first % era1Size}), for example {first}, or export into another directory.");
 
             if (first < startingIndex || last > endingIndex)
                 throw new EraException(

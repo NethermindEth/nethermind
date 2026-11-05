@@ -11,6 +11,7 @@ using Autofac;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
+using Testably.Abstractions;
 
 namespace Nethermind.Era1.Test;
 
@@ -214,16 +215,50 @@ public class EraExporterTests
     }
 
     [Test]
-    public async Task Export_WhenItWouldLoseBlocksOfEarlierFile_ThrowsBeforeWriting()
+    public async Task Export_WhenEarlierExportStartedAtAnotherOffset_AdvisesTheSameOffset()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 5, 40);
+
+        // 0..63 holds every existing file, but its epoch 0 is 0-15 while the existing one is 5-20.
+        Assert.That(() => sut.Export(directory, 0, 63), Throws.TypeOf<EraException>().With.Message.Contains("same offset within an era (5), for example 5"));
+        await sut.Export(directory, 5, 63);
+        Assert.That(Directory.GetFiles(directory, "*.era1"), Has.Length.EqualTo(4));
+    }
+
+    [TestCase(32UL, 47UL, 32UL, 40UL, "(blocks 32-47)")]
+    [TestCase(0UL, 47UL, 8UL, 47UL, "(blocks 0-15)")]
+    public async Task Export_WhenItWouldLoseBlocksOfEarlierFile_ThrowsBeforeWriting(ulong firstFrom, ulong firstTo, ulong from, ulong to, string lostFile)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(directory, 32, 47);
-        string[] before = Directory.GetFiles(directory);
+        await sut.Export(directory, firstFrom, firstTo);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
 
-        Assert.That(() => sut.Export(directory, 32, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 32-47)"));
-        Assert.That(Directory.GetFiles(directory), Is.EquivalentTo(before));
+        Assert.That(() => sut.Export(directory, from, to), Throws.TypeOf<EraException>().With.Message.Contains(lostFile));
+        Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [Test]
+    public async Task Export_OnCaseInsensitiveFileSystem_KeepsTheSurvivorOfACaseOnlyRename()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(16).AddSingleton(CaseInsensitiveFileSystem()).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 15);
+        string file = Directory.GetFiles(directory, "*.era1").Single();
+        string hash = Path.GetFileName(file).Split('-')[2][..8];
+        File.Move(file, Path.Combine(directory, Path.GetFileName(file).Replace(hash, hash.ToUpperInvariant())));
+
+        // The new file replaces the upper-case one, which the file system no longer lists as a second name.
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory, "*.era1"), Has.Length.EqualTo(1));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+        Assert.That(async () => await eraStore.FindBlockAndReceipts(15), Throws.Nothing);
     }
 
     [TestCase(1, 1UL)]
@@ -254,6 +289,32 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
 
         Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+    }
+
+    /// <summary>The real file system, except that File.Move and File.Delete match names ignoring case, as NTFS and APFS do.</summary>
+    private static IFileSystem CaseInsensitiveFileSystem()
+    {
+        IFileSystem real = new RealFileSystem();
+        static string? Find(string path) => Directory.EnumerateFiles(Path.GetDirectoryName(path)!)
+            .FirstOrDefault(f => string.Equals(Path.GetFileName(f), Path.GetFileName(path), StringComparison.OrdinalIgnoreCase));
+        IFile file = Substitute.For<IFile>();
+        file.Exists(Arg.Any<string>()).Returns(static c => File.Exists(c.Arg<string>()));
+        file.Create(Arg.Any<string>()).Returns(c => real.File.Create(c.Arg<string>()));
+        file.ReadAllLines(Arg.Any<string>()).Returns(static c => File.ReadAllLines(c.Arg<string>()));
+        file.When(static f => f.Delete(Arg.Any<string>())).Do(static c =>
+        {
+            if (Find(c.Arg<string>()) is { } existing) File.Delete(existing);
+        });
+        file.When(static f => f.Move(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())).Do(static c =>
+        {
+            if (Find(c.ArgAt<string>(1)) is { } existing) File.Delete(existing);
+            File.Move(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<bool>(2));
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        fileSystem.Directory.Returns(real.Directory);
+        fileSystem.FileStream.Returns(real.FileStream);
+        return fileSystem;
     }
 
     /// <summary>Copies or moves an era file to the name with its hash in upper case, a separate name only on a case-sensitive file system.</summary>

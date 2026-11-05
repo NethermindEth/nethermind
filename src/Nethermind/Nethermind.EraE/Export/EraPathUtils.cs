@@ -74,7 +74,9 @@ public static class EraPathUtils
         return result;
     }
 
-    public static (long Epoch, ValueHash256 Hash) ParseChecksumEntry(string line)
+    public static (long Epoch, ValueHash256 Hash) ParseChecksumEntry(string line) => ParseChecksumEntry(line, out _);
+
+    internal static (long Epoch, ValueHash256 Hash) ParseChecksumEntry(string line, out string filename)
     {
         ValueHash256 hash = ExtractHashFromChecksumEntry(line);
 
@@ -82,7 +84,7 @@ public static class EraPathUtils
         if (nameStart == -1)
             throw new ArgumentException($"Invalid checksum entry (no filename): {line}");
 
-        string filename = line[(nameStart + 1)..].TrimStart();
+        filename = line[(nameStart + 1)..].TrimStart();
         if (!TryGetEpoch(filename, out long epoch))
             throw new ArgumentException($"Invalid checksum entry filename: {filename}");
 

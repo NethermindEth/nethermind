@@ -6,8 +6,10 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using NSubstitute;
@@ -206,6 +208,40 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
+    [Test]
+    public async Task Export_OnCaseInsensitiveFileSystem_KeepsTheSurvivorOfACaseOnlyRename()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).AddSingleton(CaseInsensitiveFileSystem()).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 8, 15);
+        string file = Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Single();
+        string hash = Path.GetFileName(file).Split('-')[2];
+        File.Move(file, Path.Combine(directory, Path.GetFileName(file).Replace(hash, hash.ToUpperInvariant())));
+
+        // The new file replaces the upper-case one, which the file system no longer lists as a second name.
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory).Count(EraPathUtils.IsEraFile), Is.EqualTo(1));
+        await AssertReadsBack(container, directory, 0, 15);
+    }
+
+    [Test]
+    public async Task Export_WhenEreAndLegacyFileCoverTheEpoch_KeepsTheEre()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 15);
+        string ere = Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Single();
+        File.Copy(ere, Path.ChangeExtension(ere, EraPathUtils.LegacyFileExtension));
+        DropReceipts(container, 0, 15);
+
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory).Where(EraPathUtils.IsEraFile), Is.EqualTo(new[] { ere }));
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task Export_WhenSiblingDiffersOnlyInHashCase_KeepsOneFile(bool rewrite)
@@ -251,6 +287,30 @@ public class EraExporterTests
         // Epoch 1 alone could be rewritten as 16-31, but epoch 2 can neither reuse 36-47 nor replace it without losing 41-47.
         Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 36-47)"));
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Export_WhenFailedReexportLeavesTwoFiles_StoreReadsTheNamedOneUntilARerun(bool reversed)
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48)
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork, Concurrency = 1 }).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        DropReceipts(container, 32, 40);
+
+        // Epoch 1 is rewritten as 16-31 under a new name, then epoch 2 fails: the manifests still name the old file.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>());
+        Assert.That(Directory.GetFiles(directory, $"{EraETestModule.TestNetwork}-00001-*"), Has.Length.EqualTo(2));
+        using (IEraStore store = CreateStore(container, directory, reversed))
+            await AssertReadsBack(container, store, 0, 20);
+
+        await sut.Export(directory, 0, 31);
+
+        Assert.That(Directory.GetFiles(directory, $"{EraETestModule.TestNetwork}-00001-*"), Has.Length.EqualTo(1));
+        using (IEraStore store = CreateStore(container, directory, reversed))
+            await AssertReadsBack(container, store, 0, 31);
     }
 
     [TestCase(false)]
@@ -470,6 +530,11 @@ public class EraExporterTests
     private static async Task AssertReadsBack(IContainer container, string directory, ulong from, ulong to)
     {
         using IEraStore store = container.Resolve<IEraStoreFactory>().Create(directory, null);
+        await AssertReadsBack(container, store, from, to);
+    }
+
+    private static async Task AssertReadsBack(IContainer container, IEraStore store, ulong from, ulong to)
+    {
         for (ulong number = from; number <= to; number++)
         {
             Block source = container.Resolve<IBlockTree>().FindBlock(number, BlockTreeLookupOptions.None)!;
@@ -483,6 +548,22 @@ public class EraExporterTests
         }
     }
 
+    /// <summary>A store over the real directory that lists its files in ordinal order, or in reverse.</summary>
+    private static EraStore CreateStore(IContainer container, string directory, bool reversed)
+    {
+        IFileSystem real = new RealFileSystem();
+        IDirectory listing = Substitute.For<IDirectory>();
+        listing.EnumerateFiles(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EnumerationOptions>()).Returns(c =>
+        {
+            IEnumerable<string> files = real.Directory.EnumerateFiles(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<EnumerationOptions>(2)).Order(StringComparer.Ordinal);
+            return reversed ? files.Reverse() : files;
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(real.File);
+        fileSystem.Directory.Returns(listing);
+        return new EraStore(container.Resolve<ISpecProvider>(), container.Resolve<IBlockValidator>(), fileSystem, EraETestModule.TestNetwork, 16, null, directory);
+    }
+
     /// <summary>Copies or moves an era file to the name with its hash in upper case, a separate name only on a case-sensitive file system.</summary>
     private static void RenameToUpperCaseHash(string file, bool keepOriginal)
     {
@@ -493,6 +574,32 @@ public class EraExporterTests
         Assume.That(File.Exists(variant), Is.False, "needs a case-sensitive file system");
         if (keepOriginal) File.Copy(file, variant);
         else File.Move(file, variant);
+    }
+
+    /// <summary>The real file system, except that File.Move and File.Delete match names ignoring case, as NTFS and APFS do.</summary>
+    private static IFileSystem CaseInsensitiveFileSystem()
+    {
+        IFileSystem real = new RealFileSystem();
+        static string? Find(string path) => Directory.EnumerateFiles(Path.GetDirectoryName(path)!)
+            .FirstOrDefault(f => string.Equals(Path.GetFileName(f), Path.GetFileName(path), StringComparison.OrdinalIgnoreCase));
+        IFile file = Substitute.For<IFile>();
+        file.Exists(Arg.Any<string>()).Returns(static c => File.Exists(c.Arg<string>()));
+        file.Create(Arg.Any<string>()).Returns(c => real.File.Create(c.Arg<string>()));
+        file.ReadAllLines(Arg.Any<string>()).Returns(static c => File.ReadAllLines(c.Arg<string>()));
+        file.When(static f => f.Delete(Arg.Any<string>())).Do(static c =>
+        {
+            if (Find(c.Arg<string>()) is { } existing) File.Delete(existing);
+        });
+        file.When(static f => f.Move(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())).Do(static c =>
+        {
+            if (Find(c.ArgAt<string>(1)) is { } existing) File.Delete(existing);
+            File.Move(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<bool>(2));
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(file);
+        fileSystem.Directory.Returns(real.Directory);
+        fileSystem.FileStream.Returns(real.FileStream);
+        return fileSystem;
     }
 
     /// <summary>The real file system, except that File.Move and File.Delete throw for the paths the predicates select.</summary>
