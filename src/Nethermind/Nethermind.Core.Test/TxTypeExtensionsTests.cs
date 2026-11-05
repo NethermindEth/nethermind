@@ -45,6 +45,7 @@ public class TxTypeExtensionsTests
     [TestCase(TxType.SetCode, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.SetCode)]
     [TestCase(TxType.FrameTx, TxFeatureSupport.EIP1559 | TxFeatureSupport.Frames)]
     [TestCase(TxType.DepositTx, TxFeatureSupport.None)]
+    [TestCase((TxType)0x76, TxFeatureSupport.None, TestName = "PluginRegisteredTypeGetsNoBuiltInFeatures")]
     public void TxTypes_supported_functionality(TxType txType, TxFeatureSupport expectedFeaturesSupport)
     {
         using (Assert.EnterMultipleScope())

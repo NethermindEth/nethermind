@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>nethermind-eez-attester</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Eez.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Eez.Execution\Nethermind.Eez.Execution.csproj" />
+    <ProjectReference Include="..\Nethermind.Eez.Prove\Nethermind.Eez.Prove.csproj" />
+    <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore.Server" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+</Project>

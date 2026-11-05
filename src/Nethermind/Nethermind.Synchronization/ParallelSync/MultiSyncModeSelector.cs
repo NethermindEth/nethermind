@@ -303,7 +303,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFastSyncMode(Snapshot best)
         {
-            if (!FastSyncEnabled)
+            if (!FastSyncEnabled ||
+                (_syncConfig.StaticSnapPivot && best.PivotNumber != 0 && best.Header >= best.PivotNumber))
             {
                 return false;
             }

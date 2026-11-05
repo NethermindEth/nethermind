@@ -1,0 +1,29 @@
+{
+  "revision": "167373172d216586b0e03b56f36c08484b1a51b3",
+  "files": {
+    "identity.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/identity.json",
+      "sha256": "5190cf87bde6841fcd85bff8cfe0850e8928a007d4e88a65b94693045662f984"
+    },
+    "l1-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/l1-genesis.json",
+      "sha256": "3ff8b3521214d2546b257a4c4a3793c3e39f0e0d7e63b1802ecae730b6022b83"
+    },
+    "l2-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/l2-genesis.json",
+      "sha256": "de34f0f93542bdd00401d9ba0dee30e2bbd0f9e32b3cd12c0a4cee48fda68782"
+    },
+    "request.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/request.v2.protobuf",
+      "sha256": "32f876a8fee7ae6f1b93bab0557026f3db8d4f80d9a745bd14978e93f1f52a6d"
+    },
+    "response.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/response.json",
+      "sha256": "2e3d8b1d2274f7aea6215a1a16f35644c0481560eb123a4ca08ce2353aa66731"
+    },
+    "history-runtime.bin": {
+      "source": "crates/eez-protocol/src/l1_history/runtime.bin",
+      "sha256": "75063a5e89bf01a675b416325c91fff1b0a7c43710d3c5b8cfce3ec33b6459a3"
+    }
+  }
+}

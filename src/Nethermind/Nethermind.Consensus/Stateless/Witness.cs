@@ -76,11 +76,11 @@ public static class WitnessExtensions
                     RlpReader reader = new(headersSpan[i]);
 
                     decodedHeaders[i] = Decoder.Decode(ref reader)
-                        ?? throw new InvalidOperationException($"No header decoded at index {i}");
+                        ?? throw new WitnessValidationException($"No header decoded at index {i}");
                     reader.CheckEnd();
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
-                        throw new InvalidOperationException("Witness headers are not contiguous");
+                        throw new WitnessValidationException("Witness headers are not contiguous");
 
                     if (i + 1 < headersSpan.Length)
                     {

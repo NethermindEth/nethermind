@@ -169,6 +169,27 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
 
         [Test]
+        public void StaticSnapPivot_WhenHeaderReachesFixedPivotAndPeerIsFarAhead_SelectsStateNodes([Values(0UL, 1UL)] ulong headersPastPivot) => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.Pivot.Number + headersPastPivot)
+                .AndGoodPeersAreKnown()
+                .WhenStaticSnapPivotIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
+
+        [Test]
+        public void StaticSnapPivot_WhenHeaderIsBelowFixedPivotAndPeerIsFarAhead_PreservesFastSync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeIsBehindThePivotInFastSync()
+                .AndGoodPeersAreKnown()
+                .WhenStaticSnapPivotIsConfigured()
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.FastHeaders | SyncMode.FastSync));
+
+        [Test]
+        public void FastSync_WhenHeaderReachesPivotAndPeerIsFarAheadWithoutStaticPivot_PreservesFastSync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.Pivot.Number)
+                .AndGoodPeersAreKnown()
+                .WhenSnapSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.FastSync);
+
+        [Test]
         public void Without_StaticSnapPivot_peer_at_pivot_does_not_enter_state_nodes() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndAPeerExactlyAtThePivotIsKnown()

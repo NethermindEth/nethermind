@@ -49,6 +49,7 @@ jobs:
         # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs);
         # each pack takes about 5 minutes, sized from the per-project times of a PR run.
         project:
+          - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Mcp.Plugin.Test
           - Nethermind.TxPool.Test

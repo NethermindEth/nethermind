@@ -1,0 +1,7 @@
+{
+  "repository": "eez-association/eez-rollupX",
+  "revision": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae",
+  "source_path": "crates/eez-control-rpc/conformance/validation-identity.json",
+  "sha256": "a979b839d3c97ab9583e884821fc1ecfd59a5ebeb4d4e66f1f08b71bb22ce7a5",
+  "scope": "Independent JSON/RLP identity encoding vectors only; not execution or configuration admission."
+}

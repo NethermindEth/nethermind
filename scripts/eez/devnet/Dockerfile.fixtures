@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY contracts /repo/contracts
+COPY eez-core-protocol /repo/eez-core-protocol
+COPY solc /root/.svm
+RUN forge build --root /repo/contracts --threads 1 \
+    && forge build --root /repo/eez-core-protocol --threads 1

@@ -44,6 +44,7 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
     private const int DepositEventIndexOffset = 512;
 
     private readonly ITransactionProcessor _transactionProcessor;
+    private readonly ExecutionRequestsOptions _options;
 
     private readonly SystemCall _withdrawalTransaction = new()
     {
@@ -85,9 +86,10 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         GasPrice = 0,
     };
 
-    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
+    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor, ExecutionRequestsOptions? options = null)
     {
         _transactionProcessor = transactionProcessor;
+        _options = options ?? ExecutionRequestsOptions.Default;
         SetSystemCallHashes();
     }
 
@@ -150,6 +152,13 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
+        if (!_options.ReadsRequests)
+        {
+            block.ExecutionRequests = ExecutionRequestExtensions.EmptyRequests;
+            block.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+            return;
+        }
+
         ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {
@@ -157,14 +166,14 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress!, ref requests, ForContract(_withdrawalTransaction, spec.Eip7002ContractAddress!),
+                ReadRequests(block, state, spec, spec.Eip7002ContractAddress!, ref requests, ForContract(_withdrawalTransaction, spec.Eip7002ContractAddress!),
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress!, ref requests, ForContract(_consolidationTransaction, spec.Eip7251ContractAddress!),
+                ReadRequests(block, state, spec, spec.Eip7251ContractAddress!, ref requests, ForContract(_consolidationTransaction, spec.Eip7251ContractAddress!),
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
@@ -172,11 +181,11 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
             // EIP-8282: dequeued after withdrawal/consolidation so the flat encoding stays in request-type order.
             if (spec.BuilderRequestsEnabled)
             {
-                ReadRequests(block, state, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,
+                ReadRequests(block, state, spec, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,
                     ExecutionRequestType.BuilderDepositRequest,
                     BlockErrorMessages.BuilderDepositsContractEmpty, BlockErrorMessages.BuilderDepositsContractFailed);
 
-                ReadRequests(block, state, Eip8282Constants.BuilderExitRequestPredeployAddress, ref requests, _builderExitTransaction,
+                ReadRequests(block, state, spec, Eip8282Constants.BuilderExitRequestPredeployAddress, ref requests, _builderExitTransaction,
                     ExecutionRequestType.BuilderExitRequest,
                     BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
@@ -293,12 +302,24 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
                 GasPrice = 0,
             };
 
-    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
+    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
         {
-            throw new InvalidBlockException(block, contractEmptyError);
+            if (_options.CodelessRequestContracts == CodelessRequestContractBehavior.RejectBlock)
+            {
+                throw new InvalidBlockException(block, contractEmptyError);
+            }
+
+            // Skipping leaves the state as a call to an empty account does, but not the block access list,
+            // which would record the call.
+            if (spec.IsEip7928Enabled)
+            {
+                throw new InvalidBlockException(block, BlockErrorMessages.CodelessRequestContractWithBlockAccessList(contractAddress));
+            }
+
+            return;
         }
 
         CallOutputTracer tracer = new();

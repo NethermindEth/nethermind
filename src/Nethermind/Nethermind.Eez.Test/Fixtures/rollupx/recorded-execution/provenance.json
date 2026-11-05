@@ -1,0 +1,179 @@
+{
+  "repository": "eez-association/eez-rollupX",
+  "revision": "759ae5f5cbf87c16b52cedfecc05aae737e90a87",
+  "purpose": "Unchanged format2 streaming inputs and fixture identities; synthetic L1 authority, real execution/settlement/signing. Runtime conformance results are recorded separately.",
+  "files": {
+    "baseline-lookup.json": {
+      "length": 1177868,
+      "sha256": "65720c4bc32b6469601c0f43703fe2463c69c94badd97943b9087e64bd829005"
+    },
+    "native-osaka-lookup.genesis.json": {
+      "length": 37012,
+      "sha256": "10b72a11c4e94374a6e20c0d159a5b2552849b96cfdf2101e2e31b587b7a378d"
+    },
+    "baseline-static.json": {
+      "length": 1252470,
+      "sha256": "218cff8b2cf9e5e7a2459300e2d5efc6c94e31a60d639cd638651a02242a1f1e"
+    },
+    "native-osaka-changing-static.genesis.json": {
+      "length": 37012,
+      "sha256": "e7a2c74b31ea2ede9605adcd7663b50a49b8f006be2cc67dfc3c295aad3a4802"
+    },
+    "begin-boundaries.json": {
+      "length": 16899,
+      "sha256": "4df5b5c725c5b09d7a62d60147d594f8d90ddf59219e27247bdb09a996c34ad8"
+    },
+    "block-boundaries.json": {
+      "length": 171184,
+      "sha256": "a552f000db8c84860af6d250ed7ada66af7e326b7cbfdc1ec023bc7a98dbe989"
+    },
+    "block-quota.json": {
+      "length": 74332,
+      "sha256": "cbc95ab4f525d89643c2997be388d05364e69b13dfdc0cbb2eca07ca66569cd2"
+    },
+    "byte-quota.json": {
+      "length": 74329,
+      "sha256": "d34356027f658e1d44261d371edbc7b97ff7e4ec90945f590042c18fdd607c86"
+    },
+    "cancel-session-isolation.json": {
+      "length": 1188679,
+      "sha256": "c5b0b110c51065feaf69dcd4454a91e040c898622b520865eadb17a13febefbf"
+    },
+    "competing-branches.json": {
+      "length": 1212064,
+      "sha256": "e35a7002b5557f700bce12f565b63488d99f0218e764e48d79e7115e2df5d7ad"
+    },
+    "concurrent-composers.json": {
+      "length": 2350026,
+      "sha256": "b2a30c8ce15072e5e9a2dc73f4555c83cf21d9eab8e3d41e9cb6e695aa1d60fd"
+    },
+    "detached-session-eviction.json": {
+      "length": 88611,
+      "sha256": "9024c9c56961bb69daf61e4e6746b214c955aeaf91cb5a483f2e52928d5a9a59"
+    },
+    "finalize-byte-quota.json": {
+      "length": 1444911,
+      "sha256": "49b3d231b71d5a829635f1fc1ad7cdc54e67d406cc7fcc69141981ec008bdc1d"
+    },
+    "finalize-ranges.json": {
+      "length": 3580692,
+      "sha256": "097ceb8e045b43331d04b2fcf334e3acc6fd4fa415c54fe3060a9ca80adc6b9a"
+    },
+    "frame-size-limit.json": {
+      "length": 2433,
+      "sha256": "d0bbb7dffbf7bfd6b64f7ca77a4b417307110382abeec16a3b21846503875d3e"
+    },
+    "half-close-drains.json": {
+      "length": 1184268,
+      "sha256": "8f191fa85a021b756ce616aaa2b40350ec10a865b95961aa19eec8cf5614ff04"
+    },
+    "invalid-witness-retry.json": {
+      "length": 1183530,
+      "sha256": "2b1fe8997a2f55b4009c8a7f01f06e10381b234ea09bd710fe47cd9fe429c2a0"
+    },
+    "pipelined-gap-recovery.json": {
+      "length": 1181101,
+      "sha256": "0982a230e5858ddd00f114514c732030a8119e4c18a493dca38202043fe41516"
+    },
+    "posting-context-boundaries.json": {
+      "length": 3415997,
+      "sha256": "edcd575f3f29106176d91d03541dc4094d143506042853391ce3f4b05d56a529"
+    },
+    "resume-after-proof.json": {
+      "length": 1445570,
+      "sha256": "da79c1e2d9e0ff79a1263a818b627645299d19d26165318334f1999a49c5fbc1"
+    },
+    "resume-boundaries.json": {
+      "length": 4622,
+      "sha256": "b0c51faa283d4be3275b3988c57651bb6399850bb0c3b9c8cea32d10d284dbf5"
+    },
+    "resume-takeover-fencing.json": {
+      "length": 1190484,
+      "sha256": "b420734e45bac6a5cfb753505dcabfea138664ba128f3ee025085c0f9ad755df"
+    },
+    "rewind-boundaries.json": {
+      "length": 1475788,
+      "sha256": "74a3883d2f80b1282b1560ab2805b80789be2cdf596a9d1b20792d5694da3dbb"
+    },
+    "settlement-abi-binding.json": {
+      "length": 3956997,
+      "sha256": "64ed0a740c9eb7e196d8d7f2fb51a57c050605679e414dd5a5218b8736f01783"
+    },
+    "settlement-blob-encoding.json": {
+      "length": 2604659,
+      "sha256": "967fb2ac57cedca1857ffd587681909e7ca00dd1496a5646b30c96f0f1fd1229"
+    },
+    "settlement-required-inputs.json": {
+      "length": 2065073,
+      "sha256": "f4d1efb663d3b895d58e0dc012399d474db7a414fce1ea10383e389a835ba7e2"
+    },
+    "single-block-proof.json": {
+      "length": 276244,
+      "sha256": "4a9bfbc8a34a9fb7d3f30068efa7ffdfb57b151b053f672d4470b6855160de89"
+    },
+    "stream-capacity.json": {
+      "length": 9409,
+      "sha256": "324a77fab01ca4387a1447dc9665589ca4f3ccb80b50e95267a0d56565f88f92"
+    },
+    "subrange-promoted-anchor.json": {
+      "length": 1713150,
+      "sha256": "76796735dabf090bcc05dc824d7b9cac76107eca69491afd5fc21b65f2f0b3bd"
+    },
+    "terminal-before-tip.json": {
+      "length": 560481,
+      "sha256": "7ecdbe75be018775b743ff513e0b6ed484c617399a3b97e30b3d8b52eac9de8b"
+    },
+    "witness-quota.json": {
+      "length": 74332,
+      "sha256": "180a7235e96c7cdb9fe8c479ae0c81e8bea416326f0025fccc1691bcd41329cf"
+    },
+    "native-osaka-lookup.l1-genesis.json": {
+      "length": 36732,
+      "sha256": "e8d11b0e6a512145573cb8dd8d8e41caa250fa00dfc14963f7b8e118c6b9b70e"
+    },
+    "native-osaka-lookup.identity.json": {
+      "length": 255,
+      "sha256": "d776b4f66867c5e432bd1df5fb06193b74d290e48c5f4629576f45465e9580a3"
+    },
+    "native-osaka-changing-static.l1-genesis.json": {
+      "length": 36732,
+      "sha256": "d602512a197f9b8aa669278246ea99e6b7e7f3cda11ab3644e173652a5550b4a"
+    },
+    "native-osaka-changing-static.identity.json": {
+      "length": 255,
+      "sha256": "d776b4f66867c5e432bd1df5fb06193b74d290e48c5f4629576f45465e9580a3"
+    }
+  },
+  "core_revision": "9a1f815336c20d28e5ec5cecbf195c41fbd5ab0f",
+  "cases": [
+    "baseline-lookup.json",
+    "baseline-static.json",
+    "begin-boundaries.json",
+    "block-boundaries.json",
+    "block-quota.json",
+    "byte-quota.json",
+    "cancel-session-isolation.json",
+    "competing-branches.json",
+    "concurrent-composers.json",
+    "detached-session-eviction.json",
+    "finalize-byte-quota.json",
+    "finalize-ranges.json",
+    "frame-size-limit.json",
+    "half-close-drains.json",
+    "invalid-witness-retry.json",
+    "pipelined-gap-recovery.json",
+    "posting-context-boundaries.json",
+    "resume-after-proof.json",
+    "resume-boundaries.json",
+    "resume-takeover-fencing.json",
+    "rewind-boundaries.json",
+    "settlement-abi-binding.json",
+    "settlement-blob-encoding.json",
+    "settlement-required-inputs.json",
+    "single-block-proof.json",
+    "stream-capacity.json",
+    "subrange-promoted-anchor.json",
+    "terminal-before-tip.json",
+    "witness-quota.json"
+  ]
+}

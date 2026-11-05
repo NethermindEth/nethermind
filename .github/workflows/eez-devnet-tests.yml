@@ -1,0 +1,142 @@
+name: EEZ live L1/L2 integration
+
+on:
+  pull_request:
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Runner*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Dockerfile'
+      - 'scripts/entrypoint.sh'
+      - 'scripts/eez/**'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/eez-devnet-tests.yml'
+      - '.github/workflows/eez-devnet-profile.yml'
+      - '.github/workflows/eez-devnet-prepare.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Runner*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Dockerfile'
+      - 'scripts/entrypoint.sh'
+      - 'scripts/eez/**'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/eez-devnet-tests.yml'
+      - '.github/workflows/eez-devnet-profile.yml'
+      - '.github/workflows/eez-devnet-prepare.yml'
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_revision:
+        description: 'Replay a Public main commit with streaming; empty selects main or reviewed PR206 before merge'
+        type: string
+        default: ''
+      rollupx_revision:
+        description: 'Replay a RollupX main commit; empty selects current main'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Build Nethermind images once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build follower and prover
+        run: |
+          mkdir -p artifacts/eez-candidate
+          docker build -t "nethermind:eez-$GITHUB_RUN_ID" --build-arg COMMIT_HASH="$GITHUB_SHA" -f Dockerfile .
+          docker build -t "nethermind-eez-attester:eez-$GITHUB_RUN_ID" --build-arg COMMIT_HASH="$GITHUB_SHA" -f src/Nethermind/Nethermind.Eez.Attester/Dockerfile .
+          docker save "nethermind:eez-$GITHUB_RUN_ID" "nethermind-eez-attester:eez-$GITHUB_RUN_ID" | zstd -T0 -3 > artifacts/eez-candidate/images.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-candidate-${{ github.run_id }}
+          path: artifacts/eez-candidate
+          compression-level: 0
+          overwrite: true
+          retention-days: 1
+
+  prepare-rollup0:
+    name: Prepare rollup0
+    uses: ./.github/workflows/eez-devnet-prepare.yml
+    with:
+      profile: rollup0
+      revision: ${{ inputs.upstream_revision }}
+
+  prepare-rollupx:
+    name: Prepare rollupx
+    uses: ./.github/workflows/eez-devnet-prepare.yml
+    with:
+      profile: rollupx
+      revision: ${{ inputs.rollupx_revision }}
+
+  rollup0:
+    name: rollup0
+    needs: [candidate, prepare-rollup0]
+    uses: ./.github/workflows/eez-devnet-profile.yml
+    with:
+      profile: rollup0
+      suites: ${{ needs.prepare-rollup0.outputs.suites }}
+
+  rollupx:
+    name: rollupx
+    needs: [candidate, prepare-rollupx]
+    uses: ./.github/workflows/eez-devnet-profile.yml
+    with:
+      profile: rollupx
+      suites: ${{ needs.prepare-rollupx.outputs.suites }}
+
+  complete:
+    name: All upstream partitions
+    needs: [rollup0, rollupx]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: eez-live-*
+          path: artifacts/eez-partitions
+      - name: Require every upstream partition
+        env:
+          ROLLUP0_RESULT: ${{ needs.rollup0.result }}
+          ROLLUPX_RESULT: ${{ needs.rollupx.result }}
+        run: |
+          test "$ROLLUP0_RESULT" = success
+          test "$ROLLUPX_RESULT" = success
+          python3 scripts/eez/devnet/partitions.py aggregate --directory artifacts/eez-partitions
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-live-summary
+          path: artifacts/eez-partitions/summary.json
+          overwrite: true

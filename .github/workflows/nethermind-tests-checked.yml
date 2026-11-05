@@ -52,6 +52,7 @@ jobs:
             avx512: 1
         # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
+          - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.Synchronization.Test
           - Nethermind.TxPool.Test

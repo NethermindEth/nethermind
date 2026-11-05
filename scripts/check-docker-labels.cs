@@ -43,6 +43,11 @@ try
             "Dockerfile.pgo", // Throwaway collect-pgo-profile.yml image.
             "scripts/build/Dockerfile", // Release package builder; image is not pushed.
             "scripts/build/deb/Dockerfile", // Debian package builder; image is not pushed.
+            "scripts/eez/devnet/Dockerfile", // Candidate follower fixture; never pushed.
+            "scripts/eez/devnet/Dockerfile.prover", // Candidate prover fixture; never pushed.
+            "scripts/eez/devnet/Dockerfile.upstream",
+            "scripts/eez/devnet/Dockerfile.fixtures",
+            "src/Nethermind/Nethermind.Eez.Attester/Dockerfile", // Operator-built attester; never pushed.
             "src/Nethermind/Nethermind.Runner/Dockerfile", // Visual Studio debug container.
             "src/Nethermind/Nethermind.Test.Runner/Dockerfile",
             "tools/EngineApiProxy/Dockerfile", // E2E fixture; image is never pushed.
