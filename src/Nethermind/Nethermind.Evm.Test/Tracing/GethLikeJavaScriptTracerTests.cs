@@ -1383,6 +1383,48 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, new[] { "error:out of gas" });
     }
 
+    [TestCase(false, 100000UL, "enter:SELFDESTRUCT:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0x000000000000000000000000000000000000dead:0x:0:100000000000000000000|exit:SELFDESTRUCT:0:0x:undefined")]
+    // The new-account charge for the dead beneficiary runs SELFDESTRUCT out of gas, so no frame is reported.
+    [TestCase(false, 40000UL, "")]
+    [TestCase(true, 100000UL, "enter:CALL|enter:SELFDESTRUCT:0x76e68a8696537e4141926f3e528733af9e237d69:0x000000000000000000000000000000000000dead:0x:0:1000000000000000000|exit:SELFDESTRUCT:0:0x:undefined|exit:CALL")]
+    public void Self_destruct_is_reported_as_an_enter_exit_frame(bool nested, ulong gasLimit, string expected)
+    {
+        const string frameTracer = @"{
+                    events: [],
+                    types: [],
+                    enter: function(frame) {
+                        this.types.push(frame.getType());
+                        this.events.push(frame.getType() !== 'SELFDESTRUCT' ? 'enter:' + frame.getType() : 'enter:' + frame.getType() + ':' + toHex(frame.getFrom())
+                            + ':' + toHex(frame.getTo()) + ':' + toHex(frame.getInput()) + ':' + frame.getGas() + ':' + frame.getValue());
+                    },
+                    exit: function(result) {
+                        var type = this.types.pop();
+                        this.events.push(type !== 'SELFDESTRUCT' ? 'exit:' + type : 'exit:' + type + ':' + result.getGasUsed()
+                            + ':' + toHex(result.getOutput()) + ':' + result.getError());
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.events.join('|'); }
+                }";
+        Address beneficiary = new("0x000000000000000000000000000000000000dead");
+        byte[] selfDestruct = Prepare.EvmCode.PushData(beneficiary).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] code = selfDestruct;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, selfDestruct, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+        }
+
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, code);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(frameTracer);
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expected);
+    }
+
     [Test]
     public void Ctx_coinbase_is_the_block_beneficiary()
     {
