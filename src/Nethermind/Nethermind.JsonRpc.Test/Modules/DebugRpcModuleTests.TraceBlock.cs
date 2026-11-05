@@ -388,14 +388,24 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task ByNumber_buffered_javascript_accepts_go_timeout_range(
-        [Values("0s", "-1s", "1ns", "121s", "4294968s", "1s")] string timeout)
+        [Values("0s", "-1s", "1ns", "121s", "4294968s", "1s")] string timeout) =>
+        await AssertJavascriptTimeoutRange("debug_traceBlockByNumber", false, timeout);
+
+    [Test]
+    public async Task Specified_block_javascript_accepts_go_timeout_range(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode,
+        [Values("0s", "-1s", "1ns", "121s", "4294968s", "1s")] string timeout) =>
+        await AssertJavascriptTimeoutRange(method, streamMode, timeout);
+
+    private static async Task AssertJavascriptTimeoutRange(string method, bool streamMode, string timeout)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         DeadlineExecution clock = new();
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(context.DebugRpcModule, clock),
-            "debug_traceBlockByNumber", block.Number,
-            new { tracer = "{fault:function(){},result:function(){return {ok:true};}}", timeout, streamMode = false });
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(context.DebugRpcModule, clock), method, selector,
+            new { tracer = "{fault:function(){},result:function(){return {ok:true};}}", timeout, streamMode });
         JToken json = JToken.Parse(response);
         JToken? result = json["result"];
         Assert.That(result, Is.TypeOf<JArray>(), response);
@@ -413,27 +423,52 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task ByNumber_buffered_javascript_owned_expiry_discards_partial_results(
         [Values("0s", "-1s")] string timeout, [Values("before", "after")] string expiry,
-        [Values(-1, 0, 1, 2)] int selectedAt, [Values] bool mux)
+        [Values(-1, 0, 1, 2)] int selectedAt, [Values] bool mux) =>
+        await AssertJavascriptOwnedExpiry("debug_traceBlockByNumber", false, timeout, expiry, false, selectedAt, mux);
+
+    [Test]
+    public async Task Specified_block_javascript_owned_expiry_discards_partial_results(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode, [Values("before", "after")] string expiry,
+        [Values] bool ordinaryFailure)
     {
-        DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = true };
+        await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, ordinaryFailure);
+        if (ordinaryFailure)
+            await AssertJavascriptOwnedExpiry(method, streamMode, "1s", expiry, ordinaryFailure, ordinaryMessage: "ordinary failure");
+    }
+
+    private static async Task AssertJavascriptOwnedExpiry(string method, bool streamMode, string timeout, string expiry,
+        bool ordinaryFailure, int? selectedAt = null, bool mux = false, string ordinaryMessage = "execution timeout")
+    {
+        DeadlineExecution clock = new() { Expiry = expiry, DeliverOnlyAtTarget = selectedAt.HasValue };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
-        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
-        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
-        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        Block block;
+        if (selectedAt.HasValue)
+        {
+            ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+            block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+            Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        }
+        else
+        {
+            block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        }
         clock.Enabled = true;
-        clock.Target = block.Transactions[selectedAt >= 0 ? selectedAt : expiry == "before" ? 1 : 0].Nonce;
-        const string script = "{fault:function(){},result:function(){return {};}}";
+        clock.Target = block.Transactions[selectedAt is >= 0 ? selectedAt.Value : expiry == "before" ? 1 : 0].Nonce;
+        string script = selectedAt.HasValue ? "{fault:function(){},result:function(){return {};}}"
+            : "{fault:function(){},step:function(){" + (ordinaryFailure ? $"throw Error('{ordinaryMessage}');" : "")
+                + "},result:function(){return {};}}";
         Dictionary<string, object> options = new()
         {
             ["tracer"] = mux ? "muxTracer" : script,
             ["timeout"] = timeout,
-            ["streamMode"] = false
+            ["streamMode"] = streamMode
         };
         if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { } };
-        if (selectedAt >= 0) options["txHash"] = block.Transactions[selectedAt].Hash!;
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
-            "debug_traceBlockByNumber", block.Number, options);
+        if (selectedAt is >= 0) options["txHash"] = block.Transactions[selectedAt.Value].Hash!;
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), method, selector, options);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
@@ -442,6 +477,55 @@ public partial class DebugRpcModuleTests
             Assert.That(json["result"], Is.Null, response);
             Assert.That(clock.Timers, Has.Count.EqualTo(selectedAt >= 0 || expiry == "after" ? 1 : 2));
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Specified_block_binds_request_token_before_selecting_tracer_graph(
+        [Values] bool byHash, [Values] bool filtered, [Values] bool mux)
+    {
+        IGethStyleTracer? rpcTracer = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<IGethStyleTracer>((_, inner) =>
+            {
+                rpcTracer = inner;
+                return inner;
+            }));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        _ = chain.DebugRpcModule;
+        Assert.That(rpcTracer, Is.Not.Null, "resolve the tracer through the production RPC factory's child scope");
+        using CancellationTokenSource external = new();
+        ConcurrentBag<CancellationToken> observed = [];
+        string registered = $"request-token-{Guid.NewGuid():N}";
+        GethLikeNativeTracerFactory.RegisterTracer(registered, (childOptions, _, transaction, _) =>
+        {
+            observed.Add(childOptions.ExecutionCancellationToken);
+            return new NativeNoopTracer(transaction, childOptions);
+        });
+        GethTraceOptions options = new()
+        {
+            EnforceExecutionDeadline = true,
+            Tracer = mux ? "muxTracer" : registered,
+            TracerConfig = mux ? JsonSerializer.SerializeToElement(new Dictionary<string, object> { [registered] = new { } }) : null,
+            TxHash = filtered ? block.Transactions[^1].Hash : null
+        };
+        BlockParameter selector = byHash ? new(block.Hash!) : new(block.Number);
+
+        IReadOnlyCollection<GethLikeTxTrace> traces = rpcTracer!.TraceBlock(selector, options, external.Token);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traces, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
+                Assert.That(observed, Is.Not.Empty);
+                Assert.That(observed, Is.All.EqualTo(external.Token));
+                Assert.That(external.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            traces.TryDispose();
         }
     }
 
