@@ -150,10 +150,9 @@ public class ImportFlatDbTests
         Lazy<IPersistence> persistence = new(() => new HalfPathFallbackPersistence(_persistence, _nodeStorage, migrationCursor.Value));
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
-        Lazy<HalfPathMigrator> migrator = new(() => new HalfPathMigrator(persistenceManager, migrationCursor.Value, new FlatDbConfig(), scheduler,
-            Substitute.For<ITimerFactory>(), Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
-        StartPruningTrieStateMigration step = new(policy, migrationCursor, persistence, new Lazy<IPersistenceManager>(persistenceManager), migrator,
-            new Lazy<INodeStorage>(_nodeStorage), blockTree, LimboLogs.Instance);
+        Lazy<HalfPathMigrator> migrator = new(() => new HalfPathMigrator(persistence.Value, persistenceManager, migrationCursor.Value, _nodeStorage, blockTree,
+            new FlatDbConfig(), scheduler, Substitute.For<ITimerFactory>(), Substitute.For<IProcessExitSource>(), LimboLogs.Instance));
+        StartPruningTrieStateMigration step = new(policy, migrationCursor, migrator);
 
         await step.Execute(CancellationToken.None);
 

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -533,7 +534,8 @@ public class ImporterTests
             });
 
             _retryTimer.When(static timer => timer.Start()).Do(_ => _retryPending = true);
-            _migrator = new HalfPathMigrator(persistenceManager, Cursor, new FlatDbConfig { MigrationChunkNodes = chunkNodes }, new InlineScheduler(_scheduled),
+            _migrator = new HalfPathMigrator(persistence, persistenceManager, Cursor, halfPath, Substitute.For<IBlockTree>(),
+                new FlatDbConfig { MigrationChunkNodes = chunkNodes }, new InlineScheduler(_scheduled),
                 new FunctionalTimerFactory(_ => _retryTimer), Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         }
 

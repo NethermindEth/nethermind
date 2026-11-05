@@ -4,10 +4,12 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -33,8 +35,11 @@ namespace Nethermind.State.Flat.Migration;
 /// </para>
 /// </remarks>
 public sealed class HalfPathMigrator(
+    IPersistence persistence,
     IPersistenceManager persistenceManager,
     HalfPathMigrationCursor cursor,
+    INodeStorage halfPath,
+    IBlockTree blockTree,
     IFlatDbConfig flatDbConfig,
     IBackgroundTaskScheduler scheduler,
     ITimerFactory timerFactory,
@@ -52,14 +57,45 @@ public sealed class HalfPathMigrator(
 
     private readonly record struct ChunkRequest : IBackgroundTaskRequest<ChunkRequest>;
 
-    /// <summary>Starts copying from the cursor, if a migration is in progress.</summary>
+    /// <summary>Starts copying from the cursor, if a migration is in progress, first pointing a flat DB with no state yet at the head's state.</summary>
+    /// <exception cref="InvalidConfigurationException">The flat DB has no state yet and the HalfPath DB has no head state to point it at.</exception>
     public void Start()
     {
         if (cursor.Current is null) return;
+
+        StateId current;
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        {
+            current = reader.CurrentState;
+        }
+
+        if (current == StateId.PreGenesis) PointAtHead();
         if (_logger.IsInfo) _logger.Info("Copying the HalfPath trie state into the flat DB in the background.");
         _retryTimer.AutoReset = false;
         _retryTimer.Elapsed += (_, _) => Schedule();
         Schedule();
+    }
+
+    private void PointAtHead()
+    {
+        BlockHeader head = blockTree.Head?.Header
+            ?? throw new InvalidConfigurationException(
+                $"Cannot migrate from the patricia trie state: the block tree has no head. Remove FlatDb.{nameof(IFlatDbConfig.MigrateFromPruningTrieState)} and delete the '{DbNames.Flat}' directory to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
+
+        if (head.StateRoot is null || !halfPath.KeyExists(null, TreePath.Empty, head.StateRoot.ValueHash256))
+        {
+            throw new InvalidConfigurationException(
+                $"Cannot migrate from the patricia trie state: it does not contain head state root {head.StateRoot}. Remove FlatDb.{nameof(IFlatDbConfig.MigrateFromPruningTrieState)} and delete the '{DbNames.Flat}' directory to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Migrating to the flat DB from the patricia trie state at {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}.");
+
+        // Through the resolved persistence, so the reader caches follow the new state.
+        persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(head)).Dispose();
+        persistence.Flush();
+        persistenceManager.ResetPersistedStateId();
     }
 
     /// <inheritdoc/>
