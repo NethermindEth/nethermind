@@ -11,9 +11,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
@@ -77,8 +79,6 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StableStringLabel _readStorageNodeSnapshotLabel = StableStringLabel.Get("storage_node_snapshot");
     private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
     private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
-
-    private static readonly ReadOnlySpanAction<byte, Span<TrieLookup>> DescendTrie = static (node, walk) => walk[0].Descend(node);
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
@@ -359,12 +359,8 @@ public sealed class ReadOnlySnapshotBundle(
 
     /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private Account? GetAccountWithTrie(Address address)
-    {
-        TrieLookup lookup = new(address.ToAccountPath, isStorage: false);
-        WalkTrie(null, StateRoot, ref lookup);
-        return lookup.Account;
-    }
+    private Account? GetAccountWithTrie(Address address) =>
+        TryGetWithTrie(null, StateRoot, address.ToAccountPath) is { } account ? AccountDecoder.Instance.Decode(account) : null;
 
     /// <summary>Reads a slot the persistence reader cannot read flat, from the storage trie of the account in this bundle's state.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -374,50 +370,16 @@ public sealed class ReadOnlySnapshotBundle(
 
         ValueHash256 slotPath = default;
         StorageTree.ComputeKeyWithLookup(index, ref slotPath);
-        TrieLookup lookup = new(slotPath, isStorage: true);
-        WalkTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, ref lookup);
-        if (!lookup.Found) return false;
-        value = lookup.Slot;
+        if (TryGetWithTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, slotPath) is not { } encoded) return false;
+        value = new UInt256(new RlpReader(encoded).DecodeByteArraySpan(), isBigEndian: true);
         return true;
     }
 
-    /// <summary>Walks the trie from <paramref name="root"/> to the key of <paramref name="lookup"/>, reading its nodes as block processing does.</summary>
-    /// <remarks>
-    /// Follows the buffer records of this bundle's state from the root its snapshot finds by hash. The node no pointer resolves, and
-    /// every node below it, is loaded from the persisted snapshots and persistence instead.
-    /// </remarks>
+    /// <summary>Reads the value at <paramref name="key"/> of the trie at <paramref name="root"/>, starting at the root record the state's snapshot finds by hash, as block processing does.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    /// <exception cref="MissingTrieNodeException">A node on the way is in none of them.</exception>
-    private void WalkTrie(Hash256? address, in ValueHash256 root, ref TrieLookup lookup)
-    {
-        if (root == ValueKeccak.EmptyTreeHash) return;
-
-        Snapshot? stateSnapshot = StateSnapshot;
-        INodeRecordBuffer? buffer = stateSnapshot?.BufferPin?.Buffer;
-        ulong pointer = stateSnapshot?.ResolveRoot(address, root) ?? 0;
-        lookup.NodeHash = root;
-        Span<TrieLookup> walk = new(ref lookup);
-        while (!lookup.IsDone)
-        {
-            // Copied, as the node read advances them while the load still holds them by reference.
-            TreePath path = lookup.NodePath;
-            ValueHash256 hash = lookup.NodeHash;
-            if (pointer != 0 && buffer is not null && buffer.TryLocate(pointer, out NodeRecord record))
-            {
-                lookup.Descend(record.Rlp);
-                // An embedded node is too short to reference another by hash, so the next node is a direct child of this record, whose pointer it holds.
-                pointer = lookup.IsDone ? 0 : record.View.Child(record.Kind == NodeRecordKind.Extension ? 0 : lookup.NodePath[path.Length]).Pointer;
-            }
-            else if (TryLoadPersistedRlp(address, path, hash, ReadFlags.None, DescendTrie, walk))
-            {
-                pointer = 0;
-            }
-            else
-            {
-                throw NodeRecordBulkSet.MissingNode(address, path, hash);
-            }
-        }
-    }
+    /// <exception cref="MissingTrieNodeException">A node on the path is in none of this bundle's tiers.</exception>
+    private byte[]? TryGetWithTrie(Hash256? address, in ValueHash256 root, in ValueHash256 key) =>
+        NodeRecordTrie.TryGet(new TrieNodes(this, address), address, (root, StateSnapshot?.ResolveRoot(address, root) ?? 0), key);
 
     /// <summary>The state root of this bundle's state: its newest snapshot's, otherwise persistence's.</summary>
     private ValueHash256 StateRoot => (StateSnapshot?.To ?? persistedSnapshots.To ?? persistenceReader.CurrentState).StateRoot;
@@ -492,5 +454,23 @@ public sealed class ReadOnlySnapshotBundle(
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
         bufferPin?.Dispose();
+    }
+
+    /// <summary>One trie of this bundle's state: the buffer records of its in-memory snapshot, then the nodes the persisted snapshots and persistence hold.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    private sealed class TrieNodes(ReadOnlySnapshotBundle bundle, Hash256? address) : INodeRecordStore
+    {
+        private readonly INodeRecordBuffer? _buffer = bundle.StateSnapshot?.BufferPin?.Buffer;
+
+        public bool TryLocate(ulong pointer, out NodeRecord record)
+        {
+            record = default;
+            return pointer != 0 && _buffer is not null && _buffer.TryLocate(pointer, out record);
+        }
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => throw new NotSupportedException();
+
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            bundle.TryLoadPersistedRlp(address, path, hash, ReadFlags.None, action, arg);
     }
 }

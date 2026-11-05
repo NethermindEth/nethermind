@@ -93,13 +93,20 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     /// <remarks>Only for <see cref="Nethermind.Db.IFlatDbConfig.VerifyWithTrie"/>, which checks flat reads against the trie; normal reads never walk the trie.</remarks>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
-    public byte[]? TryGet(in ValueHash256 key)
+    public byte[]? TryGet(in ValueHash256 key) => TryGet(this, addressHash, Root, key);
+
+    /// <summary>Reads the value at <paramref name="key"/> by following record pointers from <paramref name="root"/>, loading from <paramref name="store"/> the nodes they do not resolve.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
+    /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
+    /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the store.</exception>
+    internal static byte[]? TryGet(INodeRecordStore store, Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key)
     {
         TreePath keyPath = new(key, BulkSetWorkingState.MaxKeyNibbles);
         Span<byte> nodeKey = stackalloc byte[BulkSetWorkingState.MaxKeyNibbles];
         using LoadedRecordBuffer loaded = new();
         TreePath path = TreePath.Empty;
-        ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
+        ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, root.Pointer);
         while (true)
         {
             switch (child.Kind)
@@ -117,9 +124,9 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.ToArray() : null;
             }
 
-            if (!TryLocate(child.Pointer, out NodeRecord record) && !loaded.TryLoad(this, path, child.Data, out record))
+            if (!store.TryLocate(child.Pointer, out NodeRecord record) && !loaded.TryLoad(store, path, child.Data, out record))
             {
-                throw NodeRecordBulkSet.MissingNode(addressHash, path, child.Data);
+                throw NodeRecordBulkSet.MissingNode(address, path, child.Data);
             }
 
             NodeRecordRef view = record.View;
