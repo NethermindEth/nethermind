@@ -936,6 +936,22 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
+    public async Task Debug_traceCall_buffered_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs, "latest", new { tracer = "callTracer" });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Does.StartWith(expectedErrorPrefix), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedErrorCode), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
     {
         Address freshA = Build.An.Address.TestObject;
@@ -943,21 +959,21 @@ public partial class DebugRpcModuleTests
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
             $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
-        { TestName = "InsufficientFundsForTransfer" };
+        { TestName = "{m}_InsufficientFundsForTransfer" };
 
         Address freshB = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshB}", to = $"{TestItem.AddressC}", gas = "0x64" },
             "tracing failed: intrinsic gas too low: have 100, want ",
             ErrorCodes.InvalidInput)
-        { TestName = "IntrinsicGasTooLow" };
+        { TestName = "{m}_IntrinsicGasTooLow" };
 
         Address freshC = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", gasPrice = "0x1" },
             $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
-        { TestName = "InsufficientFundsForGasPriceValue" };
+        { TestName = "{m}_InsufficientFundsForGasPriceValue" };
     }
 
     public static IEnumerable<TestCaseData> KeccakPreimageCases()
