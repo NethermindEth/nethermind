@@ -310,9 +310,9 @@ public partial class DebugRpcModuleTests
         Assert.That(failed, Is.EqualTo(field is null));
     }
 
-    private static IEnumerable<TestCaseData> OptionsStateOverridesWithBundleOverridesCases()
+    private static IEnumerable<TestCaseData> OptionsOverridesWithBundleOverridesCases()
     {
-        const string mixed = "options.stateOverrides cannot be combined with bundle blockOverride or stateOverrides";
+        const string mixed = "options.stateOverrides and options.blockOverrides cannot be combined with bundle blockOverride or stateOverrides";
         static Dictionary<UInt256, Hash256> Storage() => new() { [UInt256.Zero] = Keccak.OfAnEmptyString };
         static Dictionary<Address, AccountOverride> Options() => new() { [TestItem.AddressC] = new() { StateDiff = Storage() } };
         static TransactionBundle Second(BlockOverride? blockOverride = null, Dictionary<Address, AccountOverride>? stateOverrides = null, bool empty = false) =>
@@ -327,15 +327,17 @@ public partial class DebugRpcModuleTests
             $"account {TestItem.AddressB.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'").SetName("{m}(bundle_storage_conflict_comes_first)");
         yield return new TestCaseData(new Dictionary<Address, AccountOverride> { [TestItem.AddressC] = new() { State = Storage() } },
             Second(stateOverrides: new() { [TestItem.AddressC] = new() { StateDiff = Storage() } }), mixed).SetName("{m}(options_state_and_bundle_stateDiff_get_the_combination_error)");
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), mixed, new BlockOverride { Time = 1 }).SetName("{m}(options_block_override)");
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), null, new BlockOverride()).SetName("{m}(empty_options_block_override_runs_the_simulation)");
     }
 
-    [TestCaseSource(nameof(OptionsStateOverridesWithBundleOverridesCases))]
-    public async Task Debug_traceCallMany_rejects_options_state_overrides_with_bundle_overrides(Dictionary<Address, AccountOverride> optionsStateOverrides, TransactionBundle secondBundle, string? expectedError)
+    [TestCaseSource(nameof(OptionsOverridesWithBundleOverridesCases))]
+    public async Task Debug_traceCallMany_rejects_options_overrides_with_bundle_overrides(Dictionary<Address, AccountOverride> optionsStateOverrides, TransactionBundle secondBundle, string? expectedError, BlockOverride? optionsBlockOverride = null)
     {
         using Context ctx = await CreateContext();
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
-            [CreateBundle(CreateTransaction()), secondBundle], BlockParameter.Latest, new GethTraceOptions { StateOverrides = optionsStateOverrides });
+            [CreateBundle(CreateTransaction()), secondBundle], BlockParameter.Latest, new GethTraceOptions { StateOverrides = optionsStateOverrides, BlockOverrides = optionsBlockOverride });
 
         using (Assert.EnterMultipleScope())
         {
