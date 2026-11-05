@@ -169,7 +169,8 @@ public class DebugRpcModule(
         if (syncPointers.LowestInsertedReceiptBlockNumber is { } lowestInserted)
         {
             if (lowestInserted <= barrier) return false;
-            highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted - 1);
+            // The cursor can still name the block in an outstanding receipt request.
+            highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted);
         }
         if (highestPendingBlock < barrier) return false;
 
