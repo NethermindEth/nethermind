@@ -36,6 +36,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly RpcExecutionLimiter _executionLimiter = new(jsonRpcConfig);
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
@@ -114,17 +115,33 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
-        if (rpcModule is IContextAwareRpcModule contextAwareModule)
+        // Wait before renting or decoding: queued EVM calls hold neither a worker nor a shared module slot.
+        bool executionPermit = method.IsExecutionHeavy;
+        if (executionPermit)
         {
-            contextAwareModule.Context = context;
+            await _executionLimiter.EnterAsync();
         }
-        bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
+        IRpcModule rpcModule;
+        try
+        {
+            rpcModule = await _rpcModuleProvider.Rent(method);
+        }
+        catch
+        {
+            if (executionPermit) _executionLimiter.Exit();
+            throw;
+        }
+        bool returnImmediately = true;
+        Action? returnAction = null;
         IResultWrapper? resultWrapper = null;
         try
         {
+            if (rpcModule is IContextAwareRpcModule contextAwareModule)
+            {
+                contextAwareModule.Context = context;
+            }
+            returnImmediately = methodName != GetLogsMethodName;
+            returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule, executionPermit);
             JsonRpcErrorResponse? value;
             object?[]? parameters;
             int parameterCount;
@@ -174,7 +191,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
             {
                 returnImmediately = false;
-                returnAction = CreateReturnAction(method, rpcModule);
+                returnAction = CreateReturnAction(method, rpcModule, executionPermit);
             }
         }
         catch (Exception ex)
@@ -185,7 +202,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                _rpcModuleProvider.Return(method, rpcModule);
+                try
+                {
+                    _rpcModuleProvider.Return(method, rpcModule);
+                }
+                finally
+                {
+                    if (executionPermit) _executionLimiter.Exit();
+                }
             }
         }
 
@@ -228,8 +252,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     }
 
     // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
-    private Action CreateReturnAction(ResolvedMethodInfo method, IRpcModule rpcModule) =>
-        () => _rpcModuleProvider.Return(method, rpcModule);
+    private Action CreateReturnAction(ResolvedMethodInfo method, IRpcModule rpcModule, bool executionPermit) =>
+        () =>
+        {
+            try
+            {
+                _rpcModuleProvider.Return(method, rpcModule);
+            }
+            finally
+            {
+                if (executionPermit) _executionLimiter.Exit();
+            }
+        };
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)

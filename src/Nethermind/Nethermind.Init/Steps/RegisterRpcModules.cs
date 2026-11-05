@@ -46,9 +46,14 @@ public class RegisterRpcModules(
             return Task.CompletedTask;
         }
 
-        // lets add threads to support parallel eth_getLogs
+        ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
+        // Reserve default-pool workers for engine intake and following beside admitted CPU-bound RPCs.
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
-        ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
+        int minimumWorkers = Math.Max(workerThreads, RpcExecutionLimiter.GetConcurrency(jsonRpcConfig)) + Environment.ProcessorCount;
+        if (!ThreadPool.SetMinThreads(minimumWorkers, completionPortThreads + Environment.ProcessorCount) && logger.IsWarn)
+        {
+            logger.Warn($"Unable to set the RPC worker minimum to {minimumWorkers}; check forced ThreadPool settings before qualifying following under load.");
+        }
 
         RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
 
@@ -66,7 +71,6 @@ public class RegisterRpcModules(
             blockForRpcFactory);
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-        ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
 
