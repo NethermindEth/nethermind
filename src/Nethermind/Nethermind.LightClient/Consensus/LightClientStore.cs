@@ -12,6 +12,8 @@ namespace Nethermind.LightClient.Consensus;
 
 internal sealed class IrrelevantLightClientUpdateException() : IOException("Update is not relevant to the current sync period.");
 internal class LightClientLocalStateException(string message) : IOException(message);
+internal sealed class LightClientClockException()
+    : LightClientLocalStateException("Authenticated optimistic head is ahead of the local clock; verify the system clock.");
 internal sealed class LightClientFutureSlotException(ulong signatureSlot)
     : LightClientLocalStateException("Authenticated update is waiting for its signature slot.")
 {
@@ -65,9 +67,14 @@ internal sealed class LightClientStore
     /// https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/
     /// </remarks>
     /// <exception cref="LightClientLocalStateException">The authenticated state is too old to trust.</exception>
-    internal void RequireRecent(ulong currentSlot) => RequireLocal(
-        currentSlot - Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot <= Presets.MinValidatorWithdrawabilityDelay * _spec.SlotsPerEpoch,
-        "Authenticated light-client state is older than the conservative 256-epoch weak-subjectivity bound; supply a recent trusted checkpoint.");
+    /// <exception cref="LightClientClockException">The authenticated head is ahead of the local clock.</exception>
+    internal void RequireRecent(ulong currentSlot)
+    {
+        ulong optimisticSlot = Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot;
+        if (optimisticSlot > currentSlot) throw new LightClientClockException();
+        RequireLocal(currentSlot - optimisticSlot <= Presets.MinValidatorWithdrawabilityDelay * _spec.SlotsPerEpoch,
+            "Authenticated light-client state is older than the conservative 256-epoch weak-subjectivity bound; supply a recent trusted checkpoint.");
+    }
 
     /// <summary>A detached copy of the most recent authenticated finalized header.</summary>
     public LightClientHeader FinalizedHeader => CloneHeader(Volatile.Read(ref _snapshot).Header);

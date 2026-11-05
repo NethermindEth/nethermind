@@ -157,7 +157,9 @@ internal sealed class VerifiedPayloadCache<T>(Func<T, long> size, CancellationTo
     {
         _stopping = true;
         _changed.TrySetResult();
-        Task[] owners = _downloads.Values.Select(static download => (Task)download.Task).ToArray();
+        Task[] owners = new Task[_downloads.Count];
+        int index = 0;
+        foreach (TaskCompletionSource<T> download in _downloads.Values) owners[index++] = download.Task;
         await _stop.CancelAsync();
         await Task.WhenAll(owners).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _cache.Dispose();

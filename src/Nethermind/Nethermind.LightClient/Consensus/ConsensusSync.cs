@@ -148,7 +148,7 @@ internal static class ConsensusSync
     internal static void RequireLiveState(LightClientStore store, ulong currentSlot, Action stopApplication)
     {
         try { store.RequireRecent(currentSlot); }
-        catch (LightClientLocalStateException exception)
+        catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
         {
             stopApplication();
             throw new InvalidOperationException("Authenticated light-client state is too old to resume; restart with a recent trusted checkpoint.", exception);

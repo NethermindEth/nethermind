@@ -102,8 +102,16 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal int PeerCount => _services.Resolve<ISyncPeerPool>().PeerCount;
     internal Nethermind.Core.Specs.ISpecProvider SpecProvider => _services.Resolve<Nethermind.Core.Specs.ISpecProvider>();
-    internal int SnapPeerCount => _services.Resolve<ISyncPeerPool>().AllPeers.Count(
-        static peer => peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _));
+    internal int SnapPeerCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (PeerInfo peer in _services.Resolve<ISyncPeerPool>().AllPeers)
+                if (peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _)) count++;
+            return count;
+        }
+    }
     internal int CandidateCount => _peerPool?.PeerCount ?? 0;
     internal string DiscoveryStatus => _feederTask?.Status.ToString() ?? "not started";
     internal string DiscoveryDomain => _services.Resolve<INetworkConfig>().DiscoveryDns ?? "<unset>";
@@ -450,12 +458,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             if (suppliers.Count == 1)
             {
-                PeerInfo supplier = suppliers.Single();
-                RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
+                foreach (PeerInfo supplier in suppliers)
+                    RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
             }
         }
 
-        foreach (PeerInfo supplier in pool.InitializedPeers.ToArray())
+        using ArrayPoolList<PeerInfo> candidates = new(pool.PeerCount);
+        foreach (PeerInfo supplier in pool.InitializedPeers) candidates.Add(supplier);
+        foreach (PeerInfo supplier in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (IsCooling(supplier, AllocationContexts.Snap)

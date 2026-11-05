@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Init.Steps;
@@ -48,10 +49,22 @@ internal static class LightClientHost
 
     internal static void ConfigureRequestPolicy(WebApplication app, string rpcUrls)
     {
-        bool loopbackOnly = rpcUrls.Split(';').All(static value => Uri.TryCreate(value, UriKind.Absolute, out Uri? url) && url.IsLoopback);
+        bool loopbackOnly = true;
+        if (rpcUrls.Length == 0)
+        {
+            string[] portKeys = [WebHostDefaults.HttpPortsKey, WebHostDefaults.HttpsPortsKey];
+            foreach (string key in portKeys)
+                if (app.Configuration[key]?.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Length > 0)
+                    loopbackOnly = false;
+        }
+        foreach (string value in rpcUrls.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            BindingAddress address = BindingAddress.Parse(value);
+            if (!IsLoopbackHost(address.Host)) loopbackOnly = false;
+        }
         app.Use(async (context, next) =>
         {
-            if (loopbackOnly && (!Uri.TryCreate($"{context.Request.Scheme}://{context.Request.Host}", UriKind.Absolute, out Uri? host) || !host.IsLoopback))
+            if (loopbackOnly && (!Uri.TryCreate($"{context.Request.Scheme}://{context.Request.Host}", UriKind.Absolute, out Uri? host) || !IsLoopbackHost(host.Host)))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
@@ -68,6 +81,11 @@ internal static class LightClientHost
         });
         app.UseCors(static policy => policy.SetIsOriginAllowed(IsBrowserExtensionOrigin).WithMethods("GET", "POST").AllowAnyHeader());
     }
+
+    private static bool IsLoopbackHost(string host) =>
+        string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+        host.Length > ".localhost".Length && host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) ||
+        IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
 
     private static bool IsBrowserExtensionOrigin(string origin)
     {

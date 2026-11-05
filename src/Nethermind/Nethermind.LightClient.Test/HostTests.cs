@@ -514,11 +514,30 @@ public class HostTests
     [TestCase("moz-extension://not-a-uuid", null, 403)]
     [TestCase("moz-extension://12345678123412341234123456789abc", null, 403)]
     [TestCase(ChromeOrigin + ", " + FirefoxOrigin, null, 403)]
+    [TestCase("http://attacker.example", "attacker.example", 403, "http://127.0.0.1:0;")]
+    [TestCase("http://attacker.example", "attacker.example", 403, ";http://127.0.0.1:0")]
+    [TestCase("http://attacker.example", "attacker.example", 403, ";;http://127.0.0.1:0;;")]
+    [TestCase("http://attacker.example", "attacker.example", 403, "")]
+    [TestCase("http://attacker.example", "attacker.example", 403, ";;")]
+    [TestCase("http://attacker.example", "attacker.example", 200, "", "8545")]
+    [TestCase("http://attacker.example", "attacker.example", 200, "", null, "8545")]
+    [TestCase("http://attacker.example", "attacker.example", 200, "", " ; 8545 ; ")]
+    [TestCase("http://attacker.example", "attacker.example", 200, "", null, " ; 8545 ; ")]
+    [TestCase("http://attacker.example", "attacker.example", 403, "", " ; ")]
+    [TestCase("http://attacker.example", "attacker.example", 403, "", null, " ; ")]
+    [TestCase("http://attacker.example", "attacker.example", 403, ";;", "8545")]
+    [TestCase("http://attacker.example", "attacker.example", 403, ";;", null, "8545")]
+    [TestCase(null, null, 200, ";;http://127.0.0.1:0;;")]
+    [TestCase("http://wallet.localhost", "wallet.localhost", 200)]
+    [TestCase("http://attacker.example", "attacker.example", 403, "http://::1:0")]
     public async Task Rpc_origin_and_host_policy_rejects_cross_site_and_rebinding_requests(
-        string? requestOrigin, string? requestHost, int expectedStatus)
+        string? requestOrigin, string? requestHost, int expectedStatus, string rpcUrls = "http://127.0.0.1:0",
+        string? httpPorts = null, string? httpsPorts = null)
     {
-        await using WebApplication app = CreateApp("http://127.0.0.1:0");
-        LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
+        await using WebApplication app = CreateApp(rpcUrls.Trim(';').Length == 0 ? "http://127.0.0.1:0" : rpcUrls);
+        app.Configuration[WebHostDefaults.HttpPortsKey] = httpPorts;
+        app.Configuration[WebHostDefaults.HttpsPortsKey] = httpsPorts;
+        LightClientHost.ConfigureRequestPolicy(app, rpcUrls);
         app.MapGet("/", () => "ok");
         app.MapGet("/ws", () => "ok");
         app.MapGet("/status", () => "ok");
@@ -536,6 +555,14 @@ public class HostTests
 
             Assert.That((int)response.StatusCode, Is.EqualTo(expectedStatus), path);
         }
+    }
+
+    [Test]
+    public async Task Invalid_listener_entries_are_rejected(
+        [Values("not-a-url", "http://127.0.0.1:0;not-a-url", "http://0.0.0.0:8545;not-a-url")] string urls)
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+        Assert.Throws<FormatException>(() => LightClientHost.ConfigureRequestPolicy(app, urls));
     }
 
     [Test]

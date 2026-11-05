@@ -1836,13 +1836,18 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Live_processing_stops_on_the_same_recency_bound_as_replay([Values(8193UL, 8194UL)] ulong slot)
+    public void Live_processing_stops_on_the_same_recency_bound_as_replay([Values(0UL, 1UL, 8192UL, 8193UL, 8194UL)] ulong slot)
     {
         LightClientStore store = Store(Bootstrap(1, 1));
         bool stopped = false;
         void Check() => ConsensusSync.RequireLiveState(store, slot, () => stopped = true);
 
-        if (slot == 8193) Check();
+        if (slot == 0)
+        {
+            Assert.That(Check, Throws.InstanceOf<LightClientLocalStateException>().With.Message.Contains("clock"));
+            ConsensusSync.RequireLiveState(store, 1, () => stopped = true);
+        }
+        else if (slot <= 8193) Check();
         else Assert.That(Check, Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
         using (Assert.EnterMultipleScope())
         {

@@ -227,6 +227,24 @@ public class VerifiedRpcTests
     }
 
     [Test]
+    public async Task Block_parameters_are_validated_before_header_resolution(
+        [Values("eth_getBlockByNumber", "eth_getBlockByHash", "eth_getTransactionByBlockNumberAndIndex", "eth_getTransactionByBlockHashAndIndex")] string method,
+        [Values] bool missing, [Values("false", "0x", "0x00", null)] string? invalid)
+    {
+        using Provider provider = new(new Account(7, 123)) { HeaderUnavailable = missing };
+        string selector = method.Contains("Hash", StringComparison.Ordinal) ? BlockHash.ToString() : missing ? "0xb" : "0xa";
+
+        RpcException? exception = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync(
+            method, Parameters(selector, invalid), CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Code, Is.EqualTo(-32602));
+            Assert.That(provider.Requests, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task Block_receipts_accept_an_EIP_1898_hash_object([Values] bool requireCanonical)
     {
         using Provider provider = new(new Account(7, 123));
@@ -2297,7 +2315,7 @@ public class VerifiedRpcTests
         }
     }
 
-    private static JsonElement Parameters(params object[] values) => JsonSerializer.SerializeToElement(values);
+    private static JsonElement Parameters(params object?[] values) => JsonSerializer.SerializeToElement(values);
 
     [Test]
     public async Task Exported_proof_can_be_verified_against_the_authenticated_root([Values] bool tamper,

@@ -324,24 +324,30 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
 
             bool blockByHash = method is "eth_getBlockByHash" or "eth_getBlockTransactionCountByHash"
                 or "eth_getTransactionByBlockHashAndIndex";
-            int expected = method is "eth_getBlockByHash" or "eth_getBlockByNumber"
-                or "eth_getTransactionByBlockHashAndIndex" or "eth_getTransactionByBlockNumberAndIndex" ? 2 : 1;
+            bool block = method is "eth_getBlockByHash" or "eth_getBlockByNumber";
+            int expected = block || method is "eth_getTransactionByBlockHashAndIndex" or "eth_getTransactionByBlockNumberAndIndex" ? 2 : 1;
             if (count != expected) throw InvalidParameters();
+            bool fullTransactions = false;
+            UInt256 index = UInt256.Zero;
+            if (expected == 2)
+            {
+                if (block)
+                {
+                    if (parameters[1].ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw InvalidParameters();
+                    fullTransactions = parameters[1].GetBoolean();
+                }
+                else index = ParseQuantity(parameters[1]);
+            }
             VerifiedHead? latest = await LatestForSelectorAsync(parameters[0], cancellationToken);
             using DataRequest admission = new(cancellationToken);
             BlockHeader? header = await ResolveDataHeaderAsync(parameters[0], blockByHash, cancellationToken, pinnedLatest: latest);
             if (header is null) return JsonSerializer.SerializeToElement<object?>(null);
-            if (method is "eth_getBlockByHash" or "eth_getBlockByNumber")
-            {
-                if (parameters[1].ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw InvalidParameters();
-                return await _data.GetBlockAsync(header, parameters[1].GetBoolean(), cancellationToken);
-            }
+            if (block) return await _data.GetBlockAsync(header, fullTransactions, cancellationToken);
             if (method is "eth_getBlockTransactionCountByHash" or "eth_getBlockTransactionCountByNumber")
                 return await _data.GetBlockTransactionCountAsync(header, cancellationToken);
             if (method == "eth_getBlockReceipts")
                 return await _data.GetBlockReceiptsAsync(header, cancellationToken);
 
-            UInt256 index = ParseQuantity(parameters[1]);
             if (index > int.MaxValue) return JsonSerializer.SerializeToElement<object?>(null);
             return await _data.GetTransactionAsync(header, (int)index, cancellationToken);
         }
