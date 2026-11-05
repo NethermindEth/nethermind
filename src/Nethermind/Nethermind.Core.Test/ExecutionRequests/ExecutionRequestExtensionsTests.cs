@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -17,6 +19,14 @@ public class ExecutionRequestExtensionsTests
     private static readonly TestExecutionRequest[] ConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
     private static readonly TestExecutionRequest[] BuilderDepositRequests = [TestItem.ExecutionRequestJ, TestItem.ExecutionRequestK];
     private static readonly TestExecutionRequest[] BuilderExitRequests = [TestItem.ExecutionRequestL, TestItem.ExecutionRequestM];
+
+    [TestCaseSource(nameof(RequestHashCases))]
+    public void CalculateHashFromFlatEncodedRequests_KnownGroups_MatchesExpectedHash(byte[][] requests, string expectedHash)
+    {
+        Hash256 hash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests);
+
+        Assert.That(hash, Is.EqualTo(new Hash256(expectedHash)));
+    }
 
     [Test]
     public void GetFlatEncodedRequests_encodes_request_groups()
@@ -180,6 +190,22 @@ public class ExecutionRequestExtensionsTests
                 [(byte)ExecutionRequestType.WithdrawalRequest],
                 [(byte)ExecutionRequestType.Deposit]
             ]));
+
+    private static IEnumerable<TestCaseData> RequestHashCases()
+    {
+        yield return new TestCaseData(Array.Empty<byte[]>(), "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            .SetName("RequestHash_EmptyGroups");
+        yield return new TestCaseData(new byte[][] { [], [0] }, "0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            .SetName("RequestHash_EmptyAndTypeOnlyGroups");
+        yield return new TestCaseData(new byte[][] { [0, 1, 2] }, "0x35f9f2930ea344618822795eeec568ae67ab2987d8b19e4591e10527baa1df3d")
+            .SetName("RequestHash_SingleGroup");
+        yield return new TestCaseData(new byte[][] { [], [0], [0, 1, 2], [1, 3, 4] }, "0xa85c90722e89ff03f65367c77c8f5d562fddd99f55303a009305071edc8b2d09")
+            .SetName("RequestHash_MixedGroups");
+        yield return new TestCaseData(new byte[][] { [0, 1], [1, 2], [2, 3], [3, 4], [4, 5] }, "0x90f4aa3f9e3a22439310d1d798a1417d1bc2aaf662e037b2c139f2fcc21d690d")
+            .SetName("RequestHash_FiveGroups");
+        yield return new TestCaseData(new byte[][] { [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6] }, "0xed503c0637d05601c0a74421d841445a90a28d142f1e959b4b3df0f8a8dd81f8")
+            .SetName("RequestHash_MoreGroupsThanInitialCapacity");
+    }
 
     private static void AssertFlatEncodedRequests(byte[] encodedRequests, ExecutionRequestType expectedType, CoreExecutionRequest[] expectedRequests, int requestDataSize)
     {

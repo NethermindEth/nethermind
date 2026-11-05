@@ -22,7 +22,7 @@ public static class Metrics
     public static long TransientReceiptOversizedBlocks;
 
     [CounterMetric]
-    [Description("Canonical receipt notifications skipped because the transient delivery budget was reached.")]
+    [Description("Canonical receipt notification batches skipped because the transient delivery budget was reached.")]
     public static long TransientReceiptNotificationsDropped;
 
     [CounterMetric]
@@ -42,7 +42,7 @@ public static class Metrics
     public static ulong Blocks;
 
     [CounterMetric]
-    [Description("Total number of chain reorganizations")]
+    [Description("Total number of chain reorganizations: each time the canonical head stops being canonical, so a pure rewind counts once")]
     public static long Reorganizations { get; set; }
 
     [GaugeMetric]

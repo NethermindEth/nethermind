@@ -448,7 +448,9 @@ namespace Nethermind.Db.LogIndex
             _backwardWriteSemaphore.Dispose();
             _compressor?.Dispose();
             _compactor?.Dispose();
-            DBColumns?.DisposeItems();
+            // Null when the constructor failed before opening the database, e.g. on an invalid configuration
+            if (_topicDbs is not null)
+                DBColumns.DisposeItems();
             _rootDb?.Dispose();
         }
 
@@ -528,6 +530,15 @@ namespace Nethermind.Db.LogIndex
 
         public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
             GetEnumerator(topicIndex, topic.BytesToArray(), from, to);
+
+        /// <summary>Returns descending address postings, or null when the database lacks reverse views.</summary>
+        public IEnumerator<int>? TryGetReverseEnumerator(Address address, int from, int to)
+        {
+            IDb db = GetDb(null);
+            return db is ISortedKeyValueStore sortedDb
+                ? ReverseLogIndexEnumerator.TryCreate(sortedDb, _compressionAlgorithm, address.Bytes.ToArray(), from, to)
+                : null;
+        }
 
         public IEnumerator<int> GetEnumerator(int? topicIndex, byte[] key, int from, int to)
         {

@@ -52,6 +52,17 @@ namespace Nethermind.State
             return collector.Stats;
         }
 
+        /// <summary>
+        /// Collects up to <paramref name="limit"/> storage slots of <paramref name="address"/> at <paramref name="baseBlock"/>,
+        /// in hashed-key order from the hashed key <paramref name="startKey"/>.
+        /// </summary>
+        public static StorageRangeVisitor CollectStorageRange(this IStateReader stateReader, BlockHeader? baseBlock, Address address, in ValueHash256 startKey, int limit)
+        {
+            StorageRangeVisitor visitor = new(address, startKey, limit);
+            stateReader.RunTreeVisitor(visitor, baseBlock);
+            return visitor;
+        }
+
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
         {
             TreeDumper dumper = new();

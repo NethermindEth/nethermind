@@ -17,26 +17,26 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public Hash256 Hash { get; set; }
         public UInt256? Nonce { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? BlockNumber { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? TransactionIndex { get; set; }
         public Address From { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
         public ulong? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address Creates { get; set; }
+        public Address? Creates { get; set; }
         [JsonConverter(typeof(PublicKeyConverter))]
         public PublicKey PublicKey { get; set; }
         public ulong? ChainId { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public object Condition { get; set; }
+        public object? Condition { get; set; }
         public Memory<byte> R { get; set; }
         public Memory<byte> S { get; set; }
         public UInt256 V { get; set; }

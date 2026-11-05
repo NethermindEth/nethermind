@@ -11,7 +11,11 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -178,11 +182,12 @@ public class WebSocketExtensionsTests
         localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
     }
 
-    [TestCase(null, " from 203.0.113.7 Data")]
-    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1) Data")]
+    [TestCase(null, " from 203.0.113.7")]
+    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1)")]
     public async Task Created_client_logs_caller_address(string forwardedFor, string expectedFragment)
     {
-        const string request = "{";
+        const string secret = "private-rpc-parameter";
+        const string request = "{\"params\":[\"" + secret + "\"]";
         Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(request.Length, WebSocketMessageType.Text, true));
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
@@ -213,7 +218,48 @@ public class WebSocketExtensionsTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await client.ReceiveLoopAsync(cts.Token);
 
-        Assert.That(logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>(), Has.Some.Contains(expectedFragment));
+        string[] messages = logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>().ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Has.Some.Contains(expectedFragment));
+            Assert.That(messages, Has.None.Contains(secret));
+        }
+    }
+
+    [Test]
+    public async Task Logs_receive_loop_failure_as_error_only_when_connection_was_not_aborted([Values] bool aborted)
+    {
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("TestClient");
+        client.ReceiveLoopAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException(new ConnectionAbortedException()));
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(client);
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule("ws").Returns(module);
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        logger.IsError.Returns(true);
+        ServiceCollection services = new();
+        services.AddSingleton(manager);
+        services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
+        ApplicationBuilder app = new(services.BuildServiceProvider());
+        app.UseWebSocketsModules();
+
+        IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
+        webSocketFeature.IsWebSocketRequest.Returns(true);
+        webSocketFeature.AcceptAsync(Arg.Any<WebSocketAcceptContext>()).Returns(new WebSocketMock(new Queue<WebSocketReceiveResult>()));
+        DefaultHttpContext context = new();
+        context.Features.Set(webSocketFeature);
+        context.Request.Path = "/ws";
+        using CancellationTokenSource requestAborted = new();
+        context.RequestAborted = requestAborted.Token;
+        if (aborted) await requestAborted.CancelAsync();
+
+        await app.Build()(context);
+
+        logger.Received(aborted ? 0 : 1).Error(Arg.Any<string>(), Arg.Any<Exception>());
+        module.Received(1).RemoveClient("TestClient");
     }
 
     [Test]

@@ -10,6 +10,7 @@ using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -91,7 +92,9 @@ public partial class DebugRpcModuleTests
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(result, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That((JArray)result[0], Has.Count.EqualTo(1));
     }
 
@@ -117,14 +120,16 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_with_multiple_transactions_per_bundle()
+    public async Task Debug_traceCallMany_without_overrides_traces_each_call_against_the_base_state([Values] bool streaming)
     {
         using Context ctx = await CreateContext();
-        TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address relay = TestItem.GetRandomAddress();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(to: relay), CreateTransaction(from: relay));
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([2]));
+        Assert.That(result.Select(static r => r.Select(static trace => (bool)trace["failed"]!)), Is.EqualTo(new[] { new[] { false, true } }), result.ToString());
     }
 
     [Test]
@@ -138,10 +143,13 @@ public partial class DebugRpcModuleTests
         Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
 
         JToken trace = result[0][0]!;
-        Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
-        Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
-        Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
-        Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
+            Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
+            Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
+            Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        }
     }
 
     [Test]
@@ -207,7 +215,9 @@ public partial class DebugRpcModuleTests
         };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
@@ -225,7 +235,9 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
@@ -246,6 +258,59 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_rejects_conflicting_storage_overrides([Values] bool inOptions, [Values] bool loneBlobFeeCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressB.ToString(), ["gas"] = "0x5208" };
+        if (loneBlobFeeCap) call["maxFeePerBlobGas"] = "0x0";
+        object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } };
+
+        string response = inOptions
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call } } }, "latest", new { stateOverrides })
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, stateOverrides } }, "latest");
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {TestItem.AddressC.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_applies_a_lone_storage_override([Values] bool inOptions, [Values("state", "stateDiff", null)] string? field)
+    {
+        using Context ctx = await CreateContext();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(from: TestItem.AddressA, value: 0, gas: 100_000));
+        Dictionary<UInt256, Hash256> storage = new() { [UInt256.Zero] = Keccak.OfAnEmptyString };
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            // PUSH1 0 SLOAD ISZERO PUSH1 8 JUMPI STOP JUMPDEST PUSH1 0 DUP1 REVERT: reverts while slot 0 is empty.
+            [TestItem.AddressC] = new()
+            {
+                Code = Bytes.FromHexString("0x60005415600857005b600080fd"),
+                State = field == "state" ? storage : null,
+                StateDiff = field == "stateDiff" ? storage : null
+            }
+        };
+
+        // The trace options path may stream, so it is read back as JSON; a bundle with overrides is buffered.
+        bool? failed;
+        if (inOptions)
+        {
+            JArray result = await RunTraceCallManyAsJson(ctx, [bundle], new GethTraceOptions { StateOverrides = overrides });
+            failed = result.Single().Single()["failed"]?.Value<bool>();
+        }
+        else
+        {
+            bundle.StateOverrides = overrides;
+            failed = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest).Data.Single().Single().Failed;
+        }
+
+        Assert.That(failed, Is.EqualTo(field is null));
+    }
+
+    [Test]
     public async Task Debug_trace_calls_reject_a_withdrawals_block_override([Values] bool many)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
@@ -259,7 +324,7 @@ public partial class DebugRpcModuleTests
         JToken error = JToken.Parse(response)["error"]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(many ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput));
             Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
         }
     }
@@ -324,8 +389,11 @@ public partial class DebugRpcModuleTests
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
 
-        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
-        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
+            Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        }
     }
 
     [Test]
@@ -418,8 +486,11 @@ public partial class DebugRpcModuleTests
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         if (uncapped)
         {
-            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
-            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+                Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            }
         }
         else
         {

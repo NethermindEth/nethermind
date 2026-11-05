@@ -4,7 +4,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -92,7 +96,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // solely on header/txs/uncles/withdrawals (none mutated after processing), so encoding defers to the consumer.
         // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
         // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
-        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions });
+        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions, EncodedSize = block.EncodedSize });
     }
 
     private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
@@ -186,7 +190,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.EncodeAsBytes(pendingBlock);
+            return _blockDecoder.Encode(pendingBlock).Bytes;
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -212,8 +216,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadRecoveryBlockMemory(keyWithBlockNumber);
+        memoryOwner ??= ReadRecoveryBlockMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -228,6 +232,55 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
+    private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
+    {
+        if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
+
+        ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
+        try
+        {
+            if (bytes.IsEmpty) return null;
+            if (handle == 0) return ArrayMemoryManager.From(bytes.ToArray());
+
+            PinnedBlockMemory owner = new(native, handle, bytes);
+            handle = 0;
+            return owner;
+        }
+        finally
+        {
+            if (handle != 0) native.DangerousReleaseHandle(handle);
+        }
+    }
+
+    // Only the recovery decoder reads this memory; a nonzero native lease keeps the pointer valid until disposal.
+    private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
+    {
+        private nint _handle = handle;
+        private readonly byte* _pointer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(bytes));
+        private readonly int _length = bytes.Length;
+
+        public override Span<byte> GetSpan()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            return new Span<byte>(_pointer, _length);
+        }
+
+        public override MemoryHandle Pin(int elementIndex = 0)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)_length);
+            return new MemoryHandle(_pointer + elementIndex);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing)
+        {
+            nint released = Interlocked.Exchange(ref _handle, 0);
+            if (released != 0) db.DangerousReleaseHandle(released);
+        }
+    }
+
     public void Cache(Block block)
     {
         ValueHash256 cacheKey = block.Hash.ValueHash256;
@@ -235,7 +288,7 @@ public class BlockStore : IBlockStore, IClearableCache
             ? pendingBlock
             // Cache a sanitized copy to avoid retaining large BAL/account-change structures without mutating
             // the original block, which downstream consumers may still use and dispose.
-            : new Block(block.Header, block.Body);
+            : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
         _blockCache.Set(in cacheKey, cachedBlock);
     }

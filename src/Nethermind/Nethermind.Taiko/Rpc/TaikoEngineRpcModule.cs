@@ -332,6 +332,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
+        Transaction? estimatedTx = null;
+        ulong estimatedLength = 0;
 
         void Restore(Snapshot snapshot, ulong gasUsed)
         {
@@ -388,7 +390,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     continue;
                 }
 
-                if (!batch.TryAddTx(tx))
+                if (!ReferenceEquals(estimatedTx, tx))
+                {
+                    estimatedLength = Batch.EstimateTxLength(tx, txDecoder);
+                    estimatedTx = tx;
+                }
+
+                if (!batch.TryAddTx(tx, estimatedLength))
                 {
                     Restore(snapshot, gasUsedBefore);
 
@@ -433,9 +441,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         public ArrayPoolList<Transaction> Transactions { get; } = new(transactionsListCapacity);
 
-        public bool TryAddTx(Transaction tx)
+        public bool TryAddTx(Transaction tx, ulong estimatedLength)
         {
-            ulong estimatedLength = EstimateTxLength(tx);
             if (_length + estimatedLength <= _maxBytes)
             {
                 Transactions.Add(tx);
@@ -463,7 +470,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private readonly ulong EstimateTxLength(Transaction tx)
+        public static ulong EstimateTxLength(Transaction tx, IRlpDecoder<Transaction> txDecoder)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
             using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
@@ -618,25 +625,27 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 return null;
             }
 
-            // Read L1Origin to check if this is a preconfirmation block
-            L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
-
-            // Skip preconfirmation blocks
-            if (l1Origin is not null && l1Origin.IsPreconfBlock)
-            {
-                currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);
-                continue;
-            }
-
             UInt256? proposalId = currentBlock.Header.DecodeShastaProposalID();
             if (proposalId is null)
             {
                 return null;
             }
 
+            // Proposal ids never decrease along the chain, so the batch cannot appear further back.
+            if (proposalId.Value < batchId)
+            {
+                return null;
+            }
+
             if (proposalId.Value == batchId)
             {
-                return (UInt256)currentBlock.Number;
+                L1Origin? l1Origin = l1OriginStore.ReadL1Origin((UInt256)currentBlock.Number);
+
+                // Skip preconfirmation blocks
+                if (l1Origin is null || !l1Origin.IsPreconfBlock)
+                {
+                    return (UInt256)currentBlock.Number;
+                }
             }
 
             currentBlock = blockFinder.FindBlock(currentBlock.Number - 1);

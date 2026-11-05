@@ -474,9 +474,8 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (set.Remove(codeHash))
                     {
-                        byte[] code = codeSpan.ToArray();
-                        Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        Interlocked.Add(ref Metrics.SnapStateSynced, codeSpan.Length);
+                        writeBatch.PutSpan(codeHash.Bytes, codeSpan);
                     }
                 }
             }
@@ -489,8 +488,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public IDisposable? BeginResponse() => _progressTracker.BeginResponse();
+
         public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
+            _progressTracker.ReportRequestReleased(batch);
             if (batch.AccountRangeRequest is not null)
             {
                 // Re-offered from the progress it recorded, so the flag makes no difference here.

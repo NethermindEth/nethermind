@@ -21,22 +21,29 @@ public class SnapSyncRunnerTests
 {
     public enum DispatcherOutcome { Completes, Throws, Cancels }
 
+    // Only a shutdown saves a checkpoint on the way out: it stops every request first, so the checkpoint loses nothing.
     [TestCase(DispatcherOutcome.Completes, null)]
     [TestCase(DispatcherOutcome.Throws, typeof(InvalidOperationException))]
     [TestCase(DispatcherOutcome.Cancels, typeof(OperationCanceledException))]
     public void Finalizes_whatever_the_dispatcher_does(DispatcherOutcome outcome, Type? expectedException)
     {
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
+        factory.SupportsCheckpoints.Returns(true);
         using ProgressTracker tracker = CreateProgressTracker(factory);
 
         using CancellationTokenSource cts = new();
         if (outcome == DispatcherOutcome.Cancels) cts.Cancel();
 
-        SnapSyncRunner runner = new(token => outcome switch
+        SnapSyncRunner runner = new(token =>
         {
-            DispatcherOutcome.Throws => throw new InvalidOperationException("boom"),
-            DispatcherOutcome.Cancels => throw new OperationCanceledException(token),
-            _ => Task.CompletedTask,
+            tracker.IsFinished(out SnapSyncBatch? batch);
+            batch?.Dispose();
+            return outcome switch
+            {
+                DispatcherOutcome.Throws => throw new InvalidOperationException("boom"),
+                DispatcherOutcome.Cancels => throw new OperationCanceledException(token),
+                _ => Task.CompletedTask,
+            };
         }, factory, tracker);
 
         Assert.That(async () => await runner.Run(cts.Token),
@@ -47,6 +54,7 @@ public class SnapSyncRunnerTests
             factory.EnsureInitialize();
             factory.FinalizeSync();
         });
+        factory.Received(outcome == DispatcherOutcome.Cancels ? 1 : 0).SaveCheckpoint(Arg.Is<SnapCheckpoint?>(static c => c != null));
     }
 
     // Healing restarts snap sync in the same process after a reorg, so a run has to start from scratch
@@ -64,7 +72,9 @@ public class SnapSyncRunnerTests
 
         await runner.Run(default);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(tracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(batch!.AccountRangeRequest, Is.Not.Null);
         batch.Dispose();
     }

@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
 {
@@ -92,8 +93,7 @@ namespace Nethermind.Blockchain
         private void EnqueueCaptured(ReceiptsEventArgs? removed, ReceiptsEventArgs? added)
         {
             if (removed is null && added is null) return;
-            long size = (removed is null ? 0 : TransientReceiptStorage.EstimateSize(removed.TxReceipts))
-                + (added is null ? 0 : TransientReceiptStorage.EstimateSize(added.TxReceipts));
+            long size = EstimateNotificationSize(removed) + EstimateNotificationSize(added);
             lock (_lock)
             {
                 // Captured arrays outlive storage eviction. Bound delivery separately so a slow subscriber cannot
@@ -122,6 +122,17 @@ namespace Nethermind.Blockchain
             }
         }
 
+        private static long EstimateNotificationSize(ReceiptsEventArgs? e)
+        {
+            if (e is null) return 0;
+            long size = TransientReceiptStorage.EstimateSize(e.TxReceipts);
+            // Receipt subscriptions also need transaction metadata. Include retained transaction payloads and
+            // collection overhead, using the network form so blob sidecars are accounted for too.
+            if (e.Transactions is { } transactions)
+                foreach (Transaction transaction in transactions) size += 1024L + 4L * transaction.GetLength();
+            return size;
+        }
+
         private void Enqueue(Action action)
         {
             lock (_lock)
@@ -142,7 +153,10 @@ namespace Nethermind.Blockchain
             try
             {
                 TxReceipt[] receipts = block is null ? _receiptStorage.Get(header.Hash!) : _receiptStorage.Get(block);
-                return new(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp));
+                bool logIndexPerReceipt = _eip8116.IsEnabled(header.Number, header.Timestamp);
+                return block is null
+                    ? new(header, receipts, removed, logIndexPerReceipt)
+                    : new(block, receipts, removed, logIndexPerReceipt);
             }
             catch (Exception exception)
             {

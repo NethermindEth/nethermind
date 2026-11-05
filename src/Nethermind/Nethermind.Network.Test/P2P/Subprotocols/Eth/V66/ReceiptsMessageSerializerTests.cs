@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessageSerializer serializer63 = new(MainnetSpecProvider.Instance);
             ReceiptsMessageSerializer serializer = new(serializer63);
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
-            byte[] serialized = serializer.Serialize(deserializedMessage);
+            byte[] serialized = serializer.SerializeToArray(deserializedMessage);
 
             using Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
 
@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             using ReceiptsMessage message = new(1111, ethMessage);
 
-            SerializerTester.TestZero(serializer, message, rlp);
+            SerializerTester.Test(serializer, message, rlp);
         }
     }
 }

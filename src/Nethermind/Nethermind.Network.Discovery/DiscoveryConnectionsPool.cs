@@ -49,7 +49,9 @@ internal sealed class DiscoveryConnectionsPool(
         Task receiveTask = Task.Run(() => ReceiveAsync(socket, onReceive));
         if (socket.LocalEndpoint is { } endpoint)
         {
-            _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
+            // A completed receive task can be observed before its continuations run, so stopping waits for the listener
+            // state to be cleared instead.
+            receiveTask = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
         }
 
         _byPort.Add(port, new Listener(socket, receiveTask));
@@ -68,7 +70,7 @@ internal sealed class DiscoveryConnectionsPool(
             }
             catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port}. Retrying on {fallbackAddress}:{port}. {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress:hide}:{port}. Retrying on {fallbackAddress:hide}:{port}. {e:hide}");
                 return Bind(socketFactory, fallbackAddress, port);
             }
         }
@@ -143,7 +145,7 @@ internal sealed class DiscoveryConnectionsPool(
         }
         catch (SocketException e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint} after a socket error. {e}");
+            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint:hide} after a socket error. {e:hide}");
         }
         catch (Exception e)
         {
@@ -168,7 +170,7 @@ internal sealed class DiscoveryConnectionsPool(
 
         try
         {
-            await listener.ReceiveTask.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
+            await listener.Stopped.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
         }
         catch (TimeoutException)
         {
@@ -176,5 +178,5 @@ internal sealed class DiscoveryConnectionsPool(
         }
     }
 
-    private sealed record Listener(IDatagramSocket Socket, Task ReceiveTask);
+    private sealed record Listener(IDatagramSocket Socket, Task Stopped);
 }

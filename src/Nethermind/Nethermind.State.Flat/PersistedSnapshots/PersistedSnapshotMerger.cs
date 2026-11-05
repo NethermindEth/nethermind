@@ -3,8 +3,8 @@
 
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Io;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -19,8 +19,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <remarks>
 /// Generic over the byte-reader source so it isn't bound to a specific reader; each input is an
 /// <see cref="IByteReaderSource{TReader,TPin}"/> that mints a fresh reader on demand (production
-/// drives it with <see cref="Storage.WholeReadSession"/>). The deliberately-unoptimized find-min is
-/// O(N) per step.
+/// drives it with <see cref="Storage.WholeReadSession"/>). Each step is one O(N) pass that finds the
+/// minimum key and the sources that hold it.
 /// </remarks>
 public static class PersistedSnapshotMerger
 {
@@ -96,12 +96,25 @@ public static class PersistedSnapshotMerger
 
             while (true)
             {
+                // matching stays in ascending source order, so its last entry is the newest source.
                 int minIdx = -1;
+                int matchCount = 0;
                 for (int i = 0; i < n; i++)
                 {
                     if (!hasMore[i]) continue;
-                    if (minIdx < 0 || enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey) < 0)
-                        minIdx = i;
+                    if (minIdx >= 0)
+                    {
+                        int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                        if (cmp > 0) continue;
+                        if (cmp == 0)
+                        {
+                            matching[matchCount++] = i;
+                            continue;
+                        }
+                    }
+                    minIdx = i;
+                    matching[0] = i;
+                    matchCount = 1;
                 }
                 if (minIdx < 0) break;
 
@@ -127,10 +140,6 @@ public static class PersistedSnapshotMerger
                     barrier = -1;
                 }
 
-                int matchCount = 0;
-                for (int i = 0; i < n; i++)
-                    if (hasMore[i] && enums[i].CurrentKey.SequenceEqual(key))
-                        matching[matchCount++] = i;
                 int newest = matching[matchCount - 1];
 
                 if (isPerAddr)

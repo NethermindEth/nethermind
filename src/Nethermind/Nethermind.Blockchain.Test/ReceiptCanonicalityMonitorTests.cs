@@ -46,19 +46,21 @@ public class ReceiptCanonicalityMonitorTests
             return [];
         });
 
-        ConcurrentQueue<(Hash256?, bool)> published = new();
+        ConcurrentQueue<(Hash256?, bool, Transaction[]?)> published = new();
         using CountdownEvent allPublished = new(3);
         monitor.ReceiptsInserted += (_, e) =>
         {
-            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved));
+            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved, e.Transactions));
             allPublished.Signal();
         };
 
         RaiseNewCanonical(receiptStorage, first, removed);
         RaiseNewCanonical(receiptStorage, second);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(allPublished.Wait(Timeout), Is.True);
-        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (first.Hash, false), (second.Hash, false) }));
+#pragma warning restore NUnit2045
+        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true, removed.Transactions), (first.Hash, false, first.Transactions), (second.Hash, false, second.Transactions) }));
     }
 
     [Test]
@@ -82,7 +84,9 @@ public class ReceiptCanonicalityMonitorTests
 
         RaiseNewCanonical(receiptStorage, added, removed);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(addedPublished.Wait(Timeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(published, Is.EqualTo(new[] { (added.Hash, false) }));
     }
 
@@ -109,7 +113,9 @@ public class ReceiptCanonicalityMonitorTests
         blockTree.BlockRemovedFromMain += Raise.EventWith(new object(), new BlockHeaderEventArgs(removed.Header));
         RaiseNewCanonical(receiptStorage, added);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(allPublished.Wait(Timeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (added.Hash, false) }));
     }
 
@@ -201,7 +207,7 @@ public class ReceiptCanonicalityMonitorTests
     }
 
     [Test]
-    public void Transient_delivery_budget_bounds_a_slow_subscriber_and_recovers_after_drain()
+    public void Transient_delivery_budget_bounds_a_slow_subscriber_and_recovers_after_drain([Values] bool transactionPayload)
     {
         using TransientReceiptTestContext ctx = new();
         IReceiptMonitor monitor = ctx.Container.Resolve<IReceiptMonitor>();
@@ -209,11 +215,13 @@ public class ReceiptCanonicalityMonitorTests
         using ManualResetEventSlim release = new();
         using ManualResetEventSlim drained = new();
         using ManualResetEventSlim delivered = new();
-        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, 900_000);
-        (Block second, TxReceipt secondReceipt) = TransientReceiptTestContext.Sample(2, 900_000, parent: first);
-        (Block third, TxReceipt thirdReceipt) = TransientReceiptTestContext.Sample(3, 900_000, parent: second);
+        int logBytes = transactionPayload ? 0 : 900_000;
+        int transactionBytes = transactionPayload ? 200_000 : 0;
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, logBytes, transactionBytes: transactionBytes);
+        (Block second, TxReceipt secondReceipt) = TransientReceiptTestContext.Sample(2, logBytes, parent: first, transactionBytes: transactionBytes);
+        (Block third, TxReceipt thirdReceipt) = TransientReceiptTestContext.Sample(3, logBytes, parent: second, transactionBytes: transactionBytes);
         Block sentinel = Build.A.Block.WithParent(third).WithNumber(4).TestObject;
-        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(5, 900_000, parent: sentinel);
+        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(5, logBytes, parent: sentinel, transactionBytes: transactionBytes);
         int skippedDelivered = 0;
         monitor.ReceiptsInserted += (_, e) =>
         {

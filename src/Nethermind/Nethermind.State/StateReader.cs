@@ -42,6 +42,23 @@ namespace Nethermind.State
             storage.Get(in index, out value, new Hash256(storageRoot));
         }
 
+        public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+        {
+            if (!TryGetAccount(baseBlock, address, out AccountStruct account) || account.StorageRoot == Keccak.EmptyTreeHash.ValueHash256)
+            {
+                values[..indexes.Length].Clear();
+                return;
+            }
+
+            StorageTree storage = new(_trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, _logManager);
+            Hash256 storageRoot = new(account.StorageRoot);
+            for (int i = 0; i < indexes.Length; i++)
+            {
+                Metrics.IncrementStorageReaderReads();
+                storage.Get(in indexes[i], out values[i], storageRoot);
+            }
+        }
+
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : _codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>

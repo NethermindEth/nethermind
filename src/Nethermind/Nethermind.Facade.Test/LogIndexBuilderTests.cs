@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +25,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Facade.Test;
 
@@ -208,6 +210,25 @@ public class LogIndexBuilderTests
         Assert.That(builder.StallTicksBeforeGivingUp, Is.EqualTo(expectedTicks));
     }
 
+    [Test]
+    public void Rejects_parallelism_below_one_only_when_enabled(
+        [Values(1, 0, -1)] int parallelism,
+        [Values(nameof(ILogIndexConfig.MaxReceiptsParallelism), nameof(ILogIndexConfig.MaxAggregationParallelism))] string setting,
+        [Values] bool enabled)
+    {
+        _config.Enabled = enabled;
+        if (setting == nameof(ILogIndexConfig.MaxReceiptsParallelism))
+            _config.MaxReceiptsParallelism = parallelism;
+        else
+            _config.MaxAggregationParallelism = parallelism;
+
+        IResolveConstraint expected = enabled && parallelism < 1
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{setting}")
+            : Throws.Nothing;
+
+        Assert.That(() => GetService(Substitute.For<ILogIndexStorage>()), expected);
+    }
+
     private static ISyncPointers DownloadedToTheBarrier()
     {
         ISyncPointers pointers = Substitute.For<ISyncPointers>();
@@ -222,6 +243,7 @@ public class LogIndexBuilderTests
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
             new[] { -1, -1 }, // -1 is treated as null
+            new[] { 0, 2 }, // stored max more than a batch below the barrier
             new[] { 0, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock },
@@ -255,6 +277,140 @@ public class LogIndexBuilderTests
             Assert.That(storage.MinBlockNumber, Is.EqualTo(expectedMin));
             Assert.That(storage.MaxBlockNumber, Is.EqualTo(MaxSyncBlock));
         }
+    }
+
+    [TestCase(10, 2, 1, "0/90", TestName = "Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable")]
+    [TestCase(10, 50, 0, "1/43", TestName = "Should_NotWarn_WhenReceiptsAboveTheBarrierAreNotReadableYet")]
+    [TestCase(10, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtHead")]
+    [TestCase(MaxSyncBlock + 3, MaxSyncBlock, 0, "1/1", TestName = "Should_NotWarn_WhenIdleAtAHeadBelowTheBarrier")]
+    [CancelAfter(60_000)]
+    public async Task Should_WarnOnce_OnlyWhenTheForwardIndexIsStuckBelowTheBarrier(int barrier, int storedMax, int expectedWarnings, string expectedForwardProgress, CancellationToken cancellation)
+    {
+        _syncConfig.AncientReceiptsBarrier = (ulong)barrier;
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.Head.Returns(realTree.Head);
+        int emptyPolls = 0;
+        TaskCompletionSource polledTwice = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Read once per empty forward batch, right after the warning decision.
+        prunedTree.GetLowestBlock().Returns(_ =>
+        {
+            if (Interlocked.Increment(ref emptyPolls) == 2)
+                polledTwice.TrySetResult();
+
+            return (ulong)barrier;
+        });
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number == (ulong)storedMax + 1 ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = storedMax };
+        LogIndexBuilder builder = GetService(storage, prunedTree);
+
+        await builder.StartAsync();
+        await polledTwice.Task.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList.FindAll(static line => line.Contains("below the ancient receipts barrier")), Has.Count.EqualTo(expectedWarnings),
+                "only a forward index stuck below the barrier must tell the operator, and only once instead of polling silently forever");
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(storedMax));
+            Assert.That(logger.LogList.Exists(line => line.Replace(" ", "").Contains($"(Forward){expectedForwardProgress}(")), Is.True,
+                "forward progress must count from the first block the forward walk indexes, not from the pivot");
+        }
+
+        await builder.StopAsync();
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotIndexNonCanonicalBlocks_WhenTheHeadIsAheadOfTheMainChain(CancellationToken cancellation)
+    {
+        IBlockTree realTree = Build.A.BlockTree().OfChainLength(MaxBlock / 2 + 1).BlockTree;
+        Block sideHead = realTree.Head!;
+        while (sideHead.Number < MaxBlock)
+        {
+            sideHead = Build.A.Block.WithParent(sideHead).TestObject;
+            realTree.SuggestBlock(sideHead);
+        }
+
+        ConcurrentBag<ulong> nonCanonicalReads = [];
+        TaskCompletionSource polledEmptyBatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        // A reorg to a shorter chain can land between reading the head and loading the blocks below it.
+        tree.Head.Returns(sideHead);
+        tree.GetLowestBlock().Returns(_ =>
+        {
+            polledEmptyBatch.TrySetResult();
+            return 0UL;
+        });
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                Block? block = realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1));
+                if (block is not null && !realTree.IsMainChain(block.Header))
+                    nonCanonicalReads.Add(block.Number);
+                return block;
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = BatchSize };
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync().WaitAsync(cancellation);
+        await polledEmptyBatch.Task.WaitAsync(cancellation);
+
+        Assert.That(nonCanonicalReads, Is.Empty);
+        await builder.StopAsync();
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_SetThePivotFromInsertedReceiptsAndSyncBackward_WhileFastSyncHoldsTheHeadAtGenesis(CancellationToken cancellation)
+    {
+        const int inserted = MaxBlock / 2;
+        int downloadedTo = 0;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.Head.Returns(realTree.FindBlock(0UL, BlockTreeLookupOptions.None));
+        // A beacon header that is not on the main chain yet, so the canonical lookup of it fails.
+        tree.FinalizedHash.Returns(TestItem.KeccakA);
+        tree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(realTree.FindHeader(90UL, BlockTreeLookupOptions.None));
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) <= (ulong)Volatile.Read(ref downloadedTo)
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : null);
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        Task start = builder.StartAsync();
+        Volatile.Write(ref downloadedTo, inserted);
+        _receiptStorage.ReceiptsInserted += Raise.EventWith(new ReceiptsEventArgs(realTree.FindHeader(inserted)!, []));
+        await start.WaitAsync(cancellation);
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.Zero);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(inserted - 1));
+            _receiptStorage.Received(1).ReceiptsInserted -= Arg.Any<EventHandler<ReceiptsEventArgs>>();
+        }
+
+        await builder.StopAsync();
     }
 
     [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
@@ -318,7 +474,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -342,6 +498,62 @@ public class LogIndexBuilderTests
         }
     }
 
+    // Without fast sync the config pivot reads 0 wherever it came from, so one row covers that mode.
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheReceiptsBarrier_OfTheTreePivot(bool fastSync, bool pivotFromConsensusLayer, CancellationToken cancellation)
+    {
+        const ulong barrier = 50;
+        _syncConfig.FastSync = fastSync;
+        _syncConfig.SnapSync = fastSync;
+        // A pivot supplied by the consensus layer reaches only the block tree, never the config.
+        _syncConfig.PivotNumber = pivotFromConsensusLayer ? 0UL : _blockTree.SyncPivot.BlockNumber;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        ulong expectedMin = fastSync ? barrier : 0UL;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns(realTree.SyncPivot);
+        tree.Head.Returns(realTree.Head);
+        tree.GetLowestBlock().Returns(_syncConfig.AncientBodiesBarrierCalc);
+        tree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < expectedMin
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, tree);
+
+        await builder.StartAsync();
+        await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo((int)expectedMin));
+            Assert.That(builder.MinTargetBlockNumber, Is.EqualTo(expectedMin));
+        }
+    }
+
+    [TestCase(100UL, 60UL, 50UL, 60UL)] // bodies barrier above the receipts barrier
+    [TestCase(100UL, 50UL, 60UL, 60UL)] // receipts barrier above the bodies barrier
+    [TestCase(40UL, 50UL, 50UL, 40UL)] // tree pivot below the barriers
+    [TestCase(0UL, 50UL, 50UL, 0UL)] // no pivot yet
+    public void MinTarget_is_keyed_on_the_tree_pivot(ulong treePivot, ulong bodies, ulong receipts, ulong expected)
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = bodies;
+        _syncConfig.AncientReceiptsBarrier = receipts;
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.SyncPivot.Returns((treePivot, Keccak.Zero));
+
+        Assert.That(GetService(new TestLogIndexStorage(), tree).MinTargetBlockNumber, Is.EqualTo(expected));
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task Should_ContinueBackwardSyncThroughRetainedIslands_BelowTheOldestStoredBlock_WhenSlicesAreConfigured(CancellationToken cancellation)
@@ -354,7 +566,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -408,7 +620,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -467,7 +679,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -514,7 +726,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree downloadingTree = Substitute.For<IBlockTree>();
         downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
-        downloadingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        downloadingTree.Head.Returns(realTree.Head);
         downloadingTree.GetLowestBlock().Returns(_ => (ulong)Volatile.Read(ref publishedBoundary));
         downloadingTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -574,7 +786,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree latchedTree = Substitute.For<IBlockTree>();
         latchedTree.SyncPivot.Returns(realTree.SyncPivot);
-        latchedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        latchedTree.Head.Returns(realTree.Head);
         latchedTree.GetLowestBlock().Returns((ulong)latchedBoundary);
         latchedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -619,7 +831,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -662,7 +874,7 @@ public class LogIndexBuilderTests
         IBlockTree realTree = _blockTree;
         IBlockTree prunedTree = Substitute.For<IBlockTree>();
         prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.Head.Returns(realTree.Head);
         prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
         prunedTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
@@ -706,7 +918,7 @@ public class LogIndexBuilderTests
 
         IBlockTree throwingTree = Substitute.For<IBlockTree>();
         throwingTree.SyncPivot.Returns(realTree.SyncPivot);
-        throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        throwingTree.Head.Returns(realTree.Head);
         throwingTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci => Interlocked.Increment(ref findCalls) == 1

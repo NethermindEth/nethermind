@@ -37,8 +37,11 @@ public class BlobGasCalculatorTests
 
         bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);
 
-        Assert.That(success, Is.True);
-        Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.True);
+            Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        }
     }
 
     [Test]
@@ -49,8 +52,11 @@ public class BlobGasCalculatorTests
 
         bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);
 
-        Assert.That(success, Is.False);
-        Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        }
     }
 
     [Test]
@@ -84,6 +90,51 @@ public class BlobGasCalculatorTests
         {
             Assert.That(gasInfo.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2)));
             Assert.That(gasInfo.BlobGasPrice, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Fee_per_blob_gas_follows_each_input_when_called_back_to_back()
+    {
+        const ulong excessBlobGas = 10_000_000;
+        ulong cancunFraction = Cancun.Instance.BlobBaseFeeUpdateFraction;
+        ulong pragueFraction = Prague.Instance.BlobBaseFeeUpdateFraction;
+
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, cancunFraction, out UInt256 cancun);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, pragueFraction, out UInt256 prague);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas + 1_000_000, cancunFraction, out UInt256 cancunHigherExcess);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, cancunFraction, out UInt256 cancunAgain);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prague, Is.Not.EqualTo(cancun));
+            Assert.That(cancunHigherExcess, Is.GreaterThan(cancun));
+            Assert.That(cancunAgain, Is.EqualTo(cancun));
+        }
+    }
+
+    [Test]
+    public void GetGasInfo_computes_the_fee_per_blob_gas_once_per_block()
+    {
+        IReleaseSpec spec = Cancun.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).WithBaseFee(1).TestObject;
+        Transaction legacyTx = Build.A.Transaction.TestObject;
+        Transaction blobTx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1000).TestObject;
+        UInt256? feePerBlobGas = null;
+
+        legacyTx.GetGasInfo(spec, header, ref feePerBlobGas);
+        UInt256? afterLegacy = feePerBlobGas;
+        TxGasInfo first = blobTx.GetGasInfo(spec, header, ref feePerBlobGas);
+        UInt256? afterBlob = feePerBlobGas;
+        feePerBlobGas = 7;
+        TxGasInfo second = blobTx.GetGasInfo(spec, header, ref feePerBlobGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterLegacy, Is.Null);
+            Assert.That(first.BlobGasPrice, Is.EqualTo(blobTx.GetGasInfo(spec, header).BlobGasPrice));
+            Assert.That(afterBlob, Is.EqualTo(first.BlobGasPrice));
+            Assert.That(second.BlobGasPrice, Is.EqualTo((UInt256)7));
         }
     }
 
@@ -185,8 +236,11 @@ public class BlobGasCalculatorTests
     {
         UInt256 left = testCase.available;
         bool result = BlobGasCalculator.TrySubtractBlobFee(testCase.spec, testCase.tx, ref left);
-        Assert.That(result, Is.EqualTo(testCase.expectedResult));
-        Assert.That(left, Is.EqualTo(testCase.expectedAvailable));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(testCase.expectedResult));
+            Assert.That(left, Is.EqualTo(testCase.expectedAvailable));
+        }
     }
 
     private static IEnumerable<(IReleaseSpec, Transaction, UInt256, bool, UInt256)> TrySubtractBlobFeeCases()

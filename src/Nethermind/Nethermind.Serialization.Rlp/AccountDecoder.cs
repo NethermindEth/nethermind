@@ -4,8 +4,10 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using System.Diagnostics.CodeAnalysis;
 
@@ -197,9 +199,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int length = (lowerLimbs + 1) * sizeof(ulong) - BitOperations.LeadingZeroCount(top) / 8;
-            Unsafe.SkipInit(out ValueHash256 bigEndian);
-            Span<byte> bytes = bigEndian.BytesAsSpan;
-            value.ToBigEndian(bytes);
+            EvmWord bigEndian = value.ToBigEndianWord();
+            ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(new ReadOnlySpan<EvmWord>(in bigEndian));
             destination[position] = (byte)(Rlp.EmptyByteArrayByte + length);
             bytes[^length..].CopyTo(destination[(position + 1)..]);
             return position + 1 + length;

@@ -109,16 +109,20 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
         foreach (GethLikeTxTrace trace in value.Traces)
         {
-            WriteEntry(writer, trace, options);
+            WriteEntry(writer, trace, options, value.IncludeErrorResult);
         }
 
         writer.WriteEndArray();
     }
 
-    internal static void WriteEntry(Utf8JsonWriter writer, GethLikeTxTrace trace, JsonSerializerOptions options)
+    internal static void WriteEntry(Utf8JsonWriter writer, GethLikeTxTrace trace, JsonSerializerOptions options, bool includeErrorResult = false)
     {
         writer.WriteStartObject();
-        if (trace.TraceError is { } error) writer.WriteString("error"u8, error);
+        if (trace.TraceError is { } error)
+        {
+            writer.WriteString("error"u8, error);
+            if (includeErrorResult) writer.WriteNull("result"u8);
+        }
         else
         {
             writer.WritePropertyName("result"u8);

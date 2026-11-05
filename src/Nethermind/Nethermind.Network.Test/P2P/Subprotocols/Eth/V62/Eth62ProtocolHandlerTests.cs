@@ -104,14 +104,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth62"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth62"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(62));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(8));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -423,6 +426,37 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Rejects_a_trailing_byte_after_a_message(
+            [Values(Eth62MessageCode.Status, Eth62MessageCode.NewBlockHashes, Eth62MessageCode.NewBlock)] int messageCode,
+            [Values] bool trailingByte)
+        {
+            if (messageCode != Eth62MessageCode.Status)
+                HandleIncomingStatusMessage();
+
+            Block block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            using DisposableByteBuffer packet = messageCode switch
+            {
+                Eth62MessageCode.Status => Serialize(new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash, ForkId = new ForkId(0xfc64ec04, 1150000) }),
+                Eth62MessageCode.NewBlockHashes => Serialize(new NewBlockHashesMessage((Keccak.Zero, 1UL))),
+                _ => Serialize(new NewBlockMessage { Block = block, TotalDifficulty = _genesisBlock.Difficulty + block.Difficulty })
+            };
+            if (trailingByte)
+                packet.WriteByte(0);
+
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpException>() : Throws.Nothing);
+
+            DisposableByteBuffer Serialize<T>(T message) where T : P2PMessage
+            {
+                using (message)
+                {
+                    DisposableByteBuffer serialized = _svc.ZeroSerialize(message).AsDisposable();
+                    serialized.ReadByte();
+                    return serialized;
+                }
+            }
+        }
+
+        [Test]
         public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
         {
             using NewBlockHashesMessage msg = new((Keccak.Zero, 1UL), (Keccak.Zero, 2UL));
@@ -469,8 +503,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBody?[] bodies = RequestBlockBodies(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
 
             Assert.That(bodies, Has.Length.EqualTo(2));
-            Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
-            Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodies[0], Is.SameAs(firstBlock.Body));
+                Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
+            }
         }
 
         [Test]
@@ -604,7 +641,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(taskScheduler.RequestTypes, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ContainsValueTuple(taskScheduler.RequestTypes[0]), Is.False);
         }
 
@@ -677,19 +716,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
-        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        private sealed class WitnessingTransactionsMessageSerializer : IMessageSerializer<TransactionsMessage>
         {
             private readonly TransactionsMessageSerializer _serializer = new();
 
             public List<RecycledTransactionWitness> Witnesses { get; } = [];
 
-            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+            public int Serialize(Span<byte> destination, TransactionsMessage message) => _serializer.Serialize(destination, message);
 
-            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+            public int GetLength(TransactionsMessage message) => _serializer.GetLength(message);
 
-            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
             {
-                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                TransactionsMessage message = _serializer.Deserialize(data);
                 IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
                 for (int i = 0; i < transactions.Count; i++)
                 {
@@ -1147,7 +1186,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
 
             Assert.That(response, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(response!.Bodies, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(response.Bodies!.Bodies, Is.Not.Null);
             return response.Bodies.Bodies!;
         }

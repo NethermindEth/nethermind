@@ -78,7 +78,9 @@ public class BlockAccessListJournalTests
         for (int i = 0; i < reads.Count; i++)
         {
             StorageCell cell = reads[i];
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(plan.TryGetOrdinal(new StorageCell(new Address(cell.Address.Bytes), cell.Index), out int ordinal), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(ordinal, Is.EqualTo(i));
             Assert.That(coverage.TryMark(cell), Is.True);
         }
@@ -122,7 +124,9 @@ public class BlockAccessListJournalTests
                 Assert.That(worker.TryMark(miss), Is.False);
                 Assert.That(worker.TryMark(miss), Is.False);
             }
+#pragma warning disable NUnit2045 // TryMark changes the set used by the following TryMark assertion.
             Assert.That(worker.ChargeableReadCount, Is.Zero);
+#pragma warning restore NUnit2045
             Assert.That(worker.TryMark(first), Is.True);
             Assert.That(worker.TryMark(new StorageCell(new Address(first.Address.Bytes), first.Index)), Is.True);
             Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
@@ -176,11 +180,17 @@ public class BlockAccessListJournalTests
         BalReadCoverage reused = new(plan, pool);
         try
         {
-            Assert.That(reused.FirstUncovered(), Is.Zero);
-            Assert.That(reused.ChargeableReadCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reused.FirstUncovered(), Is.Zero);
+                Assert.That(reused.ChargeableReadCount, Is.Zero);
+            }
             reused.TryMark(new StorageCell(TestItem.AddressA, slots[^1]));
-            Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
-            Assert.That(reused.FirstUncovered(), Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
+                Assert.That(reused.FirstUncovered(), Is.Zero);
+            }
         }
         finally
         {
@@ -288,14 +298,14 @@ public class BlockAccessListJournalTests
         UInt256 slot = 7;
 
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 10);
-        slice.AddNonceChange(TestItem.AddressA, 1);
+        slice.AddNonceChange(TestItem.AddressA, 0, 1);
         slice.AddCodeChange(TestItem.AddressA, emptyCode, codeBeforeSnapshot);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 11);
 
         int snapshot = slice.TakeSnapshot();
 
         slice.AddBalanceChange(TestItem.AddressA, before: 10, after: 20);
-        slice.AddNonceChange(TestItem.AddressA, 2);
+        slice.AddNonceChange(TestItem.AddressA, 1, 2);
         slice.AddCodeChange(TestItem.AddressA, codeBeforeSnapshot, codeAfterSnapshot);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 11, after: 22);
 
@@ -318,7 +328,7 @@ public class BlockAccessListJournalTests
     {
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
-        slice.AddNonceChange(TestItem.AddressA, 3);
+        slice.AddNonceChange(TestItem.AddressA, 2, 3);
         slice.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60, 0x01 });
         slice.AddStorageRead(TestItem.AddressA, 999);
         for (int i = 0; i < slotCount; i++)
@@ -363,7 +373,7 @@ public class BlockAccessListJournalTests
         int empty = slice.TakeSnapshot();
 
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 1);
-        slice.AddNonceChange(TestItem.AddressA, 9);
+        slice.AddNonceChange(TestItem.AddressA, 8, 9);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 0x42);
 
         slice.Restore(empty);
@@ -376,6 +386,22 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.NonceChange, Is.Null);
             Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out _), Is.False);
         }
+    }
+
+    [Test]
+    public void Clear_keeps_at_most_max_pooled_account_changes_for_reuse([Values(0, 1, 4)] int maxPooledAccountChanges)
+    {
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF];
+        BlockAccessListAtIndex slice = new(8, maxPooledAccountChanges);
+        HashSet<AccountChangesAtIndex> firstRun = new(ReferenceEqualityComparer.Instance);
+        foreach (Address address in addresses) firstRun.Add(slice.RecordReadAndGet(address));
+
+        slice.Clear();
+
+        int reused = 0;
+        foreach (Address address in addresses)
+            if (firstRun.Contains(slice.RecordReadAndGet(address))) reused++;
+        Assert.That(reused, Is.EqualTo(maxPooledAccountChanges));
     }
 
     [Test]

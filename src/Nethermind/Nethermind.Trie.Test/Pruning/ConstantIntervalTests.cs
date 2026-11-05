@@ -17,7 +17,10 @@ public class ConstantIntervalTests
     public void Persists_every_nth_block()
     {
         ConstantInterval strategy = new(4);
-        Assert.That(strategy.ShouldPersist(8), Is.True);
-        Assert.That(strategy.ShouldPersist(9), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(strategy.ShouldPersist(8), Is.True);
+            Assert.That(strategy.ShouldPersist(9), Is.False);
+        }
     }
 }
