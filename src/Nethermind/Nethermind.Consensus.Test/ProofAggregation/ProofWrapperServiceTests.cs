@@ -575,7 +575,7 @@ public class ProofWrapperServiceTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Nonce = BitConverter.ToUInt32(key.Bytes[..4]),
@@ -1599,7 +1599,7 @@ public class ProofWrapperServiceTests
             hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
             return hash;
         })];
-        transaction.MaxFeePerBlobGas = 1;
+        transaction.MaxFee = transaction.GetBlobGas();
         transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], commitments,
             [.. Enumerable.Range(0, blobs * Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
         transaction.Hash = transaction.CalculateHash();
@@ -1767,7 +1767,7 @@ public class ProofWrapperServiceTests
             "a blob transaction past a nonce gap is not aggregated");
     }
 
-    // A blob fee cap is held to the next block's blob base fee after MaxAwaitedBaseFeeDecreases blocks without blobs.
+    // A max_fee is held to the blob gas at the next block's blob base fee after MaxAwaitedBaseFeeDecreases blocks without blobs.
     [Test]
     public void Blob_transaction_is_aggregated_only_when_its_blob_fee_reaches_the_floor([Values] bool withinMargin)
     {
@@ -1782,7 +1782,7 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         Block head = Build.A.Block.WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(floorExcess + 3 * target).TestObject;
         ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, head: head);
-        Transaction light = new LightTransaction(blob) { MaxFeePerBlobGas = withinMargin ? floor : floor - 1 };
+        Transaction light = new LightTransaction(blob) { MaxFee = blob.GetBlobGas() * (withinMargin ? floor : floor - 1) };
         AddBlobCandidate(pool, blob, light);
 
         Result<byte[]> result = service.BuildWrapper();
@@ -1791,6 +1791,34 @@ public class ProofWrapperServiceTests
         {
             Assert.That(floor, Is.LessThan(next), "the floor lies below the next block's blob base fee");
             Assert.That(result.IsSuccess, Is.EqualTo(withinMargin), result.Error);
+        }
+    }
+
+    // An EIP-8141 max_fee must cover max_gas at the floor: its per-gas view over the frame gas leaves out the intrinsic gas.
+    [Test]
+    public void Frame_transaction_is_aggregated_only_when_its_max_fee_covers_max_gas([Values] bool coversMaxGas)
+    {
+        IReleaseSpec spec = Eip8288Prototype.Instance;
+        Block head = Build.A.Block.WithBaseFeePerGas(1_000_000_000).WithGasLimit(30_000_000).WithGasUsed(15_000_000).TestObject;
+        UInt256 floor = BaseFeeCalculator.Calculate(head.Header, spec);
+        for (int i = 0; i < ProofWrapperService.MaxAwaitedBaseFeeDecreases; i++) floor -= floor / spec.BaseFeeMaxChangeDenominator;
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        ulong frameGas = FrameTxValidation.TotalGasLimit(transaction.Frames!);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas), Is.True);
+        transaction.MaxFee = floor * (coversMaxGas ? maxGas : frameGas);
+        transaction.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(transaction.MaxFee, frameGas);
+        transaction.Hash = transaction.CalculateHash();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([dependency], [[1]], null);
+        ProofWrapperService service = CreateService([transaction], store, new FakeLeanProofVerifier(true), head: head);
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.MaxFeePerGas, Is.GreaterThanOrEqualTo(floor), "the per-gas view clears the floor either way");
+            Assert.That(result.IsSuccess, Is.EqualTo(coversMaxGas), result.Error);
         }
     }
 

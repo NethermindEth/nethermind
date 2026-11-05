@@ -99,11 +99,15 @@ public static class InclusionListValidator
     }
 
     private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)
-        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec)
-            && validator.IsWellFormed(tx, spec, block.GasLimit) && tx.MaxFeePerGas >= block.BaseFeePerGas
-            && (!tx.CarriesBlobs || BlobGasCalculator.CalculateBlobGas(tx) <= spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
-                && BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
-                && (tx.MaxFeePerBlobGas ?? UInt256.Zero) >= blobFee);
+    {
+        if (tx.SenderAddress is null || !FitsRemainingBlockGas(tx, block, spec) || !validator.IsWellFormed(tx, spec, block.GasLimit)) return false;
+        UInt256 blobFee = UInt256.Zero;
+        if (tx.CarriesBlobs
+            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
+                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobFee)))
+            return false;
+        return FrameTxValidation.CoversRequiredMaxFee(tx, spec, block.BaseFeePerGas, blobFee);
+    }
 
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {

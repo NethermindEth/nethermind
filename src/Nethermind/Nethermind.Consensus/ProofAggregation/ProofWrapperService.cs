@@ -680,8 +680,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    /// <summary>The lowest fees per gas and per blob gas a transaction executable at the head may offer.</summary>
-    private readonly record struct FeeFloors(UInt256 PerGas, UInt256 PerBlobGas);
+    /// <summary>The lowest fees per gas and per blob gas a transaction executable at the head may offer, at <see cref="Spec"/>.</summary>
+    private readonly record struct FeeFloors(UInt256 PerGas, UInt256 PerBlobGas, IReleaseSpec? Spec);
 
     /// <summary>The next block's base fee and blob base fee, each after <see cref="MaxAwaitedBaseFeeDecreases"/> maximal decreases;
     /// zero where the fork does not charge it.</summary>
@@ -693,11 +693,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         UInt256 fee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head.Header, spec) : UInt256.Zero;
         if (!spec.BaseFeeMaxChangeDenominator.IsZero)
             for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
-        if (BlobGasCalculator.CalculateExcessBlobGas(head.Header, spec) is not { } excess) return new(fee, UInt256.Zero);
+        if (BlobGasCalculator.CalculateExcessBlobGas(head.Header, spec) is not { } excess) return new(fee, UInt256.Zero, spec);
         ulong target = spec.GasCosts.TargetBlobGasPerBlock;
         excess = excess > MaxAwaitedBaseFeeDecreases * target ? excess - MaxAwaitedBaseFeeDecreases * target : 0;
         return new(fee, BlobGasCalculator.TryCalculateFeePerBlobGas(excess, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
-            ? blobFee : UInt256.MaxValue);
+            ? blobFee : UInt256.MaxValue, spec);
     }
 
     /// <summary>Adds the frame transactions of <paramref name="sender"/>'s nonce-ordered pending <paramref name="bucket"/> executable
@@ -712,7 +712,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         bool blocked = false;
         foreach (Transaction transaction in bucket)
         {
-            bool priced = transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
+            // An EIP-8141 max_fee is checked as a budget: its implied per-gas cap leaves out intrinsic gas, recursive_stark_gas included.
+            bool priced = transaction.SupportsFrames
+                ? floors.Spec is null || FrameTxValidation.CoversRequiredMaxFee(transaction, floors.Spec, floors.PerGas, floors.PerBlobGas)
+                : transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
             if (KeyedNonceManager.UsesKeyedNonce(transaction))
             {
                 if (!priced) continue;
