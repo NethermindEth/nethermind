@@ -109,13 +109,15 @@ class AiReviewCommandTests(unittest.TestCase):
                     capture_output=True, text=True, check=True)
                 self.assertEqual({"called": called, "allowed": allowed, "error": error}, json.loads(result.stdout))
 
-    def test_review_paths_use_trusted_prepared_instructions_without_model_override(self):
+    def test_review_paths_use_trusted_prepared_instructions_and_expected_routing(self):
         for workflow in (WORKFLOW, WORKFLOW.with_name("ai-review.yml")):
             with self.subTest(workflow=workflow.name):
                 text = workflow.read_text()
                 self.assertIn("uses: ./.github/workflows/ai-review-instructions.yml", text)
                 self.assertIn("extra_instructions: ${{ needs.instructions.outputs.instructions }}", text)
-                self.assertNotRegex(text, r"(?m)^      model:")
+                expected = ["${{ github.event.pull_request.changed_files > 300 && 'openai/gemini/gemini-pro-latest' || '' }}"] \
+                    if workflow.name == "ai-review.yml" else []
+                self.assertEqual(expected, re.findall(r"(?m)^      model: (.*)$", text))
         text = INSTRUCTIONS_WORKFLOW.read_text()
         self.assertIn("ref: ${{ steps.target.outputs.base_sha }}", text)
         self.assertIn("persist-credentials: false", text)
