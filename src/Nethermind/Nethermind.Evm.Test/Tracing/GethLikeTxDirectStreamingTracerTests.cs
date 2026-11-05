@@ -69,6 +69,19 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
 
+    [Test]
+    public void Streams_stack_underflow_before_out_of_gas(
+        [ValueSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
+    {
+        List<StructLog> logs = StreamLogs(Prepare.EvmCode.Op(Instruction.ADD).Done, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(logs[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
+        }
+    }
+
     [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
     public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
     {
