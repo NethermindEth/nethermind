@@ -112,6 +112,24 @@ public class LeanProofStoreTests
         Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
     }
 
+    // EIP-8288: a builder picks recursive inputs by retained coverage, as merge cost scales with an input's dependency list.
+    [Test]
+    public void Recursive_input_is_the_held_proof_retaining_the_most_of_its_dependencies()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency[] wide = [.. Enumerable.Range(1, 8).Select(Dependency)];
+        FrameDependency[] narrow = [Dependency(1), Dependency(100)];
+        store.AddVerified(wide, null, [1]);
+        store.AddVerified(narrow, null, [2]);
+
+        Assert.That(store.TryGetInput(narrow, out AggregationInput input), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { narrow }));
+            Assert.That(input.Discards, Is.Empty);
+        }
+    }
+
     [Test]
     public void Direct_witness_replaces_pinned_recursive_coverage_and_is_never_replaced_by_it()
     {
