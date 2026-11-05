@@ -121,11 +121,14 @@ public partial class DebugRpcModuleTests
         JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
         object result = ctx.DebugRpcModule.debug_traceCallMany(bundles, BlockParameter.Latest).Data;
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
-        for (int i = options.TypeInfoResolverChain.Count - 1; i >= 0; i--)
+        List<IJsonTypeInfoResolver> contexts = [];
+        foreach (IJsonTypeInfoResolver resolver in options.TypeInfoResolverChain)
         {
-            if (options.TypeInfoResolverChain[i] is DefaultJsonTypeInfoResolver)
-                options.TypeInfoResolverChain.RemoveAt(i);
+            if (resolver is System.Text.Json.Serialization.JsonSerializerContext)
+                contexts.Add(resolver);
         }
+        options.TypeInfoResolver = JsonTypeInfoResolver.Combine(contexts.ToArray());
+        options.MakeReadOnly();
 
         string actual = JsonSerializer.Serialize(result, RpcPayloadTypeInfo.Get(options, result.GetType()));
 
