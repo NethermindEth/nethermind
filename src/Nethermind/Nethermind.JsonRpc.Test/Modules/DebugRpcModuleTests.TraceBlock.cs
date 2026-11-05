@@ -2680,7 +2680,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
                 Assert.That((string?)json["error"]?["message"] ?? string.Empty,
-                    Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+                    Does.StartWith(nonceDelta > 0 ? "tracing failed: nonce too high" : "tracing failed: nonce too low"), response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
