@@ -361,6 +361,30 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
+    public async Task GetLogs_range_errors_win_over_a_storage_conflict([Values("pending", "future", "reversed", "range")] string range)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await chain.AddBlock();
+        await chain.AddBlock();
+        chain.Container.Resolve<IJsonRpcConfig>().OverlayMaxBlockRange = 1;
+        object filter = range switch
+        {
+            "pending" => new { fromBlock = "pending", toBlock = "pending" },
+            "future" => new { fromBlock = "0xffff", toBlock = "0xffff" },
+            "reversed" => new { fromBlock = "0x2", toBlock = "0x1" },
+            _ => new { fromBlock = "0x1", toBlock = "0x2" },
+        };
+
+        using JsonDocument withConflict = await Request(chain, "overlay_getLogs", filter,
+            new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } });
+        using JsonDocument without = await Request(chain, "overlay_getLogs", filter);
+
+        JsonElement root = withConflict.RootElement;
+        Assert.That(root.TryGetProperty("error", out JsonElement error) ? error.GetRawText() : root.GetRawText(),
+            Is.EqualTo(without.RootElement.GetProperty("error").GetRawText()));
+    }
+
+    [Test]
     public async Task GetLogs_fails_when_range_exceeds_limit([Values(3, 4)] int maxRange)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
