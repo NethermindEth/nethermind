@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -19,11 +20,22 @@ public partial struct EvmPooledMemory
     /// </summary>
     /// <param name="offset">The start of the range, below 2^32.</param>
     /// <param name="length">The length of the range, below 2^32.</param>
-    /// <remarks>The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.</remarks>
+    /// <remarks>
+    /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref. A 32-bit guest tests in native
+    /// words: the sizes truncated to one can only be smaller, which fails the test rather than passing it wrongly.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ref byte GetActiveInitializedRange(ulong offset, ulong length)
     {
         Debug.Assert(offset <= uint.MaxValue && length <= uint.MaxValue);
+        if (IntPtr.Size == sizeof(uint))
+        {
+            nuint start = (nuint)offset;
+            nuint stop = start + (nuint)length;
+            if (stop < start || stop > (nuint)Size || stop > (nuint)_initializedSize) return ref Unsafe.NullRef<byte>();
+            return ref Unsafe.Add(ref GetBackingReference(), (nint)start);
+        }
+
         ulong end = offset + length;
         if (end > Size || end > _initializedSize) return ref Unsafe.NullRef<byte>();
         return ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
@@ -42,9 +54,12 @@ public partial struct EvmPooledMemory
     /// <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ref byte TryPrepareWordOverwrite(ulong offset, ref ulong gas)
+    internal ref byte TryPrepareWordOverwrite(ulong offset, ref nuint gas)
     {
         Debug.Assert(offset <= uint.MaxValue);
+        if (IntPtr.Size == sizeof(uint))
+            return ref TryPrepareWordOverwriteInNativeWords((nuint)offset, ref gas);
+
         ulong end = offset + WordSize;
         ulong initializedSize = _initializedSize;
         if (end > initializedSize && (offset > initializedSize + MaxClearedGap || end > GetBackingCapacity()))
@@ -68,7 +83,7 @@ public partial struct EvmPooledMemory
             cost -= (words * words) >> 9;
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
-            gas -= cost;
+            gas -= (nuint)cost;
             Size = newWords << 5;
         }
 
@@ -92,6 +107,85 @@ public partial struct EvmPooledMemory
         return ref word;
     }
 
+    /// <summary><see cref="TryPrepareWordOverwrite"/> for a 32-bit guest, in native words.</summary>
+    /// <remarks>
+    /// Every size fits a native word there: memory past 4 GiB costs more gas than one holds. Only the quadratic charge
+    /// needs 64 bits. An offset within a word of 2^32 wraps the end, which the first test turns away.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte TryPrepareWordOverwriteInNativeWords(nuint offset, ref nuint gas)
+    {
+        nuint end = offset + WordSize;
+        nuint initializedSize = (nuint)_initializedSize;
+        if (end < offset || (end > initializedSize && (offset > initializedSize + (nuint)MaxClearedGap || end > (nuint)GetBackingCapacity())))
+            return ref Unsafe.NullRef<byte>();
+
+        nuint size = (nuint)Size;
+        if (end > size)
+        {
+            Debug.Assert(GasCostOf.Memory == 3, "The linear term adds the word counts once per unit of the memory charge.");
+            nuint newWords = (end + (WordSize - 1)) >> 5;
+            nuint words = size >> 5;
+            nuint cost;
+            if (newWords <= ushort.MaxValue)
+            {
+                // Below 2 MiB the squares fit a native word.
+                cost = (newWords * newWords >> 9) - (words * words >> 9) + 3 * (newWords - words);
+            }
+            else
+            {
+                ulong wideCost = (Math.BigMul((uint)newWords, (uint)newWords) >> 9) - (Math.BigMul((uint)words, (uint)words) >> 9) +
+                    3 * (ulong)(newWords - words);
+                if (wideCost > nuint.MaxValue) return ref Unsafe.NullRef<byte>();
+                cost = (nuint)wideCost;
+            }
+
+            if (gas < cost) return ref Unsafe.NullRef<byte>();
+
+            gas -= cost;
+            Size = newWords << 5;
+        }
+
+        // Reread rather than held through the expansion charge, which would take callee-saved registers.
+        initializedSize = (nuint)_initializedSize;
+        ref byte word = ref Unsafe.Add(ref GetBackingReference(), offset);
+        if (end > initializedSize)
+        {
+            _initializedSize = end;
+            // As in TryPrepareWordOverwrite: at most the two words below this one are cleared.
+            nint gap = (nint)offset - (nint)initializedSize;
+            if (gap > 0)
+            {
+                ClearWordInNativeWords(ref Unsafe.Subtract(ref word, gap));
+                if (gap > WordSize) ClearWordInNativeWords(ref Unsafe.Subtract(ref word, WordSize));
+            }
+        }
+
+        return ref word;
+    }
+
+    /// <summary><see cref="ClearWord"/> for a 32-bit guest.</summary>
+    /// <remarks>The JIT tests the alignment before each 4-byte part of an unaligned store; this tests it once.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void ClearWordInNativeWords(ref byte word)
+    {
+        if ((nuint)Unsafe.AsPointer(ref word) % sizeof(uint) != 0)
+        {
+            ClearWord(ref word);
+            return;
+        }
+
+        ref uint digits = ref Unsafe.As<byte, uint>(ref word);
+        digits = 0;
+        Unsafe.Add(ref digits, 1) = 0;
+        Unsafe.Add(ref digits, 2) = 0;
+        Unsafe.Add(ref digits, 3) = 0;
+        Unsafe.Add(ref digits, 4) = 0;
+        Unsafe.Add(ref digits, 5) = 0;
+        Unsafe.Add(ref digits, 6) = 0;
+        Unsafe.Add(ref digits, 7) = 0;
+    }
+
     /// <summary>
     /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> ready to be overwritten when
     /// they need no new backing and leave a gap of at most two words below them, charging the expansion they need to
@@ -105,7 +199,7 @@ public partial struct EvmPooledMemory
     /// <see cref="TryPrepareWordOverwrite"/> for any length; the caller must write every byte of the range. The same
     /// caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
-    internal ref byte TryPrepareRangeOverwrite(ulong offset, ulong length, ref ulong gas)
+    internal ref byte TryPrepareRangeOverwrite(ulong offset, ulong length, ref nuint gas)
     {
         Debug.Assert(offset <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
         ulong end = offset + length;
@@ -122,7 +216,7 @@ public partial struct EvmPooledMemory
             ulong cost = newWords * GasCostOf.Memory + ((newWords * newWords) >> 9) - words * GasCostOf.Memory - ((words * words) >> 9);
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
-            gas -= cost;
+            gas -= (nuint)cost;
             Size = newWords << 5;
         }
 

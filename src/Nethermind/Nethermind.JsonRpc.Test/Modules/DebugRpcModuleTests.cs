@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -180,6 +181,27 @@ public partial class DebugRpcModuleTests
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
             Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
         }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero()
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(
+                new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance))));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x30d40" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x4b60005260206000f3" } },
+                blockOverrides = new { time = $"0x{amsterdamTime:x}" }
+            });
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]!["returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(new string('0', 64)), response);
     }
 
     [Test]
@@ -532,6 +554,42 @@ public partial class DebugRpcModuleTests
         }
 
         public void Dispose() => Blockchain.Dispose();
+    }
+
+    private static IEnumerable<TestCaseData> DebugConfigSpecProviders()
+    {
+        yield return new TestCaseData(MainnetSpecProvider.Instance, 0).SetArgDisplayNames("pre-merge genesis");
+        // Cancun is folded into genesis and the next fork is scheduled after the test chain's head.
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 2_000_000_000)] }, 0)
+            .SetArgDisplayNames("post-merge genesis");
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 1), new ForkActivation(0, 2_000_000_000)] }, 1)
+            .SetArgDisplayNames("timestamp fork");
+    }
+
+    [TestCaseSource(nameof(DebugConfigSpecProviders))]
+    public async Task Debug_config_returns_all_forks_with_current_marked_active(ISpecProvider specProvider, int activeIndex)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        JArray forks = (JArray)JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config"))["result"]!["forks"]!;
+        JToken current = JToken.Parse(await ctx.Blockchain.TestEthRpc("eth_config"))["result"]!["current"]!;
+        string[] scheduledForkIds = ctx.Blockchain.ForkInfo.GetAllForks().ToArray().Select(static fork => fork.Id.HashBytes.ToHexString(true)).ToArray();
+        JObject[] active = forks.Children<JObject>().Where(static fork => fork.ContainsKey("active")).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks, Has.Count.GreaterThan(1));
+            Assert.That(forks.Select(static fork => (string?)fork["forkId"]), Is.EqualTo(scheduledForkIds));
+            Assert.That(active, Has.Length.EqualTo(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks.IndexOf(active[0]), Is.EqualTo(activeIndex));
+            Assert.That((bool?)active[0]["active"], Is.True);
+        }
+
+        active[0].Remove("active");
+        Assert.That(active[0], Is.EqualTo(current).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
@@ -1265,6 +1323,50 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
+    }
+
+    [TestCase(100, null, null, 7, 93)]
+    [TestCase(null, 100, 2, 7, 2)]
+    [TestCase(null, 100, 100, 7, 93)]
+    [TestCase(100, null, null, 0, 100)]
+    [TestCase(null, 100, 2, 0, 2)]
+    [TestCase(100, null, null, null, 100)]
+    [TestCase(null, 100, 2, null, 2)]
+    [TestCase(null, 100, 100, null, 100)]
+    public async Task Debug_traceCall_javascript_gasPrice_is_effective_gas_tip(
+        int? gasPrice, int? maxFeePerGas, int? maxPriorityFeePerGas, int? baseFeeOverride, int expectedGasPrice)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+        // Without an override the live base fee applies, so the fee caps are raised by it to keep the expected tips.
+        UInt256 feeCapShift = baseFeeOverride is null ? ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas : UInt256.Zero;
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new() { ["from"] = $"{sender}", ["to"] = $"{TestItem.AddressD}", ["gas"] = "0x186a0" };
+        if (gasPrice is not null)
+            transaction["gasPrice"] = (feeCapShift + (UInt256)gasPrice.Value).ToHexString(true);
+        if (maxFeePerGas is not null)
+            transaction["maxFeePerGas"] = (feeCapShift + (UInt256)maxFeePerGas.Value).ToHexString(true);
+        if (maxPriorityFeePerGas is not null)
+            transaction["maxPriorityFeePerGas"] = ((UInt256)maxPriorityFeePerGas.Value).ToHexString(true);
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [$"{sender}"] = new { balance = "0x56BC75E2D63100000" },
+            [$"{TestItem.AddressD}"] = new { code = "0x00" }
+        };
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return ctx.gasPrice.toString(10);}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new
+            {
+                tracer,
+                stateOverrides,
+                blockOverrides = baseFeeOverride is null ? null : new { baseFeePerGas = $"0x{baseFeeOverride:x}" }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], Is.EqualTo(expectedGasPrice.ToString()), response);
         }
     }
 

@@ -10,6 +10,7 @@ using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -119,14 +120,16 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_with_multiple_transactions_per_bundle()
+    public async Task Debug_traceCallMany_without_overrides_traces_each_call_against_the_base_state([Values] bool streaming)
     {
         using Context ctx = await CreateContext();
-        TransactionBundle bundle = CreateBundle(CreateTransaction(), CreateTransaction(to: TestItem.AddressD));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address relay = TestItem.GetRandomAddress();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(to: relay), CreateTransaction(from: relay));
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
-        Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([2]));
+        Assert.That(result.Select(static r => r.Select(static trace => (bool)trace["failed"]!)), Is.EqualTo(new[] { new[] { false, true } }), result.ToString());
     }
 
     [Test]
@@ -252,6 +255,59 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
 
         Assert.That(response, Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_rejects_conflicting_storage_overrides([Values] bool inOptions, [Values] bool loneBlobFeeCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressB.ToString(), ["gas"] = "0x5208" };
+        if (loneBlobFeeCap) call["maxFeePerBlobGas"] = "0x0";
+        object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } };
+
+        string response = inOptions
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call } } }, "latest", new { stateOverrides })
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, stateOverrides } }, "latest");
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {TestItem.AddressC.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_applies_a_lone_storage_override([Values] bool inOptions, [Values("state", "stateDiff", null)] string? field)
+    {
+        using Context ctx = await CreateContext();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(from: TestItem.AddressA, value: 0, gas: 100_000));
+        Dictionary<UInt256, Hash256> storage = new() { [UInt256.Zero] = Keccak.OfAnEmptyString };
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            // PUSH1 0 SLOAD ISZERO PUSH1 8 JUMPI STOP JUMPDEST PUSH1 0 DUP1 REVERT: reverts while slot 0 is empty.
+            [TestItem.AddressC] = new()
+            {
+                Code = Bytes.FromHexString("0x60005415600857005b600080fd"),
+                State = field == "state" ? storage : null,
+                StateDiff = field == "stateDiff" ? storage : null
+            }
+        };
+
+        // The trace options path may stream, so it is read back as JSON; a bundle with overrides is buffered.
+        bool? failed;
+        if (inOptions)
+        {
+            JArray result = await RunTraceCallManyAsJson(ctx, [bundle], new GethTraceOptions { StateOverrides = overrides });
+            failed = result.Single().Single()["failed"]?.Value<bool>();
+        }
+        else
+        {
+            bundle.StateOverrides = overrides;
+            failed = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest).Data.Single().Single().Failed;
+        }
+
+        Assert.That(failed, Is.EqualTo(field is null));
     }
 
     [Test]

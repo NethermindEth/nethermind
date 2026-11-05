@@ -329,7 +329,8 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
             return ValidationResult.Success;
         }
 
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        // Not saturated at 2^64 - 1, so the error reports the real intrinsic plus execution gas.
+        if (!FrameTxValidation.TryCalculateExecutionReservation(transaction, releaseSpec, out UInt128 executionReservation))
         {
             return FrameTxValidation.FrameGasOverflow;
         }
@@ -375,7 +376,7 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             return FrameTxValidation.KeyedNoncesNotEnabled;
         }
 
-        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && (nonceKeys.Length != 0 || transaction.Nonce < Eip8250Constants.MaxNonceSeq)
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
@@ -687,5 +688,5 @@ public sealed class NonceCapTxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }

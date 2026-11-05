@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
@@ -179,7 +182,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
         (Transaction, ulong)[] expected = null!;
         ITxFilterPipeline filter = Substitute.For<ITxFilterPipeline>();
-        filter.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        filter.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(call =>
             {
                 if (ReferenceEquals(call.Arg<Transaction>(), first)) return true;
@@ -241,7 +244,7 @@ public class TxPoolSourceTests
         SetPendingForProduction(txPool, blobTransactions: transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit }, CreateSpecChangeTxValidator(specProvider));
 
@@ -336,7 +339,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
@@ -370,7 +373,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = blobLimit },
@@ -503,7 +506,7 @@ public class TxPoolSourceTests
         TestSingleReleaseSpecProvider specProvider = new(BogotaFrames);
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Build.A.BlockTree().TestObject),
             LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
 
@@ -560,7 +563,7 @@ public class TxPoolSourceTests
             { new AddressAsKey(transaction.SenderAddress!), [transaction] }
         });
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
         specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>())
             .Returns(new ValidationResult("chain-specific rejection"));
@@ -648,11 +651,8 @@ public class TxPoolSourceTests
             .WithHeadTxFilter()
             .Build;
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
-            realTxFilterPipeline.Execute(
-                callInfo.ArgAt<Transaction>(0),
-                callInfo.ArgAt<BlockHeader>(1),
-                callInfo.ArgAt<IReleaseSpec>(2)));
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(callInfo =>
+            realTxFilterPipeline.Execute(callInfo.ArgAt<Transaction>(0), callInfo.ArgAt<TxFilterContext>(1)));
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
@@ -667,13 +667,13 @@ public class TxPoolSourceTests
         {
             Assert.That(result, Is.EqualTo(expected).UsingTransactionComparer());
             txPool.Received(expectValidBlob ? 1 : 0).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
-            txFilterPipeline.DidNotReceive().Execute(validBlob, parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(validBlob, Arg.Any<TxFilterContext>());
         }
 
         for (int i = 0; i < invalidBlobs.Length; i++)
         {
             txPool.Received(1).TryGetPendingBlobTransaction(invalidBlobs[i].Hash!, out Arg.Any<Transaction?>());
-            txFilterPipeline.DidNotReceive().Execute(invalidBlobs[i], parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(invalidBlobs[i], Arg.Any<TxFilterContext>());
         }
     }
 
@@ -720,7 +720,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
@@ -764,7 +764,7 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
@@ -777,7 +777,7 @@ public class TxPoolSourceTests
         }
 
         txPool.Received(1).GetPendingForProduction(targetBlock, Arg.Any<bool>(), Arg.Any<UInt256>());
-        txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
+        txFilterPipeline.DidNotReceive().Execute(blobTx, Arg.Any<TxFilterContext>());
     }
 
     [Test]
@@ -795,6 +795,8 @@ public class TxPoolSourceTests
                 .SignedAndResolved(TestItem.PrivateKeyA)
                 .TestObject)
             .ToArray();
+        // The first two ran in an earlier build and used their whole gas limit, so they count at it.
+        transactions[0].BlockGasUsed = transactions[1].BlockGasUsed = 16_000_000;
         ITxPool txPool = Substitute.For<ITxPool>();
         SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
         {
@@ -802,7 +804,7 @@ public class TxPoolSourceTests
         }, isRevalidated: true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
@@ -811,6 +813,139 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, BlockGasLimit).ToArray();
 
         Assert.That(result, Is.EqualTo(eip8037 ? transactions : transactions[..2]));
+    }
+
+    [Test]
+    public void GetTransactions_should_count_a_transaction_that_has_not_run_at_its_base_cost_against_later_nonces([Values] bool eip8037)
+    {
+        const ulong BlockGasLimit = 4_000_000;
+        IReleaseSpec spec = eip8037 ? Amsterdam.Instance : Osaka.Instance;
+        TestSingleReleaseSpecProvider specProvider = new(spec);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        // Ten transfers whose gas limits add up to 10M: each must fit at its 1M limit, none has run yet.
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithGasLimit(1_000_000)
+                .WithGasPrice(2.GWei)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject)
+            .ToArray();
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(TestItem.AddressA), transactions }
+        }, isRevalidated: true);
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithGasLimit(BlockGasLimit).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithGasLimit(BlockGasLimit).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, BlockGasLimit).ToArray();
+
+        Assert.That(result, Is.EqualTo(transactions));
+    }
+
+    [Test]
+    public void Ordering_counts_what_a_transaction_used_in_an_earlier_build_against_later_nonces(
+        [Values(0UL, 21_000UL, 900_000UL, 1_000_000UL)] ulong usedGas,
+        [Values] bool eip8037)
+    {
+        // Zero leaves BlockGasUsed unset: the transaction has not run.
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => new Transaction
+            {
+                SenderAddress = TestItem.AddressA,
+                Nonce = (ulong)nonce,
+                GasLimit = 1_000_000,
+                BlockGasUsed = usedGas
+            })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, 4_000_000UL,
+            eip8037 ? Amsterdam.Instance : Osaka.Instance).ToArray();
+
+        int expected = usedGas switch { 900_000 or 1_000_000 => 4, _ => 10 };
+        Assert.That(selected, Is.EqualTo(transactions[..expected]));
+    }
+
+    [Test]
+    public void Ordering_counts_a_frame_transaction_that_has_not_run_at_its_intrinsic_cost_against_later_nonces()
+    {
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce =>
+            {
+                TxFrame[] frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 1_000_000, 0, UInt256.Zero, default)];
+                return new Transaction
+                {
+                    Type = TxType.FrameTx,
+                    ChainId = 1,
+                    Nonce = (ulong)nonce,
+                    SenderAddress = TestItem.AddressA,
+                    Frames = frames,
+                    FrameSignatures = [],
+                    GasLimit = FrameTxValidation.TotalGasLimit(frames),
+                    GasPrice = 1,
+                    DecodedMaxFeePerGas = 1,
+                };
+            })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, 4_000_000UL, Eip8141Prototype.Instance).ToArray();
+
+        Assert.That(selected, Is.EqualTo(transactions));
+    }
+
+    [Test]
+    public void Ordering_counts_a_transaction_that_has_not_run_at_the_base_cost_of_its_fork_against_later_nonces([Values] bool eip2780)
+    {
+        // Each later nonce must fit at its 100,000 gas limit on top of the base costs of the earlier ones:
+        // 21,000 each leaves room for four of them, 12,000 under EIP-2780 for seven.
+        const ulong GasLimit = 100_000;
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => new Transaction { SenderAddress = TestItem.AddressA, Nonce = (ulong)nonce, GasLimit = GasLimit })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, GasLimit + 4 * GasCostOf.Transaction,
+            eip2780 ? Amsterdam.Instance : Osaka.Instance).ToArray();
+
+        Assert.That(selected, Is.EqualTo(transactions[..(eip2780 ? 8 : 5)]));
+    }
+
+    [Test]
+    public async Task First_build_includes_every_transaction_of_a_sender_whose_gas_limits_add_up_above_the_block_gas_limit([Values] bool eip8037)
+    {
+        const ulong BlockGasLimit = 4_000_000;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(eip8037 ? Amsterdam.Instance : Osaka.Instance))
+            .WithGenesisPostProcessor((genesis, _) => { genesis.Header.GasLimit = BlockGasLimit; }));
+        Transaction[] transfers = Enumerable.Range(0, 10)
+            .Select(nonce => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithTo(TestItem.AddressD)
+                .WithValue(UInt256.One)
+                .WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyB)
+                .TestObject)
+            .ToArray();
+
+        // MayMissTx takes the first block built, so the transactions it leaves out are not picked up by a retry.
+        Block block = await chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayMissTx, transfers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.GasLimit, Is.EqualTo(BlockGasLimit));
+            Assert.That(block.Transactions.Select(static tx => tx.Hash).ToArray(), Is.EqualTo(transfers.Select(static tx => tx.Hash).ToArray()));
+        }
     }
 
     [Test]
@@ -831,7 +966,7 @@ public class TxPoolSourceTests
         });
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
@@ -900,7 +1035,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
-        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource source = new(
             txPool,
             specProvider,
@@ -964,7 +1099,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
-        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource source = new(
             txPool,
             specProvider,
@@ -999,7 +1134,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(
             txPool,

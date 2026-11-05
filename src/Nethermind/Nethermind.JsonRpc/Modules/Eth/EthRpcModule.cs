@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -539,8 +538,8 @@ public partial class EthRpcModule(
         ulong chainId = _blockchainBridge.GetChainId();
 
         LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
-        if (legacyTx.From is not { } from)
-            return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
+        // A missing sender is the zero address, as in geth and as the spec leaves from optional.
+        Address from = legacyTx.From ?? Address.Zero;
 
         // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
         // blobs has its sidecar checked first.
@@ -1387,36 +1386,10 @@ public partial class EthRpcModule(
 
         return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
+            Current = ForkConfigFactory.Create(forks.Current, _specProvider),
+            Next = ForkConfigFactory.Create(forks.Next, _specProvider),
+            Last = ForkConfigFactory.Create(forks.Last, _specProvider)
         }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
-
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
-        {
-            if (fork is null)
-            {
-                return null;
-            }
-
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
-
-            return new ForkConfig
-            {
-                ActivationTime = fork.Value.Activation.Timestamp,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? fork.Value.Activation.BlockNumber : null,
-                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
-                {
-                    BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
-                    Max = (int)spec.MaxBlobCount,
-                    Target = (int)spec.TargetBlobCount,
-                } : null,
-                ChainId = specProvider.ChainId,
-                ForkId = fork.Value.Id.HashBytes,
-                Precompiles = spec.ListPrecompiles(),
-                SystemContracts = spec.ListSystemContracts(),
-            };
-        }
     }
 
     public ResultWrapper<AccountAccessForRpc[]?> eth_getBlockAccessList(BlockParameter blockParameter)
