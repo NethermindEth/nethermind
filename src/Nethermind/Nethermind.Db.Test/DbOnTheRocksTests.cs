@@ -1510,6 +1510,42 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void CompactReclaimingBlobFiles_CompressesRetainedValues_WhenTheNodeNeverTunedBlobCompression()
+        {
+            // The restart that enables blob files never runs Tune(EnableBlobFiles), so the live blob compression is
+            // RocksDB's default (none). The rewrite must still compress what it retains, or the retained bodies
+            // grow on disk. Compressible values are required: random ones cannot expose a missing codec.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            const int heights = 500;
+            const int retainEvery = 50;
+            byte[] compressibleValue = new byte[4096];
+            long sizeBefore;
+            using (DbOnTheRocks seeding = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance))
+            {
+                sizeBefore = SeedSlicedRetention(seeding, DbPath, heights, retainEvery, compressibleValue);
+            }
+
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+            bool compacted = db.CompactReclaimingBlobFiles();
+            long sizeAfter = SstBytes(DbPath) + BlobBytes(DbPath);
+            long retainedRawBytes = (heights / retainEvery + 1) * (long)compressibleValue.Length;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(sizeAfter, Is.LessThan(sizeBefore));
+                Assert.That(sizeAfter, Is.LessThan(retainedRawBytes / 2),
+                    "the retained values must be rewritten compressed, not at their raw size");
+                Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Not.Null, "the pinned bottom key must still read back");
+            }
+        }
+
         // Seeds block-ordered blob-sized values, then prunes everything except a scattered 1-in-retainEvery
         // survivor (plus height 1) as a sliced-history retention prune does, leaving partially-referenced blob
         // files. Returns the on-disk size just before compaction, which is the denominator for the reclaim ratio.

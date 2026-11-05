@@ -1363,6 +1363,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         { "enable_blob_garbage_collection", "true" },
         { "blob_garbage_collection_age_cutoff", "1.0" },
         { "blob_garbage_collection_force_threshold", "0.0" },
+        { "blob_compression_type", "kSnappyCompression" },
     };
 
     // RocksDB defaults for the options the blob-GC compaction overrides, used for any key the database's own
@@ -1373,6 +1374,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         { "enable_blob_garbage_collection", "false" },
         { "blob_garbage_collection_age_cutoff", "0.25" },
         { "blob_garbage_collection_force_threshold", "1.0" },
+        { "blob_compression_type", "kNoCompression" },
     };
 
     /// <inheritdoc/>
