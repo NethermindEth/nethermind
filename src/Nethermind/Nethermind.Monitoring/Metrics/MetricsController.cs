@@ -396,7 +396,7 @@ namespace Nethermind.Monitoring.Metrics
                     UpdateAllMetrics();
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
             }
         }

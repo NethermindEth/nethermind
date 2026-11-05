@@ -662,6 +662,19 @@ public class MetricsTests
     }
 
     [Test]
+    public async Task RunTimer_fails_on_cancellation_its_token_did_not_cause()
+    {
+        MetricsController controller = new(new MetricsConfig { Enabled = true, IntervalSeconds = 1 });
+        OperationCanceledException stray = new();
+        controller.AddMetricsUpdateAction(() => throw stray);
+
+        Task timer = controller.RunTimer(CancellationToken.None);
+
+        OperationCanceledException thrown = await Assert.CatchAsync<OperationCanceledException>(() => timer.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.That(thrown, Is.SameAs(stray));
+    }
+
+    [Test]
     public void All_config_items_have_descriptions() => ValidateMetricsDescriptions();
 
     public static void ValidateMetricsDescriptions() => ForEachProperty(CheckDescribedOrHidden);
