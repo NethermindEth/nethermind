@@ -6,10 +6,12 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
@@ -39,6 +41,7 @@ using Nethermind.State;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -337,6 +340,7 @@ public class StatelessInputGeneratorTests
             // The witness is assembled from trie nodes persisted in StateDb.
             .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = false })
             .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
+            .AddSingleton<IInitConfig>(new InitConfig { StateDbKeyScheme = INodeStorage.KeyScheme.Hash })
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using ILifetimeScope processingScope = container.BeginLifetimeScope(builder =>
@@ -367,10 +371,11 @@ public class StatelessInputGeneratorTests
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
         IDbProvider dbProvider = container.Resolve<IDbProvider>();
+        INodeStorage nodeStorage = container.Resolve<INodeStorage>();
         Witness witness = new()
         {
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
-            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllValues()]),
+            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllKeys().Select(key => nodeStorage.Get(null, TreePath.Empty, new ValueHash256(key))!)]),
             Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
         };

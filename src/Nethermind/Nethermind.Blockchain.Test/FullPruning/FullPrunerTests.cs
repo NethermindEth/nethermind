@@ -294,7 +294,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
             dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-            NodeStorage storageForWrite = new(TrieDb, currentKeyScheme);
+            INodeStorage storageForWrite = new NodeStorageFactory(currentKeyScheme, LimboLogs.Instance).WrapKeyValueStore(TrieDb);
             PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
             _stateRoot = trie.RootHash;
             FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
