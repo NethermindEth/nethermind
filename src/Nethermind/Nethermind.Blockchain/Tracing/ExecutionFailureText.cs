@@ -210,7 +210,8 @@ public static class ExecutionFailureText
         EvmExceptionType failure,
         string error,
         CancellationToken token,
-        out string text)
+        out string text,
+        ExecutionOptions options = ExecutionOptions.CommitAndRestore)
     {
         text = error;
         if (failure == EvmExceptionType.PrecompileFailure)
@@ -230,7 +231,7 @@ public static class ExecutionFailureText
             case EvmExceptionType.BadInstruction
                 or EvmExceptionType.StackUnderflow
                 or EvmExceptionType.StackOverflow:
-                return TryDescribeFailingOperation(transactionProcessor, tx, in blockContext, failure, token, ref text);
+                return TryDescribeFailingOperation(transactionProcessor, tx, in blockContext, failure, token, ref text, options);
             default:
                 return false;
         }
@@ -242,13 +243,15 @@ public static class ExecutionFailureText
         in BlockExecutionContext blockContext,
         EvmExceptionType failure,
         CancellationToken token,
-        ref string text)
+        ref string text,
+        ExecutionOptions options)
     {
         FailingOperationTracer tracer = new();
         TransactionResult result;
         try
         {
-            result = transactionProcessor.CallAndRestore(tx, in blockContext, tracer.WithCancellation(token));
+            transactionProcessor.SetBlockExecutionContext(in blockContext);
+            result = transactionProcessor.Process(tx, tracer.WithCancellation(token), options);
         }
         catch (InsufficientBalanceException)
         {
