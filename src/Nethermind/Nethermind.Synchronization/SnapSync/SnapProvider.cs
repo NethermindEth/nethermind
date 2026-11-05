@@ -58,17 +58,18 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
+                using ArrayPoolList<PathWithAccount> accounts = response.PathAndAccounts.ToPathWithAccounts();
                 result = AddAccountRange(
                     request.BlockNumber.Value,
                     request.RootHash,
                     request.StartingHash,
-                    response.PathAndAccounts,
+                    accounts,
                     response.Proofs,
                     hashLimit: request.LimitHash);
 
                 if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, accounts.Count);
                 }
             }
 
@@ -422,11 +423,12 @@ namespace Nethermind.Synchronization.SnapSync
         private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out Account? account)
         {
             account = null;
-            IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
             // An empty response carries no range to verify, so the account's absence cannot be proven here -
             // retry rather than concluding (unproven) that it was deleted.
-            if (accounts.Count == 0)
+            if (response.PathAndAccounts.Count == 0)
                 return RefreshVerifyResult.Expired;
+
+            using ArrayPoolList<PathWithAccount> accounts = response.PathAndAccounts.ToPathWithAccounts();
 
             AddRangeResult result;
             try

@@ -134,17 +134,17 @@ public class SnapStateServer : ISnapStateServer
         return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
+    public (IPathWithAccountList, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
+        if (IsRootMissing(rootHash)) return (EmptyPathWithAccountList.Instance, EmptyByteArrayList.Instance);
         byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
-        AccountCollector accounts = new();
+        using AccountCollector accounts = new();
         (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
             rootHash,
             startingHash,
@@ -155,8 +155,7 @@ public class SnapStateServer : ISnapStateServer
             accounts,
             cancellationToken);
 
-        ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-        return (nodes, new ByteArrayListAdapter(proofs));
+        return (accounts.ToPathWithAccountList(), new ByteArrayListAdapter(proofs));
     }
 
     public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(

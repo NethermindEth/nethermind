@@ -87,7 +87,7 @@ public class SnapProviderTests
 
         using AccountsAndProofs accountsAndProofs = new();
         AccountRange accountRange = new(Keccak.Zero, Keccak.Zero, Keccak.MaxValue);
-        accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToPooledList();
+        accountsAndProofs.PathAndAccounts = EmptyPathWithAccountList.Instance;
         accountsAndProofs.Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList());
 
         Assert.That(snapProvider.AddAccountRange(accountRange, accountsAndProofs), Is.EqualTo(AddRangeResult.ExpiredRootHash));
@@ -653,7 +653,7 @@ public class SnapProviderTests
 #pragma warning restore NUnit2045
             Assert.That(refresh.AccountsToRefreshRequest!.RootHash, Is.EqualTo(root));
 
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 server.GetAccountRanges(root, stale.Path, stale.Path.IncrementPath(), 4000, CancellationToken.None);
             refresh.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
 
@@ -708,7 +708,7 @@ public class SnapProviderTests
         {
             Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
 
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 server.GetAccountRanges(root, gone.Path, gone.Path.IncrementPath(), 4000, CancellationToken.None);
             refresh.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
 
@@ -761,7 +761,7 @@ public class SnapProviderTests
         {
             Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
 
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 server.GetAccountRanges(root, account.Path, account.Path.IncrementPath(), 4000, CancellationToken.None);
             refresh.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
 
@@ -887,7 +887,7 @@ public class SnapProviderTests
         {
             batch.AccountRangeResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+                PathAndAccounts = new PathWithAccount[] { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) }.ToPathWithAccountList(),
                 Proofs = EmptyByteArrayList.Instance
             };
         }
@@ -975,7 +975,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+        (IPathWithAccountList accounts, IByteArrayList proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, entries[3].Item1, 1.MB, default);
 
         Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.EqualTo(false));
@@ -1023,7 +1023,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = ss.GetAccountRanges(
+        (IPathWithAccountList accounts, IByteArrayList proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, Keccak.MaxValue, 1.MB, default);
 
         // The range given out here should be half.
@@ -1592,7 +1592,7 @@ public class SnapProviderTests
     {
         if (batch.AccountRangeRequest is { } accountRange)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 server.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash, accountRange.LimitHash, byteLimit, CancellationToken.None);
             batch.AccountRangeResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
             Assert.That(provider.AddAccountRange(accountRange, batch.AccountRangeResponse), Is.EqualTo(AddRangeResult.OK));
@@ -1607,7 +1607,7 @@ public class SnapProviderTests
         else if (batch.AccountsToRefreshRequest is { } refresh)
         {
             ValueHash256 path = refresh.Paths[0].PathAndAccount!.Path;
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 server.GetAccountRanges(refresh.RootHash, path, path.IncrementPath(), byteLimit, CancellationToken.None);
             batch.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
             provider.RefreshAccounts(refresh, batch.AccountsToRefreshResponse);

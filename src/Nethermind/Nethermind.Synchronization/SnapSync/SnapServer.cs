@@ -35,7 +35,7 @@ public sealed class SnapServer(
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken) =>
         stateServer.GetTrieNodes(pathSet, rootHash, byteLimit, cancellationToken);
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,
+    public (IPathWithAccountList, IByteArrayList) GetAccountRanges(Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
         long byteLimit,

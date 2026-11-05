@@ -9,14 +9,14 @@ namespace Nethermind.State.Snap
 {
     public class AccountsAndProofs : IDisposable
     {
-        private IOwnedReadOnlyList<PathWithAccount> _pathAndAccounts = IOwnedReadOnlyList<PathWithAccount>.Empty;
+        private IPathWithAccountList _pathAndAccounts = EmptyPathWithAccountList.Instance;
         private IByteArrayList _proofs = EmptyByteArrayList.Instance;
 
         [AllowNull]
-        public IOwnedReadOnlyList<PathWithAccount> PathAndAccounts
+        public IPathWithAccountList PathAndAccounts
         {
             get => _pathAndAccounts;
-            set => _pathAndAccounts = value ?? IOwnedReadOnlyList<PathWithAccount>.Empty;
+            set => _pathAndAccounts = value ?? EmptyPathWithAccountList.Instance;
         }
 
         [AllowNull]

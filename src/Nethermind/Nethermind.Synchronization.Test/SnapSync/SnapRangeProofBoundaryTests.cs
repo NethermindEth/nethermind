@@ -78,15 +78,15 @@ public class SnapRangeProofBoundaryTests
     public void AddAccountRange_OriginUnderAnExtension_IsAcceptedFromTheSnapServer()
     {
         Source source = new();
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             source.Server.GetAccountRanges(source.StateRoot, KeyB, ValueKeccak.MaxValue, 1.MB, CancellationToken.None);
         using (accounts)
         using (proofs)
         {
-            Assert.That(accounts.Select(static a => a.Path), Is.EqualTo(new[] { KeyB, KeyC, KeyD }), "guards the premise");
+            Assert.That(accounts.ToArray().Select(static a => a.Path), Is.EqualTo(new[] { KeyB, KeyC, KeyD }), "guards the premise");
 
             (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
-                CreatePatriciaFactory(), 0, source.StateRoot, KeyB, ValueKeccak.MaxValue, accounts, proofs);
+                CreatePatriciaFactory(), 0, source.StateRoot, KeyB, ValueKeccak.MaxValue, accounts.ToArray(), proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -99,19 +99,19 @@ public class SnapRangeProofBoundaryTests
     {
         Source source = new();
         ValueHash256 origin = new("0xb200000000000000000000000000000000000000000000000000000000000000");
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             source.Server.GetAccountRanges(source.StateRoot, origin, ValueKeccak.MaxValue, 1.MB, CancellationToken.None);
         using (accounts)
         using (proofs)
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(accounts.Select(static a => a.Path), Is.EqualTo(new[] { KeyD }), "guards the premise");
+                Assert.That(accounts.ToArray().Select(static a => a.Path), Is.EqualTo(new[] { KeyD }), "guards the premise");
                 Assert.That(ContainsExtensionChild(proofs), Is.False, "guards the premise");
             }
 
             (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
-                CreatePatriciaFactory(), 0, source.StateRoot, origin, ValueKeccak.MaxValue, accounts, proofs);
+                CreatePatriciaFactory(), 0, source.StateRoot, origin, ValueKeccak.MaxValue, accounts.ToArray(), proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -391,7 +391,7 @@ public class SnapRangeProofBoundaryTests
             Assert.That(batch?.AccountRangeRequest?.StartingHash, Is.EqualTo(ValueKeccak.Zero), "the range is offered again");
             batch!.AccountRangeResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { MadeUpAccountBeforeD() },
+                PathAndAccounts = new PathWithAccount[] { MadeUpAccountBeforeD() }.ToPathWithAccountList(),
                 Proofs = Proofs(source.AccountProof(KeyBeforeD))
             };
 
@@ -420,7 +420,7 @@ public class SnapRangeProofBoundaryTests
             Assert.That(refresh?.AccountsToRefreshRequest, Is.Not.Null);
             refresh!.AccountsToRefreshResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { source.AccountEntry(KeyD) },
+                PathAndAccounts = new PathWithAccount[] { source.AccountEntry(KeyD) }.ToPathWithAccountList(),
                 Proofs = Proofs(WithoutExtensionChild(source.AccountProof(KeyB)))
             };
 
@@ -455,7 +455,7 @@ public class SnapRangeProofBoundaryTests
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 source.Server.GetAccountRanges(source.StateRoot, KeyB, KeyB.IncrementPath(), 4000, CancellationToken.None);
             refresh!.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
 

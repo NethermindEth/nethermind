@@ -26,7 +26,7 @@ public interface ISnapStateServer
 
     IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken);
 
-    (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,
+    (IPathWithAccountList, IByteArrayList) GetAccountRanges(Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
         long byteLimit,

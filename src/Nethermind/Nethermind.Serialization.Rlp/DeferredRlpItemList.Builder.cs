@@ -43,10 +43,13 @@ public sealed partial class DeferredRlpItemList
 
         internal struct Entry
         {
-            public int Length;           // Leaf: raw byte count. Container: RLP content length of children.
-            public int ValueOffset;      // Leaf: offset into _valueBuffer. Container: starting _valueBuffer offset for subtree.
-            public int EntriesLength;    // Leaf: -1. Container: total entry count in subtree (excl. self), >= 0.
+            public const int RawEntriesLength = -2;
+
+            public int Length;           // Leaf: raw byte count. Raw: RLP byte count. Container: RLP content length of children.
+            public int ValueOffset;      // Leaf/Raw: offset into _valueBuffer. Container: starting _valueBuffer offset for subtree.
+            public int EntriesLength;    // Leaf: -1. Raw: -2. Container: total entry count in subtree (excl. self), >= 0.
             public bool IsLeaf => EntriesLength < 0;
+            public bool IsRaw => EntriesLength == RawEntriesLength;
         }
 
         public ref struct Writer
@@ -71,6 +74,18 @@ public sealed partial class DeferredRlpItemList
                 b._entries!.Add(new Entry { Length = value.Length, ValueOffset = offset, EntriesLength = -1 });
 
                 b._entries.AsSpan()[_entryIndex].Length += Rlp.LengthOf(value);
+            }
+
+            /// <summary>Appends an item that is already RLP-encoded, copying <paramref name="rlp"/> verbatim.</summary>
+            public void WriteRaw(ReadOnlySpan<byte> rlp)
+            {
+                Builder b = _builder;
+                int offset = b._valueBuffer!.Count;
+                b._valueBuffer.AddRange(rlp);
+
+                b._entries!.Add(new Entry { Length = rlp.Length, ValueOffset = offset, EntriesLength = Entry.RawEntriesLength });
+
+                b._entries.AsSpan()[_entryIndex].Length += rlp.Length;
             }
 
             public Writer BeginContainer()

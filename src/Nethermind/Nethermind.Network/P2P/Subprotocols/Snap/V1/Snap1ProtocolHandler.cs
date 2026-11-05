@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
         private AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             AccountRange? accountRange = getAccountRangeMessage.AccountRange;
-            (IOwnedReadOnlyList<PathWithAccount>? ranges, IByteArrayList? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
+            (IPathWithAccountList? ranges, IByteArrayList? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
                 accountRange.LimitHash, getAccountRangeMessage.ResponseBytes, cancellationToken);
             return new AccountRangeMessage { Proofs = proofs, PathsWithAccounts = ranges };
         }

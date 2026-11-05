@@ -126,7 +126,7 @@ public class SnapFlatStateServer(
         }
     }
 
-    public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
+    public (IPathWithAccountList, IByteArrayList) GetAccountRanges(
         Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256? limitHash,
@@ -134,13 +134,13 @@ public class SnapFlatStateServer(
         CancellationToken cancellationToken)
     {
         if (!TryGetBundle(rootHash, ReaderFlags.FullScan, out ReadOnlySnapshotBundle bundle, out StateId stateId))
-            return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
+            return (EmptyPathWithAccountList.Instance, EmptyByteArrayList.Instance);
 
         using (bundle)
         {
             byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
 
-            AccountCollector accounts = new();
+            using AccountCollector accounts = new();
             (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
                 bundle,
                 stateId.StateRoot,
@@ -152,8 +152,7 @@ public class SnapFlatStateServer(
                 accounts,
                 cancellationToken);
 
-            ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-            return (nodes, proofs);
+            return (accounts.ToPathWithAccountList(), proofs);
         }
     }
 

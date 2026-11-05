@@ -21,7 +21,7 @@ public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
     public byte SnapProtocolVersion => SnapVersions.Snap1;
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
     {
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = snapServer.GetAccountRanges(
+        (IPathWithAccountList accounts, IByteArrayList proofs) = snapServer.GetAccountRanges(
             range.RootHash,
             range.StartingHash,
             range.LimitHash,

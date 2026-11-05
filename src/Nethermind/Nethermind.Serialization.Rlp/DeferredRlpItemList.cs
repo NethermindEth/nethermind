@@ -73,7 +73,9 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         for (int i = _entryStart + 1; i < _entryEnd; i++)
         {
             ref Builder.Entry entry = ref entries[i];
-            if (entry.IsLeaf)
+            if (entry.IsRaw)
+                writer.Write(values.Slice(entry.ValueOffset, entry.Length));
+            else if (entry.IsLeaf)
                 writer.Encode(values.Slice(entry.ValueOffset, entry.Length));
             else
                 writer.StartSequence(entry.Length);
@@ -85,7 +87,18 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
         ref Builder.Entry entry = ref entries[pos];
-        if (!entry.IsLeaf) throw new RlpException("Item is not a byte string");
+        if (!entry.IsLeaf || entry.IsRaw) throw new RlpException("Item is not a byte string");
+        return ValueBuffer.Slice(entry.ValueOffset, entry.Length);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Only items appended with <see cref="Builder.Writer.WriteRaw"/> keep their RLP; any other item throws.</remarks>
+    public ReadOnlySpan<byte> ReadRlp(int index)
+    {
+        Span<Builder.Entry> entries = Entries;
+        int pos = GetDirectChildEntryIndex(entries, index);
+        ref Builder.Entry entry = ref entries[pos];
+        if (!entry.IsRaw) throw new RlpException("Item was not written as raw RLP");
         return ValueBuffer.Slice(entry.ValueOffset, entry.Length);
     }
 

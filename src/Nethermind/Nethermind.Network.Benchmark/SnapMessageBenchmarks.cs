@@ -83,7 +83,8 @@ public class SnapMessageBenchmarks
                 ArrayPoolList<PathWithAccount> accounts = new(256);
                 foreach (Hash256 hash in Hashes(256))
                     accounts.Add(new PathWithAccount(hash.ValueHash256, new Account((ulong)accounts.Count, UInt256.One << 64, hash, TestItem.KeccakA)));
-                SetUp(service, new Snap1.AccountRangeMessage { RequestId = RequestId, PathsWithAccounts = accounts, Proofs = Nodes(8, 532) });
+                SetUp(service, new Snap1.AccountRangeMessage { RequestId = RequestId, PathsWithAccounts = accounts.ToPathWithAccountList(), Proofs = Nodes(8, 532) });
+                accounts.Dispose();
                 break;
             case Message.GetStorageRanges:
                 ArrayPoolList<PathWithAccount> storageAccounts = new(128);

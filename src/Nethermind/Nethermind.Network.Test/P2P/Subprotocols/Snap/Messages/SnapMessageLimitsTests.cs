@@ -53,7 +53,7 @@ public class SnapMessageLimitsTests
         const int count = 40_000;
         AccountRangeMessageSerializer serializer = new();
 
-        ArrayPoolList<PathWithAccount> accounts = new(count);
+        using ArrayPoolList<PathWithAccount> accounts = new(count);
         for (int i = 0; i < count; i++)
         {
             accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
@@ -62,7 +62,7 @@ public class SnapMessageLimitsTests
         using AccountRangeMessage msg = new()
         {
             RequestId = 1,
-            PathsWithAccounts = accounts,
+            PathsWithAccounts = accounts.ToPathWithAccountList(),
             Proofs = EmptyByteArrayList.Instance,
         };
 

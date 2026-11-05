@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         /// <summary>
         /// List of consecutive accounts from the trie
         /// </summary>
-        public IOwnedReadOnlyList<PathWithAccount> PathsWithAccounts { get; set; }
+        public IPathWithAccountList PathsWithAccounts { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the account range

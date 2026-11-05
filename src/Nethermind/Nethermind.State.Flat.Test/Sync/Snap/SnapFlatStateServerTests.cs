@@ -210,7 +210,7 @@ public class SnapFlatStateServerTests
         }
         else
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 _server.GetAccountRanges(_rootHash, ValueKeccak.Zero, null, 4000, CancellationToken.None);
             using (accounts)
             using (proofs)

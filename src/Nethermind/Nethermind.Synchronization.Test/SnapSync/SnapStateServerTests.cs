@@ -176,7 +176,7 @@ public class SnapStateServerTests
         using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, Keccak.Zero,
@@ -197,7 +197,7 @@ public class SnapStateServerTests
         using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
 
         Assert.That(accounts.Count, Is.EqualTo(0));
@@ -217,7 +217,7 @@ public class SnapStateServerTests
         Hash256 storageRoot = FillAccountWithDefaultStorage(context);
 
         ValueHash256 path = TestItem.Tree.AccountsWithPaths[0].Path;
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
@@ -251,7 +251,7 @@ public class SnapStateServerTests
         Hash256 storageRoot = FillAccountWithDefaultStorage(context);
 
         ValueHash256 path = TestItem.Tree.AccountsWithPaths[0].Path;
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
 
         // Drop the leaf nodes from the proof; the leaves are still present in the returned accounts.
@@ -296,7 +296,7 @@ public class SnapStateServerTests
 
         // A path immediately before an existing account: the account is absent, but the next account proves it.
         ValueHash256 path = TestItem.Tree.AccountsWithPaths[1].Path.DecrementPath();
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+        (IPathWithAccountList accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
@@ -500,7 +500,7 @@ public class SnapStateServerTests
 
         using ISnapServerContext context = CreateContext(lastNStateRootTracker: lastNStateTracker);
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs) =
+        (IPathWithAccountList accounts, IByteArrayList accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         Assert.That(accounts.Count, Is.EqualTo(0));
@@ -526,16 +526,16 @@ public class SnapStateServerTests
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 context.Server.GetAccountRanges(context.RootHash, startRange, Keccak.MaxValue, 100, CancellationToken.None);
 
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts, proofs);
+                    accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                startRange = accounts[^1].Path.ToCommitment();
+                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
                 if (startRange.Bytes.SequenceEqual(TestItem.Tree.AccountsWithPaths[^1].Path.Bytes))
                 {
                     break;
@@ -562,21 +562,21 @@ public class SnapStateServerTests
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            (IPathWithAccountList accounts, IByteArrayList proofs) =
                 context.Server.GetAccountRanges(context.RootHash, startRange, Keccak.MaxValue, byteLimit, CancellationToken.None);
 
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts, proofs);
+                    accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                if (startRange == accounts[^1].Path.ToCommitment())
+                if (startRange == accounts.GetPath(accounts.Count - 1).ToCommitment())
                 {
                     break;
                 }
 
-                startRange = accounts[^1].Path.ToCommitment();
+                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
             }
             finally
             {
@@ -599,21 +599,21 @@ public class SnapStateServerTests
         ValueHash256 limit = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
-            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = context.Server
+            (IPathWithAccountList accounts, IByteArrayList proofs) = context.Server
                 .GetAccountRanges(context.RootHash, startRange, limit, byteLimit, CancellationToken.None);
 
             try
             {
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
-                    accounts, proofs);
+                    accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                if (startRange == accounts[^1].Path.ToCommitment())
+                if (startRange == accounts.GetPath(accounts.Count - 1).ToCommitment())
                 {
                     break;
                 }
 
-                startRange = accounts[^1].Path.ToCommitment();
+                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
             }
             finally
             {
@@ -740,7 +740,7 @@ public class SnapStateServerTests
         }
 
         // size of one PathWithAccount ranges from 39 -> 72
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs)
+        (IPathWithAccountList accounts, IByteArrayList accountProofs)
             = context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
         Assert.That(accounts.Count, Is.EqualTo(1));
         accounts.Dispose();
@@ -849,7 +849,7 @@ public class SnapStateServerTests
         ulong boundaryNumber = chain.BlockTree.Head!.Number - depth;
         BlockHeader boundary = chain.BlockTree.FindHeader(boundaryNumber, BlockTreeLookupOptions.None)!;
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = server.GetAccountRanges(
+        (IPathWithAccountList accounts, IByteArrayList proofs) = server.GetAccountRanges(
             boundary.StateRoot!, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         using (accounts)

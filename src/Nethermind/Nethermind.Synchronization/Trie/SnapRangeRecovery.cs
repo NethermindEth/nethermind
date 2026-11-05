@@ -126,13 +126,13 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 return null;
             }
 
-            ReadOnlySpan<PathWithAccount> pathAndAccounts = acc.PathAndAccounts.AsSpan();
+            IPathWithAccountList pathAndAccounts = acc.PathAndAccounts;
             byte[] accountRlp = [];
             ValueHash256 slotPath = default;
-            if (pathAndAccounts.Length > 0)
+            if (pathAndAccounts.Count > 0)
             {
-                accountRlp = AccountRlpDecoder.EncodeAsBytes(pathAndAccounts[0].Account);
-                slotPath = pathAndAccounts[0].Path;
+                accountRlp = AccountRlpDecoder.EncodeAsBytes(pathAndAccounts.GetAccount(0).ToAccount());
+                slotPath = pathAndAccounts.GetPath(0);
             }
 
             return AssembleResponse(startingNodeHash, startingPath, slotPath, accountRlp, acc.Proofs);

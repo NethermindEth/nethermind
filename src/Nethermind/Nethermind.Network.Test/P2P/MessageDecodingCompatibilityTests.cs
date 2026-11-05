@@ -102,7 +102,7 @@ public class MessageDecodingCompatibilityTests
         yield return Sample.Of(static () => new Snap1.AccountRangeMessage
         {
             RequestId = 1,
-            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakA.ValueHash256, Build.An.Account.WithBalance(1).TestObject) },
+            PathsWithAccounts = new PathWithAccount[] { new(TestItem.KeccakA.ValueHash256, Build.An.Account.WithBalance(1).TestObject) }.ToPathWithAccountList(),
             Proofs = NodeData()
         });
         yield return Sample.Of(static () => new Snap1.GetStorageRangeMessage

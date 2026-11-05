@@ -9,5 +9,9 @@ public interface IRlpItemList : IDisposable, IRlpWrapper
 {
     int Count { get; }
     ReadOnlySpan<byte> ReadContent(int index);
+
+    /// <summary>Returns the full RLP encoding of the item at <paramref name="index"/>, prefix included.</summary>
+    ReadOnlySpan<byte> ReadRlp(int index);
+
     IRlpItemList GetNestedItemList(int index);
 }

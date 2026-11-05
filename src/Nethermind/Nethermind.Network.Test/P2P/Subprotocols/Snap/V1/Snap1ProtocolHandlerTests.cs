@@ -113,7 +113,7 @@ public class Snap1ProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new PathWithAccount[] { new(Keccak.Zero, Account.TotallyEmpty) }.ToPathWithAccountList(),
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type

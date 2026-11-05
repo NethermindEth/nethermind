@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -269,6 +270,40 @@ public class RlpItemListTests
         RlpWriter writer = new(actual);
         view.Write(ref writer);
         Assert.That(actual.AsSpan(0, writer.Position), Is.SequenceEqualTo(expected));
+    }
+
+    [TestCase("05", "c24205")]
+    [TestCase("c0", "c242c0")]
+    [TestCase("83abcdef", "c54283abcdef")]
+    [TestCase("c3010203", "c542c3010203")]
+    public void BuilderView_RawItem_IsWrittenVerbatimAndReadBackAsRlp(string rawHex, string expectedHex)
+    {
+        byte[] raw = Bytes.FromHexString(rawHex);
+        using DeferredRlpItemList.Builder builder = new();
+        using (DeferredRlpItemList.Builder.Writer root = builder.BeginRootContainer())
+        {
+            root.WriteValue([0x42]);
+            root.WriteRaw(raw);
+        }
+
+        using IRlpItemList deferred = builder.ToRlpItemList();
+        byte[] written = new byte[deferred.RlpLength];
+        RlpWriter writer = new(written);
+        deferred.Write(ref writer);
+        using IRlpItemList parsed = new RlpItemList(new ExactMemoryOwner(written), written);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(Bytes.FromHexString(expectedHex)));
+            Assert.That(writer.Position, Is.EqualTo(written.Length));
+            Assert.That(deferred.Count, Is.EqualTo(2));
+            Assert.That(deferred.ReadRlp(1), Is.SequenceEqualTo(raw));
+            Assert.That(parsed.ReadRlp(1), Is.SequenceEqualTo(raw));
+            Assert.That(parsed.ReadRlp(0), Is.SequenceEqualTo(new byte[] { 0x42 }));
+            Assert.That(() => deferred.ReadRlp(0), Throws.InstanceOf<RlpException>());
+            Assert.That(() => deferred.ReadContent(1), Throws.InstanceOf<RlpException>());
+            Assert.That(() => deferred.GetNestedItemList(1), Throws.InstanceOf<RlpException>());
+        }
     }
 
     [Test]

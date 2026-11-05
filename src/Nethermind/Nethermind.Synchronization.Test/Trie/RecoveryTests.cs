@@ -79,7 +79,7 @@ public class RecoveryTests
             .Returns(c => Task.FromResult(new AccountsAndProofs()
             {
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp }),
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
+                PathAndAccounts = new PathWithAccount[] { new(_fullPath, TestItem.GenerateIndexedAccount(0)) }.ToPathWithAccountList(),
             }));
         _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
