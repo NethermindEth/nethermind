@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
@@ -22,9 +23,9 @@ namespace Nethermind.Benchmarks.State;
 
 /// <summary>
 /// Account and slot reads on a node migrating from the pruning trie state, for what the migration has not copied yet: each
-/// flat miss walks the trie from the state root, reading every node from flat and then the HalfPath DB.
+/// read walks the trie from the state root, reading every node from flat and then the HalfPath DB.
 /// </summary>
-/// <remarks>Flat holds only its state pointer, so every read takes the fallback; both stores are in memory.</remarks>
+/// <remarks>The bundle holds no snapshot and flat only its state pointer, so every node takes the fallback; both stores are in memory.</remarks>
 [MemoryDiagnoser]
 public class HalfPathFallbackReadBenchmark
 {
@@ -35,7 +36,7 @@ public class HalfPathFallbackReadBenchmark
 
     private MemDb _halfPathDb = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _flatDb = null!;
-    private IPersistence.IPersistenceReader _reader = null!;
+    private ReadOnlySnapshotBundle _bundle = null!;
     private Address[] _addresses = null!;
     private Address _storageAccount = null!;
     private int _next;
@@ -65,28 +66,29 @@ public class HalfPathFallbackReadBenchmark
         flat.CreateWriteBatch(StateId.PreGenesis, new StateId(1, stateTree.RootHash)).Dispose();
         HalfPathMigrationCursor cursor = new(_flatDb);
         cursor.Advance(MigrationCursor.Start);
-        _reader = new HalfPathFallbackPersistence(flat, halfPath, cursor).CreateReader();
+        _bundle = new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new HalfPathFallbackPersistence(flat, halfPath, cursor).CreateReader(),
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
     }
 
     [GlobalCleanup]
     public void Cleanup()
     {
-        _reader.Dispose();
+        _bundle.Dispose();
         _flatDb.Dispose();
         _halfPathDb.Dispose();
     }
 
     [Benchmark(Baseline = true)]
-    public Account? ExistingAccount() => _reader.GetAccount(_addresses[_next++ % _addresses.Length]);
+    public Account? ExistingAccount() => _bundle.GetAccount(_addresses[_next++ % _addresses.Length]);
 
     [Benchmark]
-    public Account? MissingAccount() => _reader.GetAccount(AddressOf(Accounts + _next++));
+    public Account? MissingAccount() => _bundle.GetAccount(AddressOf(Accounts + _next++));
 
     [Benchmark]
     public bool ExistingSlot()
     {
-        UInt256 value = 0;
-        return _reader.TryGetSlot(_storageAccount, (UInt256)(_next++ % Slots), ref value);
+        _bundle.GetSlot(_storageAccount, (UInt256)(_next++ % Slots), selfDestructStateIdx: -1, out UInt256? value);
+        return value is not null;
     }
 
     private static Address AddressOf(int index) => new(Keccak.Compute(BitConverter.GetBytes(index)).Bytes[..Address.Size]);

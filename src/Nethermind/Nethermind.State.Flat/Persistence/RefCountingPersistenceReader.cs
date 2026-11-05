@@ -42,6 +42,10 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
+    public bool ShouldReadWithTrie(Address address) => _innerReader.ShouldReadWithTrie(address);
+
+    public bool ShouldReadWithTrie(Address address, in UInt256 slot) => _innerReader.ShouldReadWithTrie(address, in slot);
+
     public StateId CurrentState => _innerReader.CurrentState;
 
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>

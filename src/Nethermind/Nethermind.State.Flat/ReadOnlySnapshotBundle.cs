@@ -11,9 +11,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -76,6 +78,8 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
     private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
+    private static readonly ReadOnlySpanAction<byte, Span<TrieLookup>> DescendTrie = static (node, walk) => walk[0].Descend(node);
+
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
@@ -115,7 +119,7 @@ public sealed class ReadOnlySnapshotBundle(
             return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? account = persistenceReader.GetAccount(address);
+        Account? account = persistenceReader.ShouldReadWithTrie(address) ? GetAccountWithTrie(address) : persistenceReader.GetAccount(address);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -171,7 +175,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -235,7 +239,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -347,6 +351,76 @@ public sealed class ReadOnlySnapshotBundle(
 
         return found;
     }
+
+    private bool TryGetPersistedSlot(Address address, in UInt256 index, ref UInt256 value) =>
+        persistenceReader.ShouldReadWithTrie(address, index)
+            ? TryGetSlotWithTrie(address, index, ref value)
+            : persistenceReader.TryGetSlot(address, index, ref value);
+
+    /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Account? GetAccountWithTrie(Address address)
+    {
+        TrieLookup lookup = new(address.ToAccountPath, isStorage: false);
+        WalkTrie(null, StateRoot, ref lookup);
+        return lookup.Account;
+    }
+
+    /// <summary>Reads a slot the persistence reader cannot read flat, from the storage trie of the account in this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TryGetSlotWithTrie(Address address, in UInt256 index, ref UInt256 value)
+    {
+        if (GetAccount(address) is not { HasStorage: true } account) return false;
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(index, ref slotPath);
+        TrieLookup lookup = new(slotPath, isStorage: true);
+        WalkTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, ref lookup);
+        if (!lookup.Found) return false;
+        value = lookup.Slot;
+        return true;
+    }
+
+    /// <summary>Walks the trie from <paramref name="root"/> to the key of <paramref name="lookup"/>, reading its nodes as block processing does.</summary>
+    /// <remarks>
+    /// Follows the buffer records of this bundle's state from the root its snapshot finds by hash. The node no pointer resolves, and
+    /// every node below it, is loaded from the persisted snapshots and persistence instead.
+    /// </remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <exception cref="MissingTrieNodeException">A node on the way is in none of them.</exception>
+    private void WalkTrie(Hash256? address, in ValueHash256 root, ref TrieLookup lookup)
+    {
+        if (root == ValueKeccak.EmptyTreeHash) return;
+
+        Snapshot? stateSnapshot = StateSnapshot;
+        INodeRecordBuffer? buffer = stateSnapshot?.BufferPin?.Buffer;
+        ulong pointer = stateSnapshot?.ResolveRoot(address, root) ?? 0;
+        lookup.NodeHash = root;
+        Span<TrieLookup> walk = new(ref lookup);
+        while (!lookup.IsDone)
+        {
+            // Copied, as the node read advances them while the load still holds them by reference.
+            TreePath path = lookup.NodePath;
+            ValueHash256 hash = lookup.NodeHash;
+            if (pointer != 0 && buffer is not null && buffer.TryLocate(pointer, out NodeRecord record))
+            {
+                lookup.Descend(record.Rlp);
+                // An embedded node is too short to reference another by hash, so the next node is a direct child of this record, whose pointer it holds.
+                pointer = lookup.IsDone ? 0 : record.View.Child(record.Kind == NodeRecordKind.Extension ? 0 : lookup.NodePath[path.Length]).Pointer;
+            }
+            else if (TryLoadPersistedRlp(address, path, hash, ReadFlags.None, DescendTrie, walk))
+            {
+                pointer = 0;
+            }
+            else
+            {
+                throw NodeRecordBulkSet.MissingNode(address, path, hash);
+            }
+        }
+    }
+
+    /// <summary>The state root of this bundle's state: its newest snapshot's, otherwise persistence's.</summary>
+    private ValueHash256 StateRoot => (StateSnapshot?.To ?? persistedSnapshots.To ?? persistenceReader.CurrentState).StateRoot;
 
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
     // snapshots it walks nor the filter it publishes can be cleaned up under it.

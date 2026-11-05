@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
@@ -230,24 +231,23 @@ public class ImporterTests
         HalfPathMigrationCursor migrationCursor = new(_columnsDb);
         long walksBefore = Metrics.HalfPathFallbackWalks;
 
-        using IPersistence.IPersistenceReader reader = new HalfPathFallbackPersistence(_persistence, halfPathSpy, migrationCursor).CreateReader();
+        using ReadOnlySnapshotBundle bundle = PersistenceBundle(new HalfPathFallbackPersistence(_persistence, halfPathSpy, migrationCursor));
 
         using (Assert.EnterMultipleScope())
         {
             foreach (TestAccount account in accounts)
             {
-                Assert.That(reader.GetAccount(account.Address), Is.EqualTo(account.Account), account.Address.ToString());
+                Assert.That(bundle.GetAccount(account.Address), Is.EqualTo(account.Account), account.Address.ToString());
                 foreach (TestSlot slot in account.Slots)
                 {
-                    UInt256 value = 0;
-                    Assert.That(reader.TryGetSlot(account.Address, slot.Index, ref value), Is.True, $"{account.Address} {slot.Index}");
+                    bundle.GetSlot(account.Address, slot.Index, selfDestructStateIdx: -1, out UInt256? value);
                     Assert.That(value, Is.EqualTo(slot.Value), $"{account.Address} {slot.Index}");
                 }
             }
 
-            UInt256 missingValue = 0;
-            Assert.That(reader.GetAccount(TestItem.GetRandomAddress()), Is.Null, "missing account");
-            Assert.That(reader.TryGetSlot(accounts[^1].Address, SlotsPerAccount + 1, ref missingValue), Is.False, "missing slot");
+            bundle.GetSlot(accounts[^1].Address, SlotsPerAccount + 1, selfDestructStateIdx: -1, out UInt256? missingValue);
+            Assert.That(bundle.GetAccount(TestItem.GetRandomAddress()), Is.Null, "missing account");
+            Assert.That(missingValue, Is.Null, "missing slot");
             Assert.That(halfPathSpy.Reads, Has.None.Matches<(ValueHash256? Address, TreePath Path)>(read => cursor.IsCopied(read.Address, read.Path)),
                 "what the cursor has passed comes from flat alone");
             Assert.That(Metrics.HalfPathFallbackWalks > walksBefore, Is.EqualTo(copied != Copied.Everything), "only uncopied reads walk the trie");
@@ -275,13 +275,13 @@ public class ImporterTests
         HalfPathMigrationCursor migrationCursor = new(_columnsDb);
 
         HalfPathFallbackPersistence persistence = new(_persistence, halfPath, migrationCursor);
-        UInt256 value = 0;
-        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        using (ReadOnlySnapshotBundle bundle = PersistenceBundle(persistence))
         {
+            bundle.GetSlot(destroyed.Address, destroyed.Slots[0].Index, selfDestructStateIdx: -1, out UInt256? value);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetAccount(deleted.Address), Is.Null);
-                Assert.That(reader.TryGetSlot(destroyed.Address, destroyed.Slots[0].Index, ref value), Is.False);
+                Assert.That(bundle.GetAccount(deleted.Address), Is.Null);
+                Assert.That(value, Is.Null);
             }
         }
 
@@ -395,6 +395,10 @@ public class ImporterTests
     private readonly record struct TestSlot(UInt256 Index, UInt256 Value, ValueHash256 Path);
 
     private readonly record struct TestAccount(Address Address, Account Account, ValueHash256 Path, TestSlot[] Slots);
+
+    /// <summary>A bundle of no snapshots, reading <paramref name="persistence"/> as block processing does.</summary>
+    private static ReadOnlySnapshotBundle PersistenceBundle(IPersistence persistence) =>
+        new(new SnapshotPooledList(0), persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
 
     /// <summary>Builds a state of accounts with storage in <paramref name="nodeStorage"/>, the accounts and their slots in path order.</summary>
     private static (Hash256 Root, TestAccount[] Accounts) BuildState(INodeStorage nodeStorage)
