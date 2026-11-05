@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
@@ -10,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Network.Benchmarks;
@@ -34,6 +37,7 @@ public class XdcMessageBenchmarks
     private const ulong Round = 123_456;
     private const ulong GapNumber = 450;
 
+    private XdcTestBlockchain _chain = null!;
     private Func<int> _serialize = null!;
     private Func<IByteBuffer, P2PMessage> _deserialize = null!;
     private IByteBuffer _body = null!;
@@ -42,20 +46,22 @@ public class XdcMessageBenchmarks
     public Message Type { get; set; }
 
     [GlobalSetup]
-    public void GlobalSetup()
+    public async Task GlobalSetup()
     {
+        _chain = await XdcTestBlockchain.Create(0);
+        IMessageSerializationService service = _chain.Container.Resolve<IMessageSerializationService>();
         BlockRoundInfo block = new(TestItem.KeccakA, Round, 98_765_432);
 
         switch (Type)
         {
             case Message.Vote:
-                SetUp(SerializerInfo.Create(new VoteMsgSerializer()), new VoteMsg { Vote = new Vote(block, GapNumber, Sign(0)) });
+                SetUp(service, new VoteMsg { Vote = new Vote(block, GapNumber, Sign(0)) });
                 break;
             case Message.Timeout:
-                SetUp(SerializerInfo.Create(new TimeoutMsgSerializer()), new TimeoutMsg { Timeout = new Timeout(Round, Sign(0), GapNumber) });
+                SetUp(service, new TimeoutMsg { Timeout = new Timeout(Round, Sign(0), GapNumber) });
                 break;
             case Message.SyncInfo:
-                SetUp(SerializerInfo.Create(new SyncInfoMsgSerializer()), new SyncInfoMsg
+                SetUp(service, new SyncInfoMsg
                 {
                     SyncInfo = new SyncInfo(
                         new QuorumCertificate(block, Signatures(), GapNumber),
@@ -66,7 +72,11 @@ public class XdcMessageBenchmarks
     }
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _body.Release();
+    public void GlobalCleanup()
+    {
+        _body.Release();
+        _chain.Dispose();
+    }
 
     [Benchmark]
     public int Serialize() => _serialize();
@@ -79,10 +89,8 @@ public class XdcMessageBenchmarks
         return message.PacketType;
     }
 
-    private void SetUp<T>(SerializerInfo serializer, T message) where T : P2PMessage
+    private void SetUp<T>(IMessageSerializationService service, T message) where T : P2PMessage
     {
-        MessageSerializationService service = new(serializer);
-
         _serialize = () =>
         {
             IByteBuffer packet = service.ZeroSerialize(message);
