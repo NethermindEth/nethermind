@@ -79,6 +79,25 @@ public class ForwardedNonceTrackerTests
     }
 
     [Test]
+    public void Pending_nonce_follows_the_head_and_the_forwarded_transactions_and_keeps_the_entry()
+    {
+        HeadNonces head = new() { [TestItem.AddressA] = 3 };
+        ForwardedNonceTracker tracker = head.CreateTracker();
+        tracker.OnForwarded(TestItem.AddressA, 3);
+        ulong beforeTheHeadIncludesIt = tracker.GetPendingNonce(TestItem.AddressA);
+
+        head[TestItem.AddressA] = 6;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeTheHeadIncludesIt, Is.EqualTo(4UL));
+            Assert.That(tracker.GetPendingNonce(TestItem.AddressA), Is.EqualTo(6UL), "a head nonce past the forwarded transactions wins");
+            Assert.That(tracker.GetPendingNonce(TestItem.AddressB), Is.EqualTo(0UL), "an account missing at the head starts at 0");
+            Assert.That(tracker.Count, Is.EqualTo(1), "only a send, which holds the lock of the account, drops its entry");
+        }
+    }
+
+    [Test]
     public async Task Sender_lock_holds_only_its_account_and_goes_once_unused()
     {
         ForwardedNonceTracker tracker = new HeadNonces().CreateTracker();

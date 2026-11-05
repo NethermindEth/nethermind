@@ -20,7 +20,7 @@ namespace Nethermind.Optimism.Rpc;
 /// account's nonce at the head instead, raised past the transactions it has forwarded that the head does not include yet.
 /// The caller records only transactions the node signed with a key of its own wallet, that the sequencer accepted and
 /// that continue the account's nonces without a gap, so the tracked accounts are at most the wallet's accounts.
-/// An entry is dropped at the account's next lookup once the head includes its forwarded transactions.
+/// An entry is dropped at the account's next send once the head includes its forwarded transactions.
 /// </remarks>
 public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader stateReader)
 {
@@ -93,7 +93,9 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
     }
 
     /// <summary>
-    /// The nonce to fill for <paramref name="sender"/>. The caller holds the lock of <paramref name="sender"/>.
+    /// The nonce to fill for <paramref name="sender"/>. The caller holds the lock of <paramref name="sender"/>: this call
+    /// drops the entry of <paramref name="sender"/> once the head nonce has reached it, and only the holder of the lock
+    /// may, since a call that read an older head still needs the entry.
     /// Throws when the head state cannot be read, for example <c>MissingTrieNodeException</c> when it is not available.
     /// </summary>
     public ulong GetNextNonce(Address sender)
@@ -111,6 +113,18 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
             _nextNonces.Remove(sender);
             return headNonce;
         }
+    }
+
+    /// <summary>
+    /// The pending nonce of <paramref name="sender"/>, the nonce its next send fills, for a caller that does not hold the
+    /// lock of <paramref name="sender"/>. It leaves the entry in place for the send that may hold the lock.
+    /// Throws when the head state cannot be read, as <see cref="GetNextNonce"/> does.
+    /// </summary>
+    public ulong GetPendingNonce(Address sender)
+    {
+        ulong headNonce = GetHeadNonce(sender);
+        lock (_gate)
+            return _nextNonces.TryGetValue(sender, out ulong forwardedNonce) ? Math.Max(forwardedNonce, headNonce) : headNonce;
     }
 
     /// <summary>
