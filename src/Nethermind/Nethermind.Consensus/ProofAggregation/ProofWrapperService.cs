@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -50,10 +51,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
     internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
 
-    /// <summary>Maximal EIP-1559 base-fee decreases a pending transaction may still need before it is aggregated.</summary>
+    /// <summary>Maximal base-fee decreases a pending transaction may still need before it is aggregated.</summary>
     /// <remarks>Aggregation covers only transactions executable at the head, plus those whose fees reach the next block's base
-    /// fee after this many decreases of <c>1/BASE_FEE_MAX_CHANGE_DENOMINATOR</c>, (7/8)^2 = 49/64 of it on mainnet, so a
-    /// transaction about to become includable is ready. The rest stay pooled with their direct witnesses until they qualify.</remarks>
+    /// fee after this many decreases of <c>1/BASE_FEE_MAX_CHANGE_DENOMINATOR</c>, (7/8)^2 = 49/64 of it on mainnet, and its
+    /// EIP-4844 blob base fee after as many blocks without blobs, so a transaction about to become includable is ready. The
+    /// rest stay pooled with their direct witnesses until they qualify.</remarks>
     internal const int MaxAwaitedBaseFeeDecreases = 2;
 
     /// <summary>How long a dependency set that waited for an offer is proven without waiting again.</summary>
@@ -621,11 +623,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     {
         WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
         RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
-        UInt256 minFee = MinExecutableFeePerGas();
+        FeeFloors floors = ExecutableFeeFloors();
         List<Transaction> pending = [];
         foreach ((AddressAsKey sender, Transaction[] bucket) in txPool.GetPendingTransactionsBySender())
-            AddExecutable(sender, bucket, minFee, pending);
-        AddBlobCandidates(pending, minFee);
+            AddExecutable(sender, bucket, floors, pending);
+        AddBlobCandidates(pending, floors);
         List<Candidate> candidates = new(pending.Count);
         foreach (Transaction transaction in pending)
         {
@@ -677,31 +679,39 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    /// <summary>The next block's base fee after <see cref="MaxAwaitedBaseFeeDecreases"/> maximal decreases; zero without EIP-1559.</summary>
-    private UInt256 MinExecutableFeePerGas()
+    /// <summary>The lowest fees per gas and per blob gas a transaction executable at the head may offer.</summary>
+    private readonly record struct FeeFloors(UInt256 PerGas, UInt256 PerBlobGas);
+
+    /// <summary>The next block's base fee and blob base fee, each after <see cref="MaxAwaitedBaseFeeDecreases"/> maximal decreases;
+    /// zero where the fork does not charge it.</summary>
+    /// <remarks>A blob base fee decreases most in a block without blobs, which lowers the excess blob gas by the target.</remarks>
+    private FeeFloors ExecutableFeeFloors()
     {
-        if (blockFinder.Head is not { } head) return UInt256.Zero;
+        if (blockFinder.Head is not { } head) return default;
         IReleaseSpec spec = TargetForksOf(head.Header).Target;
-        if (!spec.IsEip1559Enabled) return UInt256.Zero;
-        UInt256 fee = BaseFeeCalculator.Calculate(head.Header, spec);
-        if (spec.BaseFeeMaxChangeDenominator.IsZero) return fee;
-        for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
-        return fee;
+        UInt256 fee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head.Header, spec) : UInt256.Zero;
+        if (!spec.BaseFeeMaxChangeDenominator.IsZero)
+            for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
+        if (BlobGasCalculator.CalculateExcessBlobGas(head.Header, spec) is not { } excess) return new(fee, UInt256.Zero);
+        ulong target = spec.GasCosts.TargetBlobGasPerBlock;
+        excess = excess > MaxAwaitedBaseFeeDecreases * target ? excess - MaxAwaitedBaseFeeDecreases * target : 0;
+        return new(fee, BlobGasCalculator.TryCalculateFeePerBlobGas(excess, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
+            ? blobFee : UInt256.MaxValue);
     }
 
     /// <summary>Adds the frame transactions of <paramref name="sender"/>'s nonce-ordered pending <paramref name="bucket"/> executable
     /// at the head to <paramref name="executable"/>.</summary>
-    /// <remarks>Executable means fees of at least <paramref name="minFee"/> per gas and no nonce gap from the sender's state nonce,
+    /// <remarks>Executable means fees of at least <paramref name="floors"/> and no nonce gap from the sender's state nonce,
     /// so an account-nonce transaction also needs every one before it to qualify. An EIP-8250 keyed transaction is judged alone:
     /// the pool holds only keyed transactions at their current sequence.</remarks>
-    private void AddExecutable(Address sender, Transaction[] bucket, in UInt256 minFee, List<Transaction> executable)
+    private void AddExecutable(Address sender, Transaction[] bucket, in FeeFloors floors, List<Transaction> executable)
     {
         if (!Array.Exists(bucket, static transaction => transaction.SupportsFrames)) return;
         ulong? nextNonce = null;
         bool blocked = false;
         foreach (Transaction transaction in bucket)
         {
-            bool priced = transaction.MaxFeePerGas >= minFee;
+            bool priced = transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
             if (KeyedNonceManager.UsesKeyedNonce(transaction))
             {
                 if (!priced) continue;
@@ -824,11 +834,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Adds the blob pool's dependency-bearing frame transactions in the elided network form EIP-8437 carries:
     /// commitments and cell proofs without blob data, which peers retrieve as EIP-8070 cells.</summary>
-    private void AddBlobCandidates(List<Transaction> candidates, in UInt256 minFee)
+    private void AddBlobCandidates(List<Transaction> candidates, in FeeFloors floors)
     {
         List<Transaction> executable = [];
         foreach ((AddressAsKey sender, Transaction[] senderTransactions) in txPool.GetPendingLightBlobTransactionsBySender())
-            AddExecutable(sender, senderTransactions, minFee, executable);
+            AddExecutable(sender, senderTransactions, floors, executable);
         foreach (Transaction light in executable)
             if (light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
                 && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))

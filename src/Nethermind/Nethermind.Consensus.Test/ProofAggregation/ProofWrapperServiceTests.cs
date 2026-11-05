@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -1498,7 +1499,7 @@ public class ProofWrapperServiceTests
     }
 
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
-        IWrappedBlobTransactionAdmission? blobAdmission = null)
+        IWrappedBlobTransactionAdmission? blobAdmission = null, Block? head = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1513,7 +1514,7 @@ public class ProofWrapperServiceTests
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(ulong.MaxValue);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
-        finder.Head.Returns(Build.A.Block.TestObject);
+        finder.Head.Returns(head ?? Build.A.Block.TestObject);
         return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
     }
 
@@ -1681,17 +1682,7 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         ProofWrapperService service = CreateService([plain], store, new FakeLeanProofVerifier(true), pool: pool);
         Transaction light = new LightTransaction(blob);
-        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [TestItem.AddressC] = [light] });
-        pool.TryGetPendingTransactionWithoutBlobs(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
-        {
-            call[1] = blob;
-            return true;
-        });
-        pool.TryGetPendingTransaction(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
-        {
-            call[1] = blob;
-            return true;
-        });
+        AddBlobCandidate(pool, blob, light);
 
         MempoolWrapper wrapper = Decode(service.BuildWrapper().Data!);
 
@@ -1708,6 +1699,49 @@ public class ProofWrapperServiceTests
         pool.GetLatestPendingNonce(TestItem.AddressC).Returns(blob.Nonce);
         Assert.That(Decode(service.BuildWrapper().Data!).Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { plain.Hash }),
             "a blob transaction past a nonce gap is not aggregated");
+    }
+
+    // A blob fee cap is held to the next block's blob base fee after MaxAwaitedBaseFeeDecreases blocks without blobs.
+    [Test]
+    public void Blob_transaction_is_aggregated_only_when_its_blob_fee_reaches_the_floor([Values] bool withinMargin)
+    {
+        IReleaseSpec spec = Eip8288Prototype.Instance;
+        ulong target = spec.GasCosts.TargetBlobGasPerBlock;
+        ulong floorExcess = 10 * spec.BlobBaseFeeUpdateFraction;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(floorExcess, spec.BlobBaseFeeUpdateFraction, out UInt256 floor);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(floorExcess + 2 * target, spec.BlobBaseFeeUpdateFraction, out UInt256 next);
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified(Eip8288Dependencies.ForTransaction(blob, FrameTxSigHash.ComputeValue), [[1]], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        Block head = Build.A.Block.WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(floorExcess + 3 * target).TestObject;
+        ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, head: head);
+        Transaction light = new LightTransaction(blob) { MaxFeePerBlobGas = withinMargin ? floor : floor - 1 };
+        AddBlobCandidate(pool, blob, light);
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(floor, Is.LessThan(next), "the floor lies below the next block's blob base fee");
+            Assert.That(result.IsSuccess, Is.EqualTo(withinMargin), result.Error);
+        }
+    }
+
+    /// <summary>Puts <paramref name="light"/> in the blob pool's pending view, elided to <paramref name="blob"/>.</summary>
+    private static void AddBlobCandidate(ITxPool pool, Transaction blob, Transaction light)
+    {
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [TestItem.AddressC] = [light] });
+        pool.TryGetPendingTransactionWithoutBlobs(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
+        pool.TryGetPendingTransaction(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
     }
 
     private static MempoolWrapper Decode(byte[] encoded)

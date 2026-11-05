@@ -316,7 +316,8 @@ Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
 one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Only
 transactions executable at the head are candidates: no nonce gap from the sender's state nonce, and
-fees per gas covering the next block's base fee after two maximal decreases (49/64 of it on mainnet);
+fees per gas covering the next block's base fee after two maximal decreases (49/64 of it on mainnet),
+and per blob gas the blob base fee after two blocks without blobs;
 the others stay pooled with their direct witnesses until they qualify. Ticks
 coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
 order start as one bucket, and one that does not fit is subdivided by successive hash bits. Buckets
