@@ -960,8 +960,8 @@ public class SnapProviderTests
             DrainAccountRangePartition(progressTracker);
 
             ArrayPoolList<byte[]> items = new(response.Length);
-            foreach (char c in response) items.Add(code[c]);
             using IByteArrayList codes = new ByteArrayListAdapter(items);
+            foreach (char c in response) items.Add(code[c]);
 
             snapProvider.AddCodes([Hash('A'), Hash('B'), Hash('A'), Hash('M')], codes);
 
