@@ -1,0 +1,65 @@
+name: Publish reference assemblies preview
+
+on:
+  push:
+    # Only version-named release branches, e.g. release/2.2.0, not release/2.1.0-backports
+    branches: ['release/[0-9]+.[0-9]+.[0-9]+']
+    paths:
+      - 'src/Nethermind/**'
+      - 'Directory.*.props'
+      - 'Directory.Build.targets'
+      - 'global.json'
+      - 'nuget.config'
+      - '.github/workflows/publish-ref-assemblies-preview.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-nuget:
+    name: Publish NuGet package
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Build reference assemblies
+        working-directory: src/Nethermind
+        run: |
+          dotnet build Nethermind.Runner/Nethermind.Runner.csproj -c release -p:SourceRevisionId=$GITHUB_SHA
+          ref_dir=Nethermind.ReferenceAssemblies/ref
+          mkdir $ref_dir
+          cp artifacts/obj/*/release/refint/*.dll $ref_dir
+          # Matches the release packages, which do not include the runner
+          rm -f $ref_dir/Nethermind.Runner.dll
+
+      - name: NuGet login
+        uses: nuget/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+          token-service-url: https://int.nugettest.org/api/v2/token
+          audience: https://int.nugettest.org
+
+      - name: Submit package
+        working-directory: src/Nethermind
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          project=Nethermind.ReferenceAssemblies/Nethermind.ReferenceAssemblies.csproj
+          version=$(dotnet msbuild $project -getProperty:Version)
+          # Each commit needs a unique prerelease version that sorts below the final release
+          [[ $version == *-* ]] && version+=".ci.$GITHUB_RUN_NUMBER" || version+="-ci.$GITHUB_RUN_NUMBER"
+          package_output="$(mktemp -d)"
+          dotnet pack $project -c release -p:PackageVersion=$version --output "$package_output"
+          dotnet nuget push "$package_output/*.nupkg" --skip-duplicate \
+            -k "$NUGET_API_KEY" -s https://apiint.nugettest.org/v3/index.json
