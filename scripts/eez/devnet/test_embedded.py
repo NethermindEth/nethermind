@@ -203,7 +203,7 @@ class EmbeddedCoverageTests(unittest.TestCase):
     def test_native_report_rejects_settled_only_execution_and_fake_restart(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
         for name, (label, phases) in embedded.NATIVE_CASES["queue_reorg"].items():
-            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed", "peer-missing", "peer-empty", "peer-source", "peer-container", "peer-responses", "peer-native", "bootstrap-missing", "bootstrap-same-db", "bootstrap-no-execution", "bootstrap-no-restart", "bootstrap-source", "bootstrap-image", "bootstrap-no-receipts", "bootstrap-no-native"):
+            for failure in (None, "settled-only", "missing-receipts", "missing-mode", "source", "image", "missing-phase", "database", "container", "zero-safe", "safe-regressed", "finalized-regressed", "peer-missing", "peer-empty", "peer-source", "peer-container", "peer-responses", "peer-native", "peer-pivot-ahead", "peer-pivot-zero", "bootstrap-missing", "bootstrap-same-db", "bootstrap-no-execution", "bootstrap-no-restart", "bootstrap-source", "bootstrap-image", "bootstrap-no-receipts", "bootstrap-no-native"):
                 if label != "native-source-reorg" and failure in ("zero-safe", "safe-regressed", "finalized-regressed"):
                     continue
                 if label != "native-source-reorg" and failure and failure.startswith("bootstrap-"):
@@ -244,6 +244,8 @@ class EmbeddedCoverageTests(unittest.TestCase):
                             if failure == "peer-container": peer["container"] = "another"
                             if failure == "peer-responses": peer["wire_responses"] = 0
                             if failure == "peer-native": peer["transaction_types"] = [2]
+                            if failure == "peer-pivot-ahead": peer["pivot"] = "0x5"
+                            if failure == "peer-pivot-zero": peer["pivot"] = "0x0"
                             if failure == "peer-missing": continue
                         (root / (label + "-" + phase + "-peer.json")).write_text(json.dumps(peer))
                     bootstrap = {"result": "pass", "scope": "snap-bootstrap-and-follow", "fresh_database": True,

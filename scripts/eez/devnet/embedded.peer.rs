@@ -452,13 +452,26 @@ async fn verify_inner(
         .timeout(Duration::from_secs(5))
         .build()?;
     let spec = ChainSpec::from_genesis(serde_json::from_slice::<Genesis>(&fs::read(genesis)?)?);
-    let tip = rpc(
-        &client,
-        candidate,
-        "eth_getBlockByNumber",
-        json!(["latest", true]),
+    let observation_path = Path::new(
+        settings["result_directory"]
+            .as_str()
+            .context("result directory missing")?,
     )
-    .await?;
+    .join(format!(
+        "{}-{}.json",
+        settings["case"].as_str().unwrap(),
+        settings["phase"].as_str().unwrap()
+    ));
+    let observation: Value = serde_json::from_slice(&fs::read(observation_path)?)?;
+    ensure!(
+        observation["result"] == "pass"
+            && observation["case"] == settings["case"]
+            && observation["phase"] == settings["phase"]
+            && observation["candidate_revision"] == settings["candidate_revision"]
+            && observation["image_id"] == settings["image_id"],
+        "peer candidate observation identity differs"
+    );
+    let tip = verified_tip(&client, candidate, &observation).await?;
     let number = u64::from_str_radix(
         tip["number"]
             .as_str()
@@ -543,23 +556,10 @@ async fn verify_inner(
             recheck["hash"] == latest["hash"],
             "pivot reorged during state transfer"
         );
+        if latest["hash"] != tip["hash"] {
+            verified_tip(&client, url, &observation).await?;
+        }
     }
-    let observation_path = Path::new(
-        settings["result_directory"]
-            .as_str()
-            .context("result directory missing")?,
-    )
-    .join(format!(
-        "{}-{}.json",
-        settings["case"].as_str().unwrap(),
-        settings["phase"].as_str().unwrap()
-    ));
-    let observation: Value = serde_json::from_slice(&fs::read(observation_path)?)?;
-    ensure!(
-        observation["candidate_revision"] == settings["candidate_revision"]
-            && observation["image_id"] == settings["image_id"],
-        "peer candidate observation identity differs"
-    );
     let result = json!({"result":"pass", "scope":"snap/1-state-serving", "full_node_bootstrap":false,
         "candidate_revision":settings["candidate_revision"], "image_id":settings["image_id"],
         "case":settings["case"], "phase":settings["phase"], "container":observation["container"],
@@ -580,4 +580,85 @@ async fn verify_inner(
     fs::write(path, serde_json::to_vec_pretty(&result)?)?;
     println!("{result}");
     Ok(())
+}
+
+async fn verified_tip(client: &reqwest::Client, url: &str, observation: &Value) -> Result<Value> {
+    let height = observation["height"]
+        .as_u64()
+        .context("verified endpoint height missing")?;
+    let hash = observation["endpoint"]
+        .as_str()
+        .context("verified endpoint hash missing")?;
+    let number = format!("{height:#x}");
+    let tip = rpc(client, url, "eth_getBlockByNumber", json!([&number, true])).await?;
+    ensure!(
+        tip["number"] == number && tip["hash"] == hash,
+        "verified endpoint is no longer canonical"
+    );
+    Ok(tip)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verified_tip;
+    use alloy_primitives::B256;
+    use http_body_util::{BodyExt, Full};
+    use hyper::{
+        Request, Response,
+        body::{Bytes, Incoming},
+        server::conn::http1,
+        service::service_fn,
+    };
+    use hyper_util::rt::TokioIo;
+    use serde_json::{Value, json};
+    use std::{convert::Infallible, time::Duration};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn peer_probe_uses_the_verified_endpoint_when_latest_has_advanced() {
+        for failure in [None, Some("height"), Some("hash")] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let observation = json!({"height":10,"endpoint":B256::repeat_byte(0x11)});
+            let expected = observation.clone();
+            let server = async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                http1::Builder::new().keep_alive(false).serve_connection(TokioIo::new(socket),
+                    service_fn(move |request: Request<Incoming>| {
+                        let expected = expected.clone();
+                        async move {
+                            let bytes = request.into_body().collect().await.unwrap().to_bytes();
+                            let request: Value = serde_json::from_slice(&bytes).unwrap();
+                            let result = if request["method"] == "eth_getBlockByNumber" && request["params"] == json!(["0xa", true]) {
+                                json!({"number":if failure == Some("height") {"0xb"} else {"0xa"},
+                                    "hash":if failure == Some("hash") {json!(B256::repeat_byte(0x22))} else {expected["endpoint"].clone()}})
+                            } else {
+                                json!({"number":"0xb","hash":B256::repeat_byte(0x33)})
+                            };
+                            let response = json!({"jsonrpc":"2.0","id":request["id"],"result":result});
+                            Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(response.to_string()))))
+                        }
+                    })).await
+            };
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap();
+            let request = verified_tip(&client, &url, &observation);
+            let (served, result) = tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(server, request)
+            })
+            .await
+            .unwrap();
+            served.unwrap();
+            if failure.is_none() {
+                assert_eq!(result.unwrap()["hash"], observation["endpoint"]);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "changed verified endpoint must be rejected: {failure:?}"
+                );
+            }
+        }
+    }
 }
