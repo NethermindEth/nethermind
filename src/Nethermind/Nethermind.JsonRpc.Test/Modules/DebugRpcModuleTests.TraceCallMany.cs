@@ -85,6 +85,16 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_uses_generated_result_metadata([Values("0", "-1s", "1ns", "3m")] string timeout)
+    {
+        using Context ctx = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany",
+            System.Array.Empty<TransactionBundle>(), "latest", new { timeout });
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_with_single_bundle_single_transaction()
     {
         using Context ctx = await CreateContext();
