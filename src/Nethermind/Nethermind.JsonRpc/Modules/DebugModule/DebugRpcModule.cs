@@ -149,10 +149,10 @@ public class DebugRpcModule(
             return converted;
         }
 
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas: null or { IsZero: true } })
             return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
 
-        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
         Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
         return result;
