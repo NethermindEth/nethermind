@@ -167,6 +167,22 @@ public class EraExporterTests
     }
 
     [Test]
+    public async Task Export_WhenSiblingDiffersOnlyInHashCase_KeepsOneFile()
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 15);
+        CopyToUpperCaseHash(Directory.GetFiles(directory, "*.era1").Single());
+
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory, "*.era1"), Has.Length.EqualTo(1));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+        Assert.That(async () => await eraStore.FindBlockAndReceipts(15), Throws.Nothing);
+    }
+
+    [Test]
     public async Task Export_WhenItWouldLoseBlocksOfEarlierFile_ThrowsBeforeWriting()
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
@@ -207,5 +223,16 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
 
         Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+    }
+
+    /// <summary>Copies an era file to the name with its hash in upper case, a second file only on a case-sensitive file system.</summary>
+    private static void CopyToUpperCaseHash(string file)
+    {
+        string name = Path.GetFileName(file);
+        string hash = name.Split('-')[2][..8];
+        string variant = Path.Combine(Path.GetDirectoryName(file)!, name.Replace(hash, hash.ToUpperInvariant()));
+        Assume.That(variant, Is.Not.EqualTo(file));
+        Assume.That(File.Exists(variant), Is.False, "needs a case-sensitive file system");
+        File.Copy(file, variant);
     }
 }

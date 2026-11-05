@@ -86,7 +86,7 @@ public sealed class EraExporter(
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
         // Load existing hash manifests so TrySkipExistingEpoch can look up checksums and
-        // accumulator roots by filename — O(1) per epoch — instead of reading each era file.
+        // accumulator roots by filename — O(1) per epoch — instead of hashing each reused era file.
         Dictionary<string, ValueHash256> cachedChecksums = LoadHashFile(Path.Combine(destinationPath, ChecksumsSHA256FileName));
         Dictionary<string, ValueHash256> cachedAccumulators = LoadHashFile(Path.Combine(destinationPath, AccumulatorFileName));
         Dictionary<ulong, List<EpochFile>> earlierEpochFiles = FindEpochFiles(destinationPath, startEpoch, endEpoch);
@@ -263,7 +263,7 @@ public sealed class EraExporter(
 
         if (cachedChecksums.TryGetValue(fileName, out ValueHash256 cachedChecksum))
         {
-            // Fast path: both values available from the manifest files — no era file reads needed.
+            // Fast path: both values available from the manifest files — no need to hash the era file.
             checksums[idx] = cachedChecksum;
             accumulators[idx] = cachedAccumulators.GetValueOrDefault(fileName);
         }
@@ -334,12 +334,26 @@ public sealed class EraExporter(
         return result;
     }
 
+    /// <summary>
+    /// Deletes the earlier files of an epoch except the one that now holds it. A name that differs from the survivor's
+    /// only in case is a separate file only when the directory lists both names, as on a case-sensitive file system;
+    /// elsewhere it is the survivor itself.
+    /// </summary>
     private void DeleteSupersededFiles(EpochFile[] earlierFiles, string survivor)
     {
+        string survivorName = Path.GetFileName(survivor);
+        HashSet<string>? listed = null;
         foreach (EpochFile earlier in earlierFiles)
         {
-            if (!string.Equals(Path.GetFileName(earlier.Path), Path.GetFileName(survivor), StringComparison.OrdinalIgnoreCase))
-                fileSystem.File.Delete(earlier.Path);
+            string name = Path.GetFileName(earlier.Path);
+            if (name == survivorName) continue;
+            if (string.Equals(name, survivorName, StringComparison.OrdinalIgnoreCase))
+            {
+                listed ??= fileSystem.Directory.EnumerateFiles(Path.GetDirectoryName(survivor)!).Select(static f => Path.GetFileName(f)).ToHashSet(StringComparer.Ordinal);
+                if (!listed.Contains(name) || !listed.Contains(survivorName)) continue;
+            }
+
+            fileSystem.File.Delete(earlier.Path);
         }
     }
 

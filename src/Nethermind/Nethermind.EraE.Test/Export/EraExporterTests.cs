@@ -206,6 +206,22 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Export_WhenSiblingDiffersOnlyInHashCase_KeepsOneFile(bool rewrite)
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, rewrite ? 8UL : 0UL, 15);
+        CopyToUpperCaseHash(Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Single());
+
+        await sut.Export(directory, 0, 15);
+
+        Assert.That(Directory.GetFiles(directory).Count(EraPathUtils.IsEraFile), Is.EqualTo(1));
+        await AssertReadsBack(container, directory, 0, 15);
+    }
+
     [Test]
     public async Task Export_WhenMoveFails_KeepsEarlierFile()
     {
@@ -445,6 +461,17 @@ public class EraExporterTests
                     Is.EqualTo(container.Resolve<IReceiptStorage>().Get(source).Select(static r => r.GasUsedTotal)), $"receipts of block {number}");
             }
         }
+    }
+
+    /// <summary>Copies an era file to the name with its hash in upper case, a second file only on a case-sensitive file system.</summary>
+    private static void CopyToUpperCaseHash(string file)
+    {
+        string name = Path.GetFileName(file);
+        string hash = name.Split('-')[2][..8];
+        string variant = Path.Combine(Path.GetDirectoryName(file)!, name.Replace(hash, hash.ToUpperInvariant()));
+        Assume.That(variant, Is.Not.EqualTo(file));
+        Assume.That(File.Exists(variant), Is.False, "needs a case-sensitive file system");
+        File.Copy(file, variant);
     }
 
     /// <summary>Makes a rewrite of these blocks fail, so an export that succeeds proves the epoch was reused.</summary>

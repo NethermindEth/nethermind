@@ -224,11 +224,30 @@ public class EraExporter(
                 }
             }
 
-            foreach ((string earlierPath, _) in epochFiles)
+            DeleteSupersededFiles(epochFiles.Select(static f => f.Path), rename);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the earlier files of an epoch except the one that now holds it. A name that differs from the survivor's
+    /// only in case is a separate file only when the directory lists both names, as on a case-sensitive file system;
+    /// elsewhere it is the survivor itself.
+    /// </summary>
+    private void DeleteSupersededFiles(IEnumerable<string> earlierFiles, string survivor)
+    {
+        string survivorName = Path.GetFileName(survivor);
+        HashSet<string>? listed = null;
+        foreach (string earlier in earlierFiles)
+        {
+            string name = Path.GetFileName(earlier);
+            if (name == survivorName) continue;
+            if (string.Equals(name, survivorName, StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.Equals(Path.GetFileName(earlierPath), Path.GetFileName(rename), StringComparison.OrdinalIgnoreCase))
-                    fileSystem.File.Delete(earlierPath);
+                listed ??= fileSystem.Directory.EnumerateFiles(Path.GetDirectoryName(survivor)!).Select(static f => Path.GetFileName(f)).ToHashSet(StringComparer.Ordinal);
+                if (!listed.Contains(name) || !listed.Contains(survivorName)) continue;
             }
+
+            fileSystem.File.Delete(earlier);
         }
     }
 
