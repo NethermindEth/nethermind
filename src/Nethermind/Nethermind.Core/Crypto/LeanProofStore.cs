@@ -356,8 +356,16 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         }
     }
 
-    private bool TryResolve(FrameDependency dependency, out ProofRecord? record) =>
-        _coverage.TryGetValue(dependency, out record) || _admission.Value?.TryGet(dependency, out record) == true;
+    private bool TryResolve(FrameDependency dependency, out ProofRecord? record)
+    {
+        bool covered = _coverage.TryGetValue(dependency, out record);
+        // The admission's direct witness supersedes recursive coverage, as its commit will publish it.
+        if (covered && record!.Witnesses is not null
+            || _admission.Value?.TryGet(dependency, out ProofRecord? admitted) != true
+            || covered && admitted!.Witnesses is null) return covered;
+        record = admitted;
+        return true;
+    }
 
     private void Publish(FrameDependency dependency, ProofRecord record)
     {

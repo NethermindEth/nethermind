@@ -174,6 +174,28 @@ public class LeanProofStoreTests
     }
 
     [Test]
+    public void Admitted_direct_witness_is_charged_instead_of_the_recursive_coverage_it_supersedes()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Address sender = Sender(1);
+        byte[] recursiveProof = new byte[1024 * 1024];
+        for (int i = 0; i < 11; i++)
+        {
+            FrameDependency filler = Dependency(100 + i);
+            store.AddVerified([filler], null, recursiveProof);
+            Assert.That(store.PinPending(Transaction([filler], sender, i)), Is.True);
+        }
+        FrameDependency shared = Dependency(1);
+        store.AddVerified([shared], null, recursiveProof);
+        IDisposable? admission = null;
+        Assert.That(store.PinPending(Transaction([shared], Sender(2), 0))
+            && store.TryBeginAdmission([shared], [new byte[6304]], null, out admission), Is.True);
+        using (admission)
+            Assert.That(store.PinPending(Transaction([shared], sender, 11)), Is.True,
+                "the sender's remaining allowance fits the supplied witness but not the recursive proof");
+    }
+
+    [Test]
     public void Proven_overlaps_rank_shared_dependencies_and_then_fewer_discards()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
