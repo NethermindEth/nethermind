@@ -216,7 +216,8 @@ public class OptimismEthRpcModule(
     }
 
     // A node that forwards to the sequencer has no pool (NullTxPool), whose pending nonce is always 0. Its pending nonce is
-    // the one the next eth_sendTransaction from the account fills; a send still at the sequencer counts once it is accepted.
+    // the head nonce raised past the forwards of eth_sendTransaction that the sequencer accepted and the head does not
+    // include yet; a send still at the sequencer counts once its answer is in.
     public override ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter) =>
         sequencerRpcClient is not null && blockParameter == BlockParameter.Pending
             ? ResultWrapper<UInt256>.Success(nonceTracker.GetPendingNonce(address))

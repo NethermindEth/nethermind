@@ -48,6 +48,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
+using NSubstitute.Extensions;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -413,7 +414,7 @@ public class OptimismEthRpcModuleTest
         return wallet;
     }
 
-    public enum StateFailure { MissingTrieNode, CorruptTrieNode, SnapshotNotGathered, StoreClosed }
+    public enum StateFailure { MissingTrieNode, CorruptTrieNode, SnapshotNotGathered, StoreClosed, StateNotRetained }
 
     /// <summary>
     /// The chain's state as the nonce tracker reads it, which can fail: on a node that has not synced or has pruned the
@@ -434,7 +435,10 @@ public class OptimismEthRpcModuleTest
                     StateFailure.CorruptTrieNode => CorruptTrieReader(),
                     // As FlatDbManager gives up gathering a snapshot.
                     StateFailure.SnapshotNotGathered => throw new InvalidOperationException("Timed out gathering ReadOnlySnapshotBundle"),
-                    _ => throw new ObjectDisposedException("state db"),
+                    StateFailure.StoreClosed => throw new ObjectDisposedException("state db"),
+                    // As a pruned node reports state it no longer keeps.
+                    _ => throw new MissingTrieNodeException("The head state is not retained", null, TreePath.Empty, Keccak.EmptyTreeHash,
+                        new StateNotRetainedException("The head state is pruned")),
                 };
                 bool exists = reader.TryGetAccount(call.ArgAt<BlockHeader?>(0), call.ArgAt<Address>(1), out AccountStruct account);
                 call[2] = account;
@@ -844,6 +848,10 @@ public class OptimismEthRpcModuleTest
         JToken.Parse(await rpcBlockchain.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(
             $$"""{"from":"{{TestItem.AddressC}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"{{extraFields}}}""")));
 
+    private static async Task<JToken> FillWithoutFrom(TestRpcBlockchain rpcBlockchain) =>
+        JToken.Parse(await rpcBlockchain.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(
+            """{"to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","gas":"0x5208"}""")));
+
     private static string? FilledNonce(JToken filled) => (string?)filled["result"]?["tx"]?["nonce"];
 
     [Test]
@@ -938,8 +946,12 @@ public class OptimismEthRpcModuleTest
             "pending, latest, no block, the mined block by number and by hash, its parent");
     }
 
-    [Test]
-    public async Task Forwarding_node_reports_no_pending_nonce_without_the_head_state([Values] StateFailure failure)
+    [TestCase(StateFailure.MissingTrieNode, ErrorCodes.ResourceNotFound)]
+    [TestCase(StateFailure.StateNotRetained, ErrorCodes.ResourceUnavailable)]
+    [TestCase(StateFailure.CorruptTrieNode, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.SnapshotNotGathered, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.StoreClosed, ErrorCodes.InternalError)]
+    public async Task Forwarding_node_reports_no_pending_nonce_without_the_head_state(StateFailure failure, int errorCode)
     {
         HeadState headState = new();
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(new RecordingSequencer(), headState: headState);
@@ -949,15 +961,33 @@ public class OptimismEthRpcModuleTest
         JToken pending = await TransactionCountOfC(rpcBlockchain, "pending");
         JToken filled = await FillFromC(rpcBlockchain);
         // With its gas given, the fill estimates nothing, so only the nonce lookup can fail it.
-        JToken filledWithoutFrom = JToken.Parse(await rpcBlockchain.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(
-            """{"to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","gas":"0x5208"}""")));
+        JToken filledWithoutFrom = await FillWithoutFrom(rpcBlockchain);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pending["error"], Is.Not.Null, $"without the head state the pending nonce is unknown, not 0: {pending}");
-            Assert.That(filled["error"], Is.Not.Null, $"without the head state there is no nonce to fill: {filled}");
-            Assert.That(filledWithoutFrom["error"], Is.Not.Null, $"a missing from is the zero address, whose nonce is unknown too: {filledWithoutFrom}");
+            Assert.That((int?)pending["error"]?["code"], Is.EqualTo(errorCode), $"without the head state the pending nonce is unknown, not 0: {pending}");
+            Assert.That((int?)filled["error"]?["code"], Is.EqualTo(errorCode), $"without the head state there is no nonce to fill: {filled}");
+            Assert.That((int?)filledWithoutFrom["error"]?["code"], Is.EqualTo(errorCode),
+                $"a missing from is the zero address, whose nonce is unknown too: {filledWithoutFrom}");
         }
+    }
+
+    [Test]
+    public async Task Forwarding_node_fills_a_request_without_from_with_the_nonce_of_the_zero_address()
+    {
+        HeadState headState = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(new RecordingSequencer(), headState: headState);
+        // At the head the zero address has nonce 7, and every other account is missing.
+        headState.Reader.Configure().TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            bool isZero = call.ArgAt<Address>(1) == Address.Zero;
+            call[2] = isZero ? new AccountStruct(7, 0) : default;
+            return isZero;
+        });
+
+        JToken filled = await FillWithoutFrom(rpcBlockchain);
+
+        Assert.That(FilledNonce(filled), Is.EqualTo("0x7"), filled.ToString());
     }
 
     [Test]
@@ -983,6 +1013,60 @@ public class OptimismEthRpcModuleTest
         {
             Assert.That((string?)pending["result"], Is.EqualTo("0x2"), pending.ToString());
             Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }), "the send must not fill the nonce the head has just included");
+        }
+    }
+
+    [Test]
+    public async Task Forwarding_node_read_of_the_pending_nonce_keeps_a_forward_that_a_later_send_drops([Values] bool fill)
+    {
+        TaskCompletionSource secondSendArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecondSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingSequencer sequencer = new(async index =>
+        {
+            if (index == 1)
+            {
+                secondSendArrived.SetResult();
+                await releaseSecondSend.Task;
+            }
+
+            return AcceptedByTheSequencer;
+        });
+        HeadState headState = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+        ForwardedNonceTracker nonceTracker = ((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker;
+
+        // The read reads the head nonce 1 while the forward of nonce 1 makes the pending nonce 2. Before it looks at that
+        // forward, the head includes it and a send, which reads the new head, drops the entry and fills 2.
+        headState.HoldNextRead();
+        Task<JToken> read = Task.Run(() => fill ? FillFromC(rpcBlockchain, ",\"gas\":\"0x5208\"") : TransactionCountOfC(rpcBlockchain, "pending"));
+        Task<string>? send = null;
+        string? pendingNonce;
+        int entriesWhileTheSendWaits;
+        try
+        {
+            await headState.ReadHeld.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 1));
+            send = SendFromC(rpcBlockchain);
+            await secondSendArrived.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            entriesWhileTheSendWaits = nonceTracker.Count;
+            headState.ReleaseRead.SetResult();
+            JToken result = await read.WaitAsync(TimeSpan.FromSeconds(30));
+            pendingNonce = fill ? FilledNonce(result) : (string?)result["result"];
+        }
+        finally
+        {
+            headState.ReleaseRead.TrySetResult();
+            releaseSecondSend.TrySetResult();
+        }
+
+        AssertSucceeded(await send!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entriesWhileTheSendWaits, Is.Zero, "the send must have dropped the entry the head reached");
+            Assert.That(pendingNonce, Is.EqualTo("0x2"), "the pending nonce was 2 for the whole read, first from the forward, then from the head");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }));
         }
     }
 

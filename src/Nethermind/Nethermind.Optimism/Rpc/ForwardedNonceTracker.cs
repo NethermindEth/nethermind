@@ -116,15 +116,28 @@ public sealed class ForwardedNonceTracker(IBlockFinder blockFinder, IStateReader
     }
 
     /// <summary>
-    /// The pending nonce of <paramref name="sender"/>, the nonce its next send fills, for a caller that does not hold the
-    /// lock of <paramref name="sender"/>. It leaves the entry in place for the send that may hold the lock.
+    /// The pending nonce of <paramref name="sender"/>, for a caller that does not hold the lock of <paramref name="sender"/>:
+    /// the head nonce raised past the forwards the head does not include yet. It reserves nothing, so a send can still take
+    /// it, and it leaves the entry in place for the send that may hold the lock.
     /// Throws when the head state cannot be read, as <see cref="GetNextNonce"/> does.
     /// </summary>
+    /// <remarks>
+    /// A send that reads a newer head can drop the entry while this call reads an older one. The entry seen before the
+    /// state read still counts, so unless the head goes back the answer lies between the pending nonces at the start and
+    /// at the end of the call.
+    /// </remarks>
     public ulong GetPendingNonce(Address sender)
     {
+        ulong forwardedBefore = GetForwardedNonce(sender);
         ulong headNonce = GetHeadNonce(sender);
+        return Math.Max(Math.Max(forwardedBefore, GetForwardedNonce(sender)), headNonce);
+    }
+
+    // The nonce after the last accepted forward of the account, or 0 without one.
+    private ulong GetForwardedNonce(Address sender)
+    {
         lock (_gate)
-            return _nextNonces.TryGetValue(sender, out ulong forwardedNonce) ? Math.Max(forwardedNonce, headNonce) : headNonce;
+            return _nextNonces.TryGetValue(sender, out ulong forwardedNonce) ? forwardedNonce : 0;
     }
 
     /// <summary>
