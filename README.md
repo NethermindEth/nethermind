@@ -138,6 +138,9 @@ dotnet test --solution EthereumTests.slnx -c release
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
+Pull-request opcode benchmark comparisons use the immutable merge revision, keeping
+the workflow's helper scripts and measured code on the same revision.
+
 ## Plugin development
 
 Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
@@ -157,6 +160,12 @@ storage, balance, nonce and code changes to the overridden state. Explicit preco
 moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
 original revert bytes through `eth_call` and `eth_estimateGas`, even when an
 extension does not also set the redundant `Revert` exception marker.
+
+Decorators implementing `IOverridableCodeInfoRepository` must forward
+`DisablePrecompileOnAccountOverride`. The override layer uses this policy before
+allocating replacement code wrappers that native-preserving execution would discard.
+RPC tests exercise both default and container-registered policies with empty, balance,
+nonce, code, state and state-diff account overrides.
 
 ## Getting help
 

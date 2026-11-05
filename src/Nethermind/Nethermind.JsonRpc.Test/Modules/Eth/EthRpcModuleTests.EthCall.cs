@@ -1016,7 +1016,7 @@ public partial class EthRpcModuleTests
             if (preservePrecompiles) builder.AddSingleton(new PrecompileOverridePolicy(disableOnAccountOverride: false));
         });
         string address = "0x0000000000000000000000000000000000000004";
-        Dictionary<string, object> account = new();
+        Dictionary<string, object> account = [];
         if (field != "empty")
         {
             account[field] = field switch
