@@ -3,6 +3,21 @@ name: Sync PR Gate (Hoodi)
 on:
   pull_request:
     branches: [master]
+    # Syncs Hoodi with the PR's Docker image on a paid larger runner, so it only runs when the
+    # PR can change that image or this gate. Not a required check, so skipping leaves no pending status.
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/entrypoint.sh'
+      - 'scripts/wait-for-sync.cs'
+      - 'scripts/sync/**'
+      - 'Directory.Packages.props'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'nuget.config'
+      - 'global.json'
+      - '.github/actions/start-alloy/**'
+      - '.github/workflows/sync-pr-gate.yml'
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
