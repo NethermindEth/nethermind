@@ -329,7 +329,6 @@ public partial class DebugRpcModuleTests
             Second(stateOverrides: new() { [TestItem.AddressC] = new() { StateDiff = Storage() } }), mixed).SetName("{m}(options_state_and_bundle_stateDiff_are_no_conflict)");
     }
 
-    // A bundle override runs the bundles as one cumulative simulation, where options applied afresh to every call do not fit.
     [TestCaseSource(nameof(OptionsStateOverridesWithBundleOverridesCases))]
     public async Task Debug_traceCallMany_rejects_options_state_overrides_with_bundle_overrides(Dictionary<Address, AccountOverride> optionsStateOverrides, TransactionBundle secondBundle, string? expectedError)
     {
