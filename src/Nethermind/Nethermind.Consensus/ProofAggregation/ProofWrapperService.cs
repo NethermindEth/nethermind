@@ -55,7 +55,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <remarks>Aggregation covers only transactions executable at the head, plus those whose fees reach the next block's base
     /// fee after this many decreases of <c>1/BASE_FEE_MAX_CHANGE_DENOMINATOR</c>, (7/8)^2 = 49/64 of it on mainnet, and its
     /// EIP-4844 blob base fee after as many blocks without blobs, so a transaction about to become includable is ready. The
-    /// rest stay pooled with their direct witnesses until they qualify.</remarks>
+    /// rest stay pooled with their direct witnesses until they qualify. While the EIP-7918 reserve price binds, blobless blocks
+    /// do not lower excess blob gas, so the blob floor is lenient there: it may aggregate, never exclude, a few extra transactions.</remarks>
     internal const int MaxAwaitedBaseFeeDecreases = 2;
 
     /// <summary>How long a dependency set that waited for an offer is proven without waiting again.</summary>
