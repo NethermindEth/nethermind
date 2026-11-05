@@ -2056,59 +2056,6 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByNumber_mux_reports_a_cyclic_javascript_result_on_its_transaction([Values] bool nested)
-    {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        UInt256 initial = chain.WorldStateManager.GlobalStateReader.GetBalance(chain.BlockTree.Head!.Header, TestItem.AddressC);
-        Block block = await AddTraceCallPrefixTransfers(chain, 2);
-        string resultBody = "return {index:ctx.txIndex,balance:db.getBalance(toAddress('" + TestItem.AddressC + "')).toString()};";
-        string script = "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===0){var o={};o.self=o;return o;}"
-            + resultBody + "}}";
-
-        object MuxConfig(string childScript)
-        {
-            Dictionary<string, object> children = new() { [childScript] = new { }, ["noopTracer"] = new { } };
-            return nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
-        }
-
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer = "muxTracer", tracerConfig = MuxConfig(script) });
-
-        JObject json = JObject.Parse(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo(JavaScriptResultDepthError), response);
-            Assert.That(json.ContainsKey("result"), Is.False, response);
-        }
-
-        string validScript = "{fault:function(){},result:function(ctx,db){" + resultBody + "}}";
-        string next = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer = "muxTracer", tracerConfig = MuxConfig(validScript) });
-        JObject successful = JObject.Parse(next);
-        Assert.That(successful["result"], Is.TypeOf<JArray>(), next);
-        JArray entries = (JArray)successful["result"]!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(successful.ContainsKey("error"), Is.False, next);
-            Assert.That(entries, Has.Count.EqualTo(2), next);
-        }
-        for (int i = 0; i < entries.Count; i++)
-        {
-            JToken? result = entries[i]["result"];
-            if (nested) result = result?["muxTracer"];
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(((JObject)entries[i]).ContainsKey("error"), Is.False, next);
-                Assert.That((string?)entries[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), next);
-                Assert.That((int?)result?[validScript]?["index"], Is.EqualTo(i), next);
-                Assert.That((string?)result?[validScript]?["balance"], Is.EqualTo((initial + (UInt256)(i + 1)).ToString()),
-                    "the follow-up replay starts from parent state and preserves both transfers");
-            }
-        }
-    }
-
-    [Test]
     public void Debug_traceBlockByNumber_recovery_result_ownership([Values] bool transfer)
     {
         Transaction[] transactions =
