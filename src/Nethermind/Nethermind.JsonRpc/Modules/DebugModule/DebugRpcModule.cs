@@ -613,13 +613,26 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
+        // The block tree's pending hash aliases the head, not a next-block candidate.
+        if (blockNumber.Type == BlockParameterType.Pending)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("pending block is not available", ErrorCodes.InvalidInput);
+
         BlockHeader? header = TryGetHeader(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
-                && blockNumber.Type == BlockParameterType.BlockNumber)
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+            {
+                string? message = blockNumber.Type switch
+                {
+                    BlockParameterType.BlockNumber => $"block #{blockNumber.BlockNumber} not found",
+                    BlockParameterType.Safe => "safe block not found",
+                    BlockParameterType.Finalized => "finalized block not found",
+                    _ => null
+                };
+                if (message is not null)
+                    return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+            }
             return headerError;
         }
 
