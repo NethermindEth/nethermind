@@ -129,27 +129,34 @@ public class EraExporterTests
         }
     }
 
-    [Test]
-    public async Task Export_WhenEpochHasFinishedPlaceholder_ReplacesItAndKeepsUnrelatedFiles()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Export_WhenEpochHasPlaceholder_ReplacesItAndKeepsUnrelatedFiles(bool truncated)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, 0, 15);
         string finalName = Path.GetFileName(Directory.GetFiles(directory, "*.era1").Single());
-
-        // Finished and listed by the manifests: only its name tells that the export never published it.
-        string placeholderName = EraPathUtils.Filename(EraTestModule.TestNetwork, 0, Keccak.Zero);
-        File.Move(Path.Combine(directory, finalName), Path.Combine(directory, placeholderName));
-        foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
-        {
-            string path = Path.Combine(directory, manifest);
-            await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path)).Replace(finalName, placeholderName));
-        }
-
         string hash = finalName.Split('-')[2][..8];
         string[] unrelated = [$"xyz-00000-{hash}.era1", $"abc-00001-{hash}.era1", $"abc-00000-{hash}-noproofs.ere", $"abc-00000-{hash}.txt", $"abc-00000-{hash}.era1.bak"];
-        foreach (string name in unrelated) File.Copy(Path.Combine(directory, placeholderName), Path.Combine(directory, name));
+        foreach (string name in unrelated) File.Copy(Path.Combine(directory, finalName), Path.Combine(directory, name));
+
+        // Left by an interrupted export, or finished and listed by the manifests: only its name tells that the export never published it.
+        string placeholder = Path.Combine(directory, EraPathUtils.Filename(EraTestModule.TestNetwork, 0, Keccak.Zero));
+        if (truncated)
+        {
+            await File.WriteAllBytesAsync(placeholder, (await File.ReadAllBytesAsync(Path.Combine(directory, finalName)))[..100]);
+        }
+        else
+        {
+            File.Move(Path.Combine(directory, finalName), placeholder);
+            foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+            {
+                string path = Path.Combine(directory, manifest);
+                await File.WriteAllTextAsync(path, (await File.ReadAllTextAsync(path)).Replace(finalName, Path.GetFileName(placeholder)));
+            }
+        }
 
         await sut.Export(directory, 0, 15);
 

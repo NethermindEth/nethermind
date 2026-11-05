@@ -438,9 +438,12 @@ public class EraExporterTests
         {
             Block source = container.Resolve<IBlockTree>().FindBlock(number, BlockTreeLookupOptions.None)!;
             (Block? block, TxReceipt[]? receipts) = await store.FindBlockAndReceipts(number);
-            Assert.That(block?.Hash, Is.EqualTo(source.Hash), $"block {number}");
-            Assert.That(receipts?.Select(static r => r.GasUsedTotal),
-                Is.EqualTo(container.Resolve<IReceiptStorage>().Get(source).Select(static r => r.GasUsedTotal)), $"receipts of block {number}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block?.Hash, Is.EqualTo(source.Hash), $"block {number}");
+                Assert.That(receipts?.Select(static r => r.GasUsedTotal),
+                    Is.EqualTo(container.Resolve<IReceiptStorage>().Get(source).Select(static r => r.GasUsedTotal)), $"receipts of block {number}");
+            }
         }
     }
 
