@@ -195,7 +195,7 @@ pub async fn verify(server: &Candidate, reference: &str, settings: &Value) -> Re
             let log = fs::read_to_string(consumer.directory.path().join("console.log"))?;
             ensure!(status.success(), "SNAP consumer failed: {status}: {log}");
             ensure!(
-                log.contains("EEZ SNAP download verified.") && log.contains("Snap sync completed."),
+                download_completed(&log),
                 "consumer did not complete the actual SNAP runner: {log}"
             );
             break;
@@ -289,4 +289,67 @@ fn quantity(value: &Value) -> Result<u64> {
             .trim_start_matches("0x"),
         16,
     )?)
+}
+
+fn download_completed(log: &str) -> bool {
+    let plain = without_console_colors(log);
+    plain.contains("EEZ SNAP download verified.") && plain.contains("Snap sync completed.")
+}
+
+fn without_console_colors(mut text: &str) -> String {
+    let mut plain = String::with_capacity(text.len());
+    while let Some(start) = text.find("\x1b[") {
+        plain.push_str(&text[..start]);
+        let tail = &text[start + 2..];
+        let end = tail.find(|c: char| !c.is_ascii_digit() && c != ';' && c != ':');
+        if let Some(end) = end.filter(|&end| tail.as_bytes()[end] == b'm') {
+            text = &tail[end + 1..];
+        } else {
+            plain.push_str("\x1b[");
+            text = tail;
+        }
+    }
+    plain.push_str(text);
+    plain
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{download_completed, without_console_colors};
+
+    #[test]
+    fn completion_requires_both_original_markers_with_or_without_console_colors() {
+        for (log, expected) in [
+            ("EEZ SNAP download verified.\nSnap sync completed.", true),
+            (
+                "EEZ SNAP download verified.\n\x1b[96mSnap\x1b[97m sync completed. \x1b[0m",
+                true,
+            ),
+            (
+                "\x1b[97mEEZ SNAP download verified.\x1b[m\nSnap sync \x1b[38;2;1;2;3mcompleted.\x1b[0m",
+                true,
+            ),
+            ("EEZ SNAP download verified.", false),
+            ("Snap sync completed.", false),
+            (
+                "EEZ SNAP download verified.\nSnap\x1b[broken sync completed.",
+                false,
+            ),
+            ("", false),
+        ] {
+            assert_eq!(download_completed(log), expected, "completion log: {log:?}");
+        }
+    }
+
+    #[test]
+    fn color_normalization_preserves_other_text_and_escape_sequences() {
+        for text in [
+            "0m literal",
+            "\u{03bb} text",
+            "unfinished \x1b[",
+            "unknown \x1b[2K control",
+        ] {
+            assert_eq!(without_console_colors(text), text);
+        }
+    }
 }
