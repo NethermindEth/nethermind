@@ -948,8 +948,9 @@ public class OptimismEthRpcModuleTest
 
         JToken pending = await TransactionCountOfC(rpcBlockchain, "pending");
         JToken filled = await FillFromC(rpcBlockchain);
+        // With its gas given, the fill estimates nothing, so only the nonce lookup can fail it.
         JToken filledWithoutFrom = JToken.Parse(await rpcBlockchain.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(
-            """{"to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"}""")));
+            """{"to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","gas":"0x5208"}""")));
 
         using (Assert.EnterMultipleScope())
         {
