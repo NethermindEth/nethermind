@@ -268,12 +268,12 @@ public static partial class EvmInstructions
             // If the call cannot proceed, return an empty response (or the precheck's revert data) and push zero on the stack.
             vm.ReturnDataBuffer = precheckRevert;
             UInt256 tracedOutputLength = TTracingInst.IsActive ? outputLength : default;
-            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
             if (precheckRevert is not null)
             {
                 int copyLength = outputLength < (UInt256)precheckRevert.Length ? (int)outputLength.u0 : precheckRevert.Length;
                 vm.VmState.Memory.SaveAfterGas(in outputOffset, precheckRevert.AsSpan(0, copyLength));
             }
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
             if (TTracingInst.IsActive)
             {
