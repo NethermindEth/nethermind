@@ -295,16 +295,18 @@ public sealed class HalfPathMigrator(
             if (account.HasStorage && ShouldVisit(null, childPath)) Load(childPath.Path, TreePath.Empty, account.StorageRoot);
         }
 
-        /// <summary>Walks the child whose reference is at <paramref name="child"/> in the buffer: a hash, an embedded node or nothing.</summary>
-        private void VisitChild(in ValueHash256? address, in TreePath path, Range child)
+        /// <summary>Walks the child that a branch or an extension references at <paramref name="reference"/> in the buffer.</summary>
+        private void VisitChild(in ValueHash256? address, in TreePath path, Range reference)
         {
-            RlpReader reader = new(Rlp[child]);
+            RlpReader reader = new(Rlp[reference]);
             if (reader.IsSequenceNext())
             {
-                if (ShouldVisit(address, path)) Visit(address, path, child);
+                // A child whose RLP is shorter than a hash is embedded in its parent (Yellow Paper, Appendix D), so it is walked in place.
+                if (ShouldVisit(address, path)) Visit(address, path, reference);
                 return;
             }
 
+            // Otherwise the reference is the child's hash, or empty where there is no child.
             ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
             if (!hash.IsEmpty && ShouldVisit(address, path)) Load(address, path, new ValueHash256(hash));
         }
