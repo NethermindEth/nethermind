@@ -23,21 +23,17 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
-    [TestCase(0, 0, null)]
-    [TestCase(0, 0, "0x0")]
-    [TestCase(9, 0, null)]
-    [TestCase(9, 0, "0x0")]
-    [TestCase(9, 9, null)]
-    [TestCase(9, 9, "0x0")]
-    [TestCase(9, 8, null)]
-    [TestCase(9, 8, "0x0")]
-    public async Task Debug_traceCall_blob_fee_override_applies_to_upfront_payment(int fee, int cap, string? txIndex)
+    private static IEnumerable<TestCaseData> BlobFeePaymentCases()
     {
-        foreach (bool streamMode in new[] { false, true })
-            await AssertTraceCallBlobPayment(fee, cap, txIndex, streamMode);
+        (int Fee, int Cap)[] fees = [(0, 0), (9, 0), (9, 9), (9, 8)];
+        foreach ((int fee, int cap) in fees)
+            foreach (string? txIndex in new string?[] { null, "0x0" })
+                foreach (bool streamMode in new[] { false, true })
+                    yield return new TestCaseData(fee, cap, txIndex, streamMode);
     }
 
-    private static async Task AssertTraceCallBlobPayment(int fee, int cap, string? txIndex, bool streamMode)
+    [TestCaseSource(nameof(BlobFeePaymentCases))]
+    public async Task Debug_traceCall_blob_fee_override_applies_to_upfront_payment(int fee, int cap, string? txIndex, bool streamMode)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
@@ -151,6 +147,38 @@ public partial class DebugRpcModuleTests
         AssertBlobFeeRpcError(response, executionFeeTooLow
             ? $"max fee per gas less than block base fee: address {address}, maxFeePerGas: 1, baseFee: 2"
             : $"max fee per blob gas less than block blob gas fee: address {address} blobGasFeeCap: 8, blobBaseFee: 9");
+    }
+
+    [TestCase(false, "intrinsic gas too low")]
+    [TestCase(true, "required balance exceeds 256 bits")]
+    public async Task Debug_traceCall_blob_fee_rejection_preserves_earlier_validation(bool balanceOverflow, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object transaction = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = TestItem.AddressC.ToString(),
+            gas = balanceOverflow ? "0x186a0" : "0x1",
+            value = balanceOverflow ? "0x" + new string('f', 64) : "0x0",
+            maxFeePerGas = "0x1",
+            maxPriorityFeePerGas = "0x0",
+            maxFeePerBlobGas = "0x8",
+            blobVersionedHashes = new[] { "0x01" + new string('0', 62) }
+        };
+        object blockOverrides = new { blobBaseFee = "0x9", baseFeePerGas = "0x0" };
+        string buffered = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new { blockOverrides, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new { blockOverrides, streamMode = true });
+        JObject expected = JObject.Parse(buffered);
+        JObject actual = JObject.Parse(streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)expected["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered);
+            Assert.That((string?)expected["error"]?["message"], Does.Contain(expectedError), buffered);
+            Assert.That(actual.ContainsKey("result"), Is.False, streamed);
+            Assert.That(JToken.DeepEquals(actual["error"], expected["error"]), Is.True, streamed);
+        }
     }
 
     [Test]

@@ -203,18 +203,8 @@ public class DebugRpcModule(
 
         UInt256? rejectedBlobBaseFee = GetRejectedTraceCallBlobBaseFee(tx, header!, effective);
 
-        if (CanStreamStructLogs(options))
+        if (CanStreamStructLogs(options) && rejectedBlobBaseFee is null)
         {
-            if (rejectedBlobBaseFee is { } blobBaseFee)
-            {
-                UInt256 baseFee = effective.NoBaseFee ? UInt256.Zero : effective.BlockOverrides?.BaseFeePerGas ?? header!.BaseFeePerGas;
-                if (tx.MaxFeePerGas < baseFee)
-                    return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(
-                        $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true)}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee}"), ErrorCodes.InvalidInput);
-
-                return TraceCallBlobFeeFailure(tx, blobBaseFee);
-            }
-
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
