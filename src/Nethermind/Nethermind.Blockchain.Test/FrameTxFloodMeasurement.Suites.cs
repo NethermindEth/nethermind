@@ -84,15 +84,21 @@ public partial class FrameTxFloodMeasurement
     /// <summary>Window of the throw-away first flood of a cell, which pays the generator's cold start.</summary>
     private static readonly TimeSpan ColdStartWindow = TimeSpan.FromSeconds(3);
 
+    /// <summary>Time without a newly compiled method after which the runtime counts as JIT-quiescent.</summary>
     private static readonly TimeSpan JitQuiescenceWindow = TimeSpan.FromSeconds(1);
 
+    /// <summary>Longest wait for JIT quiescence before an idle baseline.</summary>
     private static readonly TimeSpan JitQuiescenceLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>JIT time a measured window may contain before the warm-up repeats or the baseline is re-measured.</summary>
     private static readonly TimeSpan MaxWindowJit = TimeSpan.FromMilliseconds(10);
 
+    /// <summary>Most warm-up floods a cell runs before its baseline, settled or not.</summary>
+    /// <remarks>Without a cold-start delegate each warm-up flood is a full level (about 8 s), so a cell that never
+    /// settles spends about a minute warming up; <c>warmup_jit_settled=no</c> reports it.</remarks>
     private const int MaxWarmupFloods = 8;
 
+    /// <summary>Most idle-baseline measurements per cell; a baseline still holding JIT after the last fails the test.</summary>
     private const int MaxBaselineAttempts = 5;
 
     /// <summary>A victim sample this many times the idle median counts as an outlier: the stalls the tail metrics
@@ -443,6 +449,8 @@ public partial class FrameTxFloodMeasurement
         double baselineTailDriftPct = double.NaN;
         try
         {
+            // The levels can queue tier-up of their own; measure the closing baseline under the same JIT conditions.
+            WaitForJitQuiescence();
             (List<double> baselineAfter, GcDelta afterGc) = Baseline();
             baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(Percentile(baselineAfter, 0.50) - w0) / w0 * 100;
             baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(Percentile(baselineAfter, 0.99) - w0p99) / w0p99 * 100;
