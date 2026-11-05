@@ -153,7 +153,8 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static readonly byte[] VersionBytes = [1];
+        // Indexes written before canonical-only indexing may lack logs of canonical blocks, so they are rebuilt
+        private static readonly byte[] VersionBytes = [2];
 
         public const int MaxTopics = 4;
 
@@ -280,7 +281,9 @@ namespace Nethermind.Db.LogIndex
 
                 return versionBytes.SequenceEqual(VersionBytes)
                     ? root
-                    : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} <> {VersionBytes[0]}, resetting data...");
+                    : ResetAndCreateNew(root,
+                        $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). " +
+                        "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.");
             }
             finally
             {
@@ -298,8 +301,28 @@ namespace Nethermind.Db.LogIndex
                 db.Dispose();
                 (db, meta) = CreateDb();
 
-                meta.Set(SpecialKey.Version, VersionBytes);
-                return db;
+                try
+                {
+                    // Deletion errors are only logged by the DB layer, so never mark leftover data as current
+                    foreach (LogIndexColumns column in db.ColumnKeys)
+                    {
+                        using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys().GetEnumerator();
+                        if (keys.MoveNext())
+                        {
+                            throw new LogIndexStateException(
+                                $"Log index reset failed: {column} still has data after the database was deleted. " +
+                                $"Delete {dbFactory.GetFullDbPath(new(string.Empty, DbNames.LogIndex))} manually or set LogIndex.Enabled=false, then restart.");
+                        }
+                    }
+
+                    meta.Set(SpecialKey.Version, VersionBytes);
+                    return db;
+                }
+                catch
+                {
+                    db.Dispose();
+                    throw;
+                }
             }
 
             (IColumnsDb<LogIndexColumns> root, IDb meta) CreateDb()
