@@ -1170,6 +1170,16 @@ public partial class DebugRpcModuleTests
     [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", true)]
     [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", false)]
     [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", true)]
+    [TestCase("CreateUint8ArrayCode", "ReferenceError: CreateUint8ArrayCode is not defined at <eval>:1:2(0)", false)]
+    [TestCase("CreateUint8ArrayCode", "ReferenceError: CreateUint8ArrayCode is not defined at <eval>:1:2(0)", true)]
+    [TestCase("tracers.callTracer", "ReferenceError: tracers is not defined", false)]
+    [TestCase("tracers.callTracer", "ReferenceError: tracers is not defined", true)]
+    [TestCase("tracers['callTracer']", "ReferenceError: tracers is not defined", false)]
+    [TestCase("tracers['callTracer']", "ReferenceError: tracers is not defined", true)]
+    [TestCase("OpcountTracer", "ReferenceError: OpcountTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("OpcountTracer", "ReferenceError: OpcountTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("OpcountTracer.JS", "ReferenceError: OpcountTracer is not defined", false)]
+    [TestCase("OpcountTracer.JS", "ReferenceError: OpcountTracer is not defined", true)]
     [TestCase("toHex", "trace object must expose a function result()", false)]
     [TestCase("toHex", "trace object must expose a function result()", true)]
     [TestCase("{}", "trace object must expose a function result()", false)]
@@ -1197,6 +1207,26 @@ public partial class DebugRpcModuleTests
             Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
             Assert.That(json["error"]!["data"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_builtin_extension_is_case_insensitive(
+        [Values("opcountTracer.js", "opcountTracer.JS", " opcountTracer.Js ", "opcountTracer.jS")] string tracer,
+        [Values] bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code = "0x600100" } };
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }), stateOverrides }
+            : new { tracer, stateOverrides };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((mux ? json["result"]?[tracer] : json["result"])?.Value<int>(), Is.EqualTo(2), response);
         }
     }
 

@@ -16,7 +16,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public class Engine : IDisposable
+public partial class Engine : IDisposable
 {
     private const bool IsDebugging = false;
     private V8ScriptEngine V8Engine { get; }
@@ -236,7 +236,7 @@ public class Engine : IDisposable
         {
             return V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
         }
-        catch (ScriptEngineException ex) when (Regex.IsMatch(tracer.Trim(), @"\A[A-Za-z_$][A-Za-z0-9_$]*\z")
+        catch (ScriptEngineException ex) when (IdentifierRegex().IsMatch(tracer.Trim())
             && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
         {
             // Pack adds a leading '(', so the selector starts in column 2.
@@ -252,7 +252,14 @@ public class Engine : IDisposable
             }
             throw new InvalidDataException($"{ex.Message} at <eval>:{line}:{column}(0)", ex);
         }
+        catch (ScriptEngineException ex) when (JavaScriptTraceFailure.IsRecoverable(ex))
+        {
+            throw new InvalidDataException(ex.Message, ex);
+        }
     }
+
+    [GeneratedRegex(@"\A[A-Za-z_$][A-Za-z0-9_$]*\z")]
+    private static partial Regex IdentifierRegex();
 
     // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
     internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""

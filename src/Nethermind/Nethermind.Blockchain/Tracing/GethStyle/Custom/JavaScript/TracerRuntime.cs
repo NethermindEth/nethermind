@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// absorb the allocation burst between two heap samples and keep the sampler ahead of V8's own hard limit.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
-internal sealed class TracerRuntime : IDisposable
+internal sealed partial class TracerRuntime : IDisposable
 {
     private const int MaxOldSpaceMb = 256;
     private const double HeapExpansionMultiplier = 2;
@@ -39,7 +39,7 @@ internal sealed class TracerRuntime : IDisposable
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);
 
     private readonly V8Runtime _runtime;
-    private readonly Dictionary<string, V8Script> _scripts = [];
+    private readonly Dictionary<(string Key, bool Pack), V8Script> _scripts = [];
 
     public TracerRuntime()
     {
@@ -81,10 +81,13 @@ internal sealed class TracerRuntime : IDisposable
     {
         tracer = tracer.Trim();
         fileName = string.Empty;
-        if (!Regex.IsMatch(tracer, @"\A[A-Za-z0-9$][A-Za-z0-9_$]*(?:\.js)?\z")) return false;
+        if (!BuiltInNameRegex().IsMatch(tracer)) return false;
         fileName = ToTracerFileName(tracer);
         return IsBuiltIn(fileName);
     }
+
+    [GeneratedRegex(@"\A[A-Za-z0-9$][A-Za-z0-9_$]*(?:\.[jJ][sS])?\z")]
+    private static partial Regex BuiltInNameRegex();
 
     /// <summary>
     /// Refuses a tracer no engine could load, returning the runtime inline code was compiled in so the tracer can
@@ -134,10 +137,10 @@ internal sealed class TracerRuntime : IDisposable
 
     private V8Script GetScript(string key, string code, bool pack = false)
     {
-        if (!_scripts.TryGetValue(key, out V8Script? script))
+        if (!_scripts.TryGetValue((key, pack), out V8Script? script))
         {
             script = _runtime.Compile(pack ? Pack(code) : code);
-            _scripts[key] = script;
+            _scripts[(key, pack)] = script;
         }
 
         return script;
