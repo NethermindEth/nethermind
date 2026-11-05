@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,6 +83,17 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Window of the throw-away first flood of a cell, which pays the generator's cold start.</summary>
     private static readonly TimeSpan ColdStartWindow = TimeSpan.FromSeconds(3);
+
+    private static readonly TimeSpan JitQuiescenceWindow = TimeSpan.FromSeconds(1);
+
+    private static readonly TimeSpan JitQuiescenceLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>JIT time a measured window may contain before the warm-up repeats or the baseline is re-measured.</summary>
+    private static readonly TimeSpan MaxWindowJit = TimeSpan.FromMilliseconds(10);
+
+    private const int MaxWarmupFloods = 8;
+
+    private const int MaxBaselineAttempts = 5;
 
     /// <summary>A victim sample this many times the idle median counts as an outlier: the stalls the tail metrics
     /// must be read against.</summary>
@@ -350,10 +362,30 @@ public partial class FrameTxFloodMeasurement
             return (samples, GcDelta.Since(start));
         }
 
-        // The first flood pays the generator's cold start; it is not a level.
-        (coldStart ?? measureAtRate)(RateFor(levelsMillions[0], declaredGasPerTx));
+        // The first flood pays the generator's cold start; it is not a level. On a slow core the runtime keeps tiering
+        // up the flood and victim paths for several floods, so repeat it until one runs without JIT work.
+        Func<int, LevelPoint> warmFlood = coldStart ?? measureAtRate;
+        int warmRate = RateFor(levelsMillions[0], declaredGasPerTx);
+        int warmupFloods = 0;
+        bool warmupSettled = false;
+        while (!warmupSettled && warmupFloods < MaxWarmupFloods)
+        {
+            warmupFloods++;
+            TimeSpan jitBefore = JitInfo.GetCompilationTime(currentThread: false);
+            warmFlood(warmRate);
+            warmupSettled = JitInfo.GetCompilationTime(currentThread: false) - jitBefore < MaxWindowJit;
+        }
+        WaitForJitQuiescence();
 
+        // A baseline that shared the core with the JIT counts too few passes, and f divides by that count.
         (List<double> baseline, GcDelta baselineGc) = Baseline();
+        int baselineAttempts = 1;
+        for (; baselineAttempts < MaxBaselineAttempts && baselineGc.JitMs >= MaxWindowJit.TotalMilliseconds; baselineAttempts++)
+        {
+            WaitForJitQuiescence();
+            (baseline, baselineGc) = Baseline();
+        }
+        bool baselineJitClean = baselineGc.JitMs < MaxWindowJit.TotalMilliseconds;
         double w0 = Percentile(baseline, 0.50);
         double w0p95 = Percentile(baseline, 0.95);
         double w0p99 = Percentile(baseline, 0.99);
@@ -397,7 +429,8 @@ public partial class FrameTxFloodMeasurement
                          + $"victim_throughput_ratio={victimThroughputRatio:F3} "
                          + $"outlier_threshold_us={outlierUs:F0} W0_outliers={Outliers(baseline, outlierUs)} "
                          + $"W_outliers={Outliers(outcome.ProcessMicros, outlierUs)} {baselineGc.Fields("W0_")} {outcome.Gc.Fields("W_")} "
-                         + $"host_load1={HostLoad1()}");
+                         + $"host_load1={HostLoad1()} warmup_floods={warmupFloods} warmup_jit_settled={(warmupSettled ? "yes" : "no")} "
+                         + $"baseline_attempts={baselineAttempts} baseline_jit_clean={(baselineJitClean ? "yes" : "no")}");
             }
         }
         catch (Exception ex)
@@ -435,6 +468,8 @@ public partial class FrameTxFloodMeasurement
         {
             Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
                 $"the two idle baselines' medians disagree by {baselineDriftPct:F1}%, so the levels span different machine states");
+            Assert.That(baselineJitClean, Is.True,
+                $"the idle baseline still held {baselineGc.JitMs:F1} ms of JIT after {baselineAttempts} attempts, so it counted too few passes");
             // The import victims give ~40 blocks per 10 s window, so their p99 is close to the max and one host hiccup
             // moves it: there a broken tail only voids the tail metrics (tail_valid=no) and the median stands.
             if (tailDriftFailsTest)
@@ -644,23 +679,50 @@ public partial class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>Garbage collection during one measured window, so a victim stall can be told apart from the flood.</summary>
-    /// <remarks>Counts are <see cref="GC.CollectionCount"/> deltas: a gen2 collection also counts in gen0 and gen1.</remarks>
-    private readonly record struct GcDelta(double PauseMs, int Gen0, int Gen1, int Gen2)
+    /// <summary>Garbage collection and JIT compilation during one measured window, so a victim stall can be told
+    /// apart from the flood.</summary>
+    /// <remarks>Counts are <see cref="GC.CollectionCount"/> deltas: a gen2 collection also counts in gen0 and gen1. JIT
+    /// figures cover every thread, so they include background tier-up work sharing the pinned core.</remarks>
+    private readonly record struct GcDelta(double PauseMs, int Gen0, int Gen1, int Gen2, double JitMs, long JitMethods)
     {
-        public readonly record struct Snapshot(TimeSpan Pause, int Gen0, int Gen1, int Gen2);
+        public readonly record struct Snapshot(TimeSpan Pause, int Gen0, int Gen1, int Gen2, TimeSpan Jit, long JitMethods);
 
         public static Snapshot Take() =>
-            new(GC.GetTotalPauseDuration(), GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+            new(GC.GetTotalPauseDuration(), GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2),
+                JitInfo.GetCompilationTime(currentThread: false), JitInfo.GetCompiledMethodCount(currentThread: false));
 
         public static GcDelta Since(Snapshot start)
         {
             Snapshot now = Take();
-            return new((now.Pause - start.Pause).TotalMilliseconds, now.Gen0 - start.Gen0, now.Gen1 - start.Gen1, now.Gen2 - start.Gen2);
+            return new((now.Pause - start.Pause).TotalMilliseconds, now.Gen0 - start.Gen0, now.Gen1 - start.Gen1, now.Gen2 - start.Gen2,
+                (now.Jit - start.Jit).TotalMilliseconds, now.JitMethods - start.JitMethods);
         }
 
         public string Fields(string prefix) =>
-            $"{prefix}gc_pause_ms={PauseMs:F1} {prefix}gc0={Gen0} {prefix}gc1={Gen1} {prefix}gc2={Gen2}";
+            $"{prefix}gc_pause_ms={PauseMs:F1} {prefix}gc0={Gen0} {prefix}gc1={Gen1} {prefix}gc2={Gen2} "
+            + $"{prefix}jit_ms={JitMs:F1} {prefix}jit_methods={JitMethods}";
+    }
+
+    /// <summary>Waits, up to <see cref="JitQuiescenceLimit"/>, until no method has been compiled for
+    /// <see cref="JitQuiescenceWindow"/>.</summary>
+    /// <remarks>A cell's warm-up and cold-start flood queue tier-up recompilation that the runtime's background worker
+    /// would otherwise run on the pinned core during the idle baseline, removing passes from the count that f divides
+    /// by. Idle waiting lets that queue drain; it adds no calls, so it queues no new tier-up.</remarks>
+    private static void WaitForJitQuiescence()
+    {
+        long deadline = Stopwatch.GetTimestamp() + (long)(JitQuiescenceLimit.TotalSeconds * Stopwatch.Frequency);
+        long compiled = JitInfo.GetCompiledMethodCount(currentThread: false);
+        long quietSince = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(quietSince) < JitQuiescenceWindow && Stopwatch.GetTimestamp() < deadline)
+        {
+            Thread.Sleep(50);
+            long now = JitInfo.GetCompiledMethodCount(currentThread: false);
+            if (now != compiled)
+            {
+                compiled = now;
+                quietSince = Stopwatch.GetTimestamp();
+            }
+        }
     }
 
     /// <summary>A VERIFY frame that approves execution and payment at once: the cheapest valid opaque prefix, so
