@@ -67,13 +67,13 @@ internal class XdcBlockProcessorTests
 
         Assert.That(preparedBlock.Header, Is.TypeOf<XdcSubnetBlockHeader>());
         XdcSubnetBlockHeader preparedHeader = (XdcSubnetBlockHeader)preparedBlock.Header;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(preparedHeader.NextValidators, Is.EqualTo(header.NextValidators));
             Assert.That(preparedHeader.Validators, Is.EqualTo(header.Validators));
             Assert.That(preparedHeader.Penalties, Is.EqualTo(header.Penalties));
             Assert.That(preparedHeader.SlotNumber, Is.EqualTo(header.SlotNumber));
-        });
+        }
     }
 
     [Test]

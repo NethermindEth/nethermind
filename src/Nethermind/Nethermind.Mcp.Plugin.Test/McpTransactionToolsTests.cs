@@ -1226,13 +1226,17 @@ public class McpTransactionToolsTests
         Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("pending_blocked"));
         if (issue == "nonce_gaps")
         {
+#pragma warning disable NUnit2045 // The property must exist before its JSON array is enumerated.
             Assert.That(result.TryGetProperty("nonceGaps", out JsonElement gaps), Is.True, "blocking fees must not hide missing nonces");
+#pragma warning restore NUnit2045
             Assert.That(gaps.EnumerateArray().Select(static gap => gap.GetProperty("from").GetString()), Is.EqualTo(new[] { "6", "8" }));
             Assert.That(result.GetProperty("recommendations").GetRawText(), Does.Contain("nonce 6"));
         }
         else
         {
+#pragma warning disable NUnit2045 // The property must exist before its JSON value is read.
             Assert.That(result.TryGetProperty("ownFeeStatus", out JsonElement feeStatus), Is.True, "blocked status must retain the transaction's own fee diagnosis");
+#pragma warning restore NUnit2045
             Assert.That(feeStatus.GetString(), Is.EqualTo(issue));
             Assert.That(result.GetProperty("summary").GetString(), Does.Contain(issue == "underpriced" ? "maxFeePerGas" : "maxFeePerBlobGas"));
             Assert.That(result.GetProperty("recommendations").GetRawText(), Does.Contain("Replace nonce 6"));
@@ -1372,8 +1376,11 @@ public class McpTransactionToolsTests
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "diagnose_transaction", [("hash", tx.Hash!.ToString())]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("fee_unavailable"));
-        Assert.That(result.GetProperty("fees").GetProperty("nextBaseFeeWei").ValueKind, Is.EqualTo(JsonValueKind.Null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("fee_unavailable"));
+            Assert.That(result.GetProperty("fees").GetProperty("nextBaseFeeWei").ValueKind, Is.EqualTo(JsonValueKind.Null));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }
 
@@ -1457,8 +1464,11 @@ public class McpTransactionToolsTests
             .Override(nameof(IEthRpcModule.eth_getTransactionByHash), eth);
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, tool, [("hash", TestItem.KeccakA.ToString())]);
-        Assert.That(call.IsError, Is.Not.True, () => "a mined deposit is a known transaction: " + JsonSerializer.Serialize(call));
-        Assert.That(McpAssert.Success(call).GetProperty("status").GetString(), Is.EqualTo(tool == "diagnose_transaction" ? "mined" : "success"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.IsError, Is.Not.True, () => "a mined deposit is a known transaction: " + JsonSerializer.Serialize(call));
+            Assert.That(McpAssert.Success(call).GetProperty("status").GetString(), Is.EqualTo(tool == "diagnose_transaction" ? "mined" : "success"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, tool, call);
     }
 
@@ -1939,9 +1949,12 @@ public class McpTransactionToolsSetCodeTests
             .WithTo(reverter)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(setCode);
-        Assert.That(block.Transactions, Has.Length.EqualTo(1), "precondition: the set-code transaction must be mined");
-        Assert.That(Eip7702Constants.IsDelegatedCode(state.GetCode(block.Header, TestItem.AddressC)), Is.True,
-            "precondition: the authorization survives the failed execution");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(1), "precondition: the set-code transaction must be mined");
+            Assert.That(Eip7702Constants.IsDelegatedCode(state.GetCode(block.Header, TestItem.AddressC)), Is.True,
+                "precondition: the authorization survives the failed execution");
+        }
         await using McpClient client = await node.CreateClient();
 
         JsonElement result = McpAssert.Success(await McpToolCalls.Call(client, "explain_transaction", [("hash", setCode.Hash!.ToString())]));

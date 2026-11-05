@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -53,8 +54,7 @@ public ref partial struct EvmStack
     internal readonly bool AnalyzeJumpDestination(nint destination, ref byte code)
     {
         CodeInfo? codeInfo = _codeInfo;
-        return codeInfo is not null && ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) &&
-            codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
+        return codeInfo is not null && codeInfo.AnalyzeRunningJump(destination, _jumpDestinations, ref code);
     }
 
     /// <summary>
@@ -68,14 +68,17 @@ public ref partial struct EvmStack
     /// the destination is proven, so a frameless handler does not hold it through the look-back.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
+    internal readonly unsafe bool TryMarkJumpDestination(nint destination, ref byte code)
     {
         CodeInfo? codeInfo = _codeInfo;
-        if (codeInfo is null || !ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) ||
-            !codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+        if (codeInfo is null || !codeInfo.IsJumpProvenByLookBack(destination, _jumpDestinations, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
-        segment |= 1L << (int)destination;
+        // As in IsAnalyzedJumpDestination: rounding the segment's address lets the JIT drop its alignment tests.
+        if (StrictAlignmentFlag.IsActive)
+            *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) |= 1L << (int)destination;
+        else
+            segment |= 1L << (int)destination;
         return true;
     }
 
@@ -104,6 +107,13 @@ public ref partial struct EvmStack
     internal readonly unsafe bool IsAnalyzedJumpDestination(nuint destination)
     {
         Debug.Assert(destination < (nuint)CodeLength, "Only a position inside the code indexes the bitmap unchecked.");
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit guest tests its bit in one 32-bit word of the little-endian bitmap, not across a register pair.
+            uint word = Unsafe.Add(ref Unsafe.As<long, uint>(ref _jumpDestinationBits), (nint)(destination >> 5));
+            return ((word >> (int)destination) & 1) != 0;
+        }
+
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, (nint)(destination >> 6));
         // The bitmap is a long[], so rounding the segment's address changes nothing but lets the JIT drop its alignment test.
         ulong bits = (ulong)(StrictAlignmentFlag.IsActive ? *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) : segment);

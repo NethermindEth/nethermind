@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -18,7 +17,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaValidatorFactory(IAbiEncoder abiEncoder,
+    public class AuRaValidatorFactory(
         IWorldState stateProvider,
         ITransactionProcessor transactionProcessor,
         IBlockTree blockTree,
@@ -37,7 +36,6 @@ namespace Nethermind.Consensus.AuRa
         ulong posdaoTransition, bool forSealing = false) : IAuRaValidatorFactory
     {
         private readonly IWorldState _stateProvider = stateProvider;
-        private readonly IAbiEncoder _abiEncoder = abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
         private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
         private readonly IBlockTree _blockTree = blockTree;
@@ -57,8 +55,8 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, ulong? startBlock = null)
         {
-            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
-            IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
+            IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(validator.GetContractAddress(), _signer);
 
             ValidSealerStrategy validSealerStrategy = new();
             ulong startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;

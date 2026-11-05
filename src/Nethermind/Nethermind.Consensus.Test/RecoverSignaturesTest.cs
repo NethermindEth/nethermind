@@ -56,8 +56,56 @@ public class RecoverSignaturesTest
 
         sut.RecoverData(block);
 
-        Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
-        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
+            Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+        }
+    }
+
+    [TestCase(0, 0)]
+    [TestCase(0, 1)]
+    [TestCase(2, 7)]
+    [TestCase(3, 10)]
+    public void RecoverData_with_a_range_recovers_only_the_transactions_in_it(int start, int end)
+    {
+        Transaction[] txs = SignedTransactions(10);
+        Block block = Build.A.Block.WithTransactions(txs).TestObject;
+
+        CreateRangeSut().RecoverData(block, start, end);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < txs.Length; i++)
+            {
+                Assert.That(txs[i].SenderAddress, i >= start && i < end ? Is.EqualTo(TestItem.AddressA) : Is.Null, $"transaction {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void RecoverDataForTransactionTrace_leaves_the_block_senders_and_recovers_the_inclusion_list()
+    {
+        Transaction[] txs = SignedTransactions(5);
+        Transaction included = Signed(TestItem.PrivateKeyB, 0);
+        Block block = Build.A.Block.WithTransactions(txs).TestObject;
+        block.InclusionListTransactions = [included];
+
+        CreateRangeSut().RecoverDataForTransactionTrace(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.Null);
+            Assert.That(included.SenderAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    private static RecoverSignatures CreateRangeSut()
+    {
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        return new RecoverSignatures(_ecdsa, specProvider, Substitute.For<ILogManager>());
     }
 
     [Test]
@@ -70,7 +118,7 @@ public class RecoverSignaturesTest
             ChainId = BlockchainIds.GenericNonRealNetwork,
             SenderAddress = TestItem.AddressA,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
-            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
             DecodedMaxFeePerGas = 100,
         };
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
@@ -88,8 +136,11 @@ public class RecoverSignaturesTest
 
         sut.RecoverData(block);
 
-        Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
-        Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
+            Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
+        }
     }
 
     [Test]
@@ -252,7 +303,9 @@ public class RecoverSignaturesTest
         Task step = Task.Run(() => sut.RecoverDataForQueuedProcessing(block));
         try
         {
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(step.Wait(DrainTimeoutMs), Is.True, "the pipeline step must not wait for the running recovery");
             Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the running recovery");
         }
@@ -325,8 +378,11 @@ public class RecoverSignaturesTest
             sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
             sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
 
-            Assert.That(sut.IsRecoveryInFlight(first), Is.True);
-            Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sut.IsRecoveryInFlight(first), Is.True);
+                Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
+            }
         }
         finally
         {

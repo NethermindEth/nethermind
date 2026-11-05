@@ -10,15 +10,14 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
 /// Benchmarks <see cref="SnapshotCompactor.CompactSnapshotBundle"/>. The per-snapshot profile approximates a
-/// mainnet block (~2k accounts, ~10k slots over ~200 contracts, ~5x that in trie nodes) with a shared hot-key
-/// fraction so the merge exercises dedup rather than a disjoint union.
+/// mainnet block (~2k accounts, ~10k slots over ~200 contracts) with one state root and 200 storage roots, plus
+/// a shared hot-key fraction so the merge exercises dedup rather than a disjoint union.
 /// </summary>
 [MemoryDiagnoser]
 [WarmupCount(3)]
@@ -29,17 +28,10 @@ public class SnapshotCompactionBenchmark
     private const int AccountsPerSnapshot = 2000;
     private const int StorageContracts = 200;
     private const int SlotsPerContract = 50;            // 10,000 slots per snapshot
-    // Trie-node count is ~5x the flat account/slot write count: ~5x accounts of state nodes and
-    // ~5x slots of storage nodes, for 60,000 nodes over 12,000 flat writes per snapshot.
-    private const int StateNodesPerSnapshot = 10_000;
-    private const int StorageNodesPerContract = 250;    // 50,000 storage nodes per snapshot
     private const double HotFraction = 0.25;            // shared, reused-across-snapshots key fraction
 
-    // Disjoint id ranges per key category so derived addresses/paths never collide across categories.
     private const long AccountBase = 1;
     private const long ContractBase = 100_000_000;
-    private const long StateNodeBase = 200_000_000;
-    private const long StorageNodeBase = 300_000_000;
 
     [Params(2, 8, 32)]
     public int SnapshotCount;
@@ -52,7 +44,7 @@ public class SnapshotCompactionBenchmark
     [Params(false, true)]
     public bool SortedInputs;
 
-    private static readonly TrieNode PlaceholderNode = new(NodeType.Leaf, Keccak.EmptyTreeHash);
+    private const ulong PlaceholderNode = 1;
 
     private SnapshotCompactor _compactor = null!;
     private SnapshotPooledList _snapshots = null!;
@@ -69,7 +61,7 @@ public class SnapshotCompactionBenchmark
         _compactor = new SnapshotCompactor(config, schedule, resourcePool, repository, NullLogManager.Instance);
 
         // Contract addresses and their account-path hashes are shared across every snapshot (the same hot
-        // contracts are touched each block), so only the slots/nodes underneath them differ per snapshot.
+        // contracts are touched each block), so only the slots underneath them differ per snapshot.
         Address[] contracts = new Address[StorageContracts];
         Hash256[] contractHashes = new Hash256[StorageContracts];
         for (int c = 0; c < StorageContracts; c++)
@@ -117,15 +109,9 @@ public class SnapshotCompactionBenchmark
             content.Accounts[DeriveAddress(id)] = new Account((UInt256)(ulong)(b + 1));
         }
 
-        int hotStateNodes = (int)(StateNodesPerSnapshot * HotFraction);
-        for (int i = 0; i < StateNodesPerSnapshot; i++)
-        {
-            long id = StateNodeBase + SeqOffset(i, hotStateNodes, StateNodesPerSnapshot, b);
-            content.StateNodes[DerivePath(id)] = PlaceholderNode;
-        }
+        content.StateRootPointer = PlaceholderNode;
 
         int hotSlots = (int)(SlotsPerContract * HotFraction);
-        int hotStorageNodes = (int)(StorageNodesPerContract * HotFraction);
         for (int c = 0; c < StorageContracts; c++)
         {
             Address contract = contracts[c];
@@ -140,11 +126,7 @@ public class SnapshotCompactionBenchmark
                 content.Storages[(contract, slot)] = new UInt256(slotBuffer, isBigEndian: true);
             }
 
-            for (int n = 0; n < StorageNodesPerContract; n++)
-            {
-                long id = StorageNodeBase + c * (long)StorageNodesPerContract + SeqOffset(n, hotStorageNodes, StorageNodesPerContract, b);
-                content.StorageNodes[(contractHash, DerivePath(id))] = PlaceholderNode;
-            }
+            content.StorageRoots[contractHash] = PlaceholderNode;
         }
 
         // Self-destructs from block b clear the storage those contracts accumulated in earlier snapshots.
@@ -164,9 +146,6 @@ public class SnapshotCompactionBenchmark
 
     private static Address DeriveAddress(long index) =>
         new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private static TreePath DerivePath(long index) =>
-        TreePath.FromPath(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes).Bytes);
 
     private static StateId CreateStateId(ulong blockNumber)
     {

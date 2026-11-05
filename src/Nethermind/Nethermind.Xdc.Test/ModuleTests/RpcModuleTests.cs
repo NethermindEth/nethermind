@@ -107,8 +107,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_calculateBlockInfoByV1EpochNum(1);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -131,13 +134,19 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.EpochBlockHash, Is.EqualTo(expectedHash));
-        Assert.That(result.Data.EpochRound, Is.EqualTo((UInt256)expectedRound));
-        Assert.That(result.Data.EpochFirstBlockNumber, Is.EqualTo((UInt256)expectedBlockNumber));
-        Assert.That(result.Data.EpochLastBlockNumber, Is.EqualTo((UInt256)(nextBlockRoundInfo.BlockNumber - 1)));
-        Assert.That(result.Data.EpochConsensusVersion, Is.EqualTo("v2"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.EpochBlockHash, Is.EqualTo(expectedHash));
+            Assert.That(result.Data.EpochRound, Is.EqualTo((UInt256)expectedRound));
+            Assert.That(result.Data.EpochFirstBlockNumber, Is.EqualTo((UInt256)expectedBlockNumber));
+            Assert.That(result.Data.EpochLastBlockNumber, Is.EqualTo((UInt256)(nextBlockRoundInfo.BlockNumber - 1)));
+            Assert.That(result.Data.EpochConsensusVersion, Is.EqualTo("v2"));
+        }
     }
 
     [Test]
@@ -157,8 +166,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.EpochLastBlockNumber, Is.Null);
     }
 
@@ -173,8 +185,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -197,8 +212,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -252,8 +270,11 @@ public class RpcModuleTests
         using JsonDocument response = await SendUnderStrictHexFormat("XDPoS_calculateBlockInfoByV1EpochNum", epochJson);
 
         JsonElement error = response.RootElement.GetProperty("error");
-        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
-        Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("V1 epoch is not supported"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("V1 epoch is not supported"));
+        }
     }
 
     private async Task<JsonDocument> SendUnderStrictHexFormat(string method, string epochJson)
@@ -300,8 +321,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Has.Length.EqualTo(2));
+        }
         Assert.That(result.Data, Is.EqualTo(new[] { 100UL, 150UL }));
     }
 
@@ -318,8 +342,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -339,8 +366,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -363,8 +393,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -387,8 +420,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -411,8 +447,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -460,10 +499,16 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Vote, Is.Not.Null);
-        Assert.That(result.Data.Timeout, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Vote, Is.Not.Null);
+            Assert.That(result.Data.Timeout, Is.Not.Null);
+        }
     }
 
     /// <summary>
@@ -491,14 +536,20 @@ public class RpcModuleTests
         {
             members.Add(member.Name);
         }
-        Assert.That(members, Is.EquivalentTo(new[] { "vote", "timeout" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(members, Is.EquivalentTo(new[] { "vote", "timeout" }));
 
-        Assert.That(poolStatus.Vote!.Keys, Is.EquivalentTo(new[] { poolKey }));
+            Assert.That(poolStatus.Vote!.Keys, Is.EquivalentTo(new[] { poolKey }));
+        }
         SignerTypes bucket = poolStatus.Vote[poolKey];
-        Assert.That(bucket.CurrentNumber, Is.EqualTo(2));
-        Assert.That(bucket.CurrentSigners, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(bucket.MissingSigners, Is.EquivalentTo(new[] { TestItem.AddressC }));
-        Assert.That(poolStatus.Timeout, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.CurrentNumber, Is.EqualTo(2));
+            Assert.That(bucket.CurrentSigners, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(bucket.MissingSigners, Is.EquivalentTo(new[] { TestItem.AddressC }));
+            Assert.That(poolStatus.Timeout, Is.Empty);
+        }
     }
 
     [Test]
@@ -511,8 +562,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -526,8 +580,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -542,8 +599,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -577,13 +637,19 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Latest);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Masternodes, Is.EquivalentTo(masternodes));
-        Assert.That(result.Data.Penalty, Is.EquivalentTo(penalties));
-        Assert.That(result.Data.Standbynodes, Is.EquivalentTo(standbynodes));
-        Assert.That(result.Data.Number, Is.EqualTo(100));
-        Assert.That(result.Data.Round, Is.EqualTo((UInt256)50));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Masternodes, Is.EquivalentTo(masternodes));
+            Assert.That(result.Data.Penalty, Is.EquivalentTo(penalties));
+            Assert.That(result.Data.Standbynodes, Is.EquivalentTo(standbynodes));
+            Assert.That(result.Data.Number, Is.EqualTo(100));
+            Assert.That(result.Data.Round, Is.EqualTo((UInt256)50));
+        }
     }
 
     [Test]
@@ -605,8 +671,11 @@ public class RpcModuleTests
 
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data!.Number, Is.EqualTo(FinalizedBlockNumber));
@@ -647,8 +716,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -662,8 +734,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -679,8 +754,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -698,8 +776,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -782,8 +863,11 @@ public class RpcModuleTests
 
         ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Latest);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data!.Committed, Is.False);
@@ -811,7 +895,9 @@ public class RpcModuleTests
         ResultWrapper<V2BlockInfo> result = CreateRpcModule(new XdcSubnetHeaderDecoder())
             .XDPoS_getV2BlockByNumber(new BlockParameter(header.Number));
 
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(result.Data?.EncodedRLP, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(Keccak.Compute(Convert.FromBase64String(result.Data!.EncodedRLP!)), Is.EqualTo(header.Hash));
     }
 
@@ -846,8 +932,11 @@ public class RpcModuleTests
 
     private static void AssertCommitted(ResultWrapper<V2BlockInfo> result, bool expectedCommitted)
     {
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data!.Committed, Is.EqualTo(expectedCommitted));
@@ -877,8 +966,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(BlockParameter.Latest);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        }
     }
 
     [Test]
@@ -904,8 +996,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        }
     }
 
     [Test]
@@ -918,8 +1013,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -933,8 +1031,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -965,8 +1066,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result =
             _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(byFinalizedTag ? BlockParameter.Finalized : new BlockParameter(1803));
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         PublicApiMissedRoundsMetadata data = result.Data!;
         Assert.That(data.MissedRounds, Is.Not.Null);
         MissedRoundInfo[] missedRounds = data.MissedRounds!;
@@ -1039,8 +1143,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -1054,8 +1161,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -1071,8 +1181,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -1148,9 +1261,14 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(result.Data!.EpochRewards, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(result.Data.EpochRewards!.Length, Is.EqualTo(2));
         Assert.That(result.Data.Total, Is.Not.Null);
         Assert.That(result.Data.EpochRewards![1].DelegatedReward, Is.Not.Null);
@@ -1284,8 +1402,11 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -1306,8 +1427,11 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     private static Dictionary<string, XdcRewardLog> GetSignerSection(XdcEpochRewards rewards, string section) =>

@@ -35,7 +35,7 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // The upper-bound TXPARAM(0x06), priced with the processor's helper so the admission bound
+        // max_fee, the bound of max_cost, priced with the processor's helper so the admission bound
         // and the payer-solvency gate cannot drift. The spec pinned for the submission, not the head's:
         // a head that moves mid-pipeline would price this against rules AddCore never validated the pool for.
         IReleaseSpec spec = state.HeadSpec;
@@ -50,7 +50,7 @@ internal sealed class FrameTxPayerExposureFilter(
         UInt256 balance;
         if (payer is null || payer == tx.SenderAddress)
         {
-            // TXPARAM(0x06) prices gas alone, so wherever the sender is also what pays, the wei its own frames
+            // max_fee bounds fees alone, so wherever the sender is also what pays, the wei its own frames
             // move is added to the bound. Only the part no earlier frame could have funded: see the helper.
             if (UInt256.AddOverflow(maxCost, LeadingSenderFrameValue(tx), out cost))
             {

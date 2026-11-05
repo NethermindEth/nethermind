@@ -69,12 +69,18 @@ public class DiffsWriterWalkerTests
         Hash256 expectedAddressHash = TestItem.AddressB.ToAccountPath.ToCommitment();
 
         Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
-        Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
-        Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(3));
-        Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
-        Assert.That(diff.CodeHashChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
-        Assert.That(diff.CodeHashChanges[0].OldCodeHash, Is.EqualTo(CodeHashChange.NoCode));
-        Assert.That(diff.CodeHashChanges[0].NewCodeHash, Is.Not.EqualTo(CodeHashChange.NoCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
+            Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(3));
+            Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.CodeHashChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
+            Assert.That(diff.CodeHashChanges[0].OldCodeHash, Is.EqualTo(CodeHashChange.NoCode));
+            Assert.That(diff.CodeHashChanges[0].NewCodeHash, Is.Not.EqualTo(CodeHashChange.NoCode));
+        }
     }
 
     [Test]
@@ -103,9 +109,12 @@ public class DiffsWriterWalkerTests
 
         Hash256 expectedAddressHash = TestItem.AddressB.ToAccountPath.ToCommitment();
         Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
-        Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
-        Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(-2));
-        Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
+            Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(-2));
+            Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        }
         Assert.That(diff.CodeHashChanges[0].NewCodeHash, Is.EqualTo(CodeHashChange.NoCode));
     }
 
@@ -123,8 +132,11 @@ public class DiffsWriterWalkerTests
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root, root, resolver, resolver);
 
-        Assert.That(diff.SlotCountChanges, Is.Empty);
-        Assert.That(diff.CodeHashChanges, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.SlotCountChanges, Is.Empty);
+            Assert.That(diff.CodeHashChanges, Is.Empty);
+        }
     }
 
     [Test]
@@ -179,13 +191,16 @@ public class DiffsWriterWalkerTests
 
         Hash256 expectedAddressHash = TestItem.AddressB.ToAccountPath.ToCommitment();
         Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
-        Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
-        Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(3));
-        Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.SlotCountChanges[0].AddressHash, Is.EqualTo(expectedAddressHash.ValueHash256));
+            Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(3));
+            Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
 
-        Assert.That(diff.AccountTrieBytesDelta, Is.GreaterThan(0));
-        Assert.That(diff.StorageTrieBytesDelta, Is.GreaterThan(0));
-        Assert.That(diff.AccountsAddedDelta, Is.EqualTo(1));
+            Assert.That(diff.AccountTrieBytesDelta, Is.GreaterThan(0));
+            Assert.That(diff.StorageTrieBytesDelta, Is.GreaterThan(0));
+            Assert.That(diff.AccountsAddedDelta, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -212,12 +227,18 @@ public class DiffsWriterWalkerTests
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
 
-        Assert.That(diff.AccountsAddedDelta, Is.EqualTo(-1));
-        Assert.That(diff.StorageTrieBytesDelta, Is.LessThan(0));
-        // Account trie can shift either way when a leaf disappears (extension collapse, branch demotion).
-        Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
-        Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(-2));
-        Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAddedDelta, Is.EqualTo(-1));
+            Assert.That(diff.StorageTrieBytesDelta, Is.LessThan(0));
+            // Account trie can shift either way when a leaf disappears (extension collapse, branch demotion).
+            Assert.That(diff.SlotCountChanges, Has.Count.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.SlotCountChanges[0].SlotDelta, Is.EqualTo(-2));
+            Assert.That(diff.CodeHashChanges, Has.Count.EqualTo(1));
+        }
     }
 
     [Test]
@@ -234,9 +255,12 @@ public class DiffsWriterWalkerTests
         TrieDiffWalker walker = new();
         TrieDiff diff = walker.ComputeDiff(root, root, resolver, resolver);
 
-        Assert.That(diff.AccountTrieBytesDelta, Is.Zero);
-        Assert.That(diff.StorageTrieBytesDelta, Is.Zero);
-        Assert.That(diff.AccountsAddedDelta, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountTrieBytesDelta, Is.Zero);
+            Assert.That(diff.StorageTrieBytesDelta, Is.Zero);
+            Assert.That(diff.AccountsAddedDelta, Is.Zero);
+        }
     }
 
     [Test]
@@ -263,8 +287,11 @@ public class DiffsWriterWalkerTests
         TrieDiff forward = walker.ComputeDiff(root1, root2, resolver, resolver);
         TrieDiff reverse = walker.ComputeDiff(root2, root1, resolver, resolver);
 
-        Assert.That(forward.AccountTrieBytesDelta, Is.EqualTo(-reverse.AccountTrieBytesDelta));
-        Assert.That(forward.StorageTrieBytesDelta, Is.EqualTo(-reverse.StorageTrieBytesDelta));
-        Assert.That(forward.AccountsAddedDelta, Is.EqualTo(-reverse.AccountsAddedDelta));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forward.AccountTrieBytesDelta, Is.EqualTo(-reverse.AccountTrieBytesDelta));
+            Assert.That(forward.StorageTrieBytesDelta, Is.EqualTo(-reverse.StorageTrieBytesDelta));
+            Assert.That(forward.AccountsAddedDelta, Is.EqualTo(-reverse.AccountsAddedDelta));
+        }
     }
 }

@@ -57,9 +57,12 @@ public class XdcSpecProviderTests
 
         XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
-        Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
-        Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
-        Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
+            Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
+            Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
+        }
     }
 
     [TestCase(0UL, 0UL)]
@@ -140,8 +143,11 @@ public class XdcSpecProviderTests
 
         XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
 
-        Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock - 1).IsDynamicGasLimitBlock, Is.False);
-        Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock).IsDynamicGasLimitBlock, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock - 1).IsDynamicGasLimitBlock, Is.False);
+            Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock).IsDynamicGasLimitBlock, Is.True);
+        }
     }
 
     private static XdcChainSpecBasedSpecProvider BuildProvider(XdcChainSpecEngineParameters parameters)
@@ -247,10 +253,13 @@ public class XdcSpecProviderTests
         Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
         IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
-        Assert.That(specB.SwitchRound, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specB.SwitchRound, Is.EqualTo(10));
 
-        Assert.That(specA.SwitchRound, Is.EqualTo(0));
+            Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
-        Assert.That(ReferenceEquals(specA, specB), Is.False);
+            Assert.That(ReferenceEquals(specA, specB), Is.False);
+        }
     }
 }

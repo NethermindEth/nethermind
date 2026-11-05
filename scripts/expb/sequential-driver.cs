@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include ../ci/script-process.helpers.cs
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -184,6 +185,34 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         foreach (var (key, value) in ParsePairs(Get("CLIENT_ENV"))) extraEnvironment[key] = value;
         if (Get("TRACE_BLOCKS").Length > 0) extraEnvironment["NETHERMIND_PROFILE_BLOCKS"] = Get("TRACE_BLOCKS");
         return (config, name);
+    }
+
+    internal string[] StartupFlags(JsonObject scenario)
+    {
+        var source = Get("FLAT_SNAPSHOT_BLOCK_DIR");
+        if (Get("CLIENT", "nethermind") != "nethermind" || Get("STATE_LAYOUT") != "flat" || source.Length == 0
+            || Text(scenario["snapshot_source"]) != source)
+            return [];
+        var block = SnapshotBlockRegex().Match(source[(source.LastIndexOf('/') + 1)..]);
+        if (!block.Success) throw new ArgumentException($"snapshot fixture '{source}' has no canonical numeric block suffix");
+        return ["--startup-block", block.Groups[1].Value];
+    }
+
+    internal async Task ProbeStartup(string[] flags, CancellationToken cancellationToken,
+        Func<string, string[], CancellationToken, Task<string>>? capture = null, TimeProvider? timeProvider = null)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30), timeProvider ?? TimeProvider.System);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        capture ??= Capture;
+        try { await capture(Get("EXPB_BIN", "expb"), ["execute-scenarios", .. flags, "--help"], timeout.Token); }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("snapshot checkpoint capability probe timed out after 30 seconds", exception);
+        }
+        catch (Exception exception) when (exception is IOException or Win32Exception)
+        {
+            throw new IOException($"snapshot checkpoint capability probe failed: {exception.Message}", exception);
+        }
     }
 
     private static void ReplaceStrings(JsonNode node, string oldValue, string newValue)
@@ -488,6 +517,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
                 if (Get("DOTTRACE", "false") == "true") command.AddRange(["--dottrace", "--dottrace-mode", Get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]);
                 if (Get("PERF", "false") == "true") command.Add("--perf");
                 if (Get("MEASUREMENT_SOURCE", "auto") == "engine-api") command.Add("--no-client-metrics");
+                command.AddRange(StartupFlags(config["scenarios"]![scenario]!.AsObject()));
                 result["command"] = Array(command);
                 var childEnvironment = ParsePairs(Get("EXPB_ENV_PASSTHROUGH"));
                 if (Get("MEASUREMENT_MODE", "standard") == "compute-warm") childEnvironment["EXPB_EVM_WARMUP"] = "1";
@@ -626,7 +656,8 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         Func<JsonObject, CancellationToken, Task>? verify = null,
         Func<JsonObject, JsonObject, int, string, CancellationToken, Task<JsonObject>>? sample = null,
         Action<string, JsonArray, int, JsonArray>? summary = null,
-        Action<string, string, JsonArray, int, JsonArray, List<string>?>? save = null)
+        Action<string, string, JsonArray, int, JsonArray, List<string>?>? save = null,
+        Func<string[], CancellationToken, Task>? probe = null)
     {
         var root = Get("EXPB_CAMPAIGN_DIR");
         if (root.Length == 0) root = ".";
@@ -649,7 +680,13 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
             if (ids.Distinct().Count() != ids.Length || ids.Any(id => id is "." or ".." || !ImageIdRegex().IsMatch(id))) throw new ArgumentException("image IDs must be unique and shell-safe");
             runCount = int.Parse(Get("RUN_COUNT", "1"), CultureInfo.InvariantCulture);
             if (runCount < 1) throw new ArgumentException("RUN_COUNT must be positive");
-            Render(config, images[0]!.AsObject(), 1);
+            var (rendered, scenario) = Render(config, images[0]!.AsObject(), 1);
+            var startupFlags = StartupFlags(rendered["scenarios"]![scenario]!.AsObject());
+            if (startupFlags.Length > 0)
+            {
+                if (probe is null) await ProbeStartup(startupFlags, cancellationToken);
+                else await probe(startupFlags, cancellationToken);
+            }
             ParsePairs(Get("EXPB_ENV_PASSTHROUGH"));
             await verify(config, cancellationToken);
         }
@@ -695,6 +732,8 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
         }
         return !stopped && !cancellationToken.IsCancellationRequested && failureReasons.Count == 0 && samples.Count == images.Count * runCount && samples.All(item => Text(item!["status"]) == "success") ? 0 : 1;
     }
+    [GeneratedRegex(@"\Anethermind-flat-(0|[1-9][0-9]*)\z")]
+    private static partial Regex SnapshotBlockRegex();
     [GeneratedRegex("[\\r\\n,]")]
     private static partial Regex SeparatorsRegex();
     [GeneratedRegex(@"\s+", RegexOptions.None, 1000)]

@@ -113,7 +113,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             ];
 
             using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
-            new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).GetLength(message, out int contentLength);
+            RlpReader encoded = new(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).SerializeToArray(message));
+            int contentLength = encoded.ReadSequenceLength();
 
             // The outgoing size caps are only sound if a block's estimate covers every byte the
             // serializer writes for that block, framing included.

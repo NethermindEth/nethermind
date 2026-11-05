@@ -25,7 +25,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
-               + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+               + Rlp.LengthOf(tx.MaxFeePerBlobGas.GetValueOrDefault())
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(networkSize)
@@ -37,39 +37,32 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
                + TrailingLength(tx, paymaster, dependencyBearing);
 
-    /// <summary>
-    /// Length of the single optional trailing group, or zero when the record needs none.
-    /// </summary>
+    /// <summary>Length of the trailing group a frame transaction's record ends in, or zero for any other type.</summary>
     /// <remarks>
-    /// One group rather than two adjacent optional sequences: RLP cannot tell a 20-byte integer from an
-    /// address, so a two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
+    /// One group rather than adjacent optional fields: RLP cannot tell a 20-byte integer from an address, so a
+    /// two-key <c>nonce_keys</c> list is byte-identical to a payer pair.
     /// </remarks>
     private static int TrailingLength(Transaction tx, Address? paymaster, bool dependencyBearing)
     {
         int content = TrailingContentLength(tx, paymaster, dependencyBearing);
-        return content == 0
-            ? tx.NonceKeys is { } keysOnly ? FrameTxNonceCalldata.KeysLength(keysOnly) : 0
-            : Rlp.LengthOfSequence(content);
+        return content == 0 ? 0 : Rlp.LengthOfSequence(content);
     }
 
-    /// <summary>Content length of the grouped form, or zero for a record that needs none of its slots.</summary>
+    /// <summary>Content length of the trailing group, or zero for a record that is not a frame transaction's.</summary>
     /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
-    /// disagree and over- or under-fill the buffer. The exposure is a slot in its own right: a payer-less frame
-    /// transaction reserves nothing but is still summed at the price admission recorded. A zero price is absent
-    /// on the read side, so it cannot open the group alone, or the record would pay for a slot decoding discards.
+    /// disagree and over- or under-fill the buffer. Every slot is written, so the group always ends in the key-set flag,
+    /// followed only for an EIP-8288 dependency-bearing record by its flag.
     /// </remarks>
-    private static int TrailingContentLength(Transaction tx, Address? paymaster, bool dependencyBearing)
-    {
-        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true } && !dependencyBearing) return 0;
-
-        // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
-        // nonce_keys list a groupless record still writes, whose first element is a scalar.
-        return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
-               + Rlp.LengthOf(tx.PayerAddress)
-               + Rlp.LengthOf(tx.PayerExposure ?? default)
-               + (paymaster is not null ? Rlp.LengthOf(paymaster) : dependencyBearing ? Rlp.LengthOf((Address?)null) : 0)
-               + (dependencyBearing ? Rlp.LengthOf((byte)1) : 0);
-    }
+    private static int TrailingContentLength(Transaction tx, Address? paymaster, bool dependencyBearing) =>
+        !tx.SupportsFrames
+            ? 0
+            : (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
+              + Rlp.LengthOf(tx.PayerAddress)
+              + Rlp.LengthOf(tx.PayerExposure ?? default)
+              + Rlp.LengthOf(paymaster)
+              + Rlp.LengthOf(tx.MaxFee)
+              + Rlp.LengthOf(tx.NonceKeys is not null)
+              + (dependencyBearing ? Rlp.LengthOf(true) : 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -90,7 +83,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.GasLimit);
         writer.Encode(tx.GasPrice);
         writer.Encode(tx.DecodedMaxFeePerGas);
-        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        // A frame transaction has no max_fee_per_blob_gas; its max_fee is a trailing slot.
+        writer.Encode(tx.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(networkSize);
@@ -102,35 +96,32 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode((byte)tx.Type);
         // Expiry needs the deadline after a reload, where the frames that carried it are gone.
         if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
-        // One optional trailing group, a sequence so the decoder tells it from the expiry deadline that only
-        // sometimes precedes it. Written whole, so the keys list is present even when empty.
+        // The trailing group of a frame transaction, a sequence so the decoder tells it from the expiry deadline that
+        // only sometimes precedes it.
         int trailingContent = TrailingContentLength(tx, paymaster, dependencyBearing);
-        if (trailingContent == 0)
-        {
-            // Nothing to group: a keys-only record keeps the exact bytes every earlier build writes.
-            if (tx.NonceKeys is { } keysOnly) FrameTxNonceCalldata.EncodeKeys(keysOnly, ref writer);
-        }
-        else
+        if (trailingContent != 0)
         {
             writer.StartSequence(trailingContent);
             if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
             else writer.StartSequence(0);
 
-            // Null when the payer is not what needs the group: a record admitted without simulation names a
+            // Null when the payer is not what needs the slot: a record admitted without simulation names a
             // sponsor the cap counts, or a price the sender bound sums, with no payer to reserve against.
             writer.Encode(tx.PayerAddress);
             // The placeholder for a transaction that never reached the exposure gate, read back as absent.
             // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
             writer.Encode(tx.PayerExposure ?? default);
-            if (paymaster is not null) writer.Encode(paymaster);
-            else if (dependencyBearing) writer.Encode((Address?)null);
-            if (dependencyBearing) writer.Encode((byte)1);
+            writer.Encode(paymaster);
+            writer.Encode(tx.MaxFee);
+            // The keys list writes an empty set as it writes none, yet EIP-8250 accepts the one and refuses the other.
+            writer.Encode(tx.NonceKeys is not null);
+            if (dependencyBearing) writer.Encode(true);
         }
 
         return bytes;
     }
 
-    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c>; the caller restores an empty set when the record's key-set flag is set.</summary>
     private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
     {
         UInt256[] keys = FrameTxNonceCalldata.DecodeKeys(ref ctx);
@@ -169,53 +160,54 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion ? persistedEncodingSize : 0;
         int elidedNetworkEncodingSize = sizeFormatVersion == ElidedNetworkEncodingSizeFormatVersion ? persistedEncodingSize : 0;
         TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
-        // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
+        // The deadline is the only optional scalar left, so a sequence here means the trailing group follows instead.
         ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
         UInt256[]? nonceKeys = null;
         Address? payerAddress = null;
         UInt256? payerExposure = null;
         Address? paymaster = null;
+        UInt256? maxFee = null;
         bool? dependencyBearing = null;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
-            // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
-            // always opens with the keys list. That is total, since a key can never encode as a sequence.
-            int groupStart = ctx.Position;
             int trailingLength = ctx.ReadSequenceLength();
             int end = ctx.Position + trailingLength;
-            // Length-checked first: an empty group is a legacy empty list, and IsSequenceNext is an
-            // unguarded index that would read past the buffer for it.
+            // Length-checked first: IsSequenceNext is an unguarded index that would read past an empty group.
+            // A group not opening with the keys list is the flat nonce_keys list of a record from before max_fee.
             if (trailingLength > 0 && ctx.IsSequenceNext())
             {
                 nonceKeys = DecodeKeysOrNull(ref ctx);
-                // Nullable: a group written for the paymaster alone leaves this slot empty.
+                // Nullable: a record admitted without simulation leaves this slot empty.
                 if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
                 if (ctx.Position < end)
                 {
-                    // The placeholder must not read back as a price: a record an earlier build wrote for its
-                    // paymaster alone carries one, and the sender's bound now charges the record at it.
+                    // The placeholder must not read back as a price, or the sender's bound would charge the
+                    // record at it rather than at max_fee.
                     UInt256 priced = ctx.DecodeUInt256();
                     if (!priced.IsZero) payerExposure = priced;
                 }
 
-                // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
-                // is written as the placeholder rather than omitted.
                 if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                if (ctx.Position < end) maxFee = ctx.DecodeUInt256();
+                // A record from before the flag reads an empty keys list as no set.
+                if (ctx.Position < end && ctx.DecodeBool()) nonceKeys ??= [];
                 // Written only for a dependency-bearing record; a record without the slot is read as unknown.
-                if (ctx.Position < end) dependencyBearing = ctx.DecodeByte() == 1;
-                // Anything a later build appended is skipped, so a new slot costs this one that field
-                // rather than making every grouped record unreadable.
-                ctx.Position = end;
+                if (ctx.Position < end) dependencyBearing = ctx.DecodeBool();
             }
-            else
-            {
-                // Rewound so the same decoder reads the flat list, whose header this group's was.
-                ctx.Position = groupStart;
-                nonceKeys = DecodeKeysOrNull(ref ctx);
-            }
+
+            // Anything a later build appended is skipped, so a new slot costs this one that field rather than
+            // making every record unreadable.
+            ctx.Position = end;
         }
 
         ctx.Check(data.Length);
+
+        // A frame record without max_fee was written for the per-gas fee shape, which no longer prices it: read as
+        // zero it would understate what the transaction can cost, so it is unreadable rather than restored.
+        if (type.SupportsFrames() && maxFee is null)
+        {
+            throw new RlpException($"{nameof(TxType.FrameTx)} record carries no max_fee");
+        }
 
         return new LightTransaction(
             timestamp,
@@ -240,6 +232,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             payerAddress,
             payerExposure,
             paymaster,
+            maxFee.GetValueOrDefault(),
             dependencyBearing);
     }
 

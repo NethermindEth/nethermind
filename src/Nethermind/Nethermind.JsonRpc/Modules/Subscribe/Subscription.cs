@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;
 
-        private static readonly Func<object?, Task> InvokeAction = static action => ((Func<Task>)action!)();
+        private static readonly Func<Func<Task>, Task> InvokeAction = static action => action();
 
         private Channel<QueuedSend> SendChannel { get; }
 
@@ -105,10 +105,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// A delegate cached by the subscription plus the event's payload as <paramref name="state"/> queues an event
         /// without allocating a closure, and keeps alive only that payload until it is sent.
         /// </remarks>
-        protected void ScheduleAction(Func<object?, Task> send, object? state)
+        protected void ScheduleAction<TState>(Func<TState, Task> send, TState state) where TState : class? =>
+            Enqueue(new QueuedSend(send, state, 0, TypedSend<TState>.Invoke));
+
+        /// <summary>
+        /// Queues <paramref name="send"/> to be invoked with <paramref name="state"/> and <paramref name="argument"/> in
+        /// order with the other queued sends.
+        /// </summary>
+        /// <remarks>
+        /// Like <see cref="ScheduleAction{TState}(Func{TState, Task}, TState)"/>, plus a value found while queuing that
+        /// the send would otherwise compute again, carried without allocating.
+        /// </remarks>
+        protected void ScheduleAction<TState>(Func<TState, long, Task> send, TState state, long argument) where TState : class? =>
+            Enqueue(new QueuedSend(send, state, argument, TypedSendWithArgument<TState>.Invoke));
+
+        private void Enqueue(QueuedSend queued)
         {
             // TryComplete fails once disposed, so only an overflow gets past it.
-            if (SendChannel.Writer.TryWrite(new QueuedSend(send, state)) || !SendChannel.Writer.TryComplete()) return;
+            if (SendChannel.Writer.TryWrite(queued) || !SendChannel.Writer.TryComplete()) return;
 
             _overflowed = true;
             if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
@@ -132,7 +146,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
                         try
                         {
-                            await queued.Send(queued.State);
+                            await queued.Invoke(queued.Send, queued.State, queued.Argument);
                         }
                         catch (Exception e)
                         {
@@ -147,6 +161,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        private readonly record struct QueuedSend(Func<object?, Task> Send, object? State);
+        /// <remarks>
+        /// One channel holds sends of every state type, so the typed pair is stored untyped and restored by
+        /// <see cref="TypedSend{TState}.Invoke"/> or <see cref="TypedSendWithArgument{TState}.Invoke"/>, which only the
+        /// matching <c>ScheduleAction</c> overload pairs with it.
+        /// </remarks>
+        private readonly record struct QueuedSend(Delegate Send, object? State, long Argument, Func<Delegate, object?, long, Task> Invoke);
+
+        private static class TypedSend<TState> where TState : class?
+        {
+            public static readonly Func<Delegate, object?, long, Task> Invoke = static (send, state, _) => ((Func<TState, Task>)send)((TState)state);
+        }
+
+        private static class TypedSendWithArgument<TState> where TState : class?
+        {
+            public static readonly Func<Delegate, object?, long, Task> Invoke = static (send, state, argument) => ((Func<TState, long, Task>)send)((TState)state, argument);
+        }
     }
 }

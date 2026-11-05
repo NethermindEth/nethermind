@@ -217,7 +217,9 @@ public class StatelessInputGeneratorTests
 
             Block restored;
             byte[]? encoded = await InputGenerator.EncodeInput(rawBlock, witness, specProvider);
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded),
                 Is.EqualTo((amsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId()));
             if (amsterdam)
@@ -271,7 +273,9 @@ public class StatelessInputGeneratorTests
 
         byte[]? encoded = await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(requestsEnabled ? Osaka.Instance : Cancun.Instance));
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
@@ -345,8 +349,9 @@ public class StatelessInputGeneratorTests
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether);
-            byte[] depositLog = AbiEncoder.Instance.Encode(AbiEncodingStyle.None,
-                ExecutionRequestsProcessor.DepositEventAbi, TestItem.ExecutionRequestA.RequestDataParts!);
+            byte[][] parts = TestItem.ExecutionRequestA.RequestDataParts!;
+            byte[] depositLog = AbiCodec.Encode(new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+                (parts[0], parts[1], parts[2], parts[3], parts[4]));
             AddCode(spec.DepositContractAddress!, Prepare.EvmCode.StoreDataInMemory(0, depositLog)
                 .Log(depositLog.Length, 0, [ExecutionRequestsProcessor.DepositEventAbi.Hash])
                 .Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done);

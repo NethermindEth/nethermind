@@ -86,8 +86,11 @@ namespace Nethermind.AuRa.Test
                 kvp => kvp.StepDuration);
             AuRaStepCalculator calculator = new(stepDurations, timestamper, LimboLogs.Instance);
             timestamper.Add(TimeSpan.FromSeconds(second));
-            Assert.That(calculator.CurrentStep, Is.EqualTo(expectedStep));
-            Assert.That(calculator.TimeToNextStep, Is.EqualTo(TimeSpan.FromSeconds(expectedSecondsToNextStep)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(calculator.CurrentStep, Is.EqualTo(expectedStep));
+                Assert.That(calculator.TimeToNextStep, Is.EqualTo(TimeSpan.FromSeconds(expectedSecondsToNextStep)));
+            }
         }
 
         private IDictionary<ulong, long> GetStepDurationsForSingleStep(long stepDuration) =>

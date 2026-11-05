@@ -38,8 +38,11 @@ public class ExecutionPayloadV4Tests
 
         Result<Block> result = payload.TryGetBlock();
 
-        Assert.That(result.Data, Is.Null);
-        Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Null);
+            Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        }
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
@@ -66,8 +69,11 @@ public class ExecutionPayloadV4Tests
         Result<Block> result = payload.TryGetBlock();
         Result<Block> cachedResult = payload.TryGetBlock();
 
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(cachedResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(cachedResult.Data, Is.Not.Null);
+        }
         Block block = result.Data!;
         Assert.That(cachedResult.Data!.BlockAccessList, Is.SameAs(block.BlockAccessList));
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
@@ -84,7 +90,11 @@ public class ExecutionPayloadV4Tests
     {
         string genesis = $$"""
             {
-              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
+              "config": {
+                "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
+                "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
+                "shanghaiTime": 0, "amsterdamTime": 15, "{{label}}": 15
+              },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
               "alloc": {}

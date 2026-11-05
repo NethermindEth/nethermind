@@ -96,8 +96,11 @@ public class OptimizedDictionaryZkEvmTests
                     break;
             }
 
-            Assert.That(set.Count, Is.EqualTo(expected.Count));
-            Assert.That(new List<CollidingKey>(set), Is.EqualTo(new List<CollidingKey>(expected)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(set.Count, Is.EqualTo(expected.Count));
+                Assert.That(new List<CollidingKey>(set), Is.EqualTo(new List<CollidingKey>(expected)));
+            }
         }
     }
 
@@ -144,8 +147,11 @@ public class OptimizedDictionaryZkEvmTests
 
     private static void AssertSameContents(OptimizedDictionary<CollidingKey, int> map, Dictionary<CollidingKey, int> expected)
     {
-        Assert.That(map.Count, Is.EqualTo(expected.Count));
-        Assert.That(new List<KeyValuePair<CollidingKey, int>>(map), Is.EqualTo(new List<KeyValuePair<CollidingKey, int>>(expected)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(map.Count, Is.EqualTo(expected.Count));
+            Assert.That(new List<KeyValuePair<CollidingKey, int>>(map), Is.EqualTo(new List<KeyValuePair<CollidingKey, int>>(expected)));
+        }
     }
 
     /// <summary>A key whose hash keeps only a few bits, so chains of several entries share each bucket.</summary>

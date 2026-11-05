@@ -33,8 +33,11 @@ namespace Nethermind.Db.Test
             IDb column1 = columnsDb.GetColumnDb(TestColumns.Column1);
             IDb column2 = columnsDb.GetColumnDb(TestColumns.Column2);
 
-            Assert.That(column1, Is.Not.Null);
-            Assert.That(column2, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(column1, Is.Not.Null);
+                Assert.That(column2, Is.Not.Null);
+            }
             Assert.That(column1, Is.Not.SameAs(column2));
         }
 
@@ -49,8 +52,11 @@ namespace Nethermind.Db.Test
             column1.Set(TestItem.KeccakA, _sampleValue);
             column2.Set(TestItem.KeccakA, _sampleValue2);
 
-            Assert.That(column1.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
-            Assert.That(column2.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(column1.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+                Assert.That(column2.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
+            }
         }
 
         [Test]
@@ -86,12 +92,15 @@ namespace Nethermind.Db.Test
 
             // Snapshot should see old values
             IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(TestColumns.Column1);
-            Assert.That(snapshotColumn.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
-            Assert.That(snapshotColumn.Get(TestItem.KeccakB), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshotColumn.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+                Assert.That(snapshotColumn.Get(TestItem.KeccakB), Is.Null);
 
-            // Main db should see new values
-            Assert.That(column1.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
-            Assert.That(column1.Get(TestItem.KeccakB), Is.EqualTo(_sampleValue2));
+                // Main db should see new values
+                Assert.That(column1.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
+                Assert.That(column1.Get(TestItem.KeccakB), Is.EqualTo(_sampleValue2));
+            }
 
             snapshot.Dispose();
         }
@@ -117,8 +126,11 @@ namespace Nethermind.Db.Test
             IReadOnlyKeyValueStore snapshotColumn1 = snapshot.GetColumn(TestColumns.Column1);
             IReadOnlyKeyValueStore snapshotColumn2 = snapshot.GetColumn(TestColumns.Column2);
 
-            Assert.That(snapshotColumn1.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1 }));
-            Assert.That(snapshotColumn2.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 2 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshotColumn1.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(snapshotColumn2.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 2 }));
+            }
 
             snapshot.Dispose();
         }
@@ -139,8 +151,11 @@ namespace Nethermind.Db.Test
             column1.Set(TestItem.KeccakA, new byte[] { 3 });
 
             // Each snapshot sees its version
-            Assert.That(snapshot1.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1 }));
-            Assert.That(snapshot2.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 2 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot1.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(snapshot2.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 2 }));
+            }
 
             snapshot1.Dispose();
             snapshot2.Dispose();
@@ -194,8 +209,11 @@ namespace Nethermind.Db.Test
             }
 
             writer.GetAwaiter().GetResult();
-            Assert.That(snapshotCount, Is.GreaterThan(0), "no snapshot overlapped the writer");
-            Assert.That(tornSnapshots, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshotCount, Is.GreaterThan(0), "no snapshot overlapped the writer");
+                Assert.That(tornSnapshots, Is.Zero);
+            }
         }
 
         [Test]
@@ -233,11 +251,17 @@ namespace Nethermind.Db.Test
             byte[]? firstKey = sortedColumn.FirstKey;
             byte[]? lastKey = sortedColumn.LastKey;
 
-            Assert.That(firstKey, Is.Not.Null);
-            Assert.That(lastKey, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstKey, Is.Not.Null);
+                Assert.That(lastKey, Is.Not.Null);
+            }
 
-            Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01
-            Assert.That(lastKey, Is.EqualTo(keyC));   // 0x03
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01
+                Assert.That(lastKey, Is.EqualTo(keyC));   // 0x03
+            }
 
             snapshot.Dispose();
         }

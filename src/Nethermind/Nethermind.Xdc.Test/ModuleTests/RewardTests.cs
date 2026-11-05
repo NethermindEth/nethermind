@@ -56,8 +56,11 @@ public class RewardTests
 
         HashSet<Address> masternodes = rewardCalculator.GetRewardMasternodes(checkpointHeader, spec);
 
-        Assert.That(rewardCalculator, isSubnet ? Is.TypeOf<XdcSubnetRewardCalculator>() : Is.TypeOf<XdcRewardCalculator>());
-        Assert.That(masternodes, Has.Count.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewardCalculator, isSubnet ? Is.TypeOf<XdcSubnetRewardCalculator>() : Is.TypeOf<XdcRewardCalculator>());
+            Assert.That(masternodes, Has.Count.EqualTo(expectedCount));
+        }
         if (!isSubnet)
         {
             Assert.That(masternodes, Is.EquivalentTo(extraDataMasternodes));
@@ -140,17 +143,23 @@ public class RewardTests
         BlockReward[] rewardsAt3E = rewardCalculator.CalculateRewards(block3E);
 
         Address foundation = spec.FoundationWallet;
-        Assert.That(foundation, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundation, Is.Not.Null);
 
-        Assert.That(rewardsAt3E, Has.Length.EqualTo(2));
+            Assert.That(rewardsAt3E, Has.Length.EqualTo(2));
+        }
 
         UInt256 totalAt3E = rewardsAt3E.Aggregate(UInt256.Zero, (acc, r) => acc + r.Value);
         UInt256 foundationRewardAt3E = rewardsAt3E.Single(r => r.Address == foundation).Value;
         UInt256 ownerRewardAt3E = rewardsAt3E.Single(r => r.Address != foundation).Value;
 
         // Check 90/10 split on totals
-        Assert.That(foundationRewardAt3E, Is.EqualTo(totalAt3E / 10));
-        Assert.That(ownerRewardAt3E, Is.EqualTo(totalAt3E * 90 / 100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundationRewardAt3E, Is.EqualTo(totalAt3E / 10));
+            Assert.That(ownerRewardAt3E, Is.EqualTo(totalAt3E * 90 / 100));
+        }
 
         // === Part 2: signing hash in a different epoch still counts ===
 
@@ -194,8 +203,11 @@ public class RewardTests
         UInt256 foundationRewardAt4E = rewardsAt4E.Single(r => r.Address == foundation).Value;
         UInt256 ownerRewardAt4E = rewardsAt4E.Single(r => r.Address != foundation).Value;
 
-        Assert.That(foundationRewardAt4E, Is.EqualTo(totalAt4E / 10));
-        Assert.That(ownerRewardAt4E, Is.EqualTo(totalAt4E * 90 / 100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundationRewardAt4E, Is.EqualTo(totalAt4E / 10));
+            Assert.That(ownerRewardAt4E, Is.EqualTo(totalAt4E * 90 / 100));
+        }
 
         // === Part 3: if no signing tx, reward should be empty ===
 
@@ -742,9 +754,12 @@ public class RewardTests
 
         (BlockReward holderReward, UInt256 foundationWalletReward) = rewardCalculator.DistributeRewards(signer, reward, foundationWalletAddr);
 
-        Assert.That(holderReward.Address, Is.EqualTo(foundationWalletAddr));
-        Assert.That(holderReward.Value, Is.EqualTo(expectedFoundationReward));
-        Assert.That(foundationWalletReward, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(holderReward.Address, Is.EqualTo(foundationWalletAddr));
+            Assert.That(holderReward.Value, Is.EqualTo(expectedFoundationReward));
+            Assert.That(foundationWalletReward, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     private static Transaction BuildSigningTx(IXdcReleaseSpec spec, ulong blockNumber, Hash256 blockHash, PrivateKey signer, ulong nonce = 0)

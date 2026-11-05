@@ -8,11 +8,12 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Shutter.Contracts;
 
-public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IKeyperSetManagerContract
+public class KeyperSetManagerContract(ITransactionProcessor transactionProcessor, Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IKeyperSetManagerContract
 {
-    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index) => (Address)Call(blockHeader, nameof(GetKeyperSetAddress), Address.Zero, [index])[0];
+    internal static readonly ContractFunction<ulong, Address> GetKeyperSetAddressFunction = new AbiSignature("getKeyperSetAddress").With(AbiType.UInt64).Returns(AbiType.Address);
+    internal static readonly ContractFunction<ulong, ulong> GetKeyperSetIndexByBlockFunction = new AbiSignature("getKeyperSetIndexByBlock").With(AbiType.UInt64).Returns(AbiType.UInt64);
 
-    public ulong GetNumKeyperSets(BlockHeader blockHeader) => (ulong)Call(blockHeader, nameof(GetNumKeyperSets), Address.Zero, [])[0];
+    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index) => Call(blockHeader, GetKeyperSetAddressFunction, Address.Zero, index);
 
-    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber) => (ulong)Call(blockHeader, nameof(GetKeyperSetIndexByBlock), Address.Zero, [blockNumber])[0];
+    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber) => Call(blockHeader, GetKeyperSetIndexByBlockFunction, Address.Zero, blockNumber);
 }
