@@ -225,6 +225,13 @@ If the runtime does not support QUIC, the light client logs a warning and uses
 TCP without advertising QUIC. The embedded full consensus plugin keeps QUIC
 disabled by default; set `BeaconChain.QuicPort` to a distinct UDP port to enable it.
 
+Some Windows MsQuic builds, including the observed 2.5.10 runtime, leak native
+receive buffers after failed QUIC connection attempts
+([upstream fix](https://github.com/microsoft/msquic/pull/6333)). For long-running
+Windows clients on an affected runtime, use `--beacon-quic-port 0` until the
+installed MsQuic build contains that fix; beacon TCP remains available. This
+Windows datapath issue does not apply to the Linux Docker image.
+
 Example request:
 
 ```powershell
