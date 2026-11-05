@@ -119,19 +119,20 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo(gasUsed));
     }
 
-    [TestCase(Instruction.REVERT, "{\"output\":\"\",\"gasUsed\":\"0x6\",\"error\":\"execution reverted\"}")]
-    [TestCase(Instruction.RETURN, "{\"output\":\"\",\"gasUsed\":\"0x6\"}")]
-    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string summary)
+    [TestCase(Instruction.REVERT, "execution reverted", "0x6")]
+    [TestCase(Instruction.RETURN, null, "0x6")]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", "0x13498")]
+    public void Top_level_fault_is_repeated_with_error_before_summary(Instruction exit, string? error, string gasUsed)
     {
         byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
         string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string step = records[2];
-        string[] expected = exit == Instruction.REVERT
-            ? [step[..^1] + ",\"error\":\"execution reverted\"}", summary]
-            : [summary];
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        string summary = $"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}";
+        string[] expected = error is null ? [summary] : [step[..^1] + errorField + "}", summary];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(step, Does.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
+            Assert.That(step, Does.Contain($"\"gasCost\":\"0x0\",").And.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
             Assert.That(records[3..], Is.EqualTo(expected));
         }
     }
@@ -306,6 +307,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("return", "0x12", null)]
     [TestCase("revert", "0x12", "execution reverted")]
     [TestCase("badJump", "0xc350", "invalid jump destination")]
+    [TestCase("invalid", "0xc350", "invalid opcode: INVALID")]
     [TestCase("empty", "0x0", null)]
     [TestCase("identity", "0xf", null)]
     [TestCase("identity", "0xe", "out of gas", 14)]
@@ -328,6 +330,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "RETURN"],
             "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", "REVERT", "REVERT"],
             "badJump" => ["PUSH1", "JUMP"],
+            "invalid" => ["INVALID", "INVALID"],
             _ => []
         };
         string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
@@ -335,8 +338,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         {
             Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
             Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
-            if (scenario == "revert")
-                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain("\"error\":\"execution reverted\""));
+            if (scenario is "revert" or "invalid")
+                Assert.That(records[childExit - 1], Does.Contain("\"depth\":2").And.Contain($"\"error\":\"{error}\""));
             Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
             Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
             Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
@@ -564,6 +567,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" or "revert" => Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
                 .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "invalid" => Prepare.EvmCode.Op(Instruction.INVALID).Done,
             _ => []
         };
         TestState.CreateAccount(address, 1.Ether);

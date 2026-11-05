@@ -26,6 +26,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private byte[] _memoryBuffer = [];
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
+    private string? _invalidOpcodeError;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -180,7 +181,27 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        CompleteAction(0, default, evmExceptionType.GetEvmExceptionDescription());
+        string? error = _invalidOpcodeError ?? evmExceptionType.GetEvmExceptionDescription();
+        _invalidOpcodeError = null;
+        CompleteAction(0, default, error);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// As in Geth, the designated INVALID opcode is written as an executed step that costs no gas, followed by its
+    /// fault record. Defined opcodes that fail on their operands with the same error keep a single error record.
+    /// </remarks>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (error != EvmExceptionType.BadInstruction || _actionGas is null || CurrentTraceEntry?.OpcodeRaw != Instruction.INVALID)
+        {
+            base.ReportOperationError(error);
+            return;
+        }
+
+        CurrentTraceEntry.GasCost = 0;
+        _invalidOpcodeError = $"invalid opcode: {CurrentTraceEntry.Opcode}";
+        WriteFault(_invalidOpcodeError);
     }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
