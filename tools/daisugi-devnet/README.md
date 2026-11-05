@@ -162,6 +162,20 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 - Host ports: ELs `28547`, `28548`; beacon APIs `25053`, `25054`.
 - Wait until both new beacon nodes reach the head (`curl -s 127.0.0.1:25053/eth/v1/node/syncing`), then run `sync-check.sh`. Expected: identical hash, state root and receipts root for every block on all three ELs; the same raw proof block and `starkProof` (about 326 KB) everywhere; the same finalized head; `PASS`.
 
+## Kurtosis
+
+`kurtosis/run.sh` starts the same single-node devnet as a Kurtosis enclave with [ethereum-package](https://github.com/ethpandaops/ethereum-package). It then runs `check.sh` against the enclave and, with `PQ_SH` set, sends PQ transaction series. The enclave is removed on exit unless `KEEP=1`.
+
+```bash
+PQ_SH=/path/to/pq.sh tools/daisugi-devnet/kurtosis/run.sh daisugi
+```
+
+- `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
+- `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
+- `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image. ethereum-package starts the beacon node with `sh -c`.
+- The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
+- Env: `PACKAGE` (pinned ethereum-package commit), `LIGHTHOUSE_IMAGE`, `PQ_SH`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+
 ## Environment variables
 
 | Variable | Used by | Default |

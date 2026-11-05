@@ -1,0 +1,45 @@
+participants:
+  - el_type: nethermind
+    el_image: nethermind:eip8288-lean-0260e692-leanlib-v3
+    el_extra_params:
+      - --TxPool.FrameTxMaxVerifyGas=500000
+    cl_type: lighthouse
+    cl_image: daisugi-kurtosis/lighthouse:eip8288-lean-amd64-cmd
+    vc_type: lighthouse
+    vc_image: daisugi-kurtosis/lighthouse:eip8288-lean-amd64-cmd
+    supernode: false
+    validator_count: 64
+
+network_params:
+  network_id: "1337"
+  preset: mainnet
+  seconds_per_slot: 2
+  genesis_delay: 20
+  genesis_gaslimit: 60000000
+  preregistered_validator_keys_mnemonic: "giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"
+  electra_fork_epoch: 0
+  fulu_fork_epoch: 18446744073709551615
+  gloas_fork_epoch: 18446744073709551615
+  bpo_1_epoch: 18446744073709551615
+  bpo_2_epoch: 18446744073709551615
+  bpo_3_epoch: 18446744073709551615
+  bpo_4_epoch: 18446744073709551615
+  bpo_5_epoch: 18446744073709551615
+  max_payload_size: 20971520
+  additional_preloaded_contracts:
+    "0x81413f0cF12e9b6a49B1D0439E081c577D57FfFf":
+      balance: "0"
+      code: "0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd"
+      storage: {}
+      nonce: 1
+    "0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7":
+      balance: "0"
+      storage: {}
+      nonce: 1
+
+ethereum_genesis_generator_params:
+  image: daisugi-kurtosis/genesis-generator:287f596b
+  extra_env:
+    DAISUGI_FORK_EPOCH: "3"
+
+additional_services: []
