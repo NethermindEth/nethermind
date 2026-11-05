@@ -95,9 +95,10 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_with_single_bundle_single_transaction()
+    public async Task Debug_traceCallMany_with_single_bundle_single_transaction([Values] bool streaming)
     {
         using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
