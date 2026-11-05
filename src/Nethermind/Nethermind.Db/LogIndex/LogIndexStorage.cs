@@ -270,25 +270,29 @@ namespace Nethermind.Db.LogIndex
             if (reset)
                 return ResetAndCreateNew(root, "Log index: resetting data per configuration...");
 
-            Span<byte> versionBytes = meta.GetSpan(SpecialKey.Version);
+            // Copy and release through the same `meta`, as a reset below replaces it
+            byte[] versionBytes;
+            Span<byte> storedVersion = meta.GetSpan(SpecialKey.Version);
             try
             {
-                if (versionBytes.IsEmpty) // DB is empty
-                {
-                    meta.Set(SpecialKey.Version, VersionBytes);
-                    return root;
-                }
-
-                return versionBytes.SequenceEqual(VersionBytes)
-                    ? root
-                    : ResetAndCreateNew(root,
-                        $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). " +
-                        "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.");
+                versionBytes = storedVersion.ToArray();
             }
             finally
             {
-                meta.DangerousReleaseMemory(versionBytes);
+                meta.DangerousReleaseMemory(storedVersion);
             }
+
+            if (versionBytes.Length == 0) // DB is empty
+            {
+                meta.Set(SpecialKey.Version, VersionBytes);
+                return root;
+            }
+
+            return versionBytes.SequenceEqual(VersionBytes)
+                ? root
+                : ResetAndCreateNew(root,
+                    $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). " +
+                    "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.");
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -311,7 +315,7 @@ namespace Nethermind.Db.LogIndex
                         {
                             throw new LogIndexStateException(
                                 $"Log index reset failed: {column} still has data after the database was deleted. " +
-                                $"Delete {dbFactory.GetFullDbPath(new(string.Empty, DbNames.LogIndex))} manually or set LogIndex.Enabled=false, then restart.");
+                                $"Delete {dbFactory.GetFullDbPath(RootSettings())} manually or set LogIndex.Enabled=false, then restart.");
                         }
                     }
 
@@ -327,16 +331,17 @@ namespace Nethermind.Db.LogIndex
 
             (IColumnsDb<LogIndexColumns> root, IDb meta) CreateDb()
             {
-                IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
-                {
-                    ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
-                        topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
-                        topicIndex => _mergeOperators[topicIndex + 1]
-                    )
-                });
-
+                IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(RootSettings());
                 return (db, GetMetaDb(db));
             }
+
+            DbSettings RootSettings() => new("logIndexStorage", DbNames.LogIndex)
+            {
+                ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
+                    topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
+                    topicIndex => _mergeOperators[topicIndex + 1]
+                )
+            };
         }
 
         private CompressionAlgorithm SelectCompressionAlgorithm(string? configAlgoName)

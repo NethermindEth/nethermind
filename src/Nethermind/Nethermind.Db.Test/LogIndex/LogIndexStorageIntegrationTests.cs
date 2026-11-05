@@ -785,24 +785,40 @@ namespace Nethermind.Db.Test.LogIndex
         [Test]
         public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column)
         {
-            MemColumnsDb<LogIndexColumns> legacy = new();
-            legacy.GetColumnDb(LogIndexColumns.Meta).Set("ver"u8, [1]);
+            ReleaseCountingDb legacyMeta = new();
+            legacyMeta.Set("ver"u8, [1]);
+            IColumnsDb<LogIndexColumns> legacy = Substitute.For<IColumnsDb<LogIndexColumns>>();
+            legacy.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(legacyMeta);
 
             // A clear that returned without deleting anything: the reopened database still has a key
             MemColumnsDb<LogIndexColumns> leftover = new();
-            leftover.GetColumnDb(column).Set("leftover"u8, [1]);
+            ReleaseCountingDb replacementMeta = new();
+            IDb Column(LogIndexColumns key) => key == LogIndexColumns.Meta ? replacementMeta : leftover.GetColumnDb(key);
+            Column(column).Set("leftover"u8, [1]);
             IColumnsDb<LogIndexColumns> replacement = Substitute.For<IColumnsDb<LogIndexColumns>>();
             replacement.ColumnKeys.Returns(leftover.ColumnKeys);
-            replacement.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(c => leftover.GetColumnDb(c.Arg<LogIndexColumns>()));
+            replacement.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(c => Column(c.Arg<LogIndexColumns>()));
 
+            DbSettings? rootSettings = null;
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
-            dbFactory.CreateColumnsDb<LogIndexColumns>(Arg.Any<DbSettings>()).Returns(legacy, replacement);
-            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => $"/data/{c.Arg<DbSettings>().DbPath}");
+            dbFactory.CreateColumnsDb<LogIndexColumns>(Arg.Do<DbSettings>(s => rootSettings = s)).Returns(legacy, replacement);
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => $"/data/{c.Arg<DbSettings>().DbName}/{c.Arg<DbSettings>().DbPath}");
 
-            Assert.That(() => CreateLogIndexStorage(dbFactory: dbFactory), Throws.TypeOf<LogIndexStateException>()
-                .With.Message.Contain($"{column} still has data").And.Message.Contain($"/data/{DbNames.LogIndex}"));
+            LogIndexStateException exception = Assert.Throws<LogIndexStateException>(() => CreateLogIndexStorage(dbFactory: dbFactory));
             replacement.Received(1).Dispose();
-            Assert.That(leftover.GetColumnDb(LogIndexColumns.Meta).Get("ver"u8), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception.Message, Does.Contain($"{column} still has data")
+                    .And.Contain($"Delete /data/{rootSettings!.DbName}/{rootSettings.DbPath} manually"));
+                Assert.That(replacementMeta.Get("ver"u8), Is.Null);
+                Assert.That((legacyMeta.Releases, replacementMeta.Releases), Is.EqualTo((1, 0)), "stored version released through the meta that returned it");
+            }
+        }
+
+        private sealed class ReleaseCountingDb : MemDb, IReadOnlyKeyValueStore
+        {
+            public int Releases { get; private set; }
+            public new void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => Releases++;
         }
 
         private IDbFactory CreateRecordingDbFactory()
