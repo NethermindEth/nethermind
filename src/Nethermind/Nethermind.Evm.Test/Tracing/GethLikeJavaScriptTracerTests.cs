@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -1914,6 +1915,70 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
 
         Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+    }
+
+    [Test]
+    public void Javascript_request_cancellation_interrupts_a_busy_tracer(
+        [Values("expression", "setup", "result", "render")] string phase, [Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        // While the result renders, a getter cancels the request and returns; the cycle after it then reaches the depth limit,
+        // which reports the interruption. A busy getter that V8 stops is reported as a pending script exception instead.
+        Action entered = phase == "render" ? request.Cancel : () => request.CancelAfter(150);
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.enteredForTest=action;}}"))
+            installer.InvokeMethod("install", entered);
+        // Every busy script ends on its own after 5 s, so a tracer the request cannot stop fails the bound instead of hanging.
+        const string busy = "enteredForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        string script = phase switch
+        {
+            "expression" => "{fault: function() {}, result: (function() {" + busy + "})()}",
+            "setup" => "{fault: function() {}, result: function() { return 1; }, setup: function() {" + busy + "}}",
+            "result" => "{fault: function() {}, result: function() {" + busy + "}}",
+            _ => "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { enteredForTest(); return 1; }, rest: o}; }}"
+        };
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = script, CaptureJavaScriptErrors = capture, ExecutionCancellationToken = request.Token, Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+    }
+
+    [Test]
+    public void Javascript_trace_timeout_starts_after_setup_and_interrupts_a_busy_result([Values] bool busyResult)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        string script = busyResult
+            ? "{fault: function() {}, result: function() { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); }}"
+            : "{fault: function() {}, result: function() { return 7; }, setup: function() { var end = Date.now() + 750; while (Date.now() < end) {} }}";
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(),
+            GethTraceOptions.Default with { Tracer = script, Timeout = TimeSpan.FromMilliseconds(250) });
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        if (busyResult)
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+        else
+        {
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            Assert.That(JsonSerializer.Serialize(trace, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+        }
     }
 
     [TestCase(2, true)]

@@ -331,7 +331,7 @@ namespace Nethermind.Facade
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
             SimulateReadOnlyBlocksProcessingScope env = pooled.Scope;
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header, cancellationToken);
             try
             {
                 return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);

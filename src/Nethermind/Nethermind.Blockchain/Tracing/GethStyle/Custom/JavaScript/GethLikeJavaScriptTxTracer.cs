@@ -98,6 +98,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 _deadline = _ownsDeadline ? new(_external, options.DeadlineClock) : options.DeadlineScope!.Current;
                 _ctsRegistration = (_deadline?.Token ?? _external).Register(static e => ((Engine)e!).Interrupt(), engine);
             }
+            else
+            {
+                // Registered before user code runs, so the request token also stops the tracer expression and setup;
+                // the trace timeout is armed on the same source only after setup.
+                _cts = _external.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(_external) : new CancellationTokenSource();
+                _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            }
             Engine.CurrentEngine = _engine;
             _tracer = engine.CreateTracer(options.Tracer);
             try
@@ -132,8 +139,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             {
                 if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
                     throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-                _cts = new CancellationTokenSource(timeout);
-                _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+                _cts!.CancelAfter(timeout);
             }
         }
         catch (Exception exception)
@@ -159,6 +165,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             try
             {
                 result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
+            }
+            catch (Exception exception) when (_external.IsCancellationRequested && JavaScriptTraceFailure.IsInterruption(exception))
+            {
+                throw new OperationCanceledException(_external);
             }
             finally
             {
