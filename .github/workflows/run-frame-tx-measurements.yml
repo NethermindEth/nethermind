@@ -90,6 +90,10 @@ jobs:
     runs-on: ${{ inputs.machine_type == 'reproducible-benchmarks' && 'reproducible-benchmarks' || needs.create_runner.outputs.runner_label }}
     # Suite budget plus build and setup; see the campaign SPEC.
     timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30}')[inputs.suite] }}
+    # The GCE runner service sets invariant globalization, under which the culture-bound [GeneratedRegex] in
+    # Nethermind.Core fails to compile.
+    env:
+      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "0"
     steps:
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
@@ -161,6 +165,14 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Check ICU is available
+        run: |
+          if ! ldconfig -p | grep -q 'libicuuc\.so'; then
+            echo "::error::ICU is not installed, so .NET cannot run with DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0."
+            exit 1
+          fi
+          ldconfig -p | grep 'libicuuc\.so'
 
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
