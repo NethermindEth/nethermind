@@ -164,17 +164,29 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 
 ## Kurtosis
 
-`kurtosis/run.sh` starts the same single-node devnet as a Kurtosis enclave with [ethereum-package](https://github.com/ethpandaops/ethereum-package). It then runs `check.sh` against the enclave and, with `PQ_SH` set, sends PQ transaction series. The enclave is removed on exit unless `KEEP=1`.
+`kurtosis/run.sh` starts the same single-node devnet as a Kurtosis enclave with [ethereum-package](https://github.com/ethpandaops/ethereum-package). It runs `check.sh` against the enclave, then sends `PQ_SERIES` PQ transaction series with `pq.sh`. The enclave is removed on exit, also when `kurtosis run` fails. `KEEP=1` keeps it after a successful `kurtosis run`.
 
 ```bash
-PQ_SH=/path/to/pq.sh tools/daisugi-devnet/kurtosis/run.sh daisugi
+tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
+- Needs Kurtosis, plus .NET SDK and Rust as for `proof.sh`.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image. ethereum-package starts the beacon node with `sh -c`.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
-- Env: `PACKAGE` (pinned ethereum-package commit), `LIGHTHOUSE_IMAGE`, `PQ_SH`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+- Env: `PACKAGE` (pinned ethereum-package commit), `LIGHTHOUSE_IMAGE`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+
+### PQ transaction series
+
+`pq.sh` builds the leanSig signer (`tools/lean-ffi` example `fixtures`, key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
+
+1. A frame transaction with a leanSig dependency on nonce key 0. Its corrupted wrapper is rejected, the valid one is included.
+2. The same on a random nonce key, sequence 0, then sequence 1 in a later block.
+3. A byte-identical resend of sequence 0 is rejected as `already known`; a new transaction on sequence 0 as `keyed nonce sequence not current`.
+
+- Every included receipt must have status `0x1`. Expected last line: `PASS pq: blocks <b0> <b1> <b2>`.
+- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
 
 ## Environment variables
 

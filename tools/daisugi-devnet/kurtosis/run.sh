@@ -10,8 +10,9 @@ G=$PWD/run/$ENCLAVE
 docker build -q --build-arg LIGHTHOUSE_IMAGE="$LIGHTHOUSE_IMAGE" -f lighthouse.Dockerfile -t daisugi-kurtosis/lighthouse:eip8288-lean-amd64-cmd .
 docker build -q -f genesis.Dockerfile -t daisugi-kurtosis/genesis-generator:287f596b .
 kurtosis enclave rm -f "$ENCLAVE" >/dev/null 2>&1 || true
+trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
 kurtosis run --enclave "$ENCLAVE" "$PACKAGE" --args-file network_params.yaml
-[[ -n ${KEEP:-} ]] || trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
+[[ -z ${KEEP:-} ]] || trap - EXIT
 
 rm -rf "$G"; mkdir -p "$(dirname "$G")"
 kurtosis files download "$ENCLAVE" el_cl_genesis_data "$G" >/dev/null
@@ -32,8 +33,7 @@ cat "$G/params.json"
 
 ../check.sh "$G"
 
-[[ -n ${PQ_SH:-} ]] || exit 0
 for i in $(seq "${PQ_SERIES:-3}"); do
   echo "== pq tx $i"
-  PQ_KEY=$PQ_KEY CHAIN_ID=$(jq -r .config.chainId "$G/genesis.json") PORT=$EL_RPC_PORT OUT="$G/pq-$i" bash "$PQ_SH"
+  PQ_KEY=$PQ_KEY CHAIN_ID=$(jq -r .config.chainId "$G/genesis.json") PORT=$EL_RPC_PORT OUT="$G/pq-$i" ../pq.sh
 done
