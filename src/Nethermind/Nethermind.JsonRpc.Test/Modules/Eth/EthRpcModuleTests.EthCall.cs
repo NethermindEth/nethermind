@@ -24,6 +24,7 @@ using Nethermind.Init;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
@@ -853,7 +854,11 @@ public partial class EthRpcModuleTests
     /// <summary>Payloads whose original bytes must survive RPC execution and gas estimation.</summary>
     public static IEnumerable<RpcRevertPayload> RpcRevertPayloads() =>
     [
-        new(new AbiEncoder().Encode(AbiEncodingStyle.IncludeSignature, new AbiSignature("Error", AbiType.String), "wrong-parameters").ToHexString(true),
+        // Error("wrong-parameters"): selector, data offset, string length, and padded UTF-8 bytes.
+        new("0x08c379a0"
+            + "0000000000000000000000000000000000000000000000000000000000000020"
+            + "0000000000000000000000000000000000000000000000000000000000000010"
+            + "77726f6e672d706172616d65746572730000000000000000000000000000000000",
             "execution reverted: wrong-parameters"),
         new("0x4e487b71" + new string('0', 62) + "21", "execution reverted: enum overflow"),
         new("0xdeadbeef00010200ff", "execution reverted"),
@@ -911,6 +916,40 @@ public partial class EthRpcModuleTests
             Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(method == "eth_call" ? ErrorCodes.ExecutionError : ErrorCodes.InvalidInput), response);
             Assert.That(error?["message"]?.Value<string>(), Is.Not.Null.And.Not.Empty.And.Not.Contains("execution reverted"), response);
             Assert.That(error?["data"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_resolves_precompile_override_policy_from_container(
+        [Values] bool preservePrecompiles,
+        [Values("empty", "balance", "nonce", "code", "state", "stateDiff")] string field)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(London.Instance), configurer: builder =>
+        {
+            if (preservePrecompiles) builder.AddSingleton(new PrecompileOverridePolicy(disableOnAccountOverride: false));
+        });
+        string address = "0x0000000000000000000000000000000000000004";
+        Dictionary<string, object> account = new();
+        if (field != "empty")
+        {
+            account[field] = field switch
+            {
+                "code" => "0x00",
+                "balance" or "nonce" => "0x1",
+                _ => new Dictionary<string, string> { ["0x" + new string('0', 64)] = "0x" + new string('0', 64) }
+            };
+        }
+
+        string response = await ctx.Test.TestEthRpc("eth_call", new
+        {
+            from = TestItem.AddressA.ToString(), to = address, data = "0x112233", gasPrice = "0x0"
+        }, "latest", new Dictionary<string, object> { [address] = account });
+
+        JToken parsed = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]?.Value<string>(), Is.EqualTo(preservePrecompiles ? "0x112233" : "0x"), response);
         }
     }
 
