@@ -88,6 +88,13 @@ public partial class FrameTxFloodMeasurement
 
     private static readonly TimeSpan JitQuiescenceLimit = TimeSpan.FromSeconds(30);
 
+    /// <summary>JIT time a measured window may contain before the warm-up repeats or the baseline is re-measured.</summary>
+    private static readonly TimeSpan MaxWindowJit = TimeSpan.FromMilliseconds(10);
+
+    private const int MaxWarmupFloods = 8;
+
+    private const int MaxBaselineAttempts = 5;
+
     /// <summary>A victim sample this many times the idle median counts as an outlier: the stalls the tail metrics
     /// must be read against.</summary>
     private const double OutlierFactor = 5;
@@ -355,11 +362,28 @@ public partial class FrameTxFloodMeasurement
             return (samples, GcDelta.Since(start));
         }
 
-        // The first flood pays the generator's cold start; it is not a level.
-        (coldStart ?? measureAtRate)(RateFor(levelsMillions[0], declaredGasPerTx));
+        // The first flood pays the generator's cold start; it is not a level. On a slow core the runtime keeps tiering
+        // up the flood and victim paths for several floods, so repeat it until one runs without JIT work.
+        Func<int, LevelPoint> warmFlood = coldStart ?? measureAtRate;
+        int warmRate = RateFor(levelsMillions[0], declaredGasPerTx);
+        int warmupFloods = 0;
+        while (warmupFloods < MaxWarmupFloods)
+        {
+            warmupFloods++;
+            TimeSpan jitBefore = JitInfo.GetCompilationTime(currentThread: false);
+            warmFlood(warmRate);
+            if (JitInfo.GetCompilationTime(currentThread: false) - jitBefore < MaxWindowJit) break;
+        }
         WaitForJitQuiescence();
 
+        // A baseline that shared the core with the JIT counts too few passes, and f divides by that count.
         (List<double> baseline, GcDelta baselineGc) = Baseline();
+        int baselineAttempts = 1;
+        for (; baselineAttempts < MaxBaselineAttempts && baselineGc.JitMs >= MaxWindowJit.TotalMilliseconds; baselineAttempts++)
+        {
+            WaitForJitQuiescence();
+            (baseline, baselineGc) = Baseline();
+        }
         double w0 = Percentile(baseline, 0.50);
         double w0p95 = Percentile(baseline, 0.95);
         double w0p99 = Percentile(baseline, 0.99);
@@ -403,7 +427,7 @@ public partial class FrameTxFloodMeasurement
                          + $"victim_throughput_ratio={victimThroughputRatio:F3} "
                          + $"outlier_threshold_us={outlierUs:F0} W0_outliers={Outliers(baseline, outlierUs)} "
                          + $"W_outliers={Outliers(outcome.ProcessMicros, outlierUs)} {baselineGc.Fields("W0_")} {outcome.Gc.Fields("W_")} "
-                         + $"host_load1={HostLoad1()}");
+                         + $"host_load1={HostLoad1()} warmup_floods={warmupFloods} baseline_attempts={baselineAttempts}");
             }
         }
         catch (Exception ex)
