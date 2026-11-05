@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -141,6 +142,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.SelfDestructRange(fromPath, toPath);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
 
         public void Dispose()
         {

@@ -127,6 +127,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
                 )
             ),
             trieWriteBatch,
+            batch.GetColumnBatch(FlatDbColumns.Metadata),
             new Reactive.AnonymousDisposable(() =>
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and

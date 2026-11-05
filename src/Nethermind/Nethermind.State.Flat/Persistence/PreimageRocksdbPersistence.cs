@@ -157,6 +157,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
+            batch.GetColumnBatch(FlatDbColumns.Metadata),
             new Reactive.AnonymousDisposable(() =>
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and

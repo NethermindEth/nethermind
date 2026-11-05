@@ -13,11 +13,9 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -166,23 +164,6 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         }
         storageTree.Commit();
         return storageTree;
-    }
-
-    [Test]
-    public void Verify_is_refused_while_migrating_from_the_pruning_trie_state()
-    {
-        HalfPathMigrationCursor migrationCursor = new(_columnsDb);
-        migrationCursor.Advance(MigrationCursor.Start);
-        IFlatDbManager flatDbManager = Substitute.For<IFlatDbManager>();
-        FlatTrieVerifier verifier = new(flatDbManager, _persistence, new Lazy<HalfPathMigrationCursor>(migrationCursor), _logManager, scratchDirectory: "unused");
-
-        bool verified = verifier.Verify(Build.A.BlockHeader.TestObject, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verified, Is.False);
-            Assert.That(flatDbManager.ReceivedCalls(), Is.Empty, "nothing is read");
-        }
     }
 
     [Test]

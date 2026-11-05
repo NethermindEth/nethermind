@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Threading;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -133,7 +134,7 @@ public class WorldStateDbDeciderModuleTests
     }
 
     [Test]
-    public void Migrating_node_reads_the_patricia_trie_state_through_flat_persistence()
+    public void Migrating_node_reads_the_patricia_trie_state_through_flat_persistence_and_refuses_verification()
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -148,13 +149,19 @@ public class WorldStateDbDeciderModuleTests
         patricia.Set(TestItem.AddressA, account);
         patricia.Commit();
 
-        Assert.That(container.Resolve<IWorldStateManager>(), Is.TypeOf<FlatWorldStateManager>());
+        IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
+        Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
         IPersistence persistence = container.Resolve<IPersistence>();
         // As StartPruningTrieStateMigration does: the empty flat DB points at the trie state.
         persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, patricia.RootHash)).Dispose();
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+            Assert.That(worldStateManager.VerifyTrie(Build.A.BlockHeader.TestObject, CancellationToken.None), Is.False, "verification is refused while migrating");
+            Assert.That(container.Resolve<FlatTrieVerifier>().Stats, Is.EqualTo(default(FlatTrieVerifier.VerificationStats)), "nothing is verified");
+        }
     }
 
     // Format: 8-byte big-endian block number + 32-byte state root (matches BasePersistence encoding).

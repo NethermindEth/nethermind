@@ -22,8 +22,8 @@ namespace Nethermind.State.Flat.Migration;
 /// <remarks>
 /// <para>
 /// A chunk walks the trie of the persisted state in path order from the cursor, through a persistence reader that serves what is not
-/// copied yet from the HalfPath DB, collecting about <see cref="IFlatDbConfig.MigrationChunkNodes"/> nodes outside any write batch. It writes them only if
-/// the persisted state is still the one it walked, see <see cref="IPersistenceManager.TryWriteOnPersistedState"/>, so the copied values
+/// copied yet from the HalfPath DB, collecting about <see cref="IFlatDbConfig.MigrationChunkNodes"/> nodes outside any write batch. It writes them,
+/// in one batch with the cursor past them, only if the persisted state is still the one it walked, see <see cref="IPersistenceManager.TryWriteOnPersistedState"/>, so the copied values
 /// are those readers of that state already see.
 /// </para>
 /// <para>
@@ -103,12 +103,14 @@ public sealed class HalfPathMigrator(
         }
 
         MigrationCursor walkedFrom = from;
+        MigrationCursor? next = _chunk.IsComplete ? null : _chunk.Next;
         bool written = false;
         if (token.IsCancellationRequested || !persistenceManager.TryWriteOnPersistedState(state, batch =>
             {
                 // A wipe meanwhile abandons the migration.
                 if (cursor.Current != walkedFrom) return;
                 _chunk.Write(batch);
+                batch.SetMigrationCursor(next);
                 written = true;
             }))
         {
@@ -118,16 +120,15 @@ public sealed class HalfPathMigrator(
 
         if (!written) return false;
         Metrics.HalfPathMigratedNodes += _chunk.Count;
+        cursor.Advance(next);
 
-        if (_chunk.IsComplete)
+        if (next is not { } copied)
         {
-            cursor.Complete();
             if (_logger.IsInfo) _logger.Info("The HalfPath to flat migration is complete.");
             return false;
         }
 
-        cursor.Advance(_chunk.Next);
-        LogProgress(_chunk.Next);
+        LogProgress(copied);
         return true;
     }
 

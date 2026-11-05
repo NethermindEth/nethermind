@@ -48,8 +48,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
-            .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, Lazy<HalfPathMigrationCursor>, ILogManager, IInitConfig>((flatDbManager, persistence, migrationCursor, logManager, initConfig) =>
-                new FlatTrieVerifier(flatDbManager, persistence, migrationCursor, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
+            .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
+                new FlatTrieVerifier(flatDbManager, persistence, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
             .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.

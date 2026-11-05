@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Collections;
-using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -33,7 +32,6 @@ public class FlatTrieVerifier
 
     private readonly IFlatDbManager? _flatDbManager;
     private readonly IPersistence? _persistence;
-    private readonly Lazy<HalfPathMigrationCursor>? _migrationCursor;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly string _scratchDirectory;
@@ -50,11 +48,10 @@ public class FlatTrieVerifier
     private int _offloadedPartitions;
 
     /// <param name="scratchDirectory">Where preimage mode spools flat state while re-sorting it by hash.</param>
-    public FlatTrieVerifier(IFlatDbManager flatDbManager, IPersistence persistence, Lazy<HalfPathMigrationCursor> migrationCursor, ILogManager logManager, string scratchDirectory)
+    public FlatTrieVerifier(IFlatDbManager flatDbManager, IPersistence persistence, ILogManager logManager, string scratchDirectory)
     {
         _flatDbManager = flatDbManager;
         _persistence = persistence;
-        _migrationCursor = migrationCursor;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<FlatTrieVerifier>();
         _scratchDirectory = scratchDirectory;
@@ -83,13 +80,6 @@ public class FlatTrieVerifier
     {
         ArgumentNullException.ThrowIfNull(_persistence);
         ArgumentNullException.ThrowIfNull(_flatDbManager);
-
-        // The flat iterators the verification compares against only see what the migration has copied.
-        if (_migrationCursor?.Value.Current is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn("The flat DB cannot be verified until its migration from the patricia trie state completes.");
-            return false;
-        }
 
         StateId stateId = new(stateAtBlock);
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();

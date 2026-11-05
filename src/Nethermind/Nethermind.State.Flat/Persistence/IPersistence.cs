@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -151,6 +152,9 @@ public interface IPersistence
         /// <inheritdoc cref="DeleteStateTrieNodeRange"/>
         /// <remarks>Restricted to the storage trie of the account identified by <paramref name="addressHash"/>.</remarks>
         void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
+
+        /// <summary>Saves the cursor of the HalfPath to flat migration with this batch's writes, or deletes it when <paramref name="cursor"/> is <c>null</c>.</summary>
+        void SetMigrationCursor(in MigrationCursor? cursor);
     }
 
     /// <summary>

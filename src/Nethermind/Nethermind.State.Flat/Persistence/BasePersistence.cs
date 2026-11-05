@@ -286,10 +286,6 @@ public static class BasePersistence
     };
 
     /// <summary>Saves the cursor of the HalfPath to flat migration, or deletes it when <paramref name="cursor"/> is <c>null</c>. A wipe deletes it too.</summary>
-    /// <remarks>
-    /// Not flushed: the cursor is written after the data it covers is committed through the same write-ahead log, so a crash
-    /// can only lose a cursor write, and the data it covered is copied again.
-    /// </remarks>
     [SkipLocalsInit]
     public static void WriteMigrationCursor(IWriteOnlyKeyValueStore metadata, in MigrationCursor? cursor)
     {
@@ -952,6 +948,7 @@ public static class BasePersistence
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
         in TFlatWriteBatch flatWriteBatch,
         TTrieWriteBatch trieWriteBatch,
+        IWriteOnlyKeyValueStore metadata,
         IDisposable disposer)
         : IPersistence.IWriteBatch
         where TFlatWriteBatch : struct, IFlatWriteBatch
@@ -1003,5 +1000,7 @@ public static class BasePersistence
 
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
             _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to);
+
+        public void SetMigrationCursor(in MigrationCursor? cursor) => WriteMigrationCursor(metadata, cursor);
     }
 }

@@ -226,8 +226,8 @@ public class ImporterTests
         }
 
         ReadRecordingNodeStorage halfPathSpy = new(halfPath);
+        BasePersistence.WriteMigrationCursor(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), cursor);
         HalfPathMigrationCursor migrationCursor = new(_columnsDb);
-        migrationCursor.Advance(cursor);
         long walksBefore = Metrics.HalfPathFallbackWalks;
 
         using IPersistence.IPersistenceReader reader = new HalfPathFallbackPersistence(_persistence, halfPathSpy, migrationCursor).CreateReader();
@@ -251,7 +251,7 @@ public class ImporterTests
             Assert.That(halfPathSpy.Reads, Has.None.Matches<(ValueHash256? Address, TreePath Path)>(read => cursor.IsCopied(read.Address, read.Path)),
                 "what the cursor has passed comes from flat alone");
             Assert.That(Metrics.HalfPathFallbackWalks > walksBefore, Is.EqualTo(copied != Copied.Everything), "only uncopied reads walk the trie");
-            Assert.That(new HalfPathMigrationCursor(_columnsDb).Current, Is.EqualTo(cursor), "the cursor survives a restart");
+            Assert.That(migrationCursor.Current, Is.EqualTo(cursor), "the cursor survives a restart");
         }
     }
 
@@ -271,8 +271,8 @@ public class ImporterTests
         later.Commit();
 
         await new Importer(new NodeStorage(laterDb), _persistence, LimboLogs.Instance).Copy(new StateId(2, later.RootHash));
+        BasePersistence.WriteMigrationCursor(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         HalfPathMigrationCursor migrationCursor = new(_columnsDb);
-        migrationCursor.Advance(MigrationCursor.Start);
 
         HalfPathFallbackPersistence persistence = new(_persistence, halfPath, migrationCursor);
         UInt256 value = 0;
@@ -502,6 +502,7 @@ public class ImporterTests
         private readonly Queue<Func<Task>> _scheduled = new();
         private readonly Nethermind.Core.Timers.ITimer _retryTimer = Substitute.For<Nethermind.Core.Timers.ITimer>();
         private readonly HalfPathMigrator _migrator;
+        private readonly IDb _metadata;
         private int _rejectedWrites;
         private bool _retryPending;
 
@@ -510,8 +511,9 @@ public class ImporterTests
         public MigrationRun(INodeStorage halfPath, IPersistence flat, IColumnsDb<FlatDbColumns> flatDb, StateId state, int chunkNodes, int rejectedWrites)
         {
             flat.CreateWriteBatch(StateId.PreGenesis, state).Dispose();
+            _metadata = flatDb.GetColumnDb(FlatDbColumns.Metadata);
+            BasePersistence.WriteMigrationCursor(_metadata, MigrationCursor.Start);
             Cursor = new HalfPathMigrationCursor(flatDb);
-            Cursor.Advance(MigrationCursor.Start);
             IPersistence persistence = new HalfPathFallbackPersistence(flat, halfPath, Cursor);
             _rejectedWrites = rejectedWrites;
 
@@ -540,6 +542,7 @@ public class ImporterTests
                 if (_scheduled.TryDequeue(out Func<Task>? chunk))
                 {
                     await chunk();
+                    Assert.That(BasePersistence.ReadMigrationCursor(_metadata), Is.EqualTo(Cursor.Current), "saved with the chunk it covers");
                 }
                 else if (_retryPending)
                 {

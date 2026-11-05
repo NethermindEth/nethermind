@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -1074,6 +1075,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
             public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+            public void SetMigrationCursor(in MigrationCursor? cursor) { }
 
             public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));
 
