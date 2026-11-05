@@ -186,6 +186,7 @@ public class RlpDecoderTests
         }
     }
 
+    // A regression guard in Debug builds only: optimized builds already fold these null checks, so the test passes there either way.
     [Test, NonParallelizable]
     public void Struct_null_checks_do_not_allocate_per_element([Values] AllocationCase operation)
     {
@@ -300,6 +301,7 @@ public class RlpDecoderTests
         Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
+    // Deterministic in Debug builds; in Release it can only fail while the measured loop still runs at Tier0.
     [Test, NonParallelizable]
     public void Decode_delegate_array_of_structs_allocates_only_its_result()
     {

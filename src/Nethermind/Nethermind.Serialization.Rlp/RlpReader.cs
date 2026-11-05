@@ -836,7 +836,6 @@ public ref struct RlpReader
                 else
                 {
                     T? value = decodeItem(ref this);
-                    // `default(T) is null` folds at every tier; stored in a local it boxes structs in Debug and Tier0.
                     if (default(T) is null && value is null)
                     {
                         RlpHelpers.ThrowNullArrayElement(i);
