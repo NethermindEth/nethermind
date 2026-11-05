@@ -8,6 +8,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -32,6 +33,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         try
         {
+            if (!HasRequiredCpuFeatures())
+                throw new PlatformNotSupportedException(
+                    "The native Lean backend needs x86-64-v3 with PCLMULQDQ, or arm64 with AES/PMULL, which this CPU or runtime configuration does not provide.");
             if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[9];
@@ -44,10 +48,37 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                     throw new InvalidOperationException("The native Lean acceptance bounds do not match this node.");
             return true;
         }
+        catch (PlatformNotSupportedException exception)
+        {
+            throw new InvalidOperationException("EIP-8288 requires a CPU the native Lean backend supports; this node's CPU does not qualify.", exception);
+        }
         catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
         {
             throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend. Build with BuildLeanFfi=true and install the host library beside Nethermind.", exception);
         }
+    }
+
+    /// <summary>Whether this CPU has the features the published backend is built for.</summary>
+    /// <remarks>The backend selects its arithmetic at compile time with no runtime fallback, so a missing feature would fault
+    /// on an illegal instruction at the first native call. The Nethermind.Crypto.Lean package builds it for x86-64-v3 with
+    /// PCLMULQDQ or aarch64 with AES (which includes PMULL), and this lists exactly the features those add. It is checked only
+    /// when EIP-8288 is scheduled, so other chains keep the runtime's own minimum.</remarks>
+    private static bool HasRequiredCpuFeatures() => RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X64 => Sse3.IsSupported && Ssse3.IsSupported && Sse41.IsSupported && Sse42.IsSupported && Popcnt.IsSupported
+            && Pclmulqdq.IsSupported && Avx.IsSupported && Avx2.IsSupported && Bmi1.IsSupported && Bmi2.IsSupported
+            && Fma.IsSupported && Lzcnt.IsSupported && HasCpuidOnlyFeatures(),
+        Architecture.Arm64 => System.Runtime.Intrinsics.Arm.Aes.IsSupported,
+        _ => true,
+    };
+
+    /// <summary>Whether CPUID reports the x86-64-v3 features no intrinsic class exposes.</summary>
+    /// <remarks>Leaf 1 ECX: CMPXCHG16B (bit 13), MOVBE (22), XSAVE (26) and F16C (29); leaf 0x80000001 ECX: LAHF/SAHF in
+    /// 64-bit mode (bit 0). XSAVE's OS enablement is covered by <see cref="Avx.IsSupported"/>.</remarks>
+    private static bool HasCpuidOnlyFeatures()
+    {
+        const int Required = 1 << 13 | 1 << 22 | 1 << 26 | 1 << 29;
+        return (X86Base.CpuId(1, 0).Ecx & Required) == Required && (X86Base.CpuId(unchecked((int)0x80000001), 0).Ecx & 1) != 0;
     }
 
     /// <summary>Native library ABI version.</summary>

@@ -20,6 +20,10 @@
     <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="$(EnableZkEvm) == 'true'" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
+    <!-- BuildLeanFfi supplies the host-built library instead; the package stays restored so the lock file is the same either way. -->
+    <PackageReference Include="Nethermind.Crypto.Lean">
+      <ExcludeAssets Condition="'$(BuildLeanFfi)' == 'true'">all</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

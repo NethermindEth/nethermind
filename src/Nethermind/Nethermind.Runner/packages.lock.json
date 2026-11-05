@@ -731,6 +731,7 @@
           "Ckzg.Bindings": "[2.1.8.1680, )",
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto.Bls": "[0.3.17.15, )",
+          "Nethermind.Crypto.Lean": "[0.1.0.8, 0.1.0.8]",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.14, )"
         }
@@ -1558,6 +1559,12 @@
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
+      },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
         "requested": "[0.8.0.42, )",
@@ -1831,6 +1838,12 @@
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
+      },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
         "requested": "[0.8.0.42, )",
@@ -1926,6 +1939,12 @@
         "requested": "[0.3.17.15, )",
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
+      },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2023,6 +2042,12 @@
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
+      },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
         "requested": "[0.8.0.42, )",
@@ -2118,6 +2143,12 @@
         "requested": "[0.3.17.15, )",
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
+      },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2215,6 +2246,12 @@
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
+      },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
         "requested": "[0.8.0.42, )",
@@ -2310,6 +2347,12 @@
         "requested": "[0.3.17.15, )",
         "resolved": "0.3.17.15",
         "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
+      },
+      "Nethermind.Crypto.Lean": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0.8, 0.1.0.8]",
+        "resolved": "0.1.0.8",
+        "contentHash": "rVlLElaCd3eWtX6vivs1XQH19f15tnOoDlzXG7Vam7kTU53ez37MXb/oxgyGBWIMZ4hkOkj5PHcVbxt1mZ67/Q=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
