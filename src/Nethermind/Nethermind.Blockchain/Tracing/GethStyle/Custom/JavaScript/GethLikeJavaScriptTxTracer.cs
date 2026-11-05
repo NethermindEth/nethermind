@@ -344,6 +344,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
+        // A transaction that runs no opcode, such as a top-level precompile call, faults no step; Geth reports it through ctx.error only.
+        if (_log.op is null)
+            return;
         if (error == EvmExceptionType.NotEnoughBalance && _log.op?.Value is
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
             return;

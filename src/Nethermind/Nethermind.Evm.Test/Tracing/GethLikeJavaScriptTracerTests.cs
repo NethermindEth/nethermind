@@ -1358,6 +1358,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Top_level_precompile_failure_sets_ctx_error_without_fault()
+    {
+        const string faultTracer = @"{
+                    events: [],
+                    fault: function(log, db) { this.events.push('fault:' + log.op.toString()); },
+                    result: function(ctx, db) { this.events.push('error:' + ctx.error); return this.events; }
+                }";
+        const ulong gasLimit = 21050UL;
+        Transaction precompileCall = Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .To(Sha256Precompile.Address)
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, transaction: precompileCall);
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(faultTracer);
+
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "error:out of gas" });
+    }
+
+    [Test]
     public void Ctx_coinbase_is_the_block_beneficiary()
     {
         const string coinbaseTracer = @"{
