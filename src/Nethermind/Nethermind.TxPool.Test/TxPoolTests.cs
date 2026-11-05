@@ -2466,7 +2466,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
         }
 
-        public enum HeadDropCause { NonceGap, InsufficientBalance }
+        public enum HeadDropCause { NonceGap, InsufficientBalance, InvalidUnderNewFork }
 
         [TestCase(HeadDropCause.NonceGap, false, false, false, true, TestName = "nonce gap")]
         [TestCase(HeadDropCause.InsufficientBalance, false, false, false, true, TestName = "insufficient balance")]
@@ -2516,6 +2516,52 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount(), Is.Zero);
                 Assert.That(evicted, Is.EquivalentTo(expectEvicted ? txs : Array.Empty<Transaction>()), "each drop is surfaced once");
+            }
+        }
+
+        [Test]
+        public async Task Tx_dropped_by_the_fork_revalidation_pass_is_surfaced_as_evicted_unless_a_block_up_to_the_head_includes_it(
+            [Values] HeadDropCause cause, [Values] bool includedAhead)
+        {
+            _blockTree.BestSuggestedHeader = _blockTree.Head.Header;
+            _txPool = CreatePool(specProvider: new TestSpecProvider(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = _blockTree.Head.Number + 1
+            });
+            Address sender = TestItem.AddressA;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            ulong firstNonce = cause == HeadDropCause.NonceGap ? 1ul : 0ul;
+            // Only the first tx is invalid under the new fork, so the follower is dropped behind it while still valid.
+            Transaction[] txs = new Transaction[2];
+            for (int i = 0; i < txs.Length; i++)
+            {
+                txs[i] = Build.A.Transaction
+                    .WithType(TxType.AccessList)
+                    .WithAccessList(BuildUnderGassedAccessList())
+                    .WithGasLimit(cause == HeadDropCause.InvalidUnderNewFork && i == 0 ? UnderGassedTransactionGasLimit : TxGasLimit)
+                    .WithNonce(firstNonce + (ulong)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(txs[i], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+
+            _stateProvider.CreateAccount(
+                sender,
+                cause == HeadDropCause.InsufficientBalance ? txs[0].Value : UInt256.MaxValue,
+                includedAhead ? firstNonce + (ulong)txs.Length : 0);
+            await AddEmptyBlock();
+            AssertRevalidatedForHead();
+            // A later head must not surface the same drops again.
+            await AddEmptyBlock();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(evicted, Is.EquivalentTo(includedAhead ? Array.Empty<Transaction>() : txs), "each drop is surfaced once");
             }
         }
 
