@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+name: nethermind-light-client
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  light-client:
+    image: ${LC_IMAGE:-nethermindeth/light-client:1.0.0}
+    command:
+      - --network
+      - ${LC_NETWORK:-mainnet}
+      - --checkpoint-url
+      - ${LC_CHECKPOINT_URL:?Set LC_CHECKPOINT_URL to a trusted checkpoint provider for the selected network}
+    ports:
+      - 127.0.0.1:8545:8545
+      - 30303:30303/tcp
+      - 30303:30303/udp
+      - 9050:9050/tcp
+      - 9050:9050/udp
+      - 9051:9051/udp
+    volumes:
+      - light-client-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 1m
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v3.13.5@sha256:aafa9d694e6a883c02db516d9f6e5b84e14195f49a2a6456a4cca815edda72b9
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+      - --web.cors.origin=^$$
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - light-client
+
+  grafana:
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set a strong GRAFANA_ADMIN_PASSWORD in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_LOG_MODE: console
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - prometheus
+
+volumes:
+  light-client-data:
+  prometheus-data:
+  grafana-data:

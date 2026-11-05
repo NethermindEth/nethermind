@@ -26,6 +26,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
     private static readonly SemaphoreSlim ActiveExecutionData = new(4, 4);
     private readonly VerifiedExecutionData? _data = specProvider is null ? null : new(execution, specProvider, chainId);
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
+    private readonly SemaphoreSlim _proofRequests = new(2, 2);
     private readonly MemoryCache _logResults = new(new MemoryCacheOptions { SizeLimit = LogResultCacheCapacity });
 
     internal JsonElement GetHeader(BlockHeader header) => _data!.GetHeader(header);
@@ -141,39 +142,45 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         UInt256[] keys = new UInt256[parameters[1].GetArrayLength()];
         for (int i = 0; i < keys.Length; i++) keys[i] = ParseQuantity(parameters[1][i], allowLeadingZeros: true);
         VerifiedHead? latest = await LatestForSelectorAsync(count == 2 ? default : parameters[2], cancellationToken);
-        using DataRequest admission = new(cancellationToken);
-        (VerifiedHead head, bool historical) = count == 2
-            ? (latest!, false)
-            : await ResolveStateHeadAsync(parameters[2], cancellationToken, latest);
+        if (!await _proofRequests.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
+            throw new RpcException(-32005, "Too many concurrent account proof requests.");
         try
         {
-            ExecutionAccountProof proof = await execution.GetProofAsync(head, address, keys, cancellationToken);
-            if (ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, proof.AccountProof) != proof.Account
-                || proof.StorageProofs.Length != keys.Length) throw new InvalidDataException("Invalid exported account proof.");
-            object[] storage = new object[keys.Length];
-            for (int i = 0; i < keys.Length; i++)
+            using DataRequest admission = new(cancellationToken);
+            (VerifiedHead head, bool historical) = count == 2
+                ? (latest!, false)
+                : await ResolveStateHeadAsync(parameters[2], cancellationToken, latest);
+            try
             {
-                ExecutionStorageProof slot = proof.StorageProofs[i];
-                if (slot.Key != keys[i] || ExecutionProofVerifier.VerifyStorage(proof.Account.StorageRoot, slot.Key, slot.Proof) != slot.Value)
-                    throw new InvalidDataException("Invalid exported storage proof.");
-                storage[i] = new { key = slot.Key.ToBigEndian().ToHexString(withZeroX: true), value = Quantity(slot.Value), proof = slot.Proof };
+                ExecutionAccountProof proof = await execution.GetProofAsync(head, address, keys, cancellationToken);
+                if (ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, proof.AccountProof) != proof.Account
+                    || proof.StorageProofs.Length != keys.Length) throw new InvalidDataException("Invalid exported account proof.");
+                object[] storage = new object[keys.Length];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    ExecutionStorageProof slot = proof.StorageProofs[i];
+                    if (slot.Key != keys[i] || ExecutionProofVerifier.VerifyStorage(proof.Account.StorageRoot, slot.Key, slot.Proof) != slot.Value)
+                        throw new InvalidDataException("Invalid exported storage proof.");
+                    storage[i] = new { key = slot.Key.ToBigEndian().ToHexString(withZeroX: true), value = Quantity(slot.Value), proof = slot.Proof };
+                }
+                return BoundedJson.ToElement(new
+                {
+                    address = address.ToString(),
+                    balance = Quantity(proof.Account.Balance),
+                    nonce = Quantity(proof.Account.Nonce),
+                    codeHash = proof.Account.CodeHash.ToString(),
+                    storageHash = proof.Account.StorageRoot.ToString(),
+                    accountProof = proof.AccountProof,
+                    storageProof = storage,
+                });
             }
-            return BoundedJson.ToElement(new
+            catch (Exception exception) when (exception is InvalidDataException or RlpException)
             {
-                address = address.ToString(),
-                balance = Quantity(proof.Account.Balance),
-                nonce = Quantity(proof.Account.Nonce),
-                codeHash = proof.Account.CodeHash.ToString(),
-                storageHash = proof.Account.StorageRoot.ToString(),
-                accountProof = proof.AccountProof,
-                storageProof = storage,
-            });
+                throw new RpcException(-32000, "Execution peers returned invalid or unavailable path proofs.");
+            }
+            finally { if (historical) _historicalStateRequests.Release(); }
         }
-        catch (Exception exception) when (exception is InvalidDataException or RlpException)
-        {
-            throw new RpcException(-32000, "Execution peers returned invalid or unavailable path proofs.");
-        }
-        finally { if (historical) _historicalStateRequests.Release(); }
+        finally { _proofRequests.Release(); }
     }
 
     private async Task<object> GetFeesAsync(string method, JsonElement parameters, int count, CancellationToken cancellationToken)
@@ -716,7 +723,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
 
     private async Task AcquireHistoricalStateAsync(CancellationToken cancellationToken)
     {
-        if (!await _historicalStateRequests.WaitAsync(0, cancellationToken))
+        if (!await _historicalStateRequests.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
             throw new RpcException(-32000, "Too many concurrent historical state requests.");
     }
 
@@ -799,5 +806,6 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         _logResults.Dispose();
         _data?.Dispose();
         _historicalStateRequests.Dispose();
+        _proofRequests.Dispose();
     }
 }

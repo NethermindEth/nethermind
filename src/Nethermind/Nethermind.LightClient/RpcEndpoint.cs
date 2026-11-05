@@ -19,7 +19,7 @@ internal static class RpcEndpoint
 
     internal static async Task HandleAsync(HttpContext context,
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, TimeProvider? clock = null,
-        CancellationToken stoppingToken = default)
+        CancellationToken stoppingToken = default, LightClientMetrics? metrics = null)
     {
         if (!ActiveRequests.Wait(0))
         {
@@ -32,7 +32,7 @@ internal static class RpcEndpoint
         {
             using CancellationTokenSource timeout = new(RequestDeadline, clock ?? TimeProvider.System);
             using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, context.RequestAborted, stoppingToken);
-            try { await HandleCoreAsync(context, invoke, logger, cancellation.Token); }
+            try { await HandleCoreAsync(context, invoke, logger, cancellation.Token, metrics); }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested && !context.RequestAborted.IsCancellationRequested)
             {
                 if (context.Response.HasStarted) context.Abort();
@@ -44,7 +44,8 @@ internal static class RpcEndpoint
     }
 
     private static async Task HandleCoreAsync(HttpContext context,
-        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
+        LightClientMetrics? metrics)
     {
         long started = Stopwatch.GetTimestamp();
         bool large = false;
@@ -105,11 +106,11 @@ internal static class RpcEndpoint
                         await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain at least one request"), cancellationToken);
                         return;
                     }
-                    await WriteBatchAsync(context, request, invoke, logger, cancellationToken);
+                    await WriteBatchAsync(context, request, invoke, logger, cancellationToken, metrics);
                 }
                 else
                 {
-                    object? response = await InvokeAsync(request, invoke, logger, cancellationToken);
+                    object? response = await InvokeAsync(request, invoke, logger, cancellationToken, metrics: metrics);
                     cancellationToken.ThrowIfCancellationRequested();
                     if (response is null) context.Response.StatusCode = StatusCodes.Status204NoContent;
                     else await context.Response.WriteAsJsonAsync(response, cancellationToken);
@@ -120,10 +121,11 @@ internal static class RpcEndpoint
     }
 
     internal static async Task WriteBatchAsync(HttpContext context, JsonElement requests,
-        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
+        LightClientMetrics? metrics = null)
     {
         using BoundedJsonBuffer output = new(BatchResponseLimit);
-        bool responses = await WriteBatchAsync(output, BatchResponseLimit, requests, invoke, logger, cancellationToken);
+        bool responses = await WriteBatchAsync(output, BatchResponseLimit, requests, invoke, logger, cancellationToken, metrics);
         if (!responses) context.Response.StatusCode = StatusCodes.Status204NoContent;
         else
         {
@@ -144,7 +146,8 @@ internal static class RpcEndpoint
     }
 
     internal static async Task<bool> WriteBatchAsync(BoundedJsonBuffer output, int limit, JsonElement requests,
-        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken)
+        Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
+        LightClientMetrics? metrics = null)
     {
         output.GetSpan(1)[0] = (byte)'[';
         output.Advance(1);
@@ -164,7 +167,7 @@ internal static class RpcEndpoint
                 break;
             }
             await InvokeAsync(item, exhausted ? Reject : admitted++ >= MaxBatchCount ? RejectExcessBatchItem : invoke,
-                logger, cancellationToken, Append);
+                logger, cancellationToken, Append, metrics);
 
             bool Append(object response, bool success)
             {
@@ -226,7 +229,7 @@ internal static class RpcEndpoint
 
     internal static async Task<object?> InvokeAsync(JsonElement request,
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
-        Func<object, bool, bool>? writeResponse = null)
+        Func<object, bool, bool>? writeResponse = null, LightClientMetrics? metrics = null)
     {
         long started = Stopwatch.GetTimestamp();
         string methodName = "<invalid>";
@@ -292,7 +295,9 @@ internal static class RpcEndpoint
             {
                 for (int i = 0; i < chars.Length; i++) chars[i] = char.IsControl(source[i]) ? ' ' : source[i];
             });
-            logger.LogInformation("RPC {Method} -> {Outcome} in {ElapsedMs:F1} ms", displayName, outcome, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+            metrics?.RecordRpc(methodName, outcome, elapsed.TotalSeconds);
+            logger.LogInformation("RPC {Method} -> {Outcome} in {ElapsedMs:F1} ms", displayName, outcome, elapsed.TotalMilliseconds);
         }
 
         object Respond(object response, bool success)

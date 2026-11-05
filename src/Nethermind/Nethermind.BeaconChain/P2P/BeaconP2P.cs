@@ -45,6 +45,7 @@ namespace Nethermind.BeaconChain.P2P;
 public sealed class BeaconP2P : IAsyncDisposable
 {
     internal static readonly TimeSpan IdentifyTimeout = TimeSpan.FromSeconds(5);
+    internal const int MaxIdentifyProtocols = 64;
     private const string IdentityMetadataKey = "p2pIdentityKey";
 
     private readonly IBeaconChainConfig _config;
@@ -449,15 +450,16 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Records the identify answer of <paramref name="session"/> in the peer store.</summary>
     /// <remarks>Recording does not announce addresses to discovery, whose pubsub dials bypass peer admission.</remarks>
-    internal void RecordIdentify(ISession session, IdentifyResult answer)
+    internal PeerStore.PeerInfo? RecordIdentify(ISession session, IdentifyResult answer)
     {
         if (session.RemotePeerId is { } peerId)
         {
-            RecordIdentify(_serviceProvider.GetRequiredService<PeerStore>(), peerId, answer);
+            return RecordIdentify(_serviceProvider.GetRequiredService<PeerStore>(), peerId, answer);
         }
+        return null;
     }
 
-    internal static void RecordIdentify(PeerStore peerStore, PeerId peerId, IdentifyResult answer)
+    internal static PeerStore.PeerInfo RecordIdentify(PeerStore peerStore, PeerId peerId, IdentifyResult answer)
     {
         List<string> protocols = [];
         foreach (string protocol in answer.Protocols)
@@ -465,7 +467,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             if (Encoding.UTF8.GetByteCount(protocol) <= 128 && !protocols.Contains(protocol))
             {
                 protocols.Add(protocol);
-                if (protocols.Count == 64) break;
+                if (protocols.Count == MaxIdentifyProtocols) break;
             }
         }
         peerStore.SetSupportedProtocols(peerId, [.. protocols]);
@@ -476,6 +478,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             peerInfo.SignedPeerRecord = answer.SignedPeerRecord;
             peerInfo.Seq = answer.PeerRecordSequence;
         }
+        return peerInfo;
     }
 
     /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>

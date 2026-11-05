@@ -22,6 +22,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -210,7 +211,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <inheritdoc/>
     /// <remarks>
     /// phase0/p2p-interface.md Status: a client may send Status again to learn whether a peer has a higher head. Until a peer whose
-    /// last status is older than <paramref name="slot"/> answers, <see cref="GetBestPeers"/> may still offer it for slots up to <paramref name="slot"/>.
+    /// last status is older than <paramref name="slot"/> answers, <see cref="GetBestPeers(ulong)"/> may still offer it for slots up to <paramref name="slot"/>.
     /// </remarks>
     public void RefreshStatusesBehind(ulong slot, string reason)
     {
@@ -327,7 +328,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return uncustodied;
     }
 
-    /// <param name="usableOnly">Counts only peers below the request-failure limit, which requests go to while any such peer is connected (see <see cref="GetBestPeers"/>).</param>
+    /// <param name="usableOnly">Counts only peers below the request-failure limit, which requests go to while any such peer is connected (see <see cref="GetBestPeers(ulong)"/>).</param>
     private int CustodianCount(ulong column, bool usableOnly = false)
     {
         int count = 0;
@@ -498,7 +499,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// When neither leaves a peer, at most <see cref="MaxPeersOfferedAtFailureLimit"/> of the least-failed peers at the limit are listed, by the same head rules,
     /// so sync does not wait for a failure to decay; a peer with invalid data in its penalty, held out of selection or with a closed session is never listed.
     /// </remarks>
-    public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
+    public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => GetBestPeers(minHeadSlot, null);
+
+    /// <summary>Returns sync-usable peers satisfying <paramref name="isEligible"/> before applying failure-limit fallback.</summary>
+    /// <param name="minHeadSlot">The minimum advertised head slot.</param>
+    /// <param name="isEligible">An optional protocol-specific eligibility check.</param>
+    public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot, Func<IBeaconSyncPeer, bool>? isEligible)
     {
         List<ManagedPeer> best = [];
         List<ManagedPeer> stale = [];
@@ -508,6 +514,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         ChainAhead? ahead = Volatile.Read(ref _chainAhead);
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
+            if (isEligible?.Invoke(peer.Value) == false) continue;
             if (peer.Value.Status is null)
             {
                 noStatus++;
@@ -1481,7 +1488,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         if (info.Identify is { } identify)
         {
-            _p2p.RecordIdentify(session, identify);
+            Volatile.Write(ref peer.IdentifyInfo, _p2p.RecordIdentify(session, identify));
         }
 
         Interlocked.Increment(ref Metrics.PeersConnectedCount);
@@ -2282,6 +2289,18 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public PeerId? RemotePeerId { get; } = session.RemotePeerId;
         /// <summary>The session's verified identify answer, which a session the remote opened keeps only here.</summary>
         public IdentifyResult? Identify { get; init; }
+        internal PeerStore.PeerInfo? IdentifyInfo;
+        /// <inheritdoc/>
+        public IReadOnlyList<string>? AdvertisedProtocols
+        {
+            get
+            {
+                if (Identify is null || IsSessionClosed || RemotePeerId is not { } peerId ||
+                    !manager._admittedById.TryGetValue(peerId, out ManagedPeer? current) || !ReferenceEquals(current, this)) return null;
+                IReadOnlyList<string>? protocols = Volatile.Read(ref IdentifyInfo) is { } info ? info.SupportedProtocols : Identify.Protocols;
+                return protocols is { Count: >= BeaconP2P.MaxIdentifyProtocols } ? null : protocols;
+            }
+        }
         public StatusMessageV2? Status => _status;
         /// <summary>Whether the libp2p layer has dropped <see cref="Session"/>; every further request to it fails.</summary>
         public bool IsSessionClosed => Session.Closed.IsCancellationRequested;

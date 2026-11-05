@@ -26,6 +26,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private readonly VerifiedRpc _rpc;
     private readonly ILogger _logger;
     private readonly TimeProvider _clock;
+    private readonly LightClientMetrics? _metrics;
     private readonly Lock _clientsLock = new();
     private readonly Dictionary<HttpContext, TaskCompletionSource> _connections = [];
     private readonly HashSet<Client> _clients = [];
@@ -40,12 +41,13 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private bool _disposing;
 
     internal VerifiedSubscriptions(IExecutionStateSource source, VerifiedRpc rpc, ILogger logger,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null, LightClientMetrics? metrics = null)
     {
         _source = source;
         _rpc = rpc;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
+        _metrics = metrics;
         _publisher = PublishLoopAsync();
     }
 
@@ -427,7 +429,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                         {
                             using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
                             bool hasResponses = await RpcEndpoint.WriteBatchAsync(batch, MaxMessageBytes, request,
-                                InvokeAsync, _owner._logger, cancellation.Token);
+                                InvokeAsync, _owner._logger, cancellation.Token, _owner._metrics);
                             response = hasResponses ? batch.WrittenMemory.ToArray() : null;
                         }
                     }
@@ -439,7 +441,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                             response = EncodeResponse(request, result, out bool unchanged);
                             if (!unchanged) DiscardPending();
                             return unchanged;
-                        });
+                        }, _owner._metrics);
                     }
                     _token.ThrowIfCancellationRequested();
                     if (response is not null && !await EnqueueResponseAsync(response)) return;

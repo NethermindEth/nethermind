@@ -13,6 +13,10 @@ inputs:
     description: "Path to Dockerfile"
     required: true
     default: "Dockerfile"
+  version-file:
+    description: "Project or props file declaring the OCI image version"
+    required: false
+    default: "src/Nethermind/Directory.Build.props"
   build-config:
     description: "Build configuration (release or debug)"
     required: true
@@ -62,6 +66,7 @@ runs:
         IMAGE_NAME: ${{ inputs.image-name }}
         TAG: ${{ inputs.tag }}
         DOCKERFILE: ${{ inputs.dockerfile }}
+        VERSION_FILE: ${{ inputs.version-file }}
         BUILD_CONFIG: ${{ inputs.build-config }}
         PLATFORMS: ${{ inputs.platforms }}
         ADD_MASTER_TAG: ${{ inputs.add-master-tag }}
@@ -107,7 +112,7 @@ runs:
         # The OCI version label. release.yml reads the same properties with xmlstarlet, which is
         # not on the runner image and has to be installed first; version.sh needs no dependencies
         # and validates what it read, so an unusable version fails here instead of being published.
-        if ! version=$(scripts/version.sh src/Nethermind/Directory.Build.props); then
+        if ! version=$(scripts/version.sh "$VERSION_FILE"); then
           echo "::error::Could not determine the version for the image labels"
           exit 1
         fi

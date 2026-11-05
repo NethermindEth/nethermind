@@ -21,6 +21,10 @@ on:
         description: Dockerfile
         required: true
         default: Dockerfile
+      version-file:
+        description: Project or props file declaring the image version
+        required: true
+        default: src/Nethermind/Directory.Build.props
       build-config:
         description: Build configuration
         required: true
@@ -58,6 +62,7 @@ jobs:
           image-name: ${{ github.event.inputs.image-name || 'nethermind' }}
           tag: ${{ github.event.inputs.tag || (github.event_name == 'schedule' && 'nightly') || '' }}
           dockerfile: ${{ github.event.inputs.dockerfile || 'Dockerfile' }}
+          version-file: ${{ github.event.inputs.version-file || 'src/Nethermind/Directory.Build.props' }}
           build-config: ${{ github.event.inputs.build-config || 'release' }}
           docker-hub-organization: ${{ vars.DOCKERHUB_ORGANIZATION }}
           docker-hub-oidc-connection-id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}

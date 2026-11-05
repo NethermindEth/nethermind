@@ -13,6 +13,12 @@ consensus and execution data come from P2P peers, never an upstream JSON-RPC end
 
 ## Run
 
+For a VPS, use the [Docker Compose deployment](../../../tools/LightClient/README.md).
+It includes a persistent light client, Prometheus and provisioned Grafana
+dashboards. RPC and dashboards bind to the host's loopback interface; only
+P2P ports are public. The image has its own release version, starting at
+`nethermindeth/light-client:1.0.0`.
+
 Install the SDK selected by the repository's `global.json`, then run from the
 repository root:
 
@@ -189,7 +195,12 @@ use version 1.1.1. TCP uses Noise with yamux preferred and upstream mplex
 (`/mplex/6.7.0`) available for legacy beacon peers. Other native libp2p hosts
 retain yamux unless they opt into mplex; QUIC uses its own streams.
 Outbound connections to public beacon and execution peers must be
-permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
+permitted. Light-client requests use the connected session's advertised protocols,
+including accepted Identify updates. Unknown capabilities permit a probe; known
+unsupported protocols are skipped without penalizing or disconnecting the peer.
+Failed requests back off for 30 seconds per protocol, so they do not suppress
+other protocols or retry on every supplier-search round.
+The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
 Execution data requests race at most two suppliers, use only a verified response,
@@ -219,6 +230,26 @@ Example request:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x0000000000000000000000000000000000000000","latest"]}'
 ```
+
+## Metrics
+
+`GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
+same Host/origin policy. The [Docker deployment](../../../tools/LightClient/README.md)
+includes a scraper and Grafana dashboard. Keep these operational endpoints private.
+
+The `nethermind_light_client_` metrics cover startup/readiness, authenticated
+latest/finalized heights and freshness, beacon/execution/SNAP peers, hosted
+accounts and retained slots, and RPC item counts and duration histograms.
+RPC observations include HTTP and WebSocket items, batch items and
+notifications, initialization waits, failures and cancellation. Method labels
+are bounded; unknown methods share `other`, and account/peer identities are not
+metric labels. Standard `process_` metrics report CPU and process memory.
+
+`nethermind_light_client_ready` requires the running stage, completed RPC
+initialization and a fresh authenticated latest head. HTTP health alone does
+not imply readiness, and freshness uses the existing wallet policy rather
+than promising a head at the exact tip. Peer counts refresh with the periodic
+peer log; SNAP peers are a subset of execution peers.
 
 ## Host selected accounts
 
@@ -344,8 +375,13 @@ Only authenticated canonical state is served, including when EIP-1898
 known non-canonical hashes return `-32000` when `requireCanonical` is true and
 `-32001` otherwise, because their state is unavailable to this client. State availability within that range
 still depends on a SNAP peer retaining the state root.
-At most two historical state requests run concurrently; excess requests fail promptly,
-leaving SNAP and HTTP capacity for current-head reads.
+At most two historical state requests run concurrently. Additional requests wait
+up to five seconds for capacity before returning an overload error; cancellation
+removes a queued request. Current-head reads use independent admission.
+At most two account-proof requests proceed to shared execution-data admission,
+leaving capacity for blocks and fees while historical proofs wait. Additional
+proofs wait up to five seconds before returning an overload error; a historical
+proof can also wait up to five seconds at historical admission.
 Block and receipt selectors retain a separate 256-ancestor window anchored to
 either head. Block queries return `null` for an unknown or unauthenticated hash or a number above
 the authenticated tip; an older block outside this retained window returns an

@@ -28,6 +28,9 @@ public enum PeerFailureReason
 /// <summary>A connected, status-exchanged beacon chain peer usable by range sync.</summary>
 public interface IBeaconSyncPeer
 {
+    /// <summary>The session's latest complete advertised protocol list, or <c>null</c> when unknown or potentially truncated.</summary>
+    IReadOnlyList<string>? AdvertisedProtocols => null;
+
     string Id { get; }
 
     /// <summary>The head slot last advertised by the peer over <c>status</c>.</summary>

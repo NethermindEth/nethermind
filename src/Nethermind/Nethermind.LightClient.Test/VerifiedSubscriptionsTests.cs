@@ -26,6 +26,37 @@ public class VerifiedSubscriptionsTests
     private static readonly Hash256 Topic = Keccak.Compute("subscription topic");
 
     [Test]
+    public async Task Metrics_count_websocket_methods_subscriptions_batch_notifications_and_errors()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        await using Harness harness = new(metrics: metrics);
+        FakeSocket socket = harness.Connect();
+        string id = (await socket.Request("eth_subscribe", "newHeads")).GetProperty("result").GetString()!;
+        await socket.Request("eth_unsubscribe", id);
+        await socket.Request("eth_chainId");
+        socket.Push(new object[]
+        {
+            new { jsonrpc = "2.0", method = "eth_chainId", @params = Array.Empty<object>() },
+            Request("private_unknown_method"),
+            false,
+        });
+
+        JsonElement batch = await socket.Next();
+        string scrape = await LightClientMetricsTests.ScrapeAsync(metrics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.GetArrayLength(), Is.EqualTo(2));
+            LightClientMetricsTests.AssertRpc(scrape, "eth_subscribe", "ok", 1);
+            LightClientMetricsTests.AssertRpc(scrape, "eth_unsubscribe", "ok", 1);
+            LightClientMetricsTests.AssertRpc(scrape, "eth_chainId", "ok", 2);
+            LightClientMetricsTests.AssertRpc(scrape, "other", "error", 2);
+            Assert.That(scrape, Does.Not.Contain("private_unknown_method"));
+        }
+    }
+
+    [Test]
     public async Task Subscription_response_precedes_authenticated_head_and_unsubscribe_stops_notifications()
     {
         await using Harness harness = new();
@@ -456,7 +487,9 @@ public class VerifiedSubscriptionsTests
     [Test]
     public async Task Single_response_size_limits_keep_existing_subscriptions([Values(100_000, 150_000)] int codeBytes)
     {
-        await using Harness harness = new();
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        await using Harness harness = new(metrics: metrics);
         FakeSocket socket = harness.Connect();
         await socket.Request("eth_subscribe", "newHeads");
         harness.Source.Code = new byte[codeBytes];
@@ -465,6 +498,7 @@ public class VerifiedSubscriptionsTests
 
         if (codeBytes == 100_000) Assert.That(response.GetProperty("result").GetString(), Has.Length.EqualTo(codeBytes * 2 + 2));
         else Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        LightClientMetricsTests.AssertRpc(await LightClientMetricsTests.ScrapeAsync(metrics), "eth_getCode", codeBytes == 100_000 ? "ok" : "error", 1);
         Block next = harness.Source.Add(11, harness.Source.Current, 1);
         harness.Publish(next);
         Assert.That((await socket.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
@@ -474,9 +508,11 @@ public class VerifiedSubscriptionsTests
     [Test]
     public async Task A_request_deadline_keeps_existing_subscriptions()
     {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
         WriteClock clock = new();
         TaskCompletionSource<VerifiedHead> repair = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using Harness harness = new(clock, token => repair.Task.WaitAsync(token));
+        await using Harness harness = new(clock, token => repair.Task.WaitAsync(token), metrics);
         FakeSocket socket = harness.Connect();
         await socket.Request("eth_subscribe", "newHeads");
         harness.Source.LatestFresh = false;
@@ -488,6 +524,7 @@ public class VerifiedSubscriptionsTests
 
         JsonElement response = await pending;
         Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32002));
+        LightClientMetricsTests.AssertRpc(await LightClientMetricsTests.ScrapeAsync(metrics), "eth_getBalance", "cancelled", 1);
         harness.Source.LatestFresh = true;
         Block next = harness.Source.Add(11, harness.Source.Current, 1);
         harness.Publish(next);
@@ -636,11 +673,11 @@ public class VerifiedSubscriptionsTests
         internal List<Task> Tasks { get; } = [];
         internal List<HttpContext> Contexts { get; } = [];
 
-        internal Harness(TimeProvider? clock = null, Func<CancellationToken, Task<VerifiedHead>>? waitForLatest = null)
+        internal Harness(TimeProvider? clock = null, Func<CancellationToken, Task<VerifiedHead>>? waitForLatest = null, LightClientMetrics? metrics = null)
         {
             _rpc = new(Source, () => Head(Source.Current), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => Head(Source.Current),
                 isLatestHeadFresh: _ => Source.LatestFresh, waitForLatestHead: waitForLatest);
-            _subscriptions = new(Source, _rpc, NullLogger.Instance, clock);
+            _subscriptions = new(Source, _rpc, NullLogger.Instance, clock, metrics);
             _subscriptions.PublishHead(Head(Source.Current));
         }
 

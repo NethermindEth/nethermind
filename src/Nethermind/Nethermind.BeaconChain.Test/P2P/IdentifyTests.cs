@@ -299,7 +299,7 @@ public class IdentifyTests
     }
 
     [Test]
-    public async Task An_identify_push_updates_only_admitted_peer_metadata([Values] bool admitted)
+    public async Task An_identify_push_updates_only_admitted_peer_metadata([Values] bool admitted, [Values] bool saturated)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
@@ -313,12 +313,22 @@ public class IdentifyTests
         Channel channel = new();
         Task listen = new BeaconP2P.AdmittedIdentifyPushProtocol(new ProtocolStackSettings(), new IdentifyProtocolSettings(), peerStore,
             peerId => admitted && peerId == remote.PeerId).ListenAsync(channel, context).WaitAsync(bound);
-        if (admitted) await channel.Reverse.WriteSizeAndProtobufAsync(AnswerOf(remote, remote, 1, "/pushed")).AsTask().WaitAsync(bound);
+        string[] protocols = saturated
+            ? [.. Enumerable.Range(0, BeaconP2P.MaxIdentifyProtocols).Select(static i => $"/other/{i}")]
+            : ["/pushed"];
+        if (admitted)
+        {
+            IdentifyMessage answer = AnswerOf(remote, remote, 1, "/pushed");
+            answer.Protocols.Clear();
+            answer.Protocols.AddRange(protocols);
+            if (saturated) answer.Protocols.Add("/wanted-after-the-bound");
+            await channel.Reverse.WriteSizeAndProtobufAsync(answer).AsTask().WaitAsync(bound);
+        }
         await listen;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { admitted ? "/pushed" : "/stored" }));
+            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(admitted ? protocols : ["/stored"]));
             Assert.That(announcements, Is.EqualTo(admitted ? 1 : 0));
         }
     }

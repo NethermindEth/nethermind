@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Logging;
+using NSubstitute;
 using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -35,11 +40,57 @@ public class PeerAdmissionMetadataTests
 
         bool admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(admitted, Is.True);
         Assert.That(announced, Has.Count.EqualTo(1));
-        Assert.That(announced[0].InPool, Is.True);
-        Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
+        string statusProtocol = new StatusProtocolV2(other.StatusHolder).Id;
+        IBeaconSyncPeer peer = announced[0].Peer;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(announced[0].InPool, Is.True);
+            Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
+            Assert.That(peer.AdvertisedProtocols, Does.Contain(statusProtocol));
+        }
+
+        client.P2P.PeerInfoForTest(other.P2P.LocalPeerId!).SupportedProtocols = [];
+        Assert.That(peer.AdvertisedProtocols, Is.Empty);
+        Assert.That(client.P2P.TryGetEstablishedSession(other.P2P.LocalPeerId!, out ISession? session), Is.True);
+        string wanted = new LightClientBootstrapProtocol(BeaconChainSpec.Mainnet).Id;
+        string[] saturated = [.. Enumerable.Range(0, BeaconP2P.MaxIdentifyProtocols).Select(static i => $"/other/{i}")];
+        client.P2P.RecordIdentify(session!, new IdentifyResult
+        {
+            PeerId = other.P2P.LocalPeerId!,
+            Protocols = [.. saturated, wanted],
+        });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.P2P.PeerInfoForTest(other.P2P.LocalPeerId!).SupportedProtocols, Is.EqualTo(saturated));
+            Assert.That(peer.AdvertisedProtocols, Is.Null, "a truncated list cannot establish that bootstrap is unsupported");
+        }
+        client.P2P.PeerInfoForTest(other.P2P.LocalPeerId!).SupportedProtocols = saturated;
+        Assert.That(peer.AdvertisedProtocols, Is.Null, "a saturated pushed list is also incomplete");
+        client.P2P.PeerInfoForTest(other.P2P.LocalPeerId!).SupportedProtocols = null;
+        Assert.That(peer.AdvertisedProtocols, Is.Null);
+        other.P2P.LocalPeerForTest!.ListenAddresses.Add(Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{other.P2P.LocalPeerId}"));
+        await PeerSessionNodes.WaitUntilAsync(() => peer.AdvertisedProtocols?.Contains(statusProtocol) == true,
+            "the admitted peer did not observe the updated identify push", token);
+
+        await session!.DisconnectAsync();
+        Assert.That(peer.AdvertisedProtocols, Is.Null, "closed sessions cannot borrow later peer-store capabilities");
+    }
+
+    [Test]
+    public async Task A_peer_without_a_session_identify_answer_does_not_use_old_peer_store_protocols()
+    {
+        Node client = CreateNode();
+        await using PeerHostScope hosts = new(client);
+        PeerId peerId = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
+        client.P2P.PeerInfoForTest(peerId).SupportedProtocols = [new StatusProtocolV2(client.StatusHolder).Id];
+        ISession session = Substitute.For<ISession>();
+        session.RemotePeerId.Returns(peerId);
+        PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, $"/ip4/127.0.0.1/tcp/1/p2p/{peerId}", removeWhenSessionCloses: false);
+
+        Assert.That(peer.AdvertisedProtocols, Is.Null);
     }
 
     [Test]

@@ -113,6 +113,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         snapshot?.IsFresh(CurrentSlot(), maximumAgeSeconds / spec.SecondsPerSlot) ?? false;
     LightClientStatus status = new(spec.ChainId, hostedAccounts,
         latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
+    LightClientMetrics metrics = new(network, status.Read);
     string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
     builder.WebHost.UseUrls(rpcUrl);
     builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = RpcEndpoint.MaxRequestBodySize);
@@ -124,8 +125,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     LightClientHost.ConfigureRequestPolicy(app, rpcUrl);
     app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
     app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, status.InvokeAsync, logger,
-        stoppingToken: app.Lifetime.ApplicationStopping));
+        stoppingToken: app.Lifetime.ApplicationStopping, metrics: metrics));
     app.MapGet("/status", status.Read);
+    app.MapGet("/metrics", metrics.WriteAsync);
     app.MapGet("/ws", status.HandleWebSocketAsync);
     await LightClientHost.RunAsync(app, async token =>
     {
@@ -266,7 +268,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
                 () => optimisticRequests.Writer.TryWrite(true), token));
-        VerifiedSubscriptions subscriptions = new(execution, rpc, logger);
+        VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
         bool rpcInitialized = false;
         try
         {
@@ -489,8 +491,10 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 using PeriodicTimer timer = new(TimeSpan.FromSeconds(12));
                 do
                 {
+                    int beaconPeers = beacon.PeerCount, executionPeers = execution.PeerCount, snapPeers = execution.SnapPeerCount;
+                    metrics.SetPeers(beaconPeers, executionPeers, snapPeers);
                     logger.LogInformation("Peers: beacon {BeaconPeers}, execution {ExecutionPeers}, SNAP {SnapPeers} ({ExecutionCandidates} candidates, DNS {DnsStatus})",
-                        beacon.PeerCount, execution.PeerCount, execution.SnapPeerCount, execution.CandidateCount, execution.DiscoveryStatus);
+                        beaconPeers, executionPeers, snapPeers, execution.CandidateCount, execution.DiscoveryStatus);
                 } while (await timer.WaitForNextTickAsync(cancellationToken));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }

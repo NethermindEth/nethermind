@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -521,9 +522,12 @@ public class HostTests
         app.MapGet("/", () => "ok");
         app.MapGet("/ws", () => "ok");
         app.MapGet("/status", () => "ok");
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        app.MapGet("/metrics", metrics.WriteAsync);
         await app.StartAsync();
         using HttpClient client = new();
-        foreach (string path in new[] { "/", "/ws", "/status" })
+        foreach (string path in new[] { "/", "/ws", "/status", "/metrics" })
         {
             using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single() + path);
             if (requestOrigin is not null) request.Headers.Add("Origin", requestOrigin == "local" ? app.Urls.Single() : requestOrigin);
@@ -531,6 +535,57 @@ public class HostTests
             using HttpResponseMessage response = await client.SendAsync(request);
 
             Assert.That((int)response.StatusCode, Is.EqualTo(expectedStatus), path);
+        }
+    }
+
+    [Test]
+    public async Task Wildcard_listener_with_allowed_hosts_rejects_rebinding_and_allows_metrics_and_wallets()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.Configuration["AllowedHosts"] = "localhost;127.0.0.1;[::1];light-client";
+        builder.Logging.ClearProviders();
+        builder.Services.AddCors();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using WebApplication app = builder.Build();
+        LightClientHost.ConfigureRequestPolicy(app, "http://0.0.0.0:8545");
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        app.MapGet("/status", status.Read);
+        app.MapGet("/metrics", metrics.WriteAsync);
+        app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, status.InvokeAsync, NullLogger.Instance, metrics: metrics));
+        await app.StartAsync();
+        using HttpClient client = new();
+        foreach (string host in new[] { "localhost:8545", "127.0.0.1:8545", "[::1]:8545", "light-client:8545" })
+        {
+            foreach (string path in new[] { "/status", "/metrics" })
+            {
+                using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single() + path);
+                request.Headers.Host = host;
+                using HttpResponseMessage response = await client.SendAsync(request);
+                Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), host + path);
+            }
+        }
+
+        foreach (string path in new[] { "/status", "/metrics", "/" })
+        {
+            using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single() + path);
+            request.Headers.Host = "attacker.example:8545";
+            request.Headers.Add("Origin", "http://attacker.example:8545");
+            using HttpResponseMessage response = await client.SendAsync(request);
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest), path);
+        }
+
+        using HttpRequestMessage wallet = new(HttpMethod.Post, app.Urls.Single());
+        wallet.Headers.Host = "localhost:8545";
+        wallet.Headers.Add("Origin", ChromeOrigin);
+        wallet.Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}""", Encoding.UTF8, "application/json");
+        using HttpResponseMessage result = await client.SendAsync(wallet);
+        using JsonDocument chainId = JsonDocument.Parse(await result.Content.ReadAsStringAsync());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(chainId.RootElement.GetProperty("result").GetString(), Is.EqualTo("0x1"));
+            Assert.That(result.Headers.GetValues("Access-Control-Allow-Origin"), Is.EqualTo(new[] { ChromeOrigin }));
         }
     }
 
@@ -714,6 +769,8 @@ public class HostTests
     [Test]
     public async Task Application_shutdown_cancels_pending_rpc_work()
     {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
         DefaultHttpContext context = new();
         using MemoryStream input = new(Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":[]}"""));
         context.Request.Body = input;
@@ -726,13 +783,20 @@ public class HostTests
             entered.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, token);
             return false;
-        }, NullLogger.Instance, stoppingToken: stopping.Token);
+        }, NullLogger.Instance, stoppingToken: stopping.Token, metrics: metrics);
         await entered.Task;
 
         await stopping.CancelAsync();
 
         await Assert.ThatAsync(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
         Assert.That(output.Length, Is.Zero, "Shutdown must not manufacture a successful response.");
+        string scrape = await LightClientMetricsTests.ScrapeAsync(metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            LightClientMetricsTests.AssertRpc(scrape, "eth_getBalance", "cancelled", 1);
+            LightClientMetricsTests.AssertRpc(scrape, "eth_getBalance", "ok", 0);
+            LightClientMetricsTests.AssertRpc(scrape, "eth_getBalance", "error", 0);
+        }
     }
 
     [Test]
@@ -914,6 +978,199 @@ public class HostTests
             if (!sender.HasExited) sender.Kill(entireProcessTree: true);
             await sender.WaitForExitAsync();
         }
+    }
+}
+
+public class LightClientMetricsTests
+{
+    private const string Prefix = "nethermind_light_client_";
+
+    [Test]
+    public async Task Metrics_before_initialization_include_process_series_and_no_available_head(
+        [Values("mainnet", "sepolia", "hoodi")] string network)
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new(network, status.Read);
+        DefaultHttpContext context = new();
+        using MemoryStream output = new();
+        context.Response.Body = output;
+
+        await metrics.WriteAsync(context);
+
+        string scrape = Encoding.UTF8.GetString(output.ToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Response.ContentType, Is.EqualTo("text/plain; version=0.0.4; charset=utf-8"));
+            Assert.That(Value(scrape, Prefix + "ready", ("network", network)), Is.Zero);
+            Assert.That(Value(scrape, Prefix + "initialized"), Is.Zero);
+            Assert.That(Value(scrape, Prefix + "startup_stage", ("stage", "checkpoint")), Is.EqualTo(1));
+            foreach (string head in new[] { "latest", "finalized" })
+                Assert.That(Value(scrape, Prefix + "head_available", ("head", head)), Is.Zero);
+            Assert.That(Value(scrape, "process_cpu_seconds_total"), Is.GreaterThanOrEqualTo(0));
+            Assert.That(Value(scrape, "process_working_set_bytes"), Is.GreaterThan(0));
+            Assert.That(Value(scrape, "process_private_memory_bytes"), Is.GreaterThan(0));
+            Assert.That(scrape.Split('\n').Any(line => line.StartsWith(Prefix + "peers{", StringComparison.Ordinal)), Is.False,
+                "Connected peers are unobserved until the first sample; bootstrap must not report a false zero.");
+        }
+    }
+
+    [Test]
+    public async Task Metrics_refresh_absolute_snapshots_and_clear_unavailable_or_stopped_state()
+    {
+        ClientProgress progress = new("running", true, new(100, 90, "latest-hash", true), new(80, 70, "finalized-hash", false),
+        [
+            new("private-address-one", 90, null, null, 12, 32, true, "ready", null, null),
+            new("private-address-two", 80, null, null, 7, 0, false, "failed", 90, "unbounded-error-text"),
+        ], null);
+        LightClientMetrics metrics = new("mainnet", () => progress);
+        metrics.SetPeers(10, 9, 8);
+
+        string running = await ScrapeAsync(metrics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Value(running, Prefix + "ready"), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "initialized"), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "startup_stage", ("stage", "running")), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "head_block_number", ("head", "latest")), Is.EqualTo(90));
+            Assert.That(Value(running, Prefix + "head_beacon_slot", ("head", "latest")), Is.EqualTo(100));
+            Assert.That(Value(running, Prefix + "head_fresh", ("head", "latest")), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "head_fresh", ("head", "finalized")), Is.Zero);
+            Assert.That(Value(running, Prefix + "head_available", ("head", "finalized")), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "hosted_accounts", ("state", "total")), Is.EqualTo(2));
+            Assert.That(Value(running, Prefix + "hosted_accounts", ("state", "current")), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "hosted_accounts", ("state", "failed")), Is.EqualTo(1));
+            Assert.That(Value(running, Prefix + "hosted_storage_slots"), Is.EqualTo(19));
+            Assert.That(Value(running, Prefix + "peers", ("layer", "beacon")), Is.EqualTo(10));
+            Assert.That(Value(running, Prefix + "peers", ("layer", "execution")), Is.EqualTo(9));
+            Assert.That(Value(running, Prefix + "peers", ("layer", "snap")), Is.EqualTo(8));
+            Assert.That(running, Does.Not.Contain("private-address").And.Not.Contain("unbounded-error-text"));
+        }
+
+        progress = new("bootstrap", false, null, null, [], null);
+        string missing = await ScrapeAsync(metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Value(missing, Prefix + "ready"), Is.Zero);
+            Assert.That(Value(missing, Prefix + "initialized"), Is.Zero);
+            Assert.That(Value(missing, Prefix + "startup_stage", ("stage", "running")), Is.Zero);
+            Assert.That(Value(missing, Prefix + "startup_stage", ("stage", "bootstrap")), Is.EqualTo(1));
+            foreach (string head in new[] { "latest", "finalized" })
+            {
+                foreach (string metric in new[] { "head_block_number", "head_beacon_slot", "head_fresh", "head_available" })
+                    Assert.That(Value(missing, Prefix + metric, ("head", head)), Is.Zero, metric + head);
+            }
+            foreach (string state in new[] { "total", "current", "failed" })
+                Assert.That(Value(missing, Prefix + "hosted_accounts", ("state", state)), Is.Zero);
+            Assert.That(Value(missing, Prefix + "hosted_storage_slots"), Is.Zero);
+        }
+
+        foreach (string terminal in new[] { "stopping", "failed" })
+        {
+            progress = progress with { StartupStage = terminal, RpcInitialized = true, Latest = new(100, 90, "retained-head", true) };
+            metrics.SetPeers(10, 9, 8);
+            string stopped = await ScrapeAsync(metrics);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Value(stopped, Prefix + "ready"), Is.Zero);
+                Assert.That(Value(stopped, Prefix + "initialized"), Is.Zero);
+                foreach (string layer in new[] { "beacon", "execution", "snap" })
+                    Assert.That(Value(stopped, Prefix + "peers", ("layer", layer)), Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Metrics_count_each_http_batch_item_notification_and_error_exactly_once()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        DefaultHttpContext context = new();
+        using MemoryStream input = new(Encoding.UTF8.GetBytes("""
+            [
+              {"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]},
+              {"jsonrpc":"2.0","method":"eth_chainId","params":[]},
+              {"jsonrpc":"2.0","id":2,"method":"eth_chainId","params":[false]},
+              {"jsonrpc":"2.0","id":3,"method":"private_unknown_method","params":[]},
+              false
+            ]
+            """));
+        using MemoryStream output = new();
+        context.Request.Body = input;
+        context.Response.Body = output;
+
+        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, metrics: metrics);
+
+        using JsonDocument response = JsonDocument.Parse(output.ToArray());
+        string scrape = await ScrapeAsync(metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(4));
+            Assert.That(response.RootElement[0].GetProperty("result").GetString(), Is.EqualTo("0x1"));
+            AssertRpc(scrape, "eth_chainId", "ok", 2);
+            AssertRpc(scrape, "eth_chainId", "error", 1);
+            AssertRpc(scrape, "other", "error", 2);
+            Assert.That(scrape, Does.Not.Contain("private_unknown_method"));
+        }
+    }
+
+    [Test]
+    public async Task Concurrent_rpc_recording_and_repeated_scrapes_keep_cardinality_bounded()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        string empty = await ScrapeAsync(metrics);
+        TaskCompletionSource start = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task[] writers = Enumerable.Range(0, 4).Select(worker => Task.Run(async () =>
+        {
+            await start.Task;
+            for (int i = 0; i < 25; i++) metrics.RecordRpc($"unknown_{worker}_{i}", $"unbounded_error_{i}", 0.125);
+        })).ToArray();
+        Task<string>[] scrapes = Enumerable.Range(0, 4).Select(_ => Task.Run(async () =>
+        {
+            await start.Task;
+            return await ScrapeAsync(metrics);
+        })).ToArray();
+        start.SetResult();
+        await Task.WhenAll(writers);
+        await Task.WhenAll(scrapes);
+
+        string final = await ScrapeAsync(metrics);
+        string repeated = await ScrapeAsync(metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertRpc(final, "other", "error", 100);
+            Assert.That(Value(final, Prefix + "rpc_duration_seconds_sum", ("method", "other"), ("outcome", "error")), Is.EqualTo(12.5));
+            Assert.That(RpcSeries(final), Is.EqualTo(RpcSeries(empty)));
+            Assert.That(RpcSeries(repeated), Is.EqualTo(RpcSeries(empty)));
+            AssertRpc(repeated, "other", "error", 100);
+            Assert.That(final, Does.Not.Contain("unknown_").And.Not.Contain("unbounded_error_"));
+        }
+
+        static int RpcSeries(string text) => text.Split('\n').Count(line => line.StartsWith(Prefix + "rpc_", StringComparison.Ordinal));
+    }
+
+    internal static async Task<string> ScrapeAsync(LightClientMetrics metrics)
+    {
+        using MemoryStream output = new();
+        await metrics.Registry.CollectAndExportAsTextAsync(output);
+        return Encoding.UTF8.GetString(output.ToArray());
+    }
+
+    internal static void AssertRpc(string scrape, string method, string outcome, int count)
+    {
+        Assert.That(Value(scrape, Prefix + "rpc_requests_total", ("method", method), ("outcome", outcome)), Is.EqualTo(count), method + "/" + outcome);
+        Assert.That(Value(scrape, Prefix + "rpc_duration_seconds_count", ("method", method), ("outcome", outcome)), Is.EqualTo(count), method + "/" + outcome + " duration");
+    }
+
+    internal static double Value(string scrape, string name, params (string Key, string Value)[] labels)
+    {
+        string[] lines = scrape.Split('\n').Where(line =>
+            (line.StartsWith(name + "{", StringComparison.Ordinal) || line.StartsWith(name + " ", StringComparison.Ordinal)) &&
+            labels.All(label => line.Contains($"{label.Key}=\"{label.Value}\"", StringComparison.Ordinal))).ToArray();
+        Assert.That(lines, Has.Length.EqualTo(1), name);
+        return double.Parse(lines[0].AsSpan(lines[0].LastIndexOf(' ') + 1), CultureInfo.InvariantCulture);
     }
 }
 

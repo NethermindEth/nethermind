@@ -2,6 +2,8 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.LightClient.Test" />

@@ -283,6 +283,7 @@ public class BeaconPeerTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(providers.Preferred<LightClientUpdate>([peer], 0), Is.Zero);
+            Assert.That(providers.CanRequest<LightClientUpdate>(peer), Is.True);
             Assert.That(peer.Failures, Is.Empty);
         }
     }
@@ -1252,6 +1253,129 @@ public class BeaconPeerTransportTests
         Assert.That(response, Is.Null);
         Assert.That(peer.Failures, Is.Empty);
     }
+
+    public enum ProtocolAdvertisement { Unknown, Empty, OtherProtocol, Matching }
+
+    [Test]
+    public async Task Requests_skip_peers_that_advertise_no_support_for_the_requested_protocol(
+        [Range(0, 3)] int kind, [Values] ProtocolAdvertisement advertisement)
+    {
+        string protocol = ProtocolId(kind);
+        BootstrapPeer peer = new(ConsensusTests.Bootstrap(1, 1))
+        {
+            AdvertisedProtocols = advertisement switch
+            {
+                ProtocolAdvertisement.Unknown => null,
+                ProtocolAdvertisement.Empty => [],
+                ProtocolAdvertisement.OtherProtocol => [ProtocolId((kind + 1) % 4)],
+                _ => [protocol],
+            },
+        };
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(peer, PeerDirection.Outbound);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+        int attempted = 0;
+        bool selected = kind switch
+        {
+            0 => await RequestAsync(ConsensusTests.Bootstrap(1, 1)),
+            1 => await RequestAsync(ConsensusTests.Update(1, 13, 14, 1)),
+            2 => await RequestAsync(new LightClientFinalityUpdate { AttestedHeader = Optimistic(13).AttestedHeader }),
+            _ => await RequestAsync(Optimistic(13)),
+        };
+        bool supported = advertisement is ProtocolAdvertisement.Unknown or ProtocolAdvertisement.Matching;
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(attempted, Is.EqualTo(supported ? 1 : 0));
+        Assert.That(selected, Is.EqualTo(supported));
+        Assert.That(peer.Failures, Is.Empty);
+        Assert.That(providers.Maintain(Connected([peer])).Recycle, Is.Null);
+
+        async Task<bool> RequestAsync<T>(T response) where T : class
+        {
+            (T? actual, _) = await requests.RequestAsync<T>([peer], (_, _) =>
+            {
+                attempted++;
+                return Task.FromResult(response);
+            }, (_, _) => Task.FromResult(true), CancellationToken.None);
+            return actual is not null;
+        }
+    }
+
+    [Test]
+    public async Task Failed_protocols_back_off_without_blocking_another_protocol_or_retrying_early([Values] bool unavailable)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        BootstrapPeer peer = new(bootstrap);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(peer, PeerDirection.Outbound);
+        providers.RecordValidated(peer, bootstrap);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+        int attempts = 0;
+        Exception failure = unavailable ? BootstrapUnavailable() : new EndOfStreamException("Channel refused the request.");
+        await requests.RequestAsync<LightClientOptimisticUpdate>([peer], (_, _) =>
+        {
+            attempts++;
+            return Task.FromException<LightClientOptimisticUpdate>(failure);
+        }, (_, _) => Task.FromResult(true), CancellationToken.None);
+        LightClientOptimisticUpdate expected = Optimistic(13);
+
+        Assert.That(await RequestAsync(), Is.Null);
+        clock.Advance(TimeSpan.FromSeconds(30) - TimeSpan.FromMilliseconds(1));
+        Assert.That(await RequestAsync(), Is.Null);
+        Assert.That(providers.CanRequest<LightClientBootstrap>(peer), Is.True);
+        Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(peer), Is.False);
+        Assert.That(attempts, Is.EqualTo(1));
+
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.That(await RequestAsync(), Is.SameAs(expected));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(attempts, Is.EqualTo(2));
+        Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(peer), Is.True);
+        Assert.That(peer.Failures, Is.EqualTo(unavailable ? Array.Empty<PeerFailureReason>() : [PeerFailureReason.RequestFailed]));
+
+        async Task<LightClientOptimisticUpdate?> RequestAsync()
+        {
+            (LightClientOptimisticUpdate? response, _) = await requests.RequestAsync<LightClientOptimisticUpdate>([peer], (_, _) =>
+            {
+                attempts++;
+                return Task.FromResult(expected);
+            }, (_, _) => Task.FromResult(true), CancellationToken.None);
+            return response;
+        }
+    }
+
+    [Test]
+    public void Validated_data_or_a_replacement_session_clears_protocol_retry_backoff([Values] bool replacement)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(14);
+        BootstrapPeer old = new(ConsensusTests.Bootstrap(1, 1), "supplier");
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        providers.Admit(old, PeerDirection.Outbound);
+        providers.Failed<LightClientOptimisticUpdate>(old);
+        Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(old), Is.False);
+
+        BootstrapPeer current = replacement ? new(ConsensusTests.Bootstrap(1, 1), old.Id) : old;
+        if (replacement) providers.Admit(current, PeerDirection.Outbound);
+        else providers.RecordValidated(current, Optimistic(13));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(current), Is.True);
+        if (replacement) Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(old), Is.False);
+    }
+
+    private static string ProtocolId(int kind) => kind switch
+    {
+        0 => new LightClientBootstrapProtocol(ConsensusTests.Spec).Id,
+        1 => new LightClientUpdatesByRangeProtocol(ConsensusTests.Spec).Id,
+        2 => new LightClientFinalityUpdateProtocol(ConsensusTests.Spec).Id,
+        _ => new LightClientOptimisticUpdateProtocol(ConsensusTests.Spec).Id,
+    };
 
     [Test]
     public async Task Bootstrap_supplier_is_preferred_for_optimistic_polling_before_it_has_a_fresh_head()
@@ -2436,6 +2560,7 @@ public class BeaconPeerTransportTests
         public string Id => id;
         public ulong HeadSlot => 1;
         public PeerColumnCustody Custody => default!;
+        public IReadOnlyList<string>? AdvertisedProtocols { get; init; }
 
         public Task<LightClientBootstrap> RequestLightClientBootstrapAsync(Hash256 root, CancellationToken token) =>
             Task.FromResult(bootstrap);

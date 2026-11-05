@@ -11,6 +11,7 @@ using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -236,10 +237,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         RequestAsync(_updateRequests, (peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
 
     internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
-        _finalityRequests.PollAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
+        _finalityRequests.PollAsync(() => _peers.GetBestPeers(0, _finalityRequests.CanRequest<LightClientFinalityUpdate>),
+            (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
 
     internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> validate, CancellationToken token) =>
-        _optimisticRequests.PollAsync(() => _peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
+        _optimisticRequests.PollAsync(() => _peers.GetBestPeers(0, _optimisticRequests.CanRequest<LightClientOptimisticUpdate>),
+            (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
     private async Task<T> RequestAsync<T>(PeerRequests requests, Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
         Func<T, CancellationToken, Task> validate, CancellationToken token) where T : class
@@ -249,11 +252,12 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             await validate(response, cancellationToken);
             return true;
         };
+        Func<IBeaconSyncPeer, bool> isEligible = requests.CanRequest<T>;
         long lastStatus = Stopwatch.GetTimestamp();
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0), request, validateAndAccept, token);
+            (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0, isEligible), request, validateAndAccept, token);
             if (response is not null) return response;
             if (sawInapplicable) throw new IrrelevantLightClientUpdateException();
 
@@ -274,6 +278,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private readonly int _concurrency = Math.Clamp(concurrency, 1, 4);
         private readonly Dictionary<IBeaconSyncPeer, int> _localRejections = new(ReferenceEqualityComparer.Instance);
         private string? _lastAttemptedPeerId;
+
+        internal bool CanRequest<T>(IBeaconSyncPeer peer) => providers?.CanRequest<T>(peer) ?? true;
 
         internal async Task<T?> PollAsync<T>(Func<IReadOnlyList<IBeaconSyncPeer>> getPeers,
             Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task<bool>> validate,
@@ -317,6 +323,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         bool skip = offset++ >= 0 && index == preferred;
                         if (skip) continue;
                         IBeaconSyncPeer next = peers[index];
+                        if (!CanRequest<T>(next)) continue;
                         attempted++;
                         _lastAttemptedPeerId = next.Id;
                         Task<(IBeaconSyncPeer, T?, Exception?, bool)> fetching = FetchAsync(next, request, owner.Token);
@@ -444,6 +451,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private const int MinFreshSuppliers = 4;
         private const ulong MaxSupplierLag = 10;
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan HintRetention = TimeSpan.FromHours(24);
         private static readonly TimeSpan SaveInterval = TimeSpan.FromMinutes(1);
@@ -456,6 +464,13 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Supplier> _sessions = new(StringComparer.Ordinal);
+        private readonly Dictionary<Type, string> _protocols = new()
+        {
+            [typeof(LightClientBootstrap)] = new LightClientBootstrapProtocol(spec).Id,
+            [typeof(LightClientUpdate)] = new LightClientUpdatesByRangeProtocol(spec).Id,
+            [typeof(LightClientFinalityUpdate)] = new LightClientFinalityUpdateProtocol(spec).Id,
+            [typeof(LightClientOptimisticUpdate)] = new LightClientOptimisticUpdateProtocol(spec).Id,
+        };
         private readonly Dictionary<string, Remembered> _remembered = LoadHints(metadata, spec, time, logger ?? NullLogger.Instance);
         private long _hintGeneration;
         private long _savedHintGeneration;
@@ -548,7 +563,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             lock (_lock)
             {
                 if (!TryCurrent(peer, out Supplier? supplier)) return;
-                (supplier.FailedProtocols ??= []).Add(typeof(T));
+                (supplier.FailedProtocols ??= [])[typeof(T)] = time.GetTimestamp();
                 if (typeof(T) == typeof(LightClientOptimisticUpdate)) supplier.OptimisticSlot = null;
                 else if (typeof(T) == typeof(LightClientFinalityUpdate)) supplier.FinalitySlot = null;
                 else if (typeof(T) == typeof(LightClientUpdate)) supplier.UpdateSlot = null;
@@ -563,6 +578,30 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             }
         }
 
+        internal bool CanRequest<T>(IBeaconSyncPeer peer)
+        {
+            lock (_lock) return CanRequestCore<T>(peer);
+        }
+
+        private bool CanRequestCore<T>(IBeaconSyncPeer peer)
+        {
+            if (_protocols.TryGetValue(typeof(T), out string? protocol) && peer.AdvertisedProtocols is { } advertised)
+            {
+                bool supported = false;
+                foreach (string candidate in advertised)
+                {
+                    if (candidate != protocol) continue;
+                    supported = true;
+                    break;
+                }
+                if (!supported) return false;
+            }
+            if (!_sessions.TryGetValue(Identity(peer.Id), out Supplier? supplier)) return true;
+            return ReferenceEquals(supplier.Peer, peer) &&
+                (supplier.FailedProtocols is null || !supplier.FailedProtocols.TryGetValue(typeof(T), out long failedAt) ||
+                    time.GetElapsedTime(failedAt) >= RetryInterval);
+        }
+
         internal int Preferred<T>(IReadOnlyList<IBeaconSyncPeer> peers, int start)
         {
             lock (_lock)
@@ -572,7 +611,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 {
                     int index = (start + offset) % peers.Count;
                     if (!TryCurrent(peers[index], out Supplier? supplier)) continue;
-                    if (supplier.FailedProtocols?.Contains(typeof(T)) == true) continue;
+                    if (!CanRequestCore<T>(peers[index])) continue;
                     ulong? slot = typeof(T) == typeof(LightClientOptimisticUpdate) ? supplier.OptimisticSlot
                         : typeof(T) == typeof(LightClientFinalityUpdate) ? supplier.FinalitySlot : supplier.UpdateSlot;
                     int score = IsFresh(slot) ? 2 : IsCandidate(supplier) ? 1 : 0;
@@ -632,9 +671,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 {
                     if (!admitted.Contains(Identity(supplier.Peer.Id))) continue;
                     if (IsFresh(supplier)) fresh++;
-                    if (IsFresh(supplier.OptimisticSlot) && supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) != true) optimisticSuppliers++;
-                    if (IsFresh(supplier.FinalitySlot) && supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) != true) finalitySuppliers++;
-                    if (IsFresh(supplier.UpdateSlot) && supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) != true) updateSuppliers++;
+                    if (IsFresh(supplier.OptimisticSlot) && supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) != true) optimisticSuppliers++;
+                    if (IsFresh(supplier.FinalitySlot) && supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) != true) finalitySuppliers++;
+                    if (IsFresh(supplier.UpdateSlot) && supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) != true) updateSuppliers++;
                 }
                 bool needsOptimistic = optimisticSuppliers < MinFreshSuppliers;
                 bool needsFinality = finalitySuppliers < MinFreshSuppliers;
@@ -646,9 +685,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     foreach (Supplier supplier in _sessions.Values)
                     {
                         if (!admitted.Contains(Identity(supplier.Peer.Id)) || time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
-                        bool unavailable = needsOptimistic && supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) == true ||
-                            needsFinality && supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) == true ||
-                            needsCommittee && supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) == true;
+                        bool unavailable = needsOptimistic && supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) == true ||
+                            needsFinality && supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) == true ||
+                            needsCommittee && supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) == true;
                         bool useful = needsOptimistic && IsFresh(supplier.OptimisticSlot) || needsFinality && IsFresh(supplier.FinalitySlot) ||
                             needsCommittee && IsFresh(supplier.UpdateSlot);
                         if (useful && !unavailable) continue;
@@ -699,9 +738,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
 
         private bool IsFresh(Supplier supplier) =>
-            supplier.FailedProtocols?.Contains(typeof(LightClientOptimisticUpdate)) != true && IsFresh(supplier.OptimisticSlot) ||
-            supplier.FailedProtocols?.Contains(typeof(LightClientFinalityUpdate)) != true && IsFresh(supplier.FinalitySlot) ||
-            supplier.FailedProtocols?.Contains(typeof(LightClientUpdate)) != true && IsFresh(supplier.UpdateSlot) || IsFresh(supplier.GossipSlot);
+            supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) != true && IsFresh(supplier.OptimisticSlot) ||
+            supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) != true && IsFresh(supplier.FinalitySlot) ||
+            supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) != true && IsFresh(supplier.UpdateSlot) || IsFresh(supplier.GossipSlot);
 
         private bool IsCandidate(Supplier supplier) => supplier.CandidateAt is { } candidate && time.GetElapsedTime(candidate) <= Retention;
 
@@ -865,7 +904,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             internal readonly long Admitted = admitted;
             internal readonly bool CanRedial = canRedial;
             internal long? CandidateAt;
-            internal HashSet<Type>? FailedProtocols;
+            internal Dictionary<Type, long>? FailedProtocols;
             internal ulong? UpdateSlot;
             internal ulong? OptimisticSlot;
             internal ulong? FinalitySlot;
