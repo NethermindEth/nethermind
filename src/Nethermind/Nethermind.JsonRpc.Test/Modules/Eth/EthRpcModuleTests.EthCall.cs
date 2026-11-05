@@ -942,7 +942,10 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc("eth_call", new
         {
-            from = TestItem.AddressA.ToString(), to = address, data = "0x112233", gasPrice = "0x0"
+            from = TestItem.AddressA.ToString(),
+            to = address,
+            data = "0x112233",
+            gasPrice = "0x0"
         }, "latest", new Dictionary<string, object> { [address] = account });
 
         JToken parsed = JToken.Parse(response);
