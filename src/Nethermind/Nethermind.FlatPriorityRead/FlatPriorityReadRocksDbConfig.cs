@@ -8,7 +8,7 @@ namespace Nethermind.FlatPriorityRead;
 /// <summary>The RocksDB configuration of <see cref="RocksDbPrioritySlotStore"/>, built for point reads from tmpfs.</summary>
 /// <remarks>
 /// <para>
-/// PlainTable with a prefix extractor covering the whole 34-byte key gives every SST an in-memory hash index and a
+/// PlainTable with a prefix extractor covering the whole 37-byte key gives every SST an in-memory hash index and a
 /// per-key bloom filter, so a lookup is a hash probe into the memory-mapped file: no block index, no binary search
 /// and no block cache. It is the setup of the RocksDB wiki's in-memory benchmark
 /// (https://github.com/facebook/rocksdb/wiki/RocksDB-In-Memory-Workload-Performance-Benchmarks).
@@ -38,8 +38,8 @@ public sealed class FlatPriorityReadRocksDbConfig(IFlatPriorityReadConfig config
         "level0_file_num_compaction_trigger=1;" +
         "target_file_size_base=268435456;" +
         "max_bytes_for_level_base=268435456;" +
-        "prefix_extractor=fixed:34;" +
-        "table_factory={id=PlainTable;user_key_len=34;bloom_bits_per_key=10;hash_table_ratio=0.75;index_sparseness=16;encoding_type=kPlain;full_scan_mode=false;store_index_in_file=false};";
+        "prefix_extractor=fixed:37;" +
+        "table_factory={id=PlainTable;user_key_len=37;bloom_bits_per_key=10;hash_table_ratio=0.75;index_sparseness=16;encoding_type=kPlain;full_scan_mode=false;store_index_in_file=false};";
 
     public ulong? WriteBufferSize => null;
     public ulong? WriteBufferNumber => null;

@@ -34,22 +34,22 @@ public interface IPrioritySlotStore : IDisposable
         StateId State { get; }
 
         /// <returns>Whether the slot is stored.</returns>
-        bool TryGet(byte contract, in ValueHash256 slotKey, out UInt256 value);
+        bool TryGet(int contract, in ValueHash256 slotKey, out UInt256 value);
 
         /// <returns>The RLP of the storage trie node at <paramref name="path"/>, or null when none is stored.</returns>
-        byte[]? GetNode(byte contract, in TreePath path);
+        byte[]? GetNode(int contract, in TreePath path);
 
         /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the node is stored.</returns>
-        bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+        bool TryGetNode<TArg>(int contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
     }
 
     public interface IWriter : IDisposable
     {
-        void Set(byte contract, in ValueHash256 slotKey, in UInt256 value);
-        void Remove(byte contract, in ValueHash256 slotKey);
-        void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp);
-        void RemoveNode(byte contract, in TreePath path);
+        void Set(int contract, in ValueHash256 slotKey, in UInt256 value);
+        void Remove(int contract, in ValueHash256 slotKey);
+        void SetNode(int contract, in TreePath path, ReadOnlySpan<byte> rlp);
+        void RemoveNode(int contract, in TreePath path);
 
         /// <summary>Publishes every change made through this writer, together with <paramref name="state"/>, atomically.</summary>
         void Commit(in StateId state);

@@ -75,7 +75,7 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
 
         public StateId State { get; }
 
-        public bool TryGet(byte contract, in ValueHash256 slotKey, out UInt256 value)
+        public bool TryGet(int contract, in ValueHash256 slotKey, out UInt256 value)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
@@ -90,14 +90,14 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
             return true;
         }
 
-        public byte[]? GetNode(byte contract, in TreePath path)
+        public byte[]? GetNode(int contract, in TreePath path)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
             return _snapshot.Get(key);
         }
 
-        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryGetNode<TArg>(int contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
@@ -122,7 +122,7 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
     {
         private bool _committed;
 
-        public void Set(byte contract, in ValueHash256 slotKey, in UInt256 value)
+        public void Set(int contract, in ValueHash256 slotKey, in UInt256 value)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
@@ -131,21 +131,21 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
             batch.PutSpan(key, encoded, CommitFlags);
         }
 
-        public void Remove(byte contract, in ValueHash256 slotKey)
+        public void Remove(int contract, in ValueHash256 slotKey)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
             batch.Set(key, null, CommitFlags);
         }
 
-        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp)
+        public void SetNode(int contract, in TreePath path, ReadOnlySpan<byte> rlp)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
             batch.PutSpan(key, rlp, CommitFlags);
         }
 
-        public void RemoveNode(byte contract, in TreePath path)
+        public void RemoveNode(int contract, in TreePath path)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);

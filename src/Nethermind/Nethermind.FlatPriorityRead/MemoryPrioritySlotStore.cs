@@ -24,7 +24,8 @@ namespace Nethermind.FlatPriorityRead;
 public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 {
     private readonly Lock _lock = new();
-    private readonly PrioritySlotTable?[] _tables = new PrioritySlotTable?[PrioritySlotEncoding.MaxContracts];
+    // Grows by copy-and-swap; readers re-read it on every lookup.
+    private PrioritySlotTable?[] _tables = [];
     private readonly List<Delta> _unfolded = [];
 
     // Live views oldest first, ending with _current; ones released out of order wait behind an older live one.
@@ -50,7 +51,7 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 
     public void Dispose() { }
 
-    private void Commit(Dictionary<(byte Contract, ValueHash256 Key), UInt256?> changes, in StateId state)
+    private void Commit(Dictionary<(int Contract, ValueHash256 Key), UInt256?> changes, in StateId state)
     {
         using Lock.Scope _ = _lock.EnterScope();
         while (_views.Peek().IsReleased) _views.Dequeue();
@@ -73,20 +74,27 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
         previous.Release();
     }
 
-    private void Apply(Dictionary<(byte Contract, ValueHash256 Key), UInt256?> changes)
+    private void Apply(Dictionary<(int Contract, ValueHash256 Key), UInt256?> changes)
     {
-        foreach (KeyValuePair<(byte Contract, ValueHash256 Key), UInt256?> change in changes)
+        foreach (KeyValuePair<(int Contract, ValueHash256 Key), UInt256?> change in changes)
         {
-            (byte contract, ValueHash256 key) = change.Key;
-            PrioritySlotTable? table = _tables[contract];
-            if (table is null) Volatile.Write(ref _tables[contract], table = new PrioritySlotTable());
+            (int contract, ValueHash256 key) = change.Key;
+            PrioritySlotTable?[] tables = _tables;
+            if (contract >= tables.Length)
+            {
+                Array.Resize(ref tables, Math.Max(contract + 1, tables.Length * 2));
+                Volatile.Write(ref _tables, tables);
+            }
+
+            PrioritySlotTable? table = tables[contract];
+            if (table is null) Volatile.Write(ref tables[contract], table = new PrioritySlotTable());
 
             if (change.Value is { } value) table.Set(key, value);
             else table.Remove(key);
         }
     }
 
-    private sealed record Delta(long Version, Dictionary<(byte Contract, ValueHash256 Key), UInt256?> Changes);
+    private sealed record Delta(long Version, Dictionary<(int Contract, ValueHash256 Key), UInt256?> Changes);
 
     private sealed class View(long version, StateId state, Delta[] deltas)
     {
@@ -109,7 +117,7 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 
         public StateId State => view.State;
 
-        public bool TryGet(byte contract, in ValueHash256 slotKey, out UInt256 value)
+        public bool TryGet(int contract, in ValueHash256 slotKey, out UInt256 value)
         {
             foreach (Delta delta in view.Deltas)
             {
@@ -120,16 +128,16 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
                 }
             }
 
-            PrioritySlotTable? table = Volatile.Read(ref store._tables[contract]);
-            if (table is not null) return table.TryGet(slotKey, out value);
+            PrioritySlotTable?[] tables = Volatile.Read(ref store._tables);
+            if (contract < tables.Length && Volatile.Read(ref tables[contract]) is { } table) return table.TryGet(slotKey, out value);
 
             value = default;
             return false;
         }
 
-        public byte[]? GetNode(byte contract, in TreePath path) => throw TrieNodesNotSupported();
+        public byte[]? GetNode(int contract, in TreePath path) => throw TrieNodesNotSupported();
 
-        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        public bool TryGetNode<TArg>(int contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             throw TrieNodesNotSupported();
 
         public void Dispose()
@@ -140,15 +148,15 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 
     private sealed class Writer(MemoryPrioritySlotStore store) : IPrioritySlotStore.IWriter
     {
-        private Dictionary<(byte Contract, ValueHash256 Key), UInt256?> _changes = [];
+        private Dictionary<(int Contract, ValueHash256 Key), UInt256?> _changes = [];
 
-        public void Set(byte contract, in ValueHash256 slotKey, in UInt256 value) => _changes[(contract, slotKey)] = value;
+        public void Set(int contract, in ValueHash256 slotKey, in UInt256 value) => _changes[(contract, slotKey)] = value;
 
-        public void Remove(byte contract, in ValueHash256 slotKey) => _changes[(contract, slotKey)] = null;
+        public void Remove(int contract, in ValueHash256 slotKey) => _changes[(contract, slotKey)] = null;
 
-        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp) => throw TrieNodesNotSupported();
+        public void SetNode(int contract, in TreePath path, ReadOnlySpan<byte> rlp) => throw TrieNodesNotSupported();
 
-        public void RemoveNode(byte contract, in TreePath path) => throw TrieNodesNotSupported();
+        public void RemoveNode(int contract, in TreePath path) => throw TrieNodesNotSupported();
 
         public void Commit(in StateId state)
         {

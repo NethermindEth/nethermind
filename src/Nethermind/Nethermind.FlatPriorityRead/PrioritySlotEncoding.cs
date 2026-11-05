@@ -12,37 +12,35 @@ namespace Nethermind.FlatPriorityRead;
 /// <summary>The key and value layout of the stores that keep slots and trie nodes as bytes.</summary>
 /// <remarks>
 /// Every key is <see cref="KeyLength"/> bytes, so a table format with a fixed key length can hold them: the contract
-/// index, then 32 bytes, then a tag. A slot key carries the slot key and <see cref="SlotTag"/>; a trie node key carries
-/// the node's path and its length in nibbles, which never reaches <see cref="SlotTag"/>. The committed state sits under
-/// <see cref="StateKey"/>, whose leading <see cref="StateKeyPrefix"/> is not a valid contract index.
+/// index as a big-endian int, then 32 bytes, then a tag. A slot key carries the slot key and <see cref="SlotTag"/>; a
+/// trie node key carries the node's path and its length in nibbles, which never reaches <see cref="SlotTag"/>. The
+/// committed state sits under <see cref="StateKey"/>, whose leading <see cref="StateKeyPrefix"/> no non-negative
+/// contract index starts with.
 /// </remarks>
 public static class PrioritySlotEncoding
 {
-    public const int KeyLength = 1 + ValueHash256.MemorySize + 1;
+    public const int KeyLength = sizeof(int) + ValueHash256.MemorySize + 1;
     public const int ValueLength = 32;
     public const int StateLength = sizeof(ulong) + ValueHash256.MemorySize;
     public const byte StateKeyPrefix = byte.MaxValue;
     private const byte SlotTag = byte.MaxValue;
 
-    /// <summary>The most contracts the stores can hold: every index below <see cref="StateKeyPrefix"/>.</summary>
-    public const int MaxContracts = StateKeyPrefix;
-
     private static readonly byte[] _stateKey = CreateStateKey();
 
     public static ReadOnlySpan<byte> StateKey => _stateKey;
 
-    public static void WriteKey(Span<byte> destination, byte contract, in ValueHash256 slotKey)
+    public static void WriteKey(Span<byte> destination, int contract, in ValueHash256 slotKey)
     {
-        destination[0] = contract;
-        slotKey.Bytes.CopyTo(destination[1..]);
+        BinaryPrimitives.WriteInt32BigEndian(destination, contract);
+        slotKey.Bytes.CopyTo(destination[sizeof(int)..]);
         destination[KeyLength - 1] = SlotTag;
     }
 
     /// <remarks>Relies on <see cref="TreePath"/> keeping the nibbles past its length zero, so each node has one key.</remarks>
-    public static void WriteNodeKey(Span<byte> destination, byte contract, in TreePath path)
+    public static void WriteNodeKey(Span<byte> destination, int contract, in TreePath path)
     {
-        destination[0] = contract;
-        path.Path.Bytes.CopyTo(destination[1..]);
+        BinaryPrimitives.WriteInt32BigEndian(destination, contract);
+        path.Path.Bytes.CopyTo(destination[sizeof(int)..]);
         destination[KeyLength - 1] = (byte)path.Length;
     }
 

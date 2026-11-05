@@ -74,7 +74,7 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
 
         public StateId State { get; }
 
-        public bool TryGet(byte contract, in ValueHash256 slotKey, out UInt256 value)
+        public bool TryGet(int contract, in ValueHash256 slotKey, out UInt256 value)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
@@ -90,7 +90,7 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
             return found;
         }
 
-        public byte[]? GetNode(byte contract, in TreePath path)
+        public byte[]? GetNode(int contract, in TreePath path)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
@@ -99,7 +99,7 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
             return TryGetLocked(key, out MDBValue value) ? value.CopyToNewArray() : null;
         }
 
-        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryGetNode<TArg>(int contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
@@ -130,7 +130,7 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
 
     private sealed class Writer(LightningTransaction transaction, LightningDatabase database) : IPrioritySlotStore.IWriter
     {
-        public void Set(byte contract, in ValueHash256 slotKey, in UInt256 value)
+        public void Set(int contract, in ValueHash256 slotKey, in UInt256 value)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
@@ -139,21 +139,21 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
             transaction.Put(database, key, encoded).ThrowOnError();
         }
 
-        public void Remove(byte contract, in ValueHash256 slotKey)
+        public void Remove(int contract, in ValueHash256 slotKey)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
             Delete(key);
         }
 
-        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp)
+        public void SetNode(int contract, in TreePath path, ReadOnlySpan<byte> rlp)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
             transaction.Put(database, key, rlp).ThrowOnError();
         }
 
-        public void RemoveNode(byte contract, in TreePath path)
+        public void RemoveNode(int contract, in TreePath path)
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteNodeKey(key, contract, path);
