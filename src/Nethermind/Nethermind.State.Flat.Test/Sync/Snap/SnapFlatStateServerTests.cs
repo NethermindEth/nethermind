@@ -188,10 +188,10 @@ public class SnapFlatStateServerTests
 
         using IPersistence.IPersistenceReader inner = _persistence.CreateReader();
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
-        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
-            .Returns(ci => inner.TryLoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>())
+            .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ValueHash256)ci[1], (ReadFlags)ci[2]));
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>())
+            .Returns(ci => inner.TryLoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ValueHash256)ci[2], (ReadFlags)ci[3]));
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
@@ -206,7 +206,7 @@ public class SnapFlatStateServerTests
 
             slots.DisposeRecursive();
 
-            reader.Received().TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
+            reader.Received().TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
         }
         else
         {
@@ -218,7 +218,7 @@ public class SnapFlatStateServerTests
                 Assert.That(accounts, Has.Count.EqualTo(1));
             }
 
-            reader.Received().TryLoadStateRlp(Arg.Any<TreePath>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
+            reader.Received().TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
         }
 
         _flatDbManager.Received(1).GatherReadOnlySnapshotBundle(_stateId, ReaderFlags.FullScan);

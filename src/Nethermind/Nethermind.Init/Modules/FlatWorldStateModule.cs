@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -125,7 +126,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .AddSingleton<HalfPathMigrationCursor>()
             .Add<CarryForwardCachingPersistence>()
+            .Add<HalfPathFallbackPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -138,6 +141,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                         new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
+
+                // Below the reader caches, so what they cache already includes the fallback.
+                if (ctx.Resolve<HalfPathMigrationCursor>().Current is not null)
+                    persistence = ctx.Resolve<HalfPathFallbackPersistence>(TypedParameter.From<IPersistence>(persistence));
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return flatDbConfig.EnableCarryForwardCache
@@ -162,6 +169,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
         if (flatDbConfig.ImportFromPruningTrieState)
             builder.SelectStepTarget(typeof(ImportFlatDb));
+
+        // Registered unconditionally: a migration, once started, continues whether or not it is still configured.
+        builder
+            .AddSingleton<HalfPathMigrator>()
+            .AddStep(typeof(StartPruningTrieStateMigration));
 
         // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
         if (flatDbConfig.DropPruningTrieState)

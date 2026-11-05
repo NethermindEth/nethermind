@@ -283,16 +283,28 @@ public class StorageDeleteWarmupBenchmark
             return inner.TryLoadStorageRlp(address, path, flags);
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
         {
             Read();
-            return inner.TryLoadStateRlp(path, flags, action, arg);
+            return inner.TryLoadStateRlp(path, hash, flags);
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags)
         {
             Read();
-            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
+            return inner.TryLoadStorageRlp(address, path, hash, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStateRlp(path, hash, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

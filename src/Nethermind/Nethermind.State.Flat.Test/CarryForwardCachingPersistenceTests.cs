@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -1011,8 +1012,10 @@ public class CarryForwardCachingPersistenceTests
             public StateId CurrentState => state.Id;
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
-            public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
-            public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
+            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -1072,6 +1075,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
             public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+            public void SetMigrationCursor(in MigrationCursor? cursor) { }
 
             public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));
 
@@ -1124,8 +1128,10 @@ public class CarryForwardCachingPersistenceTests
             public StateId CurrentState => parent.ReaderState;
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
-            public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
-            public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
+            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
+            public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+            public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
             public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

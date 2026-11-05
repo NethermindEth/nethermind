@@ -1035,6 +1035,8 @@ public class DebugBridgeTests
             BeforeDrop?.Invoke();
             inner.DropStateNotReachableFrom(head);
         }
+        public bool TryWriteOnPersistedState(in StateId expected, Action<State.Flat.Persistence.IPersistence.IWriteBatch> write) =>
+            inner.TryWriteOnPersistedState(expected, write);
     }
 
     private static int MutateChain(IDebugRpcModule debug, Block target, ChainMutation mutation) => mutation switch

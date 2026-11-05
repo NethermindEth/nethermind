@@ -29,7 +29,6 @@ public class Importer(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Importer>();
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private long _totalNodes = 0;
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
@@ -142,34 +141,7 @@ public class Importer(
 
         // Write it
         Metrics.ImporterEntriesCount++;
-
-        if (address is null)
-        {
-            writeBatch.SetStateTrieNode(path, rlp);
-        }
-        else
-        {
-            writeBatch.SetStorageTrieNode(address, path, rlp);
-        }
-
-        if (leafPath is { } fullPath)
-        {
-            if (address is null)
-            {
-                RlpReader accountReader = new(leafValue);
-                Account acc = _accountDecoder.Decode(ref accountReader)!;
-                writeBatch.SetAccountRaw(fullPath, acc);
-            }
-            else
-            {
-                // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
-                // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
-                if (!leafValue.IsEmpty)
-                {
-                    writeBatch.SetStorageRawEncoded(address, fullPath, leafValue);
-                }
-            }
-        }
+        WriteNode(writeBatch, address, path, rlp, leafPath, leafValue);
 
         long theTotalNode = Interlocked.Increment(ref _totalNodes);
         if (theTotalNode % FlushInterval == 0)
@@ -184,6 +156,45 @@ public class Importer(
         else
         {
             ingestBatches.Add(ingestBatch);
+        }
+    }
+
+    /// <summary>Writes a trie node and, for a leaf, the account or slot it holds.</summary>
+    /// <param name="writeBatch">The batch to write to.</param>
+    /// <param name="address">The account path of the storage trie, or <c>null</c> for the state trie.</param>
+    /// <param name="path">The path of the node.</param>
+    /// <param name="rlp">The RLP of the node.</param>
+    /// <param name="leafPath">The full path of a leaf's key; <c>null</c> for a branch or an extension.</param>
+    /// <param name="leafValue">The value of a leaf.</param>
+    internal static void WriteNode(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path,
+        ReadOnlySpan<byte> rlp, ValueHash256? leafPath, ReadOnlySpan<byte> leafValue)
+    {
+        if (address is null)
+        {
+            writeBatch.SetStateTrieNode(path, rlp);
+        }
+        else
+        {
+            writeBatch.SetStorageTrieNode(address, path, rlp);
+        }
+
+        if (leafPath is { } fullPath)
+        {
+            if (address is null)
+            {
+                RlpReader accountReader = new(leafValue);
+                Account acc = AccountDecoder.Instance.Decode(ref accountReader)!;
+                writeBatch.SetAccountRaw(fullPath, acc);
+            }
+            else
+            {
+                // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
+                if (!leafValue.IsEmpty)
+                {
+                    writeBatch.SetStorageRawEncoded(address, fullPath, leafValue);
+                }
+            }
         }
     }
 

@@ -148,7 +148,7 @@ internal static class BufferWarmUp
         }
 
         scratch.Clear();
-        if (!reader.TryLoadPersistedRlp(address, path, ReadFlags.None, CopyRlp, scratch)
+        if (!reader.TryLoadPersistedRlp(address, path, child.Data, ReadFlags.None, CopyRlp, scratch)
             || !NodeRecordCodec.TryDecode(scratch.AsSpan(), out NodeRecordKind kind, out ushort hashMask)) return false;
 
         int length = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), scratch.Count));

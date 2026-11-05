@@ -76,7 +76,8 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        CurrentBundleFlatDbManager flatDbManager = new(trieReader, snapshot: null, persisted: null);
+        FlatStateReader reader = CreateReader(flatDbManager);
 
         if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
@@ -85,6 +86,7 @@ public class FlatStateReaderTests
         {
             Assert.That(trieReader.StateRlpLoads, Is.EqualTo(1));
             Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
+            Assert.That(flatDbManager.GatheredReaderFlags, Is.EqualTo(fullScan ? ReaderFlags.FullScan : ReaderFlags.None));
         }
     }
 
@@ -144,6 +146,41 @@ public class FlatStateReaderTests
         }
     }
 
+    [Test]
+    public void Reads_what_the_reader_cannot_read_flat_with_the_trie_of_the_bundle([Values] bool persistedSnapshot)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        trieReader.ReadWithTrie = true;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        // The snapshot holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
+        using TempPath arenaPath = TempPath.GetTempDirectory();
+        using TempPath blobsPath = TempPath.GetTempDirectory();
+        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
+        using BlobArenaManager blobs = new(blobsPath.Path, 4L * 1024 * 1024);
+        using PersistedSnapshot? persisted = persistedSnapshot
+            ? TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs))
+            : null;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persistedSnapshot ? null : snapshot, persisted));
+
+        bool foundA = reader.TryGetAccount(header, TestItem.AddressA, out AccountStruct accountA);
+        reader.GetStorage(header, TestItem.AddressA, 1, out UInt256 slotA);
+        (int StateLoads, int StorageLoads) loadsForA = (trieReader.StateRlpLoads, trieReader.StorageRlpLoads);
+        bool foundC = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct accountC);
+        reader.GetStorage(header, TestItem.AddressC, 1, out UInt256 slotC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((foundA, accountA.Balance, slotA), Is.EqualTo((true, UInt256.One, UInt256.One)));
+            Assert.That((foundC, accountC.Balance, slotC), Is.EqualTo((true, UInt256.One, UInt256.One)));
+            Assert.That(loadsForA, Is.EqualTo((0, 0)), "A is read from the snapshot alone");
+            // C's leaf is loaded twice: for the account and for the storage root its slot read needs.
+            Assert.That((trieReader.StateRlpLoads, trieReader.StorageRlpLoads), Is.EqualTo((2, 1)));
+        }
+    }
+
     private static void AssertVisit(FlatStateReader reader, BlockHeader header, Hash256 stateRoot, bool fullScan)
     {
         if (fullScan)
@@ -193,8 +230,13 @@ public class FlatStateReaderTests
 
     private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot, PersistedSnapshot? persisted) : IFlatDbManager
     {
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        public ReaderFlags GatheredReaderFlags { get; private set; }
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) => GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
         {
+            GatheredReaderFlags = readerFlags;
             snapshot?.AcquireLease();
             SnapshotPooledList snapshots = snapshot is null ? new SnapshotPooledList(0) : FlatTestHelpers.SnapshotList(snapshot);
             PersistedSnapshotStack persistedSnapshots = PersistedSnapshotStack.Empty(false);
@@ -219,6 +261,7 @@ public class FlatStateReaderTests
         public int StorageRlpLoads { get; private set; }
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
+        public bool ReadWithTrie { get; set; }
 
         /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
         public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
@@ -264,7 +307,7 @@ public class FlatStateReaderTests
             return StorageAvailable && storageTrees.TryGetValue(address, out StorageTree? storageTree) ? storageTree.GetNodeByPath(path.ToNibble()) : null;
         }
 
-        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             byte[]? rlp = TryLoadStateRlp(path, flags);
             if (rlp is null) return false;
@@ -272,16 +315,21 @@ public class FlatStateReaderTests
             return true;
         }
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
-            byte[]? rlp = TryLoadStorageRlp(address, path, flags);
+            byte[]? rlp = TryLoadStorageRlp(new Hash256(address), path, flags);
             if (rlp is null) return false;
             action(rlp, arg);
             return true;
         }
 
+        public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStateRlp(path, flags);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags) => TryLoadStorageRlp(address, path, flags);
+
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+        public bool ShouldReadWithTrie(Address address) => ReadWithTrie;
+        public bool ShouldReadWithTrie(Address address, in UInt256 slot) => ReadWithTrie;
         public StateId CurrentState => new(5, Keccak.EmptyTreeHash);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;

@@ -8,12 +8,14 @@ using System.Linq;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Init;
@@ -85,6 +87,7 @@ public sealed class FlatStateActivationPolicy(
         bool wipedForSync = BasePersistence.ReadWipedForSync(metadata);
 
         bool wipe = false;
+        bool startMigration = false;
         bool? patriciaHasData = null;
         if (flatHasData && wipedForSync)
         {
@@ -143,6 +146,12 @@ public sealed class FlatStateActivationPolicy(
             if (logger.IsInfo) logger.Info("State backend: flat (importing from patricia trie state).");
             activateFlat = true;
         }
+        else if (flatDbConfig.MigrateFromPruningTrieState && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value)))
+        {
+            startMigration = true;
+            if (logger.IsInfo) logger.Info("State backend: flat (migrating from patricia trie state in the background).");
+            activateFlat = true;
+        }
         else if (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))
         {
             if (logger.IsInfo) logger.Info("State backend: patricia (existing patricia state detected).");
@@ -157,7 +166,7 @@ public sealed class FlatStateActivationPolicy(
         if (activateFlat
             && syncConfig.FastSync
             && !syncConfig.SnapSync
-            && !(flatDbConfig.ImportFromPruningTrieState && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
+            && !((flatDbConfig.ImportFromPruningTrieState || flatDbConfig.MigrateFromPruningTrieState) && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
         {
             // TreeSync holes only form during state sync. An already-synced flat node can keep serving.
             if (existingFlat)
@@ -179,9 +188,50 @@ public sealed class FlatStateActivationPolicy(
             }
         }
 
+        // A wipe deletes the cursor, ending the migration.
+        if (startMigration || (activateFlat && !wipe && BasePersistence.ReadMigrationCursor(metadata) is not null))
+        {
+            ValidateMigration(flatDbConfig);
+            if (startMigration) StartMigration(db, metadata, initConfig);
+        }
+
         // Refused before the wipe, so a node whose config is fixed wipes on its next start rather than losing its state first.
         if (wipe) WipeForResync(db, flatDbConfig, logger);
         return activateFlat;
+    }
+
+    /// <summary>Records the start of a migration from the patricia trie state, unless one has started already.</summary>
+    /// <remarks>
+    /// Leftover flat data, as an interrupted import leaves, is refused: reads would trust it over the trie state. The cursor
+    /// is not flushed: the flat state pointer, written after it through the same write-ahead log, marks the migration started.
+    /// </remarks>
+    private static void StartMigration(IColumnsDb<FlatDbColumns> db, IDb metadata, IInitConfig initConfig)
+    {
+        if (BasePersistence.ReadMigrationCursor(metadata) is not null) return;
+        if (HasAnyDataKey(db))
+        {
+            throw new InvalidConfigurationException(
+                $"Cannot migrate from the patricia trie state: the flat DB holds leftover data, for example from an interrupted import. Delete the '{DbNames.Flat}' directory under '{initConfig.BaseDbPath}' and start again.",
+                ExitCodes.ForbiddenOptionValue);
+        }
+
+        BasePersistence.WriteMigrationCursor(metadata, MigrationCursor.Start);
+    }
+
+    private static void ValidateMigration(IFlatDbConfig flatDbConfig)
+    {
+        string? conflict = flatDbConfig switch
+        {
+            { Layout: FlatLayout.PreimageFlat or FlatLayout.PreimageFlatV1 } => $"FlatDb.{nameof(IFlatDbConfig.Layout)}={flatDbConfig.Layout}, which keys state by preimages the trie state does not hold",
+            { HistoryEnabled: true } => $"FlatDb.{nameof(IFlatDbConfig.HistoryEnabled)}, whose capture reads flat state the migration has not copied yet",
+            _ => null,
+        };
+        if (conflict is not null)
+        {
+            throw new InvalidConfigurationException(
+                $"The flat DB is migrating from the patricia trie state, which does not support {conflict}. Change the setting, and restart.",
+                ExitCodes.ForbiddenOptionValue);
+        }
     }
 
     private static bool HasSstFile(IFileSystem fileSystem, string directory)

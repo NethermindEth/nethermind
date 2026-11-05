@@ -24,4 +24,12 @@ public interface IPersistenceManager
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against
     /// persistence. Used when the head is force-reset so state kept for abandoned branches is released.</summary>
     void DropStateNotReachableFrom(in StateId head);
+
+    /// <summary>Writes on top of the persisted state, unless a persist is in progress or the persisted state has moved.</summary>
+    /// <remarks>
+    /// Does not wait for the persistence lock. The batch goes from <paramref name="expected"/> to itself, so
+    /// <paramref name="write"/> must not change any value a reader of that state sees, as when copying state from another store.
+    /// </remarks>
+    /// <returns>False, writing nothing, when a persist holds the lock or the persisted state is no longer <paramref name="expected"/>.</returns>
+    bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write);
 }

@@ -47,7 +47,7 @@ internal abstract class NodeRecordBufferVisitor(
 
         diagnostics?.RecordCacheMiss();
         NodeRecord? loaded = null;
-        bundle.TryLoadPersistedRlp(address, path, readFlags, Decode, new LoadTarget(in hash, ref loaded));
+        bundle.TryLoadPersistedRlp(address, path, hash, readFlags, Decode, new LoadTarget(in hash, ref loaded));
         record = loaded.GetValueOrDefault();
         return loaded.HasValue;
     }
