@@ -800,6 +800,7 @@ public sealed class BeaconSyncOrchestrator(
                 await ProcessGossipBlockAsync(gossip.Block, token, gossip.Verdict);
                 break;
             case GossipAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } aggregateItem:
+                if (aggregateItem.Verdict?.TrySkipForRejectedSource() == true) break;
                 bool? aggregateAccepted = gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) ? null : _importer!.OnGossipAggregate(aggregate);
                 if (aggregateAccepted == true)
                 {
@@ -809,6 +810,7 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(aggregateItem.Verdict, aggregateAccepted);
                 break;
             case GossipGloasAggregateItem { Aggregate: { Message: { Aggregate: { } vote } message } aggregate } gloasAggregateItem:
+                if (gloasAggregateItem.Verdict?.TrySkipForRejectedSource() == true) break;
                 bool? gloasAggregateAccepted = gossipRouter.IsAggregateSeen(vote.Data!, vote.CommitteeBits!, vote.AggregationBits!, message.AggregatorIndex) ? null : _importer!.OnGossipAggregate(aggregate);
                 if (gloasAggregateAccepted == true)
                 {

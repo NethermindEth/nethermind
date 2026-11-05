@@ -305,6 +305,29 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Queued_aggregate_from_a_peer_with_a_rejected_vote_is_throttled_before_fork_choice([Values] bool gloas, [Values] bool sourceRejected)
+    {
+        Harness harness = CreateHarness();
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null) { SkipForRejectedSource = () => sourceRejected };
+        SignedAggregateAndProofGloas gloasAggregate = GossipMessageValidatorTests.GloasAggregate();
+        SignedAggregateAndProof fuluAggregate = GossipRouterTests.CreateAggregate(WallSlot);
+        harness.Orchestrator.WorkWriter.TryWrite(gloas
+            ? new BeaconSyncOrchestrator.GossipGloasAggregateItem(gloasAggregate, verdict)
+            : new BeaconSyncOrchestrator.GossipAggregateItem(fuluAggregate, verdict));
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        bool seen = gloas
+            ? harness.Router.IsAggregateSeen(gloasAggregate.Message!.Aggregate!.Data!, gloasAggregate.Message.Aggregate.CommitteeBits!, gloasAggregate.Message.Aggregate.AggregationBits!, gloasAggregate.Message.AggregatorIndex)
+            : harness.Router.IsAggregateSeen(fuluAggregate.Message!.Aggregate!.Data!, fuluAggregate.Message.Aggregate.CommitteeBits!, fuluAggregate.Message.Aggregate.AggregationBits!, fuluAggregate.Message.AggregatorIndex);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(sourceRejected ? 0 : 1), "a skipped aggregate's signatures are not checked");
+        Assert.That(given, Is.EqualTo(new[] { sourceRejected ? MessageValidity.Throttled : MessageValidity.Accepted }), "a skip charges no gossipsub penalty");
+        Assert.That(seen, Is.EqualTo(!sourceRejected), "a skipped aggregate marks nothing seen, so another peer's copy is still checked");
+    }
+
+    [Test]
     public async Task Payload_attestations_reach_fork_choice_in_order_with_a_slot_tick(
         [Values(1, BeaconSyncOrchestrator.VotesPerPass, BeaconSyncOrchestrator.VotesPerPass + 3)] int votesBeforeTick)
     {
