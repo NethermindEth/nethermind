@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test;
@@ -22,21 +23,18 @@ public class FixtureLoadTests : UnchunkedFixture
     private const int ChunkCount = 8;
     private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
     private const string TransitionDirectory = "LegacyTests/Cancun/BlockchainTests/TransitionTests/bcArrowGlacierToParis";
-    private const string ValueOverflowDirectory = "LegacyTests/Cancun/GeneralStateTests/stTransactionTest";
     private const string TotalDifficultyNetwork = "ArrowGlacierToParisAtDiffC0000";
     private const string OverWideValue = "\"0x:bigint 0x10000000000000000000000000000000000000000000000000000000000000001\"";
+    private const string OverWideQuantity = "0x10000000000000000000000000000000000000000000000000000000000000000";
 
     public enum Unreadable { Bom, MalformedJson, UnknownFork }
-
-    /// <summary>A property repeated with a malformed first and an over-wide last occurrence.</summary>
-    public enum Duplicate { ValueAfterBoolean, ValueAfterBare0x, Transaction, Test }
 
     public sealed record DirectoryStrategy(ITestLoadStrategy Strategy, TestType Type, bool IsLegacy)
     {
         public override string ToString() => Strategy.GetType().Name;
     }
 
-    public sealed record QuarantinedFile(string RelativePath, TestType Type, string Reason)
+    public sealed record QuarantinedFile(string RelativePath, string Reason)
     {
         public override string ToString() => Path.GetFileName(RelativePath);
     }
@@ -52,11 +50,9 @@ public class FixtureLoadTests : UnchunkedFixture
 
     private static readonly QuarantinedFile[] QuarantinedFiles =
     [
-        new($"{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, "fork transition at a total difficulty"),
-        new($"{TransitionDirectory}/powToPosBlockRejection.json", TestType.Blockchain, "fork transition at a total difficulty"),
-        new($"{TransitionDirectory}/powToPosTest.json", TestType.Blockchain, "fork transition at a total difficulty"),
-        new($"{ValueOverflowDirectory}/ValueOverflow.json", TestType.State, "transaction value wider than 256 bits"),
-        new($"{ValueOverflowDirectory}/ValueOverflowParis.json", TestType.State, "transaction value wider than 256 bits"),
+        new($"{TransitionDirectory}/difficultyFormula.json", "fork transition at a total difficulty"),
+        new($"{TransitionDirectory}/powToPosBlockRejection.json", "fork transition at a total difficulty"),
+        new($"{TransitionDirectory}/powToPosTest.json", "fork transition at a total difficulty"),
     ];
 
     private string _directory;
@@ -193,7 +189,7 @@ public class FixtureLoadTests : UnchunkedFixture
         [ValueSource(nameof(QuarantinedFiles))] QuarantinedFile quarantined,
         [Values] bool windowsSeparators)
     {
-        EthereumTest test = LoadSingle(WriteFixture(quarantined.RelativePath, QuarantineFixture(quarantined.RelativePath, quarantined.Type)), quarantined.Type);
+        BlockchainTest test = LoadSingle(WriteFixture(quarantined.RelativePath, QuarantineFixture()));
         if (windowsSeparators)
             test.Name = test.Name.Replace('/', '\\');
 
@@ -204,91 +200,65 @@ public class FixtureLoadTests : UnchunkedFixture
 
     private static IEnumerable<TestCaseData> LoadFailuresOutsideTheQuarantine()
     {
-        string unlisted = $"{TransitionDirectory}/unlisted.json";
-        string valueOverflow = $"{ValueOverflowDirectory}/ValueOverflow.json";
-        yield return new TestCaseData(unlisted, TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
-            .SetArgDisplayNames("unlisted blockchain file with a listed error");
-        yield return new TestCaseData($"Not{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, QuarantineFixture(unlisted, TestType.Blockchain))
-            .SetArgDisplayNames("listed blockchain name under another directory");
-        yield return new TestCaseData($"{TransitionDirectory}/difficultyFormula.json", TestType.Blockchain, "{\"broken\": ")
-            .SetArgDisplayNames("listed blockchain file with another error");
-        yield return new TestCaseData($"{ValueOverflowDirectory}/Unlisted.json", TestType.State, QuarantineFixture(valueOverflow, TestType.State))
-            .SetArgDisplayNames("unlisted state file with a listed error");
-        yield return new TestCaseData($"Not{valueOverflow}", TestType.State, QuarantineFixture(valueOverflow, TestType.State))
-            .SetArgDisplayNames("listed state name under another directory");
-        yield return new TestCaseData(valueOverflow, TestType.State, "{\"broken\": ")
-            .SetArgDisplayNames("listed state file with another error");
-
-        // The reader rejects these at the same value path with the same exception, but none is an over-wide value.
-        foreach (QuarantinedFile file in StateQuarantinedFiles())
-        {
-            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "\"0x\""))
-                .SetArgDisplayNames($"{file} with a bare 0x value");
-            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "true"))
-                .SetArgDisplayNames($"{file} with a boolean value");
-            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, $"\"0x:bigint 0x{new string('f', 64)}\""))
-                .SetArgDisplayNames($"{file} with a 256-bit value");
-            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, $"\"0x:bigint 0x{new string('g', 65)}\""))
-                .SetArgDisplayNames($"{file} with a long non-hex value");
-        }
+        yield return new TestCaseData($"{TransitionDirectory}/unlisted.json", QuarantineFixture())
+            .SetArgDisplayNames("unlisted file next to listed ones");
+        yield return new TestCaseData($"Not{TransitionDirectory}/difficultyFormula.json", QuarantineFixture())
+            .SetArgDisplayNames("listed name under another directory");
+        yield return new TestCaseData($"{TransitionDirectory}/difficultyFormula.json", "{\"broken\": ")
+            .SetArgDisplayNames("listed file with another error");
     }
 
     [TestCaseSource(nameof(LoadFailuresOutsideTheQuarantine))]
-    public async Task Load_failure_outside_the_quarantine_still_fails(string relativePath, TestType type, string json)
+    public async Task Load_failure_outside_the_quarantine_still_fails(string relativePath, string json)
     {
-        EthereumTest test = LoadSingle(WriteFixture(relativePath, json), type);
+        BlockchainTest test = LoadSingle(WriteFixture(relativePath, json));
 
         await AssertFailsWithLoadFailure(RunInBase(test), test);
     }
 
-    [Test]
-    public async Task Repeated_property_hiding_the_failing_value_still_fails(
-        [ValueSource(nameof(StateQuarantinedFiles))] QuarantinedFile quarantined,
-        [Values] Duplicate duplicate)
+    [TestCase(0, "0x01")]
+    [TestCase(1, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    public void State_file_with_an_over_wide_transaction_value_loads_with_it_saturated(int valueIndex, string expected)
     {
-        EthereumTest test = LoadSingle(WriteFixture(quarantined.RelativePath, DuplicatedFixture(quarantined.RelativePath, duplicate)), TestType.State);
-        string failingValue = $"$.{Path.GetFileNameWithoutExtension(quarantined.RelativePath)}.transaction.value[0]";
+        string fixture = Fixture(TestType.State, "Berlin", "overWideValue", $"\"0x01\", {OverWideValue}")
+            .Replace("\"value\": 0", $"\"value\": {valueIndex}");
+        WriteFixture("overWide.json", fixture);
 
-        Assert.That(test.LoadFailure, Does.Contain(failingValue), "the reader stops at the first, malformed occurrence");
-        await AssertFailsWithLoadFailure(RunInBase(test), test);
-    }
-
-    [Test]
-    public async Task Quarantined_file_failing_at_a_later_value_is_skipped()
-    {
-        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
-        EthereumTest test = LoadSingle(WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State, $"\"0x01\", {OverWideValue}")), TestType.State);
-
-        Assert.That(test.LoadFailure, Does.Contain("$.ValueOverflow.transaction.value[1]"));
-        await Assert.ThrowsAsync<IgnoreException>(RunInBase(test));
-    }
-
-    [TestCase("[]")]
-    [TestCase("{\"ValueOverflow\": 1}")]
-    [TestCase("{\"ValueOverflow\": {\"transaction\": 1}}")]
-    public async Task Read_back_that_finds_no_object_keeps_the_original_load_error(string readBack)
-    {
-        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
-        string file = WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State));
-        EthereumTest test = LoadSingle(file, TestType.State);
-        File.WriteAllText(file, readBack);
-
-        await AssertFailsWithLoadFailure(RunInBase(test), test);
-    }
-
-    [Test]
-    public async Task Listed_file_that_loads_runs_normally()
-    {
-        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
-        string file = WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State, "\"0x01\""));
-        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), Path.GetDirectoryName(file)).LoadTests<GeneralStateTest>()];
-
-        EthereumTestResult result = await new StateRunner().Run(tests[0]);
+        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), _directory).LoadTests<GeneralStateTest>()];
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(tests, Has.Count.EqualTo(2), "both forks of the case load");
             Assert.That(tests.Select(static t => t.LoadFailure), Is.All.Null);
-            Assert.That(result.Name, Is.EqualTo(tests[0].Name), "the case ran instead of being skipped");
+            Assert.That(tests.Select(static t => t.Transaction?.Value), Is.All.EqualTo(UInt256.Parse(expected)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> OverWideQuantitiesOutsideTheTransactionTemplate()
+    {
+        string state = Fixture(TestType.State, "Berlin");
+        string difficulty = "\"currentDifficulty\": \"0x20000\"";
+        yield return new TestCaseData(state.Replace(difficulty, $"\"currentDifficulty\": \"{OverWideQuantity}\""))
+            .SetArgDisplayNames("environment difficulty");
+        yield return new TestCaseData(state.Replace(difficulty, $"\"currentDifficulty\": {OverWideValue}"))
+            .SetArgDisplayNames("environment difficulty with the retesteth prefix");
+        yield return new TestCaseData(state.Replace("\"pre\": {}",
+                $"\"pre\": {{ \"0x1000000000000000000000000000000000000000\": {{ \"balance\": \"{OverWideQuantity}\", \"code\": \"0x\", \"nonce\": \"0x00\", \"storage\": {{}} }} }}"))
+            .SetArgDisplayNames("account balance");
+    }
+
+    [TestCaseSource(nameof(OverWideQuantitiesOutsideTheTransactionTemplate))]
+    public void Over_wide_quantity_outside_the_transaction_template_still_fails_the_file(string json)
+    {
+        string file = WriteFixture("overWide.json", json);
+
+        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), _directory).LoadTests<GeneralStateTest>()];
+
+        Assert.That(tests, Has.Count.EqualTo(1), "one failing case for the file");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tests[0].Name, Is.EqualTo(file));
+            Assert.That(tests[0].LoadFailure, Does.Contain("Nethermind.Int256.UInt256"));
         }
     }
 
@@ -303,21 +273,10 @@ public class FixtureLoadTests : UnchunkedFixture
         }
     }
 
-    private static IEnumerable<QuarantinedFile> StateQuarantinedFiles() => QuarantinedFiles.Where(static f => f.Type == TestType.State);
+    private static Func<Task> RunInBase(BlockchainTest test) => () => new BlockchainRunner().Run(test, failOnInvalidRlp: true);
 
-    private static Func<Task> RunInBase(EthereumTest test) => test switch
-    {
-        BlockchainTest blockchainTest => () => new BlockchainRunner().Run(blockchainTest, failOnInvalidRlp: true),
-        GeneralStateTest stateTest => () => new StateRunner().Run(stateTest),
-        _ => throw new ArgumentException($"No test base runs {test.GetType().Name}", nameof(test)),
-    };
-
-    private static EthereumTest LoadSingle(string file, TestType type)
-    {
-        TestsSourceLoader loader = new(type == TestType.State ? new LoadLegacyGeneralStateTestsStrategy() : new LoadLegacyBlockchainTestsStrategy(),
-            Path.GetDirectoryName(file));
-        return type == TestType.State ? loader.LoadTests<GeneralStateTest>().Single() : loader.LoadTests<BlockchainTest>().Single();
-    }
+    private static BlockchainTest LoadSingle(string file) =>
+        new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), Path.GetDirectoryName(file)).LoadTests<BlockchainTest>().Single();
 
     private static Type[] TypesOf(IEnumerable<EthereumTest> tests) => [.. tests.Select(static t => t.GetType())];
 
@@ -343,28 +302,8 @@ public class FixtureLoadTests : UnchunkedFixture
         _ => (Fixture(type, "UnknownFork"), false, "Unknown fork name 'UnknownFork'"),
     };
 
-    /// <summary>
-    /// A fixture shaped like the quarantined file at <paramref name="relativePath"/>, which by default fails to load the
-    /// way that file does; a state fixture takes its transaction value as the raw JSON token <paramref name="value"/>.
-    /// </summary>
-    private static string QuarantineFixture(string relativePath, TestType type, string value = OverWideValue) => type == TestType.State
-        ? Fixture(type, "Berlin", Path.GetFileNameWithoutExtension(relativePath), value)
-        : Fixture(type, TotalDifficultyNetwork);
-
-    /// <summary>
-    /// A fixture shaped like the quarantined state file at <paramref name="relativePath"/>, in which the reader stops at
-    /// a malformed first occurrence of a repeated property while a lookup by name finds an over-wide last one.
-    /// </summary>
-    private static string DuplicatedFixture(string relativePath, Duplicate duplicate) => duplicate switch
-    {
-        Duplicate.ValueAfterBoolean => QuarantineFixture(relativePath, TestType.State, $"true], \"value\": [{OverWideValue}"),
-        Duplicate.ValueAfterBare0x => QuarantineFixture(relativePath, TestType.State, $"\"0x\"], \"value\": [{OverWideValue}"),
-        Duplicate.Transaction => QuarantineFixture(relativePath, TestType.State, "true")
-            .Replace("\"post\": {", $"\"transaction\": {{ \"value\": [{OverWideValue}] }},\n\"post\": {{"),
-        _ => $"{{{TestObject(relativePath, "true")},{TestObject(relativePath, OverWideValue)}}}",
-    };
-
-    private static string TestObject(string relativePath, string value) => QuarantineFixture(relativePath, TestType.State, value).Trim()[1..^1];
+    /// <summary>A fixture that fails to load the way the quarantined files do.</summary>
+    private static string QuarantineFixture() => Fixture(TestType.Blockchain, TotalDifficultyNetwork);
 
     private string[] ValidCaseNames(TestType type)
     {
