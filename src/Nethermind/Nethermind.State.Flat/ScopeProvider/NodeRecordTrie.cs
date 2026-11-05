@@ -93,14 +93,20 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     /// <remarks>Only for <see cref="Nethermind.Db.IFlatDbConfig.VerifyWithTrie"/>, which checks flat reads against the trie; normal reads never walk the trie.</remarks>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
-    public byte[]? TryGet(in ValueHash256 key) => TryGet(this, addressHash, Root, key);
+    public byte[]? TryGet(in ValueHash256 key)
+    {
+        byte[]? value = null;
+        TryGet(this, addressHash, Root, key, static (found, copy) => copy[0] = found.ToArray(), new Span<byte[]?>(ref value));
+        return value;
+    }
 
-    /// <summary>Reads the value at <paramref name="key"/> by following record pointers from <paramref name="root"/>, loading from <paramref name="store"/> the nodes they do not resolve.</summary>
+    /// <summary>Passes the value at <paramref name="key"/> to <paramref name="action"/>, which must not keep it, following record pointers from <paramref name="root"/> and loading from <paramref name="store"/> the nodes they do not resolve.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
-    /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
+    /// <returns>Whether the trie has a value at <paramref name="key"/>.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the store.</exception>
-    internal static byte[]? TryGet(INodeRecordStore store, Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key)
+    internal static bool TryGet<TArg>(INodeRecordStore store, Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key,
+        ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         TreePath keyPath = new(key, BulkSetWorkingState.MaxKeyNibbles);
         Span<byte> nodeKey = stackalloc byte[BulkSetWorkingState.MaxKeyNibbles];
@@ -112,7 +118,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
             switch (child.Kind)
             {
                 case ChildRefKind.Empty:
-                    return null;
+                    return false;
                 case ChildRefKind.Inline:
                     // A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.
                     RlpReader reader = new(child.InlineRlp);
@@ -121,7 +127,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     ReadOnlySpan<byte> value = reader.DecodeByteArraySpan();
                     int inlineKeyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix);
                     NodeRlp.ReadHexPrefix(hexPrefix, 0, nodeKey);
-                    return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.ToArray() : null;
+                    return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath && Pass(value, action, arg);
             }
 
             if (!store.TryLocate(child.Pointer, out NodeRecord record) && !loaded.TryLoad(store, path, child.Data, out record))
@@ -135,14 +141,14 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                 case NodeRecordKind.Leaf:
                     int leafKeyLength = view.KeyLength(0);
                     view.CopyKey(0, nodeKey);
-                    return path.Length + leafKeyLength == keyPath.Length && path.Append(nodeKey[..leafKeyLength]) == keyPath ? record.LeafValue.Span.ToArray() : null;
+                    return path.Length + leafKeyLength == keyPath.Length && path.Append(nodeKey[..leafKeyLength]) == keyPath && Pass(record.LeafValue.Span, action, arg);
                 case NodeRecordKind.Extension:
                     int keyLength = view.KeyLength(0);
-                    if (keyLength > keyPath.Length - path.Length) return null;
+                    if (keyLength > keyPath.Length - path.Length) return false;
 
                     view.CopyKey(0, nodeKey);
                     path.AppendMut(nodeKey[..keyLength]);
-                    if (!keyPath.StartsWith(path)) return null;
+                    if (!keyPath.StartsWith(path)) return false;
 
                     child = view.Child(0);
                     break;
@@ -153,5 +159,11 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     break;
             }
         }
+    }
+
+    private static bool Pass<TArg>(ReadOnlySpan<byte> value, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        action(value, arg);
+        return true;
     }
 }

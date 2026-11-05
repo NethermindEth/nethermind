@@ -80,6 +80,10 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
     private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
+    private static readonly ReadOnlySpanAction<byte, Span<Account?>> DecodeAccount = static (value, account) => account[0] = AccountDecoder.Instance.Decode(value);
+    private static readonly ReadOnlySpanAction<byte, Span<UInt256>> DecodeSlot = static (value, slot) =>
+        slot[0] = new UInt256(new RlpReader(value).DecodeByteArraySpan(), isBigEndian: true);
+
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
@@ -359,8 +363,12 @@ public sealed class ReadOnlySnapshotBundle(
 
     /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private Account? GetAccountWithTrie(Address address) =>
-        TryGetWithTrie(null, StateRoot, address.ToAccountPath) is { } account ? AccountDecoder.Instance.Decode(account) : null;
+    private Account? GetAccountWithTrie(Address address)
+    {
+        Account? account = null;
+        TryGetWithTrie(null, StateRoot, address.ToAccountPath, DecodeAccount, new Span<Account?>(ref account));
+        return account;
+    }
 
     /// <summary>Reads a slot the persistence reader cannot read flat, from the storage trie of the account in this bundle's state.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -370,16 +378,16 @@ public sealed class ReadOnlySnapshotBundle(
 
         ValueHash256 slotPath = default;
         StorageTree.ComputeKeyWithLookup(index, ref slotPath);
-        if (TryGetWithTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, slotPath) is not { } encoded) return false;
-        value = new UInt256(new RlpReader(encoded).DecodeByteArraySpan(), isBigEndian: true);
-        return true;
+        return TryGetWithTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, slotPath, DecodeSlot, new Span<UInt256>(ref value));
     }
 
-    /// <summary>Reads the value at <paramref name="key"/> of the trie at <paramref name="root"/>, starting at the root record the state's snapshot finds by hash, as block processing does.</summary>
+    /// <summary>Passes the value at <paramref name="key"/> of the trie at <paramref name="root"/> to <paramref name="action"/>, starting at the root record the state's snapshot finds by hash, as block processing does.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>Whether the trie has a value at <paramref name="key"/>.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in none of this bundle's tiers.</exception>
-    private byte[]? TryGetWithTrie(Hash256? address, in ValueHash256 root, in ValueHash256 key) =>
-        NodeRecordTrie.TryGet(new TrieNodes(this, address), address, (root, StateSnapshot?.ResolveRoot(address, root) ?? 0), key);
+    private bool TryGetWithTrie<TArg>(Hash256? address, in ValueHash256 root, in ValueHash256 key, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct =>
+        NodeRecordTrie.TryGet(new TrieNodes(this, address), address, (root, StateSnapshot?.ResolveRoot(address, root) ?? 0), key, action, arg);
 
     /// <summary>The state root of this bundle's state: its newest snapshot's, otherwise persistence's.</summary>
     private ValueHash256 StateRoot => (StateSnapshot?.To ?? persistedSnapshots.To ?? persistenceReader.CurrentState).StateRoot;
