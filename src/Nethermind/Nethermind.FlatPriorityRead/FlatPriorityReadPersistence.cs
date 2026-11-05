@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Diagnostics;
 using Nethermind.Config;
@@ -15,6 +16,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.FlatPriorityRead;
 
@@ -29,8 +31,13 @@ namespace Nethermind.FlatPriorityRead;
 /// reader with a store snapshot of the same <see cref="StateId"/>.
 /// </para>
 /// <para>
-/// Range deletes and <see cref="Clear"/> are mirrored by reading the doomed slots from the inner persistence as it
-/// was before the batch, so the store only needs point writes. A batch buffers its mirrored changes and commits them
+/// With <see cref="IFlatPriorityReadConfig.CacheTrie"/> the store also mirrors the storage tries of those contracts, read
+/// by walking each trie from its root, so it holds the nodes the tries reach but not the ones earlier versions of the
+/// tries left behind.
+/// </para>
+/// <para>
+/// Range deletes and <see cref="Clear"/> are mirrored by reading the doomed slots and trie nodes from the inner
+/// persistence as it was before the batch, so the store only needs point writes. A batch buffers its mirrored changes and commits them
 /// right after the inner commit under one lock, so the store commits in the inner persistence's order even when sync
 /// writes several batches at once.
 /// </para>
@@ -38,14 +45,20 @@ namespace Nethermind.FlatPriorityRead;
 public sealed class FlatPriorityReadPersistence : IPersistence
 {
     private const int LoadCommitInterval = 1 << 20;
+    private const int LoadQueueCapacity = 1 << 16;
+    private const int ParallelWalkDepth = 2;
+    private const int BranchChildCount = 16;
     private static readonly TimeSpan ReaderMatchTimeout = TimeSpan.FromSeconds(30);
 
     private readonly IPersistence _inner;
     private readonly IPrioritySlotStore _store;
     private readonly bool _isPreimageMode;
     private readonly ValueHash256[] _addressKeys;
+    private readonly Hash256[] _accountPaths;
+    private readonly bool _cacheTrie;
     private readonly FrozenDictionary<Address, byte> _contractByAddress;
     private readonly FrozenDictionary<ValueHash256, byte> _contractByAddressKey;
+    private readonly FrozenDictionary<ValueHash256, byte> _contractByCachedTrie;
     private readonly Lock _commitLock = new();
 
     public FlatPriorityReadPersistence(IPersistence inner, IPrioritySlotStore store, IFlatPriorityReadConfig config, ILogManager logManager)
@@ -56,18 +69,24 @@ public sealed class FlatPriorityReadPersistence : IPersistence
 
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _isPreimageMode = reader.IsPreimageMode;
+        _cacheTrie = config.CacheTrie;
         _addressKeys = new ValueHash256[contracts.Length];
+        _accountPaths = new Hash256[contracts.Length];
         Dictionary<Address, byte> contractByAddress = [];
         Dictionary<ValueHash256, byte> contractByAddressKey = [];
+        Dictionary<ValueHash256, byte> contractByCachedTrie = [];
         for (int contract = 0; contract < contracts.Length; contract++)
         {
             _addressKeys[contract] = AddressKey(contracts[contract].Address);
+            _accountPaths[contract] = contracts[contract].Address.ToAccountPath.ToCommitment();
             contractByAddress[contracts[contract].Address] = (byte)contract;
             contractByAddressKey[_addressKeys[contract]] = (byte)contract;
+            if (_cacheTrie) contractByCachedTrie[_accountPaths[contract].ValueHash256] = (byte)contract;
         }
 
         _contractByAddress = contractByAddress.ToFrozenDictionary();
         _contractByAddressKey = contractByAddressKey.ToFrozenDictionary();
+        _contractByCachedTrie = contractByCachedTrie.ToFrozenDictionary();
 
         Load(contracts, reader, logManager.GetClassLogger<FlatPriorityReadPersistence>());
     }
@@ -105,17 +124,19 @@ public sealed class FlatPriorityReadPersistence : IPersistence
     {
         using Lock.Scope _ = _commitLock.EnterScope();
         List<SlotChange> changes = [];
+        List<NodeChange> nodeChanges = [];
         using (IPersistence.IPersistenceReader reader = _inner.CreateReader())
         {
             for (int contract = 0; contract < _addressKeys.Length; contract++)
             {
                 CollectRemovals(reader, (byte)contract, ValueKeccak.Zero, ValueKeccak.MaxValue, changes);
+                if (_cacheTrie) CollectNodeRemovals(reader, (byte)contract, ValueKeccak.Zero, ValueKeccak.MaxValue, nodeChanges);
             }
         }
 
         _inner.Clear();
         using IPersistence.IPersistenceReader cleared = _inner.CreateReader();
-        CommitToStore(changes, cleared.CurrentState);
+        CommitToStore(changes, nodeChanges, cleared.CurrentState);
     }
 
     private static (Address Address, string Name)[] ParseContracts(Dictionary<string, string>? addresses)
@@ -163,50 +184,117 @@ public sealed class FlatPriorityReadPersistence : IPersistence
     private void Load((Address Address, string Name)[] contracts, IPersistence.IPersistenceReader reader, ILogger logger)
     {
         long started = Stopwatch.GetTimestamp();
-        long loaded = 0;
-        IPrioritySlotStore.IWriter writer = _store.BeginWrite();
-        try
+        long slots, nodes;
+        string loaded;
+        using (Loader loader = new(_store, reader.CurrentState, started, contracts.Length, _cacheTrie, logger))
         {
             for (int contract = 0; contract < contracts.Length; contract++)
             {
-                (Address address, string name) = contracts[contract];
-                long contractStart = loaded;
-                using IPersistence.IFlatIterator slots = reader.CreateStorageIterator(_addressKeys[contract], ValueKeccak.Zero, ValueKeccak.MaxValue);
-                while (slots.MoveNext())
-                {
-                    // The iterator exposes only the stored encoding, which this read decodes.
-                    ValueHash256 slotKey = slots.CurrentKey;
-                    UInt256 value = default;
-                    if (!reader.TryGetStorageRaw(_addressKeys[contract], slotKey, ref value)) continue;
-
-                    writer.Set((byte)contract, slotKey, value);
-
-                    // Nothing reads the store before the load ends, so committing part of it bounds the writer's memory.
-                    if (++loaded % LoadCommitInterval == 0)
-                    {
-                        writer.Commit(reader.CurrentState);
-                        writer.Dispose();
-                        writer = _store.BeginWrite();
-                        if (logger.IsInfo) logger.Info($"Loading priority slots: {loaded:N0} so far, {loaded - contractStart:N0} of {name} ({contract + 1}/{contracts.Length}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
-                    }
-                }
-
-                if (logger.IsInfo) logger.Info($"Loaded {loaded - contractStart:N0} priority slots of {name} {address} ({contract + 1}/{contracts.Length}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
+                loader.StartContract((byte)contract, contracts[contract].Name);
+                LoadSlots(reader, _addressKeys[contract], loader);
+                if (_cacheTrie) LoadTrieNodes(reader, _accountPaths[contract], loader);
+                loader.EndContract(contracts[contract].Address);
             }
 
-            writer.Commit(reader.CurrentState);
-        }
-        finally
-        {
-            writer.Dispose();
+            loader.Commit();
+            (slots, nodes, loaded) = (loader.Slots, loader.Nodes, loader.Describe(loader.Slots, loader.Nodes));
         }
 
         // Opened before any batch can exist: a store may treat its first reader as the end of the load.
         using IPrioritySlotStore.IReader loadedStore = _store.BeginRead();
         TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
-        Metrics.FlatPriorityReadLoadedSlots = loaded;
+        Metrics.FlatPriorityReadLoadedSlots = slots;
+        Metrics.FlatPriorityReadLoadedTrieNodes = nodes;
         Metrics.FlatPriorityReadLoadMilliseconds = (long)elapsed.TotalMilliseconds;
-        if (logger.IsInfo) logger.Info($"Loaded {loaded:N0} slots of {_addressKeys.Length} priority contracts in {elapsed.TotalSeconds:N1}s at state {loadedStore.State}");
+        if (logger.IsInfo) logger.Info($"Loaded {loaded} of {_addressKeys.Length} priority contracts in {elapsed.TotalSeconds:N1}s at state {loadedStore.State}");
+    }
+
+    private static void LoadSlots(IPersistence.IPersistenceReader reader, in ValueHash256 addressKey, Loader loader)
+    {
+        using IPersistence.IFlatIterator slots = reader.CreateStorageIterator(addressKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        while (slots.MoveNext())
+        {
+            // The iterator exposes only the stored encoding, which this read decodes.
+            ValueHash256 slotKey = slots.CurrentKey;
+            UInt256 value = default;
+            if (reader.TryGetStorageRaw(addressKey, slotKey, ref value)) loader.Set(slotKey, value);
+        }
+    }
+
+    /// <remarks>
+    /// The trie is read on several threads while this thread writes what they read, as a store writer is tied to the
+    /// thread that began it.
+    /// </remarks>
+    private static void LoadTrieNodes(IPersistence.IPersistenceReader reader, Hash256 account, Loader loader)
+    {
+        using CancellationTokenSource stop = new();
+        using BlockingCollection<(TreePath Path, byte[] Rlp)> nodes = new(LoadQueueCapacity);
+        Task walk = Task.Run(() =>
+        {
+            try
+            {
+                VisitStorageNodes(reader, account, TreePath.Empty, ValueKeccak.Zero, ValueKeccak.MaxValue, parallel: true,
+                    (path, rlp) => nodes.Add((path, rlp), stop.Token));
+            }
+            finally
+            {
+                nodes.CompleteAdding();
+            }
+        });
+
+        try
+        {
+            foreach ((TreePath path, byte[] rlp) in nodes.GetConsumingEnumerable()) loader.SetNode(path, rlp);
+        }
+        finally
+        {
+            // A failed write stops the walk, and either way the walk is done with the reader before this returns.
+            stop.Cancel();
+            Task.WaitAny(walk);
+        }
+
+        walk.GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Passes each node of the storage trie of <paramref name="account"/> at or below <paramref name="path"/> whose keys
+    /// reach into <c>[<paramref name="from"/>, <paramref name="to"/>]</c> to <paramref name="visit"/>, parents first.
+    /// </summary>
+    /// <remarks>
+    /// Walks the trie, so it finds only the nodes the trie reaches. With <paramref name="parallel"/> the subtrees below
+    /// the first <see cref="ParallelWalkDepth"/> levels are walked on several threads at once.
+    /// </remarks>
+    private static void VisitStorageNodes(IPersistence.IPersistenceReader reader, Hash256 account, TreePath path, ValueHash256 from, ValueHash256 to, bool parallel, Action<TreePath, byte[]> visit)
+    {
+        if (path.ToUpperBoundPath().CompareTo(from) < 0 || path.ToLowerBoundPath().CompareTo(to) > 0) return;
+        if (reader.TryLoadStorageRlp(account, path, ReadFlags.None) is not { } rlp) return;
+
+        visit(path, rlp);
+
+        TrieNode node = new(NodeType.Unknown, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, path);
+        if (node.IsExtension)
+        {
+            if (node.GetChildHashAsValueKeccak(0, out _)) VisitStorageNodes(reader, account, path.Append(node.Key), from, to, parallel, visit);
+            return;
+        }
+
+        if (!node.IsBranch) return;
+
+        // An inline child is part of this node's RLP, never stored on its own, and too small to reference a stored node.
+        int storedChildren = 0;
+        for (int child = 0; child < BranchChildCount; child++)
+        {
+            if (node.GetChildHashAsValueKeccak(child, out _)) storedChildren |= 1 << child;
+        }
+
+        if (parallel && path.Length < ParallelWalkDepth) Parallel.For(0, BranchChildCount, VisitChild);
+        else for (int child = 0; child < BranchChildCount; child++) VisitChild(child);
+
+        void VisitChild(int child)
+        {
+            if ((storedChildren & (1 << child)) != 0) VisitStorageNodes(reader, account, path.Append(child), from, to, parallel, visit);
+        }
     }
 
     private void CollectRemovals(IPersistence.IPersistenceReader reader, byte contract, in ValueHash256 from, in ValueHash256 to, List<SlotChange> changes)
@@ -215,22 +303,91 @@ public sealed class FlatPriorityReadPersistence : IPersistence
         while (slots.MoveNext()) changes.Add(new SlotChange(contract, slots.CurrentKey, null));
     }
 
-    private void CommitToStore(List<SlotChange>? changes, in StateId state)
+    /// <summary>Adds the removal of every node of the contract's storage trie wholly within <c>[from, to]</c>, as the inner persistence's own range delete does.</summary>
+    private void CollectNodeRemovals(IPersistence.IPersistenceReader reader, byte contract, in ValueHash256 from, in ValueHash256 to, List<NodeChange> changes)
+    {
+        ValueHash256 lowest = from;
+        ValueHash256 highest = to;
+        VisitStorageNodes(reader, _accountPaths[contract], TreePath.Empty, from, to, parallel: false, (path, _) =>
+        {
+            if (path.ToLowerBoundPath().CompareTo(lowest) >= 0 && path.ToUpperBoundPath().CompareTo(highest) <= 0) changes.Add(new NodeChange(contract, path, null));
+        });
+    }
+
+    private void CommitToStore(List<SlotChange>? changes, List<NodeChange>? nodeChanges, in StateId state)
     {
         using IPrioritySlotStore.IWriter writer = _store.BeginWrite();
-        if (changes is not null)
+        foreach (SlotChange change in changes ?? [])
         {
-            foreach (SlotChange change in changes)
-            {
-                if (change.Value is { } value) writer.Set(change.Contract, change.SlotKey, value);
-                else writer.Remove(change.Contract, change.SlotKey);
-            }
+            if (change.Value is { } value) writer.Set(change.Contract, change.SlotKey, value);
+            else writer.Remove(change.Contract, change.SlotKey);
+        }
+
+        foreach (NodeChange change in nodeChanges ?? [])
+        {
+            if (change.Rlp is { } rlp) writer.SetNode(change.Contract, change.Path, rlp);
+            else writer.RemoveNode(change.Contract, change.Path);
         }
 
         writer.Commit(state);
     }
 
     private readonly record struct SlotChange(byte Contract, ValueHash256 SlotKey, UInt256? Value);
+
+    private readonly record struct NodeChange(byte Contract, TreePath Path, byte[]? Rlp);
+
+    /// <summary>Writes the startup load into the store, committing every <see cref="LoadCommitInterval"/> entries and logging the progress at each.</summary>
+    /// <remarks>Nothing reads the store before the load ends, so committing parts of it bounds the writer's memory.</remarks>
+    private sealed class Loader(IPrioritySlotStore store, StateId state, long started, int contractCount, bool cacheTrie, ILogger logger) : IDisposable
+    {
+        private IPrioritySlotStore.IWriter _writer = store.BeginWrite();
+        private byte _contract;
+        private string _name = "";
+        private long _contractSlots;
+        private long _contractNodes;
+
+        public long Slots { get; private set; }
+        public long Nodes { get; private set; }
+
+        public void StartContract(byte contract, string name) => (_contract, _name, _contractSlots, _contractNodes) = (contract, name, 0, 0);
+
+        public void Set(in ValueHash256 slotKey, in UInt256 value)
+        {
+            _writer.Set(_contract, slotKey, value);
+            Slots++;
+            _contractSlots++;
+            Wrote();
+        }
+
+        public void SetNode(in TreePath path, ReadOnlySpan<byte> rlp)
+        {
+            _writer.SetNode(_contract, path, rlp);
+            Nodes++;
+            _contractNodes++;
+            Wrote();
+        }
+
+        public void EndContract(Address address)
+        {
+            if (logger.IsInfo) logger.Info($"Loaded {Describe(_contractSlots, _contractNodes)} of priority contract {_name} {address} ({_contract + 1}/{contractCount}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
+        }
+
+        public void Commit() => _writer.Commit(state);
+
+        public string Describe(long slots, long nodes) => cacheTrie ? $"{slots:N0} slots and {nodes:N0} trie nodes" : $"{slots:N0} slots";
+
+        public void Dispose() => _writer.Dispose();
+
+        private void Wrote()
+        {
+            if ((Slots + Nodes) % LoadCommitInterval != 0) return;
+
+            _writer.Commit(state);
+            _writer.Dispose();
+            _writer = store.BeginWrite();
+            if (logger.IsInfo) logger.Info($"Loading the priority store: {Describe(Slots, Nodes)} so far, {Describe(_contractSlots, _contractNodes)} of {_name} ({_contract + 1}/{contractCount}), {Stopwatch.GetElapsedTime(started).TotalSeconds:N1}s");
+        }
+    }
 
     private sealed class PriorityReader(FlatPriorityReadPersistence parent, IPersistence.IPersistenceReader inner, IPrioritySlotStore.IReader store)
         : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
@@ -257,9 +414,25 @@ public sealed class FlatPriorityReadPersistence : IPersistence
         public Account? GetAccount(Address address) => inner.GetAccount(address);
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStateRlp(path, flags, action, arg);
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => inner.TryLoadStorageRlp(address, path, flags, action, arg);
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        {
+            if (!parent._contractByCachedTrie.TryGetValue(address.ValueHash256, out byte contract)) return inner.TryLoadStorageRlp(address, path, flags);
+
+            byte[]? rlp = store.GetNode(contract, path);
+            CountNodeRead(rlp is not null);
+            return rlp;
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            if (!parent._contractByCachedTrie.TryGetValue(address.ValueHash256, out byte contract)) return inner.TryLoadStorageRlp(address, path, flags, action, arg);
+
+            bool found = store.TryGetNode(contract, path, action, arg);
+            CountNodeRead(found);
+            return found;
+        }
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
@@ -299,14 +472,24 @@ public sealed class FlatPriorityReadPersistence : IPersistence
             store.Dispose();
             inner.Dispose();
         }
+
+        private void CountNodeRead(bool found)
+        {
+            if (!_recordDetailedMetrics) return;
+
+            if (found) Metrics.IncrementTrieNodeFound();
+            else Metrics.IncrementTrieNodeNotFound();
+        }
     }
 
     private sealed class MirroringWriteBatch(FlatPriorityReadPersistence parent, IPersistence.IWriteBatch inner, StateId to) : IPersistence.IWriteBatch
     {
         private List<SlotChange>? _changes;
+        private List<NodeChange>? _nodeChanges;
         private IPersistence.IPersistenceReader? _preBatchReader;
 
         private List<SlotChange> Changes => _changes ??= [];
+        private List<NodeChange> NodeChanges => _nodeChanges ??= [];
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
@@ -327,7 +510,7 @@ public sealed class FlatPriorityReadPersistence : IPersistence
 
         public void SelfDestruct(Address addr)
         {
-            if (parent._contractByAddress.TryGetValue(addr, out byte contract)) RemovePreBatchSlots(contract, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            if (parent._contractByAddress.TryGetValue(addr, out byte contract)) RemovePreBatchStorage(contract);
             inner.SelfDestruct(addr);
         }
 
@@ -344,34 +527,64 @@ public sealed class FlatPriorityReadPersistence : IPersistence
             ReadOnlySpan<byte> highest = toPath.Bytes[..Address.Size];
             for (int contract = 0; contract < parent._addressKeys.Length; contract++)
             {
-                ReadOnlySpan<byte> addressKey = parent._addressKeys[contract].Bytes[..Address.Size];
-                if (addressKey.SequenceCompareTo(lowest) >= 0 && addressKey.SequenceCompareTo(highest) <= 0)
+                // Slots are keyed by the address key, which is the account path unless in preimage mode; trie nodes always by the account path.
+                if (InRange(parent._addressKeys[contract].Bytes[..Address.Size], lowest, highest))
                 {
                     RemovePreBatchSlots((byte)contract, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                }
+
+                if (parent._cacheTrie && InRange(parent._accountPaths[contract].Bytes[..Address.Size], lowest, highest))
+                {
+                    RemovePreBatchNodes((byte)contract, ValueKeccak.Zero, ValueKeccak.MaxValue);
                 }
             }
 
             inner.SelfDestructRange(fromPath, toPath);
+
+            static bool InRange(ReadOnlySpan<byte> key, ReadOnlySpan<byte> lowest, ReadOnlySpan<byte> highest) =>
+                key.SequenceCompareTo(lowest) >= 0 && key.SequenceCompareTo(highest) <= 0;
+        }
+
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
+        {
+            // An empty span deletes the node, as in the inner persistence.
+            if (parent._contractByCachedTrie.TryGetValue(address.ValueHash256, out byte contract)) NodeChanges.Add(new NodeChange(contract, path, rlp.IsEmpty ? null : rlp.ToArray()));
+            inner.SetStorageTrieNode(address, path, rlp);
+        }
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
+        {
+            if (parent._contractByCachedTrie.TryGetValue(addressHash, out byte contract)) RemovePreBatchNodes(contract, from, to);
+            inner.DeleteStorageTrieNodeRange(addressHash, from, to);
         }
 
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
 
         public void Dispose()
         {
             _preBatchReader?.Dispose();
             using Lock.Scope _ = parent._commitLock.EnterScope();
             inner.Dispose();
-            parent.CommitToStore(_changes, to);
+            parent.CommitToStore(_changes, _nodeChanges, to);
+        }
+
+        private void RemovePreBatchStorage(byte contract)
+        {
+            RemovePreBatchSlots(contract, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            if (parent._cacheTrie) RemovePreBatchNodes(contract, ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
 
         // Wipes remove what the inner persistence held before this batch, as its own wipes do.
         private void RemovePreBatchSlots(byte contract, in ValueHash256 from, in ValueHash256 to) =>
-            parent.CollectRemovals(_preBatchReader ??= parent._inner.CreateReader(), contract, from, to, Changes);
+            parent.CollectRemovals(PreBatchReader, contract, from, to, Changes);
+
+        private void RemovePreBatchNodes(byte contract, in ValueHash256 from, in ValueHash256 to) =>
+            parent.CollectNodeRemovals(PreBatchReader, contract, from, to, NodeChanges);
+
+        private IPersistence.IPersistenceReader PreBatchReader => _preBatchReader ??= parent._inner.CreateReader();
     }
 }

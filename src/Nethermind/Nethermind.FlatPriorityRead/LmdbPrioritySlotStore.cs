@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using LightningDB;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.Trie;
 
 namespace Nethermind.FlatPriorityRead;
 
@@ -88,10 +90,41 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
             return found;
         }
 
+        public byte[]? GetNode(byte contract, in TreePath path)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+
+            using Lock.Scope _ = _lock.EnterScope();
+            return TryGetLocked(key, out MDBValue value) ? value.CopyToNewArray() : null;
+        }
+
+        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+
+            // The value points into the map, valid only while this transaction is open, so it is used under the lock.
+            using Lock.Scope _ = _lock.EnterScope();
+            if (!TryGetLocked(key, out MDBValue value)) return false;
+
+            action(value.AsSpan(), arg);
+            return true;
+        }
+
         public void Dispose()
         {
             using Lock.Scope _ = _lock.EnterScope();
             _transaction.Dispose();
+        }
+
+        private bool TryGetLocked(ReadOnlySpan<byte> key, out MDBValue value)
+        {
+            (MDBResultCode result, _, value) = _transaction.Get(_database, key);
+            if (result == MDBResultCode.NotFound) return false;
+
+            result.ThrowOnError();
+            return true;
         }
     }
 
@@ -110,8 +143,21 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
-            MDBResultCode result = transaction.Delete(database, key);
-            if (result != MDBResultCode.NotFound) result.ThrowOnError();
+            Delete(key);
+        }
+
+        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+            transaction.Put(database, key, rlp).ThrowOnError();
+        }
+
+        public void RemoveNode(byte contract, in TreePath path)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+            Delete(key);
         }
 
         public void Commit(in StateId state)
@@ -124,5 +170,11 @@ public sealed class LmdbPrioritySlotStore : IPrioritySlotStore
 
         // Aborts the transaction when it was not committed.
         public void Dispose() => transaction.Dispose();
+
+        private void Delete(ReadOnlySpan<byte> key)
+        {
+            MDBResultCode result = transaction.Delete(database, key);
+            if (result != MDBResultCode.NotFound) result.ThrowOnError();
+        }
     }
 }

@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.FlatPriorityRead.Test;
@@ -48,6 +51,40 @@ public class PrioritySlotStoreTests
 
         AssertSlots(second, State(2), (0, KeyA, 2), (0, KeyB, null), (0, KeyC, 4), (1, KeyA, 3));
         AssertSlots(third, State(3), (0, KeyA, 2), (0, KeyB, null), (0, KeyC, 4), (1, KeyA, 3));
+    }
+
+    [Test]
+    public void Trie_nodes_keep_the_commit_they_opened_on([Values(FlatPriorityReadBackend.Lmdb, FlatPriorityReadBackend.RocksDb)] FlatPriorityReadBackend backend)
+    {
+        TreePath root = TreePath.Empty;
+        TreePath zero = TreePath.FromNibble([0x0]);
+        TreePath branch = TreePath.FromNibble([0xa, 0x5]);
+
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IPrioritySlotStore store = TestPrioritySlotStores.Create(backend, directory.Path);
+
+        // The slot key shares its 32 bytes with the path of the branch node, and the empty root with the path of zero.
+        Commit(store, State(1), writer =>
+        {
+            writer.SetNode(0, root, Bytes.FromHexString("c101"));
+            writer.SetNode(0, branch, Bytes.FromHexString("c102"));
+            writer.SetNode(1, root, Bytes.FromHexString("c103"));
+            writer.Set(0, branch.Path, 5);
+        });
+        IPrioritySlotStore.IReader first = store.BeginRead();
+
+        Commit(store, State(2), writer =>
+        {
+            writer.SetNode(0, root, Bytes.FromHexString("c104"));
+            writer.RemoveNode(0, branch);
+        });
+        using IPrioritySlotStore.IReader second = store.BeginRead();
+
+        AssertNodes(first, (0, root, "c101"), (0, zero, null), (0, branch, "c102"), (1, root, "c103"), (1, branch, null));
+        AssertNodes(second, (0, root, "c104"), (0, zero, null), (0, branch, null), (1, root, "c103"));
+        AssertSlots(first, State(1), (0, branch.Path, 5));
+        AssertSlots(second, State(2), (0, branch.Path, 5));
+        first.Dispose();
     }
 
     [Test]
@@ -108,7 +145,7 @@ public class PrioritySlotStoreTests
         }
 
         string optionsFile = Directory.GetFiles(Path.Combine(directory.Path, "rocksdb"), "OPTIONS-*").Max()!;
-        Assert.That(File.ReadAllText(optionsFile), Does.Contain("table_factory=PlainTable").And.Contain("user_key_len=33").And.Contain("allow_mmap_reads=true"));
+        Assert.That(File.ReadAllText(optionsFile), Does.Contain("table_factory=PlainTable").And.Contain("user_key_len=34").And.Contain("allow_mmap_reads=true"));
     }
 
     private static StateId State(ulong blockNumber) => new(blockNumber, Keccak.Compute(blockNumber.ToString()));
@@ -139,6 +176,22 @@ public class PrioritySlotStoreTests
             {
                 bool found = reader.TryGet(contract, key, out UInt256 actual);
                 Assert.That(found ? actual : (UInt256?)null, Is.EqualTo(value), $"contract {contract} key {key}");
+            }
+        }
+    }
+
+    private static void AssertNodes(IPrioritySlotStore.IReader reader, params (byte Contract, TreePath Path, string? Rlp)[] expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((byte contract, TreePath path, string? rlp) in expected)
+            {
+                byte[]? expectedRlp = rlp is null ? null : Bytes.FromHexString(rlp);
+                Assert.That(reader.GetNode(contract, path), Is.EqualTo(expectedRlp), $"contract {contract} node {path}");
+
+                StrongBox<byte[]?> passed = new();
+                Assert.That(reader.TryGetNode(contract, path, static (span, box) => box.Value = span.ToArray(), passed), Is.EqualTo(rlp is not null), $"contract {contract} node {path} found");
+                Assert.That(passed.Value, Is.EqualTo(expectedRlp), $"contract {contract} node {path} passed");
             }
         }
     }

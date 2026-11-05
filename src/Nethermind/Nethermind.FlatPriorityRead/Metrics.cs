@@ -15,6 +15,10 @@ public static class Metrics
     public static long FlatPriorityReadLoadedSlots { get; set; }
 
     [GaugeMetric]
+    [Description("Storage trie nodes loaded into the flat priority read store at startup")]
+    public static long FlatPriorityReadLoadedTrieNodes { get; set; }
+
+    [GaugeMetric]
     [Description("Milliseconds the startup load of the flat priority read store took")]
     public static long FlatPriorityReadLoadMilliseconds { get; set; }
 
@@ -31,4 +35,18 @@ public static class Metrics
     public static long FlatPriorityReadNotFound => _notFound.Sum;
     private static readonly StripedLong _notFound = new();
     internal static void IncrementNotFound() => _notFound.Increment();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Priority storage trie node reads the store answered with a stored node")]
+    public static long FlatPriorityReadTrieNodeFound => _trieNodeFound.Sum;
+    private static readonly StripedLong _trieNodeFound = new();
+    internal static void IncrementTrieNodeFound() => _trieNodeFound.Increment();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Priority storage trie node reads the store answered as absent")]
+    public static long FlatPriorityReadTrieNodeNotFound => _trieNodeNotFound.Sum;
+    private static readonly StripedLong _trieNodeNotFound = new();
+    internal static void IncrementTrieNodeNotFound() => _trieNodeNotFound.Increment();
 }

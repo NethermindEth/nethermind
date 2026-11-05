@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.Trie;
 
 namespace Nethermind.FlatPriorityRead;
 
@@ -125,6 +127,11 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
             return false;
         }
 
+        public byte[]? GetNode(byte contract, in TreePath path) => throw TrieNodesNotSupported();
+
+        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            throw TrieNodesNotSupported();
+
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0) view.Release();
@@ -139,6 +146,10 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 
         public void Remove(byte contract, in ValueHash256 slotKey) => _changes[(contract, slotKey)] = null;
 
+        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp) => throw TrieNodesNotSupported();
+
+        public void RemoveNode(byte contract, in TreePath path) => throw TrieNodesNotSupported();
+
         public void Commit(in StateId state)
         {
             store.Commit(_changes, state);
@@ -147,4 +158,6 @@ public sealed class MemoryPrioritySlotStore : IPrioritySlotStore
 
         public void Dispose() { }
     }
+
+    private static NotSupportedException TrieNodesNotSupported() => new("The Memory priority slot store holds slots only.");
 }

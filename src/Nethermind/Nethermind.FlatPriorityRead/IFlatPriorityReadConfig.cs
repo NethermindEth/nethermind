@@ -17,6 +17,9 @@ public interface IFlatPriorityReadConfig : IConfig
     [ConfigItem(Description = "The store holding the slots: Memory (in-process tables), Lmdb or RocksDb (PlainTable over mmap). Lmdb and RocksDb are Linux only, as they rely on /dev/shm.", DefaultValue = "Memory")]
     FlatPriorityReadBackend Backend { get; set; }
 
+    [ConfigItem(Description = "Also keep the storage trie nodes of the contracts in the store and serve their reads from it. They are loaded at startup by walking each storage trie. Lmdb and RocksDb only.", DefaultValue = "false")]
+    bool CacheTrie { get; set; }
+
     [ConfigItem(Description = "Directory of the Lmdb and RocksDb stores, wiped at every start. Reads stay in memory only when it is on tmpfs.", DefaultValue = "/dev/shm/nethermind-flat-priority-read")]
     string DbPath { get; set; }
 

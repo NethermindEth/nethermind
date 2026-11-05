@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.Trie;
 
 namespace Nethermind.FlatPriorityRead;
 
@@ -87,6 +90,31 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
             return true;
         }
 
+        public byte[]? GetNode(byte contract, in TreePath path)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+            return _snapshot.Get(key);
+        }
+
+        public bool TryGetNode<TArg>(byte contract, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+            Span<byte> rlp = _snapshot.GetSpan(key);
+            try
+            {
+                if (rlp.IsNull()) return false;
+
+                action(rlp, arg);
+                return true;
+            }
+            finally
+            {
+                _snapshot.DangerousReleaseMemory(rlp);
+            }
+        }
+
         public void Dispose() => _snapshot.Dispose();
     }
 
@@ -107,6 +135,20 @@ public sealed class RocksDbPrioritySlotStore : IPrioritySlotStore
         {
             Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
             PrioritySlotEncoding.WriteKey(key, contract, slotKey);
+            batch.Set(key, null, CommitFlags);
+        }
+
+        public void SetNode(byte contract, in TreePath path, ReadOnlySpan<byte> rlp)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
+            batch.PutSpan(key, rlp, CommitFlags);
+        }
+
+        public void RemoveNode(byte contract, in TreePath path)
+        {
+            Span<byte> key = stackalloc byte[PrioritySlotEncoding.KeyLength];
+            PrioritySlotEncoding.WriteNodeKey(key, contract, path);
             batch.Set(key, null, CommitFlags);
         }
 

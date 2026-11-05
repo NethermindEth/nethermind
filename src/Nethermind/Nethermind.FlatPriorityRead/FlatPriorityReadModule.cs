@@ -23,6 +23,13 @@ public class FlatPriorityReadModule(IFlatPriorityReadConfig config) : Module
                 ExitCodes.GeneralError);
         }
 
+        if (config.CacheTrie && config.Backend == FlatPriorityReadBackend.Memory)
+        {
+            throw new InvalidConfigurationException(
+                "FlatPriorityRead.CacheTrie needs the Lmdb or RocksDb backend; the Memory backend holds slots only.",
+                ExitCodes.GeneralError);
+        }
+
         // Without flat state no IPersistence is registered, so the decorator never applies.
         builder
             .AddDecorator<IPersistence, FlatPriorityReadPersistence>()
