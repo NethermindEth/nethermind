@@ -139,27 +139,10 @@ public class NodeStorage(
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         return Scheme == INodeStorage.KeyScheme.HalfPath
-            ? TryPass(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg)
-              || TryPass(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
-            : TryPass(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
-              || TryPass(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg);
-    }
-
-    private bool TryPass<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-        where TArg : allows ref struct
-    {
-        Span<byte> rlp = _keyValueStore.GetSpan(key, readFlags);
-        if (rlp.IsEmpty) return false;
-        try
-        {
-            action(rlp, arg);
-        }
-        finally
-        {
-            _keyValueStore.DangerousReleaseMemory(rlp);
-        }
-
-        return true;
+            ? _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+            : _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg);
     }
 
     private ReadFlags WithReadAhead(bool isStorage, in TreePath path, ReadFlags readFlags)
