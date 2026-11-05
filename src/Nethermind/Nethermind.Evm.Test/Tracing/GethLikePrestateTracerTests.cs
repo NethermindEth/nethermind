@@ -518,6 +518,30 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>As in geth, a storage opcode that cannot pay its gas does not execute, so the slot it would read is not in the prestate.</summary>
+    [Test]
+    public void StorageOperation_WhenOutOfGas_LeavesSlotOutOfPrestate(
+        [Values(Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode, [Values] bool affordable, [Values] bool wrapped)
+    {
+        byte[] code = opcode == Instruction.SLOAD
+            ? Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done
+            : Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Done;
+        ulong gasNeeded = opcode == Instruction.SLOAD
+            ? GasCostOf.VeryLow + GasCostOf.ColdSLoad
+            : 2 * GasCostOf.VeryLow + GasCostOf.ColdSLoad + GasCostOf.SSet;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation,
+            GasCostOf.Transaction + gasNeeded - (affordable ? 0UL : 1UL), code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(GetGethTraceOptions(), block, transaction, TestState, spec);
+        using ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer)) : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), executionTracer);
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value)[transaction.To!];
+        Assert.That(account.Storage?.ContainsKey(1) ?? false, Is.EqualTo(affordable));
+    }
+
     [Test]
     public void Prestate_captures_parent_accesses_after_child_exit([Values("00", "fe", "60006000fd")] string childCode)
     {
