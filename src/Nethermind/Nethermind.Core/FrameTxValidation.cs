@@ -492,17 +492,19 @@ public static class FrameTxValidation
     /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
     public static int ApprovalSearchStart(TxFrame[] frames)
     {
-        int next = SkipDependencies(frames, 0);
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next = SkipDependencies(frames, next + 1);
+        int next = RecentRootVerifyFrameIndex(frames);
         if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next = SkipDependencies(frames, next + 1);
         if (next < frames.Length && IsDeployFrame(frames[next])) next = SkipDependencies(frames, next + 1);
         return next;
     }
 
     /// <summary>The only index the public mempool admits a <c>recent_root_verify</c> frame at: directly behind the
-    /// optional leading <c>expiry_verify</c> frame.</summary>
-    private static int RecentRootVerifyFrameIndex(TxFrame[] frames) =>
-        frames.Length > 0 && IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+    /// optional leading <c>expiry_verify</c> frame, skipping EIP-8288 dependency frames as the prefix grammar does.</summary>
+    private static int RecentRootVerifyFrameIndex(TxFrame[] frames)
+    {
+        int next = SkipDependencies(frames, 0);
+        return next < frames.Length && IsExpiryVerifyFrame(frames[next]) ? SkipDependencies(frames, next + 1) : next;
+    }
 
     /// <summary>
     /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame targeting <c>RECENT_ROOT_ADDRESS</c> that

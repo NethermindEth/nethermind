@@ -467,6 +467,10 @@ public class FrameTxValidationTests
         yield return Placement("MaxTuples_IsFalse", false, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences), SelfVerifyFrame());
         yield return Placement("BehindTheSelfVerifyFrame_IsTrue", true, SelfVerifyFrame(), RecentRootFrame());
         yield return Placement("AheadOfTheExpiryFrame_IsLeftToTheExpiryPlacementRule", false, RecentRootFrame(), ExpiryFrame(), SelfVerifyFrame());
+        // EIP-8288 dependency frames may sit anywhere, so they never displace the recent-root position.
+        yield return Placement("BehindADependencyFrame_IsFalse", false, DepFrame(Eip8288Constants.LeanSphincsScheme), RecentRootFrame(), SelfVerifyFrame());
+        yield return Placement("DependencyFramesAroundTheExpiryFrame_IsFalse", false,
+            DepFrame(Eip8288Constants.LeanSphincsScheme), ExpiryFrame(), DepFrame(Eip8288Constants.LeanSphincsScheme), RecentRootFrame(), SelfVerifyFrame());
         yield return Placement("Repeated_IsTrue", true, RecentRootFrame(), RecentRootFrame(), SelfVerifyFrame());
         yield return Placement("NoTuples_IsTrue", true, RecentRootFrame(tuples: 0), SelfVerifyFrame());
         yield return Placement("TooManyTuples_IsTrue", true, RecentRootFrame(Eip8272Constants.MaxRecentRootReferences + 1), SelfVerifyFrame());
@@ -484,6 +488,10 @@ public class FrameTxValidationTests
         Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
 
         Assert.That(FrameTxValidation.HasMisplacedRecentRootVerifyFrame(tx), Is.EqualTo(expected));
+        // An admitted frame is the one the recent-root index reads.
+        if (!expected)
+            Assert.That(FrameTxValidation.TryGetRecentRootTuples(tx, out _),
+                Is.EqualTo(Array.Exists(frames, static frame => frame.Target == Eip8272Constants.RecentRootAddress)));
     }
 
     [TestCase(false, true, TestName = "TryGetRecentRootTuples_BehindTheExpiryFrame_ReadsTheTuples")]
