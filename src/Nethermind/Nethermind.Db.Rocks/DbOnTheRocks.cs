@@ -318,6 +318,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
+    bool IReadOnlyKeyValueStore.TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        _reader.TryGet(key, flags, action, arg);
+
     MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
     {
         Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
@@ -334,24 +337,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ThrowIfDisposing();
 
-        success = true;
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
+        Iterator iterator = wrapper.Iterator;
+
+        success = TrySeekWithIterator(iterator, key, iteratorManager.SequentialKeys, out bool found);
+        return found ? iterator.Value() : null;
+    }
+
+    /// <summary>Like <see cref="GetWithIterator"/>, but passes the value to <paramref name="action"/> straight from the iterator.</summary>
+    /// <returns>Whether the iterator settled the read, <paramref name="found"/> then telling whether the value was passed; otherwise the caller falls back to a point read.</returns>
+    internal bool TryGetWithIterator<TArg>(scoped ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags,
+        ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool found)
+        where TArg : allows ref struct
+    {
+        ThrowIfDisposing();
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
         Iterator iterator = wrapper.Iterator;
 
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
-        {
-            return closeRes;
-        }
+        if (!TrySeekWithIterator(iterator, key, iteratorManager.SequentialKeys, out found)) return false;
+        if (found) action(iterator.GetValueSpan(), arg);
+        return true;
+    }
+
+    /// <summary>Moves <paramref name="iterator"/> onto <paramref name="key"/>.</summary>
+    /// <returns>Whether the iterator settled the read: it is then on the key if <paramref name="found"/>, and the key is missing otherwise.</returns>
+    private static bool TrySeekWithIterator(Iterator iterator, scoped ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
+    {
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, sequentialKeys, out found)) return true;
 
         iterator.Seek(key);
-        if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
-        {
-            return iterator.Value();
-        }
-
-        success = false;
-        return null;
+        found = iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key);
+        return found;
     }
 
     // Uses a pool of tailing seek iterators: each one reads a live sequence,
@@ -412,14 +429,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </summary>
     /// <param name="iterator"></param>
     /// <param name="key"></param>
-    /// <param name="result"></param>
+    /// <param name="found"></param>
     /// <returns></returns>
-    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
+    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
     {
         // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
         if (!sequentialKeys && key.Length <= 32)
         {
-            result = null;
+            found = false;
             return false;
         }
 
@@ -427,7 +444,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // Next() can exhaust the iterator; key()/Next() on an invalid iterator is undefined per the RocksDB API.
         if (!iterator.Valid())
         {
-            result = null;
+            found = false;
             return false;
         }
 
@@ -435,11 +452,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         int compareResult = currentKey.SequenceCompareTo(key);
         if (compareResult == 0)
         {
-            result = iterator.Value();
+            found = true;
             return true; // This happens A LOT.
         }
 
-        result = null;
+        found = false;
         if (compareResult > 0)
         {
             return false;
@@ -473,14 +490,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (compareResult == 0)
         {
-            result = iterator.Value();
+            found = true;
             return true;
         }
 
         if (compareResult > 0)
         {
             // We've skipped it somehow
-            result = null;
+            found = false;
             return true;
         }
 

@@ -420,10 +420,8 @@ public class ColumnsDbTests
         }
     }
 
-    [TestCase(3)]
-    [TestCase(8)]
-    [TestCase(28)]
-    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot(int shortKeyLength)
+    [Test]
+    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot([Values(3, 8, 28)] int shortKeyLength, [Values] bool inPlace)
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
 
@@ -456,18 +454,33 @@ public class ColumnsDbTests
             // values must still come from the snapshot, not the mutated head state.
             for (int i = 0; i < keys.Length; i++)
             {
-                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
+                Assert.That(Read(keys[i]), Is.EqualTo(new byte[] { (byte)i, 1 }), $"key {i}");
             }
 
             // Probes past the last key (exhausts the iterator) and misses.
             byte[] missingKey = new byte[34];
             missingKey[0] = 0x23;
-            Assert.That(snapshotColumn.Get(missingKey, ReadFlags.HintReadAhead), Is.Null);
+            Assert.That(Read(missingKey), Is.Null);
             for (int i = keys.Length - 1; i >= 0; i--)
             {
-                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
+                Assert.That(Read(keys[i]), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(snapshotColumn.Get(keys[0], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 0, 1 }));
+            Assert.That(Read(keys[0]), Is.EqualTo(new byte[] { 0, 1 }));
+
+            byte[]? Read(byte[] key)
+            {
+                if (!inPlace) return snapshotColumn.Get(key, ReadFlags.HintReadAhead);
+
+                byte[]? value = null;
+                bool found = snapshotColumn.TryGet(key, ReadFlags.HintReadAhead, (span, db) =>
+                {
+                    // A point read would hold a native span until the action returns.
+                    Assert.That(db._allocatedSpan.Sum, Is.Zero, "the value must come from the readahead iterator");
+                    value = span.ToArray();
+                }, (DbOnTheRocks)colA);
+                Assert.That(found, Is.EqualTo(value is not null));
+                return value;
+            }
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
