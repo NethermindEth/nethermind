@@ -650,7 +650,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Genesis_proof_commitment_follows_eip8288_activation([Values(0UL, 1UL)] ulong activation)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"eip8288PrototypeTime\": {activation}", timestamp: 0);
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"eip8288PrototypeTime\": {activation}", timestamp: 0);
         Block genesis = chainSpec.Genesis!;
 
         using (Assert.EnterMultipleScope())
@@ -667,7 +667,7 @@ public class GethGenesisLoaderTests
     {
         Hash256 upgradedVk = Keccak.Compute("next AGGREGATED_VK");
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
-            $"\"eip8288PrototypeTime\": 15, \"eip8288AggregatedVkTimestamp\": 30, \"eip8288AggregatedVk\": \"{upgradedVk}\"");
+            $"{ForksThroughShanghaiAtGenesis}, \"eip8288PrototypeTime\": 15, \"eip8288AggregatedVkTimestamp\": 30, \"eip8288AggregatedVk\": \"{upgradedVk}\"");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
@@ -689,7 +689,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Eip8288_prototype_genesis_keeps_an_earlier_frames_activation()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 10, \"eip8288PrototypeTime\": 20");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"eip8141PrototypeTime\": 10, \"eip8288PrototypeTime\": 20");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
@@ -706,7 +706,7 @@ public class GethGenesisLoaderTests
     public void Eip8288_prototype_genesis_rejects_a_later_frames_activation()
     {
         InvalidDataException exception = Assert.Throws<InvalidDataException>(
-            () => LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 30, \"eip8288PrototypeTime\": 20"))!;
+            () => LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"eip8141PrototypeTime\": 30, \"eip8288PrototypeTime\": 20"))!;
         Assert.That((exception.InnerException as InvalidConfigurationException)?.ExitCode, Is.EqualTo(ExitCodes.ConflictingChainspecEipConfiguration));
     }
 
