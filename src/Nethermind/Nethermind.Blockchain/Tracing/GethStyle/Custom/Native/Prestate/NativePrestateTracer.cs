@@ -439,10 +439,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
+            bool sameCodeHash = !_disableCode && prestateAccount.CodeHash is { } preCodeHash && preCodeHash == poststateAccountStruct.CodeHash;
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _disableCode ? default : _worldState.GetCode(addr));
+                _disableCode ? default : sameCodeHash ? prestateAccount.Code : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -462,7 +463,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
             }
-            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            if (!_disableCode && !sameCodeHash && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;

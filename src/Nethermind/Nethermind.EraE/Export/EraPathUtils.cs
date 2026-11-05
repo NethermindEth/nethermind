@@ -82,11 +82,16 @@ public static class EraPathUtils
             throw new ArgumentException($"Invalid checksum entry (no filename): {line}");
 
         string filename = line[(nameStart + 1)..].TrimStart();
-        string nameWithoutExt = Path.GetFileNameWithoutExtension(filename);
-        string[] parts = nameWithoutExt.Split(_separator);
-        if (parts.Length < 3 || !long.TryParse(parts[1], out long epoch))
+        if (!TryGetEpoch(filename, out long epoch))
             throw new ArgumentException($"Invalid checksum entry filename: {filename}");
 
         return (epoch, hash);
+    }
+
+    internal static bool TryGetEpoch(string fileName, out long epoch)
+    {
+        string[] parts = Path.GetFileNameWithoutExtension(fileName).Split(_separator);
+        epoch = 0;
+        return parts.Length >= 3 && long.TryParse(parts[1], out epoch);
     }
 }

@@ -88,7 +88,7 @@ public class TxPermissionFilterTest
         Block head = chain.BlockTree.Head!;
         Transaction tx = Build.A.Transaction.WithSenderAddress(null).TestObject;
 
-        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header, chain.SpecProvider.GetSpec(head.Header));
+        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, new TxFilterContext(head.Header, chain.SpecProvider.GetSpec(head.Header)));
 
         Assert.That((bool)isAllowed, Is.False);
     }
@@ -215,7 +215,7 @@ public class TxPermissionFilterTest
     {
         using TestTxPermissionsBlockchain chain = await chainFactory();
         Block? head = chain.BlockTree.Head;
-        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header, chain.SpecProvider.GetSpec(head.Header));
+        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, new TxFilterContext(head.Header, chain.SpecProvider.GetSpec(head.Header)));
         Assert.That(chain.TransactionPermissionContractVersions.Get(head.Header.Hash), Is.EqualTo(version));
         return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
     }
@@ -266,7 +266,7 @@ public class TxPermissionFilterTest
             Substitute.For<ISpecProvider>());
 
         PermissionBasedTxFilter filter = new(transactionPermissionContract, new PermissionBasedTxFilter.Cache(), LimboLogs.Instance);
-        return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject, ReleaseSpecSubstitute.Create());
+        return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, new TxFilterContext(Build.A.BlockHeader.WithNumber(blockNumber).TestObject, ReleaseSpecSubstitute.Create()));
     }
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain

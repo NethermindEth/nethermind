@@ -135,7 +135,8 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip1052Transition = config.ConstantinopleBlock,
             Eip1283Transition = config.ConstantinopleBlock,
 
-            Eip1283DisableTransition = config.PetersburgBlock,
+            // geth treats Petersburg as active from Constantinople when petersburgBlock is absent (IsPetersburg in params/config.go).
+            Eip1283DisableTransition = config.PetersburgBlock ?? config.ConstantinopleBlock,
 
             Eip152Transition = config.IstanbulBlock,
             Eip1108Transition = config.IstanbulBlock,
@@ -295,7 +296,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
         chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
-        chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
+        chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition;
         chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
         chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
