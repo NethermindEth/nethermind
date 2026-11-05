@@ -971,6 +971,7 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
+        headerError ??= CheckFileTraceTransaction(options, () => blockFinder.FindBlock(blockHash, header!.Number));
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -990,6 +991,7 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, badBlocksOnly: true);
+        headerError ??= CheckFileTraceTransaction(options, () => debugBridge.GetBadBlocks().FirstOrDefault(block => block.Hash == blockHash));
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1005,6 +1007,13 @@ public class DebugRpcModule(
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
+
+    /// <summary>Fails when <see cref="GethTraceOptions.TxHash"/> names a transaction that is not in the traced block.</summary>
+    /// <remarks>As in Geth, this is checked before the block's base state.</remarks>
+    private static ResultWrapper<IEnumerable<string>>? CheckFileTraceTransaction(GethTraceOptions? options, Func<Block?> findBlock) =>
+        options?.TxHash is { } txHash && findBlock()?.Transactions.Any(transaction => transaction.Hash == txHash) == false
+            ? ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput)
+            : null;
 
     private const string ExistingFileError = "location would overwrite an existing file";
 

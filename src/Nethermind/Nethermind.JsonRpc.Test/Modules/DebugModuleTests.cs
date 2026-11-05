@@ -1137,6 +1137,38 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugStandardTraceBlockToFile_WhenTxHashNotInBlock_FailsBeforeStateCheck([Values] bool isBadBlock, [Values] bool inBlock)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        if (isBadBlock)
+        {
+            _debugBridge.GetBadBlocks().Returns([block]);
+        }
+        else
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+            _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        }
+        Hash256 txHash = inBlock ? block.Transactions[0].Hash! : TestItem.KeccakA;
+        GethTraceOptions options = new() { TxHash = txHash };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? module.debug_standardTraceBadBlockToFile(block.Hash!, options)
+            : module.debug_standardTraceBlockToFile(block.Hash!, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(inBlock ? ErrorCodes.ResourceUnavailable : ErrorCodes.InvalidInput));
+            if (!inBlock)
+                Assert.That(actual.Result.Error, Is.EqualTo($"transaction {txHash} not found in block"));
+        }
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
     public void DebugStandardTraceBlockToFile_WhenTreeBodyMissing_DoesNotUseBadStore()
     {
         Block block = Build.A.Block.WithNumber(1).TestObject;
