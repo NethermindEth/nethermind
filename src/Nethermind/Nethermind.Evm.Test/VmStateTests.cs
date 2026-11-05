@@ -120,6 +120,44 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Advanced_access_snapshot_keeps_preloads_but_not_child_effects()
+        {
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
+            {
+                child.VmState.AccessTracker.WarmUp(TestItem.AddressA);
+                child.VmState.TakeAccessSnapshot();
+                child.VmState.AccessTracker.WarmUp(TestItem.AddressB);
+                child.VmState.AccessTracker.Logs.Add(new LogEntry(Address.Zero, Bytes.Empty, []));
+                child.VmState.AccessTracker.ToBeDestroyed(TestItem.AddressC);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.False);
+                Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressB), Is.True);
+                Assert.That(parent.VmState.AccessTracker.Logs, Is.Empty);
+                Assert.That(parent.VmState.AccessTracker.DestroyList, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void Enclosing_revert_still_drops_advanced_child_preloads()
+        {
+            using VmStateScope root = CreateEvmStateScope();
+            using (VmStateScope parent = CreateEvmStateScope(root.VmState))
+            {
+                using (VmStateScope child = CreateEvmStateScope(parent.VmState))
+                {
+                    child.VmState.AccessTracker.WarmUp(TestItem.AddressA);
+                    child.VmState.TakeAccessSnapshot();
+                }
+                Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.False);
+            }
+            Assert.That(root.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+        }
+
+        [Test]
         public void Storage_to_commit_keeps_it_warm()
         {
             using VmStateScope parent = CreateEvmStateScope();

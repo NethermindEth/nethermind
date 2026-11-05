@@ -35,6 +35,13 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
+    /// <summary>Unspent execution gas observed before an exceptional halt clears <see cref="Value"/>.</summary>
+    /// <remarks>
+    /// Observational only: child-frame halt accounting still consumes the full allocation. Frame-completion
+    /// hooks may use this to meter actual execution before applying their own exceptional-halt policy.
+    /// Initialized afresh with each frame's gas budget, never returned to a parent as spendable gas.
+    /// </remarks>
+    public ulong UnspentGasBeforeHalt;
     /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
     public bool IndependentStatePool;
 
@@ -79,7 +86,14 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ClearExecutionGas(ref EthereumGasPolicy gas) => gas.Value = 0;
+    public static void ClearExecutionGas(ref EthereumGasPolicy gas)
+    {
+        if (gas.Value != 0)
+        {
+            gas.UnspentGasBeforeHalt = gas.Value;
+        }
+        gas.Value = 0;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
@@ -451,6 +465,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (GetRemainingGas(in gas) < gasCost)
         {
+            gas.UnspentGasBeforeHalt = gas.Value;
             gas.Value = 0;
             return false;
         }
@@ -553,6 +568,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (gas.Value < childGas)
         {
+            gas.UnspentGasBeforeHalt = gas.Value;
             gas.Value = 0;
             return false;
         }

@@ -17,6 +17,52 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyTests
 {
+    [TestCase(0UL, 1UL)]
+    [TestCase(97UL, 100UL)]
+    public void Failed_charge_exposes_unspent_gas_without_refunding_it(ulong remaining, ulong cost)
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(remaining);
+
+        Assert.That(EthereumGasPolicy.UpdateGas(ref gas, cost), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.Zero);
+            Assert.That(gas.UnspentGasBeforeHalt, Is.EqualTo(remaining));
+        }
+        EthereumGasPolicy parent = EthereumGasPolicy.FromULong(10);
+        EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in gas);
+        Assert.That(EthereumGasPolicy.GetRemainingGas(in parent), Is.EqualTo(10UL));
+    }
+
+    [Test]
+    public void Successful_charge_does_not_report_a_failed_charge()
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(100);
+        Assert.That(EthereumGasPolicy.UpdateGas(ref gas, 3), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(97UL));
+            Assert.That(gas.UnspentGasBeforeHalt, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Halt_observation_survives_clearing_but_not_a_new_frame_budget()
+    {
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(97);
+        EthereumGasPolicy.ClearExecutionGas(ref gas);
+        EthereumGasPolicy.ClearExecutionGas(ref gas);
+        Assert.That(gas.UnspentGasBeforeHalt, Is.EqualTo(97UL));
+
+        EthereumGasPolicy next = EthereumGasPolicy.CreateChildFrameGas(ref gas, 100);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.UnspentGasBeforeHalt, Is.Zero);
+            Assert.That(EthereumGasPolicy.FromULong(100).UnspentGasBeforeHalt, Is.Zero);
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in next), Is.EqualTo(100UL));
+        }
+    }
+
     /// <summary>A cell warmed after a snapshot must read cold again once that snapshot is restored.</summary>
     /// <remarks>
     /// <see cref="StackAccessTracker.IsCold(in StorageCell)"/> remembers the last cell it found warm, so a

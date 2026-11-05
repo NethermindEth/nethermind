@@ -27,6 +27,7 @@ public partial struct EthereumGasPolicy
         long remaining = (long)gas.Value - (long)TCost.GasCost;
         if (remaining < 0)
         {
+            gas.UnspentGasBeforeHalt = gas.Value;
             gas.Value = 0;
             return false;
         }
