@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Tracing;
 
@@ -19,11 +20,16 @@ namespace Nethermind.Blockchain.Tracing;
 /// produces its post-execution root (matching geth's partial-result semantics).
 /// System-level calls (EIP-4788, EIP-2935) and withdrawals do not produce entries
 /// because <see cref="BlockTracerBase{TTrace,TTracer}"/> only dispatches on user transactions.
+/// A trie-less world state (e.g. history-backed flat state) cannot produce roots, so tracing a transaction
+/// over one throws <see cref="StateNotRetainedException"/> instead of reporting the base block's root.
 /// </remarks>
 public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec spec)
     : BlockTracerBase<Hash256, IntermediateRootsBlockTracer.IntermediateRootsTxTracer>
 {
-    protected override IntermediateRootsTxTracer OnStart(Transaction? tx) => new(worldState, spec);
+    protected override IntermediateRootsTxTracer OnStart(Transaction? tx) =>
+        worldState.StorageRootsAreAuthoritative
+            ? new(worldState, spec)
+            : throw new StateNotRetainedException("Intermediate roots are unavailable: the state at this block is trie-less (historical flat state).");
 
     protected override Hash256 OnEnd(IntermediateRootsTxTracer txTracer) => txTracer.StateRoot;
 

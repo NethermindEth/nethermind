@@ -131,6 +131,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.SupportsPrefetch"/>
     bool SupportsPrefetch => false;
 
+    /// <summary>
+    /// <c>false</c> when the current scope is trie-less: it rehashes neither storage nor the state trie, so
+    /// <see cref="IReadOnlyStateProvider.StateRoot"/> stays at the base block's root.
+    /// </summary>
+    bool StorageRootsAreAuthoritative => true;
+
     /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
     bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
 

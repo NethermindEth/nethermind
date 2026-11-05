@@ -39,6 +39,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public bool SupportsPrefetch => State.SupportsPrefetch;
 
+    public bool StorageRootsAreAuthoritative => State.StorageRootsAreAuthoritative;
+
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         => State.Prefetch(accounts, slots, cancellationToken);
 

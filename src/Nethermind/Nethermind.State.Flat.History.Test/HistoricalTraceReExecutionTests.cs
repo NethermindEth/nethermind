@@ -5,12 +5,14 @@ using Nethermind.Core.Extensions;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -191,6 +193,35 @@ public class HistoricalTraceReExecutionTests
             Assert.That(firstValue, Is.EqualTo((UInt256)0xAA));
             Assert.That(secondValue, Is.EqualTo((UInt256)0xBB));
         }
+    }
+
+    [Test]
+    public async Task IntermediateRoots_OverTrieLessScope_RefusesInsteadOfRepeatingBaseRoot()
+    {
+        HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = new(
+            inner,
+            _persistenceManager,
+            _historyReader,
+            _resourcePool,
+            enableDetailedMetrics: false,
+            new HistoryScopeGate(),
+            LimboLogs.Instance);
+        using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        WorldState worldState = new(scopeProvider, LimboLogs.Instance);
+
+        BlockHeader historicalHeader = Build.A.BlockHeader.WithNumber(HistoricalBlock).WithStateRoot(TestItem.KeccakB).TestObject;
+        using IDisposable scope = worldState.BeginScope(historicalHeader);
+
+        Block block = Build.A.Block.WithNumber(HistoricalBlock + 1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        IBlockTracer tracer = new IntermediateRootsBlockTracer(worldState, MuirGlacier.Instance);
+        tracer.StartNewBlockTrace(block);
+
+        Assert.That(() => tracer.StartNewTxTrace(block.Transactions[0]),
+            Throws.TypeOf<StateNotRetainedException>());
     }
 
     [Test]
