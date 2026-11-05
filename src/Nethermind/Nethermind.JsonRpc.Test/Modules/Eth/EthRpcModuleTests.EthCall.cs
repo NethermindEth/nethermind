@@ -906,13 +906,13 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task Eth_call_with_revert()
+    [TestCase("wrong-parameters")]
+    [TestCase("réverted ✓")]
+    public async Task Eth_call_with_revert(string errorMessage)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         AbiSignature<string> errorSignature = new AbiSignature("Error").With(AbiType.String);
-        string errorMessage = "wrong-parameters";
         byte[] encodedError = AbiCodec.Encode(errorSignature, errorMessage);
         string abiEncodedErrorMessage = encodedError.ToHexString(true);
 

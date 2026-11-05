@@ -542,6 +542,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons([Values(32, 64)] int offset, [Values] bool nested)
+    {
+        const string reason = "réverted ✓";
+        byte[] payload = TransactionSubstateTests.ErrorStringPayload(reason, offset);
+        byte[] revertCode = Prepare.EvmCode.StoreDataInMemory(0, payload).Revert(payload.Length, 0).Done;
+        byte[] code = revertCode;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, revertCode, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).STOP().Done;
+        }
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+        JsonElement frame = nested ? trace.RootElement.GetProperty("calls")[0] : trace.RootElement;
+        Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(reason));
+    }
+
     private static TestCaseData[] ActionDiagnosticCompositionCases =>
     [
         new("01", 100000UL, "stack underflow (0 <=> 2)"),

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -115,6 +116,20 @@ public readonly ref struct TransactionSubstate
         return Encoding.ASCII.GetString(span);
     }
 
+    /// <summary>Decodes an <c>Error(string)</c> reason as UTF-8, falling back to hex when it is not valid UTF-8 or holds control characters.</summary>
+    private static string DecodeErrorString(ReadOnlySpan<byte> span)
+    {
+        if (!Utf8.IsValid(span)) return span.ToHexString(true);
+
+        string decoded = Encoding.UTF8.GetString(span);
+        foreach (char c in decoded)
+        {
+            if (char.IsControl(c)) return span.ToHexString(true);
+        }
+
+        return decoded;
+    }
+
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix) return null;
@@ -137,14 +152,16 @@ public readonly ref struct TransactionSubstate
         {
             if (span.Length < WordSize * 2) return null;
 
-            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (start != WordSize) return null;
+            // Like Geth's ABI decoder, accept the string at any in-bounds offset, not only right after the head.
+            UInt256 start = new(span[..WordSize], isBigEndian: true);
+            if (start > (ulong)(span.Length - WordSize)) return null;
+            span = span[(int)start..];
 
             UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
-            return EncodeErrorMessage(binaryMessage);
+            return DecodeErrorString(binaryMessage);
         }
 
         // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller
