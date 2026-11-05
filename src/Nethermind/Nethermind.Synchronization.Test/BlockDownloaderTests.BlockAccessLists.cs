@@ -111,7 +111,7 @@ public partial class BlockDownloaderTests
         bool breach = peerServedBody && !(peerPastRetention && peerHeadKnown) && !processing && !pastRetentionPeriod;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            Assert.That(results, Is.All.EqualTo(processing ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.LesserQuality));
             ctx.PeerPool.Received(breach ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
@@ -273,12 +273,13 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
-    public enum AccessListSource { Served, Withheld, NoEth71Peer, OutsideServingWindow, Stored }
+    public enum AccessListSource { Served, Withheld, EmptyReply, NoEth71Peer, OutsideServingWindow, Stored }
 
     [TestCase(false, false, AccessListSource.Served)]
     [TestCase(true, false, AccessListSource.Served)]
     [TestCase(false, true, AccessListSource.Served)]
     [TestCase(true, true, AccessListSource.Withheld)]
+    [TestCase(true, false, AccessListSource.EmptyReply)]
     [TestCase(true, false, AccessListSource.NoEth71Peer)]
     [TestCase(false, true, AccessListSource.OutsideServingWindow)]
     // The list of a beacon body from engine_newPayload is already in the store.
@@ -322,8 +323,9 @@ public partial class BlockDownloaderTests
                 Assert.That(suggested, Is.False);
             }
             accessListRequests++;
-            request.BlockAccessLists = BuildBlockAccessLists(served ? catchUp.Bal : null);
-            catchUp.Downloader.HandleResponse(request, catchUp.Peer);
+            request.BlockAccessLists = source == AccessListSource.EmptyReply ? BuildBlockAccessLists() : BuildBlockAccessLists(served ? catchUp.Bal : null);
+            // A weak peer sleeps, which would hold back each retry of a list that the block does not need.
+            Assert.That(catchUp.Downloader.HandleResponse(request, catchUp.Peer), Is.EqualTo(SyncResponseHandlingResult.OK));
         }
 
         bool usesAccessLists = parallelExecution || batchRead;
@@ -334,7 +336,7 @@ public partial class BlockDownloaderTests
             Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : source switch
             {
                 AccessListSource.Served => 1,
-                AccessListSource.Withheld => 3,
+                AccessListSource.Withheld or AccessListSource.EmptyReply => 3,
                 _ => 0,
             }));
             // The store is checked once, when the block enters the download buffer, not on each request.

@@ -657,6 +657,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             long blockAccessListsBytes = 0;
+            int unservedOptionalAccessListsCount = 0;
             for (int i = 0; i < response.BlockAccessListsRequests.Count; i++)
             {
                 BlockHeader header = response.BlockAccessListsRequests[i];
@@ -670,6 +671,11 @@ namespace Nethermind.Synchronization.Blocks
                     blockAccessListsCount++;
                     blockAccessListsBytes += entry.EncodedAccessList!.Length;
                 }
+                // An answer without the list moves a block that executes without it toward execution.
+                else if (blockAccessLists is not null && entry.CanExecuteMissingData)
+                {
+                    unservedOptionalAccessListsCount++;
+                }
             }
 
             if (blockAccessListsCount > 0)
@@ -680,7 +686,7 @@ namespace Nethermind.Synchronization.Blocks
             if (result == SyncResponseHandlingResult.OK)
             {
                 // Request and body does not have the same size so this heuristic is wrong.
-                if (bodiesCount + blockAccessListsCount + receiptsCount == 0)
+                if (bodiesCount + blockAccessListsCount + unservedOptionalAccessListsCount + receiptsCount == 0)
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -724,7 +730,8 @@ namespace Nethermind.Synchronization.Blocks
                 // pruned on every peer, so the answer is not proof of withholding.
                 if (mustServe || !entry.CanExecuteMissingData)
                 {
-                    result = SyncResponseHandlingResult.LesserQuality;
+                    // A weak peer sleeps, so each retry of a list that the block does not need would hold the block back.
+                    if (!entry.CanExecuteMissingData) result = SyncResponseHandlingResult.LesserQuality;
                     WarnUnservedAccessList(header, peer, mustServe, entry.CanExecuteMissingData);
                     // The peer that served this block's body or receipts has the block, so it is withholding the list.
                     // When processing can go ahead without the list, a peer still backfilling lists is not worth dropping.
