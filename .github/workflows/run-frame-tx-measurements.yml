@@ -29,6 +29,13 @@ on:
         required: false
         type: string
         default: c2-standard-8
+      diag_filter:
+        description: >-
+          Diagnostic branch only. A test filter that replaces the suite's own, run pinned to CPU 0 with a per-thread CPU
+          sampler; skips the full-grid checks. Leave empty for a regular run.
+        required: false
+        type: string
+        default: ''
 
 # No concurrency group: every run measures on a VM of its own, and a group would let a newer dispatch replace a
 # pending one. Runs on the shared bare-metal runner queue for it instead. Never re-dispatch after a cancel.
@@ -190,6 +197,7 @@ jobs:
         env:
           SUITE: ${{ inputs.suite }}
           MACHINE_TYPE: ${{ inputs.machine_type }}
+          DIAG_FILTER: ${{ inputs.diag_filter }}
         run: |
           set -uo pipefail
 
@@ -293,6 +301,56 @@ jobs:
 
           # Named so a self-ignored case fails loudly instead of quietly shrinking the suite.
           status=0
+
+          if [[ -n "${DIAG_FILTER}" ]]; then
+            echo "diag_filter=${DIAG_FILTER}" >> "${OUTPUT_DIR}/PROVENANCE.txt"
+            # Samples every thread's CPU ticks and last CPU, plus /proc/stat per CPU, every 250 ms, from the other CPUs.
+            cat > "${RUNNER_TEMP}/cpu-sampler.py" <<'PY'
+          import os, sys, time
+          out = open(sys.argv[1], "w", buffering=1)
+          prev, names = {}, {}
+          while True:
+              t = time.time()
+              for line in open("/proc/stat"):
+                  if line.startswith("cpu"):
+                      out.write(f"S\t{t:.3f}\t{line.strip()}\n")
+              for pid in os.listdir("/proc"):
+                  if not pid.isdigit():
+                      continue
+                  try:
+                      tids = os.listdir(f"/proc/{pid}/task")
+                  except OSError:
+                      continue
+                  for tid in tids:
+                      try:
+                          raw = open(f"/proc/{pid}/task/{tid}/stat").read()
+                      except OSError:
+                          continue
+                      comm = raw[raw.index("(") + 1: raw.rindex(")")]
+                      rest = raw[raw.rindex(")") + 2:].split()
+                      ticks = int(rest[11]) + int(rest[12])
+                      key = (pid, tid)
+                      d = ticks - prev.get(key, ticks)
+                      prev[key] = ticks
+                      if d > 0:
+                          if pid not in names:
+                              try:
+                                  names[pid] = open(f"/proc/{pid}/comm").read().strip()
+                              except OSError:
+                                  names[pid] = "?"
+                          out.write(f"T\t{t:.3f}\t{pid}\t{tid}\t{names[pid]}\t{comm}\t{rest[36]}\t{d}\n")
+              time.sleep(0.25)
+          PY
+            others="1-$(( $(nproc) - 1 ))"
+            taskset -c "${others}" python3 "${RUNNER_TEMP}/cpu-sampler.py" "${OUTPUT_DIR}/cpu-samples.tsv" &
+            sampler=$!
+            date +%s.%N > "${OUTPUT_DIR}/diag-start-epoch.txt"
+            run_harness Nethermind.Blockchain.Test FrameTx-diag "${DIAG_FILTER}" pin || status=1
+            date +%s.%N > "${OUTPUT_DIR}/diag-end-epoch.txt"
+            kill "${sampler}" || true
+            gzip -f "${OUTPUT_DIR}/cpu-samples.tsv" || true
+            exit "${status}"
+          fi
           case "${SUITE}" in
             cost)
               mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
