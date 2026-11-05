@@ -408,10 +408,12 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void Proofs_resolve_across_epoch_buckets([Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block)
+    public void Proofs_resolve_across_epoch_buckets(
+        [Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block,
+        [Values(1L, HistoryWalkVerifier.DefaultMaxRowsPerPartition)] long maxRowsPerPartition)
     {
         _policy = EpochPolicy;
-        BuildCommitments();
+        BuildCommitments(maxRowsPerPartition);
 
         foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
         {
@@ -664,11 +666,11 @@ public class ArchiveProofTests
         ArchiveProofSource source = CreateSource(_policy);
         StateId head = _chain.StateIdAt(Blocks);
         source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, diagnostics: null);
-        AccountProofCollector collector = new(Contract, ContractSlots);
+        AccountProofCollector[] collectors = new AccountProofCollector[AllocationWindows.Count];
+        for (int i = 0; i < collectors.Length; i++) collectors[i] = new AccountProofCollector(Contract, ContractSlots);
+        int window = 0;
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        source.CollectProof(collector, head, diagnostics: null);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() => source.CollectProof(collectors[window++], head, diagnostics: null));
 
         Assert.That(allocated, Is.LessThan(WarmProofAllocationCeiling),
             "a warm proof follows only the key's path; no node objects are built for the siblings of each branch on it");

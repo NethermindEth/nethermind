@@ -14,7 +14,7 @@ public interface IMcpConfig : IConfig
     bool Enabled { get; set; }
 
     /// <summary>Gets or sets the IP address the MCP listener binds to.</summary>
-    [ConfigItem(Description = "The IP address literal the MCP listener binds to (host names are rejected). A loopback address (`127.0.0.1`, `::1`) serves local clients only. Any other address, including `0.0.0.0` and `::`, enables remote mode, which requires `TlsCertificatePath`, `TlsCertificateKeyPath`, `AuthTokenFile` and `AllowedHosts`; plain HTTP is never served on a non-loopback address.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The IP address literal the MCP listener binds to (host names are rejected). A loopback address (`127.0.0.1`, `::1`) serves local clients only. Any other address, including `0.0.0.0` and `::`, enables remote mode, which requires `TlsCertificatePath`, `TlsCertificateKeyPath`, `AuthTokenFile` and `AllowedHosts`; plain HTTP is never served on a non-loopback address.", DefaultValue = "127.0.0.1", IsSensitiveWhenMasked = true)]
     string Host { get; set; }
 
     /// <summary>Gets or sets the TCP port of the MCP listener.</summary>
@@ -22,11 +22,11 @@ public interface IMcpConfig : IConfig
     int Port { get; set; }
 
     /// <summary>Gets or sets the path to a file holding the bearer token clients must present.</summary>
-    [ConfigItem(Description = "Path to a file whose trimmed content is the bearer token MCP clients must send as `Authorization: Bearer <token>`. The token must be at least 32 characters. Mandatory in remote mode. If empty on a loopback `Host`, no authentication is required and access is limited to local processes. In remote mode, a client IP (IPv6: its /64) with 10 failed authentications within 60 seconds is answered with HTTP 429 until the window passes.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to a file whose trimmed content is the bearer token MCP clients must send as `Authorization: Bearer <token>`. The token must be at least 32 characters. Mandatory in remote mode. If empty on a loopback `Host`, no authentication is required and access is limited to local processes. In remote mode, a client IP (IPv6: its /64) with 10 failed authentications within 60 seconds is answered with HTTP 429 until the window passes.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? AuthTokenFile { get; set; }
 
     /// <summary>Gets or sets the browser origins allowed to call the MCP endpoint.</summary>
-    [ConfigItem(Description = "Browser origins (for example, `http://localhost:6274`) allowed to call the MCP endpoint. Requests without an `Origin` header are allowed; requests with any other origin are rejected with HTTP 403.", DefaultValue = "[]")]
+    [ConfigItem(Description = "Browser origins (for example, `http://localhost:6274`) allowed to call the MCP endpoint. Requests without an `Origin` header are allowed; requests with any other origin are rejected with HTTP 403.", DefaultValue = "[]", IsSensitiveWhenMasked = true)]
     string[] AllowedOrigins { get; set; }
 
     /// <summary>Gets or sets the maximum size of an MCP HTTP request body, in bytes.</summary>
@@ -62,15 +62,15 @@ public interface IMcpConfig : IConfig
     int MaxCallDataSize { get; set; }
 
     /// <summary>Gets or sets the path to the PEM certificate served in remote mode.</summary>
-    [ConfigItem(Description = "Path to the PEM-encoded TLS certificate served by the MCP listener; further certificates in the file are sent as the chain. Required in remote mode; on a loopback `Host` it enables HTTPS. Loaded at startup: an unreadable file or a key mismatch aborts startup, and a certificate that is expired or expires within 14 days logs a warning.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to the PEM-encoded TLS certificate served by the MCP listener; further certificates in the file are sent as the chain. Required in remote mode; on a loopback `Host` it enables HTTPS. Loaded at startup: an unreadable file or a key mismatch aborts startup, and a certificate that is expired or expires within 14 days logs a warning.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? TlsCertificatePath { get; set; }
 
     /// <summary>Gets or sets the path to the PEM private key of <see cref="TlsCertificatePath"/>.</summary>
-    [ConfigItem(Description = "Path to the PEM-encoded private key (PKCS#8, PKCS#1 or SEC1, unencrypted) of `TlsCertificatePath`. Required whenever `TlsCertificatePath` is set.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to the PEM-encoded private key (PKCS#8, PKCS#1 or SEC1, unencrypted) of `TlsCertificatePath`. Required whenever `TlsCertificatePath` is set.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? TlsCertificateKeyPath { get; set; }
 
     /// <summary>Gets or sets the additional <c>Host</c> header values accepted, such as the node's DNS name in remote mode.</summary>
-    [ConfigItem(Description = "`Host` header values the MCP endpoint accepts, as host or host:port (for example `node.example.com` or `[2001:db8::1]:8555`, no scheme or path). An entry without a port matches any port. On a loopback `Host` they are accepted besides the loopback names; in remote mode only these (and the bound IP literal) are accepted, and at least one is required.", DefaultValue = "[]")]
+    [ConfigItem(Description = "`Host` header values the MCP endpoint accepts, as host or host:port (for example `node.example.com` or `[2001:db8::1]:8555`, no scheme or path). An entry without a port matches any port. On a loopback `Host` they are accepted besides the loopback names; in remote mode only these (and the bound IP literal) are accepted, and at least one is required.", DefaultValue = "[]", IsSensitiveWhenMasked = true)]
     string[] AllowedHosts { get; set; }
 
     /// <summary>Gets or sets the maximum number of blocks one <c>get_logs</c> page scans when the node's log index serves it.</summary>

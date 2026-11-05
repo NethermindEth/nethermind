@@ -2033,10 +2033,10 @@ public partial class EngineModuleTests
     /// The forkchoice update's commit budget is cut to <see cref="CommitGatedBlockchain.CommitBudgetMs"/>, and the
     /// commit of the helper's block is held after its verdict. With <paramref name="waitReachesCommit"/> the hold ends
     /// when the helper awaits the block with <see cref="MergeTestBlockchain.WaitForCommitted"/>; without it that wait
-    /// returns at once, as it does for a block not in the processing queue, and the hold outlasts the head update.
+    /// returns on the verdict while the hold outlasts the head update.
     /// A head update sent while the commit is held gets SYNCING once the budget runs out and leaves the head on the
-    /// parent. Queuing the payload before its verdict also checks that the helper's wait cannot finish merely because
-    /// newPayload exhausted its processing budget before execution started.
+    /// parent. Queuing the payload before its verdict also checks that the helper calls the gated wait when newPayload
+    /// exhausts its processing budget before execution starts.
     /// </remarks>
     [Test]
     public async Task BuildAndInsertEmptyBlock_makes_its_block_the_head_when_its_commit_lags_its_verdict(
@@ -2076,7 +2076,7 @@ public partial class EngineModuleTests
         {
             if (queueBeforeVerdict)
             {
-                Assert.That(verdictWaitPending, Is.True, "the helper must wait for the queued block's verdict");
+                Assert.That(verdictWaitPending, Is.True, "the gated wait must still be pending on the queued block's verdict");
             }
             if (waitReachesCommit)
             {
@@ -2110,8 +2110,8 @@ public partial class EngineModuleTests
     /// commit after its verdict.
     /// </summary>
     /// <param name="waitReleasesCommit">
-    /// Whether <see cref="WaitForCommitted"/> for the held block ends the hold and waits for the commit, or returns at
-    /// once while the hold lasts.
+    /// Whether <see cref="WaitForCommitted"/> for the held block ends the hold and waits for the commit, or returns on
+    /// the verdict while the hold lasts.
     /// </param>
     private sealed class CommitGatedBlockchain(bool waitReleasesCommit)
         : MergeTestBlockchain(new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = CommitBudgetMs })

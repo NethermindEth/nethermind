@@ -685,11 +685,26 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
-        public enum GetPath { ByteArray, CallerBuffer, NativeSlice }
+        public enum GetPath { ByteArray, CallerBuffer, NativeSlice, OwnedMemory }
+
+        [Test]
+        public void Scalar_reads_count_each_attempt_including_misses(
+            [Values(GetPath.CallerBuffer, GetPath.NativeSlice, GetPath.OwnedMemory)] GetPath path, [Values] bool found)
+        {
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            byte[] key = [1, 2, 3];
+            if (found) db.PutSpan(key, new byte[32768], WriteFlags.None);
+            long before = db.GatherMetric().TotalReads;
+
+            for (int i = 0; i < 32; i++) ReadBy(db, path, key, 32768);
+
+            Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(32));
+        }
 
         [TestCase(GetPath.ByteArray, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.CallerBuffer, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
         [TestCase(GetPath.NativeSlice, TestName = "Corrupted_exception_on_native_slice_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.OwnedMemory, TestName = "Corrupted_exception_on_owned_memory_get_writes_marker_and_shuts_down")]
         public void Corrupted_exception_on_get_writes_marker_and_shuts_down(GetPath path)
         {
             IDbConfig config = new DbConfig();
@@ -712,16 +727,27 @@ namespace Nethermind.Db.Test
 
             bool didShutDown = false;
 
-            using DbOnTheRocks corruptedDb = (DbOnTheRocks)new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, DbPath, new RealFileSystem())
+            NativeCloseTrackingDbOnTheRocks corruptedDb;
+            IRocksDbConfig rocksDbConfig = _rocksdbConfigFactory.GetForDatabase("Blocks", null);
+            using (RocksDbInstance instance = new TestRocksDbFactory(_rocksdbConfigFactory, config, LimboLogs.Instance, DbPath, new RealFileSystem())
             {
                 OnFatalShutdown = () => didShutDown = true
-            }.CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
-
-            Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
-            using (Assert.EnterMultipleScope())
+            }.Open(GetRocksDbSettings(DbPath, "Blocks"), rocksDbConfig, null))
             {
-                Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
-                Assert.That(didShutDown, Is.True);
+                corruptedDb = new(instance, rocksDbConfig, LimboLogs.Instance);
+            }
+
+            using (corruptedDb)
+            {
+                for (int i = 0; i < 8; i++)
+                    Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
+                    Assert.That(didShutDown, Is.True);
+                }
+                corruptedDb.Dispose();
+                Assert.That(corruptedDb.NativeCloses, Is.EqualTo(1), "failed reads must not leave a lease deferring native close");
             }
         }
 
@@ -735,6 +761,25 @@ namespace Nethermind.Db.Test
             db.Dispose();
 
             Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        [Test]
+        public void Native_slice_get_counts_one_read([Values] bool present, [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
+        {
+            byte[] key = [1, 2, 3];
+            using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            if (present) db.PutSpan(key, new byte[64], WriteFlags.None);
+            long before = db.GatherMetric().TotalReads;
+
+            ReadOnlySpan<byte> value = db.GetNativeSlice(key, out nint handle, flags);
+            bool matches = present ? value.SequenceEqual(new byte[64]) : value.IsEmpty;
+            db.DangerousReleaseHandle(handle);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(matches, Is.True);
+                Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
+            }
         }
 
         // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
@@ -813,6 +858,9 @@ namespace Nethermind.Db.Test
                     // Code reads for execution take this path.
                     _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
                     db.DangerousReleaseHandle(handle);
+                    break;
+                case GetPath.OwnedMemory:
+                    using (IMemoryOwner<byte>? owner = keyValueStore.GetOwnedMemory(key)) { }
                     break;
                 default:
                     keyValueStore.Get(key);
@@ -2217,11 +2265,12 @@ namespace Nethermind.Db.Test
         ILogManager logManager
         ) : DbOnTheRocks(instance, null, "Blocks", config, logManager)
     {
-        public int NativeCloses { get; private set; }
+        private int _nativeCloses;
+        public int NativeCloses => Volatile.Read(ref _nativeCloses);
 
         protected override void ReleaseUnmanagedResources()
         {
-            NativeCloses++;
+            Interlocked.Increment(ref _nativeCloses);
             base.ReleaseUnmanagedResources();
         }
     }
