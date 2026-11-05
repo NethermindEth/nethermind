@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
   </ItemGroup>
 
 </Project>
