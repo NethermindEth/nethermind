@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -844,6 +845,109 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: revert","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+    }
+
+    /// <summary>A raw EVM revert payload and its expected JSON-RPC error message.</summary>
+    public record RpcRevertPayload(string Data, string Message);
+
+    /// <summary>Payloads whose original bytes must survive RPC execution and gas estimation.</summary>
+    public static IEnumerable<RpcRevertPayload> RpcRevertPayloads() =>
+    [
+        new(new AbiEncoder().Encode(AbiEncodingStyle.IncludeSignature, new AbiSignature("Error", AbiType.String), "wrong-parameters").ToHexString(true),
+            "execution reverted: wrong-parameters"),
+        new("0x4e487b71" + new string('0', 62) + "21", "execution reverted: enum overflow"),
+        new("0xdeadbeef00010200ff", "execution reverted"),
+        new("0x", "execution reverted"),
+    ];
+
+    [Test]
+    public async Task Rpc_preserves_revert_payload(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [ValueSource(nameof(RpcRevertPayloads))] RpcRevertPayload payload,
+        [Values] bool stateOverride,
+        [Values] bool implicitRevert)
+    {
+        using Context ctx = await CreateRevertContext(implicitRevert);
+        byte[] data = Bytes.FromHexString(payload.Data);
+        byte[] code = Prepare.EvmCode.StoreDataInMemory(0, data)
+            .PushData(data.Length).PushData(0).Op(Instruction.REVERT).Done;
+        object call = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = stateOverride ? TestItem.AddressB.ToString() : null,
+            data = stateOverride ? "0x" : code.ToHexString(true),
+            gas = "0x186a0"
+        };
+        object? overrides = stateOverride
+            ? new Dictionary<string, object> { [TestItem.AddressB.ToString()] = new { code = code.ToHexString(true) } }
+            : null;
+
+        string response = await ctx.Test.TestEthRpc(method, call, "latest", overrides);
+
+        JToken parsed = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["result"], Is.Null, response);
+            Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ExecutionReverted), response);
+            Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(payload.Message), response);
+            Assert.That(parsed["error"]?["data"]?.Value<string>(), Is.EqualTo(payload.Data), response);
+        }
+    }
+
+    [Test]
+    public async Task Rpc_does_not_classify_exceptional_failure_as_revert(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool implicitRevert)
+    {
+        using Context ctx = await CreateRevertContext(implicitRevert);
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x186a0" };
+        object overrides = new Dictionary<string, object> { [TestItem.AddressB.ToString()] = new { code = "0xfe" } };
+
+        string response = await ctx.Test.TestEthRpc(method, call, "latest", overrides);
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(method == "eth_call" ? ErrorCodes.ExecutionError : ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.Not.Null.And.Not.Empty.And.Not.Contains("execution reverted"), response);
+            Assert.That(error?["data"], Is.Null, response);
+        }
+    }
+
+    private static Task<Context> CreateRevertContext(bool implicitRevert) =>
+        Context.Create(new TestSpecProvider(London.Instance), configurer: builder =>
+        {
+            if (implicitRevert)
+                builder.AddDecorator<IVirtualMachine>((_, machine) => new ImplicitRevertVirtualMachine(machine));
+        });
+
+    /// <summary>Exercises implicit revert outcomes without replacing real EVM execution, output, gas or state.</summary>
+    /// <remarks>VM extensions may set ShouldRevert without setting the redundant exception marker.</remarks>
+    private sealed class ImplicitRevertVirtualMachine(IVirtualMachine inner) : IVirtualMachine
+    {
+        /// <inheritdoc />
+        public TransactionSubstate ExecuteTransaction<TTracingInst>(VmState<EthereumGasPolicy> state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingInst : struct, IFlag
+        {
+            TransactionSubstate substate = inner.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
+            return substate.ShouldRevert && substate.EvmExceptionType == EvmExceptionType.Revert
+                ? new TransactionSubstate(substate.Output, substate.Refund, substate.DestroyList, substate.Logs,
+                    shouldRevert: true, isTracerConnected: txTracer.IsTracing)
+                : substate;
+        }
+
+        /// <inheritdoc />
+        public ref readonly BlockExecutionContext BlockExecutionContext => ref inner.BlockExecutionContext;
+        /// <inheritdoc />
+        public ref readonly TxExecutionContext TxExecutionContext => ref inner.TxExecutionContext;
+        /// <inheritdoc />
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
+        /// <inheritdoc />
+        public void SetTxExecutionContext(in TxExecutionContext context) => inner.SetTxExecutionContext(in context);
+        /// <inheritdoc />
+        public int OpCodeCount => inner.OpCodeCount;
+        /// <inheritdoc />
+        public void FlushMetricsCounters() => inner.FlushMetricsCounters();
     }
 
     [TestCase(

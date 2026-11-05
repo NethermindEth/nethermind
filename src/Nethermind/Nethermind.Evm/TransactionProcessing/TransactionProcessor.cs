@@ -798,6 +798,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // A VM extension may report an ordinary revert through ShouldRevert without an exception.
+            // Preserve that outcome for RPC callers, but never relabel an explicitly exceptional failure.
+            if (substate.ShouldRevert && substate.EvmExceptionType == EvmExceptionType.None)
+                return TransactionResult.EvmException(EvmExceptionType.Revert, substate.SubstateError);
+
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
