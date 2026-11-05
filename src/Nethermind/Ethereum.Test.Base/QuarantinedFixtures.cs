@@ -29,6 +29,12 @@ internal static class QuarantinedFixtures
     /// <summary>Significant hex digits of the widest value <c>UInt256</c> holds.</summary>
     private const int UInt256HexDigits = 64;
 
+    /// <summary>
+    /// Rejects a file with a repeated property name anywhere in it: a lookup by name finds the last occurrence, while the
+    /// typed reader fails on the first, so with duplicates the two need not see the same value.
+    /// </summary>
+    private static readonly JsonDocumentOptions UniquePropertiesOnly = new() { AllowDuplicateProperties = false };
+
     private static readonly QuarantinedFile[] Files =
     [
         new("LegacyTests/Cancun/BlockchainTests/TransitionTests/bcArrowGlacierToParis/difficultyFormula.json",
@@ -67,7 +73,8 @@ internal static class QuarantinedFixtures
     /// <remarks>
     /// The <c>UInt256</c> reader fails with the same exception and path on any value it cannot read, such as a bare
     /// <c>0x</c> or a token that is not a string; only an over-wide quantity is the unsupported input. Reads the file
-    /// only after its path and error matched, and answers no when the file cannot be read back.
+    /// only after its path and error matched. Answers no whenever the value cannot be identified without doubt: the
+    /// file cannot be read back, has a repeated property name, or does not have objects along the path.
     /// </remarks>
     private static bool StopsAtOverWideValue(string file, string testName, string error)
     {
@@ -83,19 +90,25 @@ internal static class QuarantinedFixtures
 
         try
         {
-            using JsonDocument fixture = JsonDocument.Parse(File.ReadAllBytes(file));
-            return fixture.RootElement.TryGetProperty(testName, out JsonElement fixtureTest)
-                && fixtureTest.TryGetProperty("transaction", out JsonElement transaction)
-                && transaction.TryGetProperty("value", out JsonElement values)
+            using JsonDocument fixture = JsonDocument.Parse(File.ReadAllBytes(file), UniquePropertiesOnly);
+            return TryGetObjectProperty(fixture.RootElement, testName, out JsonElement fixtureTest)
+                && TryGetObjectProperty(fixtureTest, "transaction", out JsonElement transaction)
+                && TryGetObjectProperty(transaction, "value", out JsonElement values)
                 && values.ValueKind == JsonValueKind.Array
                 && index < values.GetArrayLength()
                 && values[index].ValueKind == JsonValueKind.String
                 && IsOverWideHexQuantity(values[index].GetString()!);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or JsonException)
         {
             return false;
         }
+    }
+
+    private static bool TryGetObjectProperty(JsonElement element, string name, out JsonElement property)
+    {
+        property = default;
+        return element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out property);
     }
 
     private static bool IsOverWideHexQuantity(string value)

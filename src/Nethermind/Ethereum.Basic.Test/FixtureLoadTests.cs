@@ -28,6 +28,9 @@ public class FixtureLoadTests : UnchunkedFixture
 
     public enum Unreadable { Bom, MalformedJson, UnknownFork }
 
+    /// <summary>A property repeated with a malformed first and an over-wide last occurrence.</summary>
+    public enum Duplicate { ValueAfterBoolean, ValueAfterBare0x, Transaction, Test }
+
     public sealed record DirectoryStrategy(ITestLoadStrategy Strategy, TestType Type, bool IsLegacy)
     {
         public override string ToString() => Strategy.GetType().Name;
@@ -216,13 +219,17 @@ public class FixtureLoadTests : UnchunkedFixture
         yield return new TestCaseData(valueOverflow, TestType.State, "{\"broken\": ")
             .SetArgDisplayNames("listed state file with another error");
 
-        // The reader rejects these at the same value path with the same exception, but neither is an over-wide value.
-        foreach (QuarantinedFile file in QuarantinedFiles.Where(static f => f.Type == TestType.State))
+        // The reader rejects these at the same value path with the same exception, but none is an over-wide value.
+        foreach (QuarantinedFile file in StateQuarantinedFiles())
         {
             yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "\"0x\""))
                 .SetArgDisplayNames($"{file} with a bare 0x value");
             yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, "true"))
                 .SetArgDisplayNames($"{file} with a boolean value");
+            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, $"\"0x:bigint 0x{new string('f', 64)}\""))
+                .SetArgDisplayNames($"{file} with a 256-bit value");
+            yield return new TestCaseData(file.RelativePath, TestType.State, QuarantineFixture(file.RelativePath, TestType.State, $"\"0x:bigint 0x{new string('g', 65)}\""))
+                .SetArgDisplayNames($"{file} with a long non-hex value");
         }
     }
 
@@ -230,6 +237,41 @@ public class FixtureLoadTests : UnchunkedFixture
     public async Task Load_failure_outside_the_quarantine_still_fails(string relativePath, TestType type, string json)
     {
         EthereumTest test = LoadSingle(WriteFixture(relativePath, json), type);
+
+        await AssertFailsWithLoadFailure(RunInBase(test), test);
+    }
+
+    [Test]
+    public async Task Repeated_property_hiding_the_failing_value_still_fails(
+        [ValueSource(nameof(StateQuarantinedFiles))] QuarantinedFile quarantined,
+        [Values] Duplicate duplicate)
+    {
+        EthereumTest test = LoadSingle(WriteFixture(quarantined.RelativePath, DuplicatedFixture(quarantined.RelativePath, duplicate)), TestType.State);
+        string failingValue = $"$.{Path.GetFileNameWithoutExtension(quarantined.RelativePath)}.transaction.value[0]";
+
+        Assert.That(test.LoadFailure, Does.Contain(failingValue), "the reader stops at the first, malformed occurrence");
+        await AssertFailsWithLoadFailure(RunInBase(test), test);
+    }
+
+    [Test]
+    public async Task Quarantined_file_failing_at_a_later_value_is_skipped()
+    {
+        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
+        EthereumTest test = LoadSingle(WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State, $"\"0x01\", {OverWideValue}")), TestType.State);
+
+        Assert.That(test.LoadFailure, Does.Contain("$.ValueOverflow.transaction.value[1]"));
+        await Assert.ThrowsAsync<IgnoreException>(RunInBase(test));
+    }
+
+    [TestCase("[]")]
+    [TestCase("{\"ValueOverflow\": 1}")]
+    [TestCase("{\"ValueOverflow\": {\"transaction\": 1}}")]
+    public async Task Read_back_that_finds_no_object_keeps_the_original_load_error(string readBack)
+    {
+        string relativePath = $"{ValueOverflowDirectory}/ValueOverflow.json";
+        string file = WriteFixture(relativePath, QuarantineFixture(relativePath, TestType.State));
+        EthereumTest test = LoadSingle(file, TestType.State);
+        File.WriteAllText(file, readBack);
 
         await AssertFailsWithLoadFailure(RunInBase(test), test);
     }
@@ -260,6 +302,8 @@ public class FixtureLoadTests : UnchunkedFixture
             Assert.That(exception.Message, Does.Contain(test.Name).And.Contain(test.LoadFailure));
         }
     }
+
+    private static IEnumerable<QuarantinedFile> StateQuarantinedFiles() => QuarantinedFiles.Where(static f => f.Type == TestType.State);
 
     private static Func<Task> RunInBase(EthereumTest test) => test switch
     {
@@ -306,6 +350,21 @@ public class FixtureLoadTests : UnchunkedFixture
     private static string QuarantineFixture(string relativePath, TestType type, string value = OverWideValue) => type == TestType.State
         ? Fixture(type, "Berlin", Path.GetFileNameWithoutExtension(relativePath), value)
         : Fixture(type, TotalDifficultyNetwork);
+
+    /// <summary>
+    /// A fixture shaped like the quarantined state file at <paramref name="relativePath"/>, in which the reader stops at
+    /// a malformed first occurrence of a repeated property while a lookup by name finds an over-wide last one.
+    /// </summary>
+    private static string DuplicatedFixture(string relativePath, Duplicate duplicate) => duplicate switch
+    {
+        Duplicate.ValueAfterBoolean => QuarantineFixture(relativePath, TestType.State, $"true], \"value\": [{OverWideValue}"),
+        Duplicate.ValueAfterBare0x => QuarantineFixture(relativePath, TestType.State, $"\"0x\"], \"value\": [{OverWideValue}"),
+        Duplicate.Transaction => QuarantineFixture(relativePath, TestType.State, "true")
+            .Replace("\"post\": {", $"\"transaction\": {{ \"value\": [{OverWideValue}] }},\n\"post\": {{"),
+        _ => $"{{{TestObject(relativePath, "true")},{TestObject(relativePath, OverWideValue)}}}",
+    };
+
+    private static string TestObject(string relativePath, string value) => QuarantineFixture(relativePath, TestType.State, value).Trim()[1..^1];
 
     private string[] ValidCaseNames(TestType type)
     {
