@@ -18,16 +18,13 @@ public sealed class RlpPathWithAccountList(IRlpItemList inner) : IPathWithAccoun
 
     public int Count => inner.Count;
 
-    public ValueHash256 GetPath(int index)
+    public RefPathWithAccount this[int index]
     {
-        using IRlpItemList pair = inner.GetNestedItemList(index);
-        return new ValueHash256(pair.ReadContent(PathIndex));
-    }
-
-    public RefSlimAccount GetAccount(int index)
-    {
-        using IRlpItemList pair = inner.GetNestedItemList(index);
-        return new RefSlimAccount(pair.ReadRlp(AccountIndex));
+        get
+        {
+            using IRlpItemList pair = inner.GetNestedItemList(index);
+            return new RefPathWithAccount(new ValueHash256(pair.ReadContent(PathIndex)), new RefSlimAccount(pair.ReadRlp(AccountIndex)));
+        }
     }
 
     public int RlpLength => inner.RlpLength;

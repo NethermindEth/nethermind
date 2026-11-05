@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap;
@@ -12,16 +11,14 @@ namespace Nethermind.State.Snap;
 public interface IPathWithAccountList : IRlpWrapper, IDisposable
 {
     int Count { get; }
-    ValueHash256 GetPath(int index);
-    RefSlimAccount GetAccount(int index);
+    RefPathWithAccount this[int index] { get; }
 }
 
 public sealed class EmptyPathWithAccountList : IPathWithAccountList
 {
     public static readonly EmptyPathWithAccountList Instance = new();
     public int Count => 0;
-    public ValueHash256 GetPath(int index) => throw new IndexOutOfRangeException();
-    public RefSlimAccount GetAccount(int index) => throw new IndexOutOfRangeException();
+    public RefPathWithAccount this[int index] => throw new IndexOutOfRangeException();
     public int RlpLength => Rlp.LengthOfSequence(0);
     public void Write<TWriter>(ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.EncodeNullObject();
@@ -35,7 +32,10 @@ public static class PathWithAccountListExtensions
     {
         ArrayPoolList<PathWithAccount> accounts = new(list.Count);
         for (int i = 0; i < list.Count; i++)
-            accounts.Add(new PathWithAccount(list.GetPath(i), list.GetAccount(i).ToAccount()));
+        {
+            RefPathWithAccount entry = list[i];
+            accounts.Add(new PathWithAccount(entry.Path, entry.Account.ToAccount()));
+        }
         return accounts;
     }
 }

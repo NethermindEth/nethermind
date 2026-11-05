@@ -535,7 +535,7 @@ public class SnapStateServerTests
                     accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
+                startRange = accounts[^1].Path.ToCommitment();
                 if (startRange.Bytes.SequenceEqual(TestItem.Tree.AccountsWithPaths[^1].Path.Bytes))
                 {
                     break;
@@ -571,12 +571,12 @@ public class SnapStateServerTests
                     accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                if (startRange == accounts.GetPath(accounts.Count - 1).ToCommitment())
+                if (startRange == accounts[^1].Path.ToCommitment())
                 {
                     break;
                 }
 
-                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
+                startRange = accounts[^1].Path.ToCommitment();
             }
             finally
             {
@@ -608,12 +608,12 @@ public class SnapStateServerTests
                     accounts.ToArray(), proofs);
 
                 Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-                if (startRange == accounts.GetPath(accounts.Count - 1).ToCommitment())
+                if (startRange == accounts[^1].Path.ToCommitment())
                 {
                     break;
                 }
 
-                startRange = accounts.GetPath(accounts.Count - 1).ToCommitment();
+                startRange = accounts[^1].Path.ToCommitment();
             }
             finally
             {
