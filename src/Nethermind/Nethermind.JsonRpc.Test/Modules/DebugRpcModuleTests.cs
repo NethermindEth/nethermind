@@ -152,8 +152,11 @@ public partial class DebugRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 1 })
             .Build();
         Block block = chain.BlockTree.Head!;
-        Assert.That(block.Number, Is.GreaterThan(1UL));
-        Assert.That(block.Transactions, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Number, Is.GreaterThan(1UL));
+            Assert.That(block.Transactions, Is.Not.Empty);
+        }
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
         chain.ReceiptStorage.RemoveReceipts(block);
         Hash256 transactionHash = block.Transactions[0].Hash!;
@@ -183,8 +186,12 @@ public partial class DebugRpcModuleTests
         }
 
         batch!.Response = new ArrayPoolList<TxReceipt[]?>(1) { receipts };
-        Assert.That(feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.OK));
-        Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.EqualTo(block.Hash));
+        SyncResponseHandlingResult handlingResult = feed.HandleResponse(batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.EqualTo(block.Hash));
+        }
         response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactionHash.ToString());
         json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
