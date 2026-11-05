@@ -300,6 +300,38 @@ public class RlpDecoderTests
         Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
+    [Test, NonParallelizable]
+    public void Decode_delegate_array_of_structs_allocates_only_its_result()
+    {
+        byte[] encoded = [0xc2, 0x01, 0x02];
+        UInt256[] result = [];
+        for (int i = 0; i < 100; i++) result = Decode(encoded);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) result = Decode(encoded);
+        long decoding = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) result = NewResult();
+        long resultArrays = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Length.EqualTo(2));
+            Assert.That(decoding - resultArrays, Is.LessThan(100 * 16), "Decoding a struct list must not box once per call.");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static UInt256[] NewResult() => new UInt256[2];
+
+        static UInt256[] Decode(byte[] encoded)
+        {
+            RlpReader context = new(encoded);
+            UInt256[] decoded = context.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeUInt256());
+            if (decoded.Length != 2 || decoded[1] != 2) throw new InvalidOperationException("Decoded list changed.");
+            return decoded;
+        }
+    }
+
     [Test]
     public void Decode_delegate_array_legacy_api_uses_value_type_default()
     {
@@ -394,7 +426,7 @@ public class RlpDecoderTests
 
     public enum DecodeApi { Guard, Array, Pool }
 
-    public enum AllocationCase { ArrayDecode, PooledDecode, ArrayEncode, CappedEncode }
+    public enum AllocationCase { ArrayDecode, PooledDecode, ArrayEncode, CappedEncode, SpanEncode, ItemSpanEncode }
 
     private const byte DecodedNullMarker = 0x7f;
 
@@ -466,6 +498,10 @@ public class RlpDecoderTests
             Assert.That(decoder.Encode(items).Bytes, Is.EqualTo(expected), "array Encode");
             Assert.That(writer.Position, Is.EqualTo(expected.Length), "array Encode to a writer");
             Assert.That(written, Is.EqualTo((byte[])[.. expected, 0]), "array Encode to a writer");
+            using ArrayPoolSpan<byte> scalarSpan = decoder.EncodeToArrayPoolSpan(default(T));
+            Assert.That(((ReadOnlySpan<byte>)scalarSpan).ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes), "EncodeToArrayPoolSpan");
+            using ArrayPoolSpan<byte> span = decoder.EncodeToArrayPoolSpan(new ReadOnlySpan<T?>(items));
+            Assert.That(((ReadOnlySpan<byte>)span).ToArray(), Is.EqualTo(expected), "EncodeToArrayPoolSpan of items");
         }
     }
 
@@ -515,6 +551,25 @@ public class RlpDecoderTests
                     }
 
                     if (position != encoded.Length) throw new InvalidOperationException("Encoding changed.");
+                    break;
+                case AllocationCase.SpanEncode:
+                    using (ArrayPoolSpan<byte> span = decoder.EncodeToArrayPoolSpan((ReadOnlySpan<UInt256>)values))
+                    {
+                        if (!((ReadOnlySpan<byte>)span).SequenceEqual(encoded)) throw new InvalidOperationException("Encoding changed.");
+                    }
+
+                    break;
+                case AllocationCase.ItemSpanEncode:
+                    int offset = contentStart;
+                    foreach (UInt256 value in values)
+                    {
+                        using ArrayPoolSpan<byte> span = decoder.EncodeToArrayPoolSpan(value);
+                        ReadOnlySpan<byte> bytes = span;
+                        if (!bytes.SequenceEqual(encoded.AsSpan(offset, bytes.Length))) throw new InvalidOperationException("Encoding changed.");
+                        offset += bytes.Length;
+                    }
+
+                    if (offset != encoded.Length) throw new InvalidOperationException("Encoding changed.");
                     break;
             }
         }

@@ -701,8 +701,6 @@ public ref struct RlpReader
         GuardLimit(count, limit);
         T[] result = new T[count];
         bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
-        // Unoptimized code boxes a value-type T to compare it with null, so elements are tested only when T can hold null.
-        bool elementsCanBeNull = default(T) is null;
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.EmptyListByte)
@@ -718,7 +716,8 @@ public ref struct RlpReader
             else
             {
                 T? value = decodeItem(ref this);
-                if (elementsCanBeNull && value is null)
+                // `default(T) is null` folds at every tier; stored in a local it boxes structs in Debug and Tier0.
+                if (default(T) is null && value is null)
                 {
                     RlpHelpers.ThrowNullArrayElement(i);
                 }
@@ -820,8 +819,6 @@ public ref struct RlpReader
         ArrayPoolList<T> result = new(count, count);
         int i = 0;
         bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
-        // Unoptimized code boxes a value-type T to compare it with null, so elements are tested only when T can hold null.
-        bool elementsCanBeNull = default(T) is null;
         try
         {
             for (; i < result.Count; i++)
@@ -839,7 +836,8 @@ public ref struct RlpReader
                 else
                 {
                     T? value = decodeItem(ref this);
-                    if (elementsCanBeNull && value is null)
+                    // `default(T) is null` folds at every tier; stored in a local it boxes structs in Debug and Tier0.
+                    if (default(T) is null && value is null)
                     {
                         RlpHelpers.ThrowNullArrayElement(i);
                     }
