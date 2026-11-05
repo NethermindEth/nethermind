@@ -61,6 +61,8 @@ public class ProofInclusionListEnforcementTests
     [TestCase("mixed-uncovered-omit-frame", false)]
     [TestCase("mixed-invalid-proof-omit-legacy", false)]
     [TestCase("mixed-invalid-proof-frame-only", false)]
+    // EIP-7805: a list carries no blob sidecar, so a blob-carrying frame entry obligates nothing, as the builder drops it.
+    [TestCase("blob", true)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
@@ -114,7 +116,8 @@ public class ProofInclusionListEnforcementTests
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei,
-            MaxFee = 1.Ether
+            MaxFee = 1.Ether,
+            BlobVersionedHashes = scenario == "blob" ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyA, sender);
         transaction.Hash = transaction.CalculateHash();
@@ -128,7 +131,7 @@ public class ProofInclusionListEnforcementTests
             _ => []
         };
         Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
-            .WithBaseFeePerGas(0).WithBeneficiary(TestItem.AddressD)
+            .WithBaseFeePerGas(0).WithBeneficiary(TestItem.AddressD).WithExcessBlobGas(0).WithBlobGasUsed(0)
             .WithTransactions(includedTransactions).TestObject;
         if (scenario.StartsWith("generic-", System.StringComparison.Ordinal))
         {

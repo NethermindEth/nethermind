@@ -84,8 +84,8 @@ public static class InclusionListValidator
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
-            // EIP-7805 excludes blob transactions from the appendability check.
-            if (il[i].SupportsBlobs) continue;
+            // EIP-7805 excludes blob transactions from the appendability check; a list carries no sidecar for frame blobs either.
+            if (il[i].SupportsBlobs || il[i].CarriesBlobs) continue;
             if (il[i].SupportsFrames)
             {
                 // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
@@ -99,15 +99,8 @@ public static class InclusionListValidator
     }
 
     private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)
-    {
-        if (tx.SenderAddress is null || !FitsRemainingBlockGas(tx, block, spec) || !validator.IsWellFormed(tx, spec, block.GasLimit)) return false;
-        UInt256 blobFee = UInt256.Zero;
-        if (tx.CarriesBlobs
-            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
-                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobFee)))
-            return false;
-        return FrameTxValidation.CoversRequiredMaxFee(tx, spec, block.BaseFeePerGas, blobFee);
-    }
+        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec) && validator.IsWellFormed(tx, spec, block.GasLimit)
+            && FrameTxValidation.CoversRequiredMaxFee(tx, spec, block.BaseFeePerGas, UInt256.Zero);
 
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
