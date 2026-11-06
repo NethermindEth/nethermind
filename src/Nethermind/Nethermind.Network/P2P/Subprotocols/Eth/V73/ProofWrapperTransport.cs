@@ -250,7 +250,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 {
                     peer.Requests.Remove(request.Id);
                     WrapperMetrics.Record(WrapperEvent.RequestExpired);
-                    peer.RecordFailure(WrapperTransportLimits.UnservedFailureWeight);
+                    peer.RecordFailure();
                     Abandon(peer, request);
                 }
                 FlushAnnouncements(peer, outbox);

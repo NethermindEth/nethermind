@@ -261,6 +261,7 @@ public sealed partial class ProofWrapperTransport
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
                 else if (position > last && entries.Length > 0) fetch.Tried.Remove(peer);
+                else if (entries.Length == 0) fetch.AnsweredEmpty.Add(peer);
                 else unavailable++;
             }
             // Requested wrappers withheld count toward the failure score in proportion, so serving one of many does not evade it;

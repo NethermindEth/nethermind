@@ -395,6 +395,29 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // Sources that answer empty, having spent their serving budget, are not penalized and do not use up the sources asked, so
+    // a later announcer is still asked.
+    [Test]
+    public void Later_announcer_is_asked_after_earlier_ones_answered_empty()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink[] spent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(static i => new FakeWrapperLink($"spent {i}"))];
+        WrapperPeer[] spentPeers = [.. spent.Select(node.Connect)];
+        FakeWrapperLink late = new("late");
+        WrapperPeer latePeer = node.Connect(late);
+        WrapperAnnouncement announcement = Describe(Wrapper(64, FrameTransaction(1)));
+        foreach (WrapperPeer peer in spentPeers.Append(latePeer)) node.Transport.OnAnnounce(peer, new([announcement]));
+
+        for (int i = 0; i < spent.Length; i++)
+            node.Transport.OnProofWrappers(spentPeers[i], new(spent[i].Sent<GetProofWrappersMessage>().Single().RequestId, []));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { announcement.Hash }));
+            Assert.That(spentPeers.Select(static p => p.IsDeprioritized), Has.All.False);
+        }
+    }
+
     // Eviction leaves a wanted wrapper that a peer within its share also announced.
     [Test]
     public void Eviction_spares_a_wrapper_with_a_source_within_its_share()
@@ -432,7 +455,10 @@ public class ProofWrapperTransportTests
     {
         using WrapperTestNode node = new();
         WrapperPeer[] silent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
-        foreach (WrapperPeer peer in silent) peer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore);
+        foreach (WrapperPeer peer in silent)
+            node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, WrapperTransportLimits.MaxRequestsPerPeer)
+                .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
+        node.Tick(WrapperTransportLimits.RequestTimeout);
         // Their one remaining request slot each is taken, so the wanted wrapper can only be requested from another source.
         foreach (WrapperPeer peer in silent)
             node.Transport.OnAnnounce(peer, new([Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));

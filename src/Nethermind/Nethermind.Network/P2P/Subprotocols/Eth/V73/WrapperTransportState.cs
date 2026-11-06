@@ -306,6 +306,10 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>Peers that announced or served the wrapper, up to <see cref="WrapperTransportLimits.MaxAnnouncersPerWrapper"/>.</summary>
     public List<WrapperPeer> Sources { get; } = [];
     public HashSet<WrapperPeer> Tried { get; } = [];
+
+    /// <summary>Tried sources that answered with an empty response, a spent serving budget, which do not count toward
+    /// <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>.</summary>
+    public HashSet<WrapperPeer> AnsweredEmpty { get; } = [];
     public bool Requested { get; set; }
 
     /// <summary>Set after a compact response referenced an encoding this node no longer holds: the wrapper is requested again
@@ -349,7 +353,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// lowest failure score first.</remarks>
     public WrapperPeer? NextSource()
     {
-        if (Tried.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
+        if (Tried.Count - AnsweredEmpty.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
         WrapperPeer? deprioritized = null;
         foreach (WrapperPeer peer in Sources)
         {
