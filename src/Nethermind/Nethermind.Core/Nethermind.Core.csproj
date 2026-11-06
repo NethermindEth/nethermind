@@ -14,7 +14,6 @@
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
     <PackageReference Include="Nethermind.Crypto.SecP256k1" />
     <PackageReference Include="Nethermind.Numerics.Int256" />
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="'$(EnableZkEvm)' == 'true'" />
     <PackageReference Include="NonBlocking" />
     <PackageReference Include="Testably.Abstractions" />
   </ItemGroup>
@@ -22,5 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" Condition="'$(EnableZkEvm)' == 'true'" />
   </ItemGroup>
 </Project>
