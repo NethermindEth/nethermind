@@ -1,7 +1,7 @@
 name: Nethermind extra test variants
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -96,6 +96,7 @@ jobs:
             list: >-
               Ethereum.Difficulty.Test
               Nethermind.Db.Test
+              Nethermind.State.Flat.Test
               Nethermind.State.Test
               Nethermind.State.Test.Runner.Test
               Nethermind.Wallet.Test

@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetAccountRangeMessageSerializer serializer = new();
 
-            byte[] bytes = serializer.Serialize(msg);
+            byte[] bytes = serializer.SerializeToArray(msg);
             GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
 
             using (Assert.EnterMultipleScope())
@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
 
             // The message encodes as [requestId, rootHash, startingHash, limitHash, responseBytes].
-            SerializerTester.TestZero(serializer, msg,
+            SerializerTester.Test(serializer, msg,
                 "f867" + SnapSerializerGoldens.RequestId1111Rlp +
                 SnapSerializerGoldens.EmptyStringKeccakRlp +
                 SnapSerializerGoldens.RangeStartRlp +
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetAccountRangeMessageSerializer serializer = new();
 
-            byte[] bytes = serializer.Serialize(msg);
+            byte[] bytes = serializer.SerializeToArray(msg);
             GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
 
             using (Assert.EnterMultipleScope())
@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             }
 
             // A null limit hash goes on the wire as Keccak.MaxValue; response bytes 0 as 1000000.
-            SerializerTester.TestZero(serializer, msg,
+            SerializerTester.Test(serializer, msg,
                 "f870" + "887fffffffffffffff" +
                 SnapSerializerGoldens.EmptyStringKeccakRlp +
                 "a00000000000000000000000000000000000000000000000000000000000000000" +

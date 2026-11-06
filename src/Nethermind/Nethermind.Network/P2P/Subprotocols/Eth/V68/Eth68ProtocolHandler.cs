@@ -52,7 +52,7 @@ public class Eth68ProtocolHandler(ISession session,
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-    // A fixed 8192 entries, not scaled by the memory hint, allocated on the first announcement. Lossy: a lost shape
+    // A fixed 8192 entries, allocated on the first announcement. Lossy: a lost shape
     // only skips the delivery check, and writes and lookups allocate nothing. A delivered shape is not removed but
     // overwritten with a zero-size sentinel.
     private const int TxShapeAnnouncementsSetsBits = 12;
@@ -140,7 +140,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         RequestPooledTransactions(message.Hashes, message.Sizes, message.Types);
 
-        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
     protected void RequestPooledTransactions(

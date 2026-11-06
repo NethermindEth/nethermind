@@ -3,16 +3,15 @@
 
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class ServiceTxFilter : ITxFilter
     {
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
-            if (tx.IsZeroGasPrice(currentSpec))
+            if (tx.IsZeroGasPrice(context.Spec))
             {
                 tx.IsServiceTransaction = true;
             }

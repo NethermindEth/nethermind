@@ -55,10 +55,13 @@ public class TdxServiceTests
         TdxGuestInfo info = _service.Bootstrap();
 
         Assert.That(info, Is.Not.Null);
-        Assert.That(info.IssuerType, Is.EqualTo("test"));
-        Assert.That(info.PublicKey, Is.Not.Null.And.Not.Empty);
-        Assert.That(info.Quote, Is.Not.Null.And.Not.Empty);
-        Assert.That(_service.IsBootstrapped, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.IssuerType, Is.EqualTo("test"));
+            Assert.That(info.PublicKey, Is.Not.Null.And.Not.Empty);
+            Assert.That(info.Quote, Is.Not.Null.And.Not.Empty);
+            Assert.That(_service.IsBootstrapped, Is.True);
+        }
     }
 
     [Test]
@@ -67,8 +70,11 @@ public class TdxServiceTests
         TdxGuestInfo info1 = _service.Bootstrap();
         TdxGuestInfo info2 = _service.Bootstrap();
 
-        Assert.That(info1.PublicKey, Is.EqualTo(info2.PublicKey));
-        Assert.That(info1.Quote, Is.EqualTo(info2.Quote));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info1.PublicKey, Is.EqualTo(info2.PublicKey));
+            Assert.That(info1.Quote, Is.EqualTo(info2.Quote));
+        }
     }
 
     [Test]
@@ -108,10 +114,13 @@ public class TdxServiceTests
         TdxBlockHeaderSignature signature = _service.SignBlockHeader(block.Header);
 
         Assert.That(signature, Is.Not.Null);
-        Assert.That(signature.Signature.Length, Is.EqualTo(Signature.Size));
-        Assert.That(signature.BlockHash, Is.EqualTo(block.Hash!));
-        Assert.That(signature.StateRoot, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(signature.Header.Hash, Is.EqualTo(block.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(signature.Signature.Length, Is.EqualTo(Signature.Size));
+            Assert.That(signature.BlockHash, Is.EqualTo(block.Hash!));
+            Assert.That(signature.StateRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(signature.Header.Hash, Is.EqualTo(block.Hash!));
+        }
     }
 
     [Test]
@@ -147,8 +156,11 @@ public class TdxServiceTests
         TdxService newService = new(_config, _client, LimboLogs.Instance);
         TdxGuestInfo info2 = newService.Bootstrap();
 
-        Assert.That(info2.PublicKey, Is.EqualTo(info1.PublicKey));
-        Assert.That(info2.Quote, Is.EqualTo(info1.Quote));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info2.PublicKey, Is.EqualTo(info1.PublicKey));
+            Assert.That(info2.Quote, Is.EqualTo(info1.Quote));
+        }
     }
 
     [Test]

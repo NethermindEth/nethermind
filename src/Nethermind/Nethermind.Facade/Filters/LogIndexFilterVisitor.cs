@@ -108,6 +108,86 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
         }
     }
 
+    internal sealed class KWayUnionEnumerator : IEnumerator<int>
+    {
+        private readonly List<IEnumerator<int>> _enumerators;
+        private readonly PriorityQueue<IEnumerator<int>, int> _queue;
+
+        public KWayUnionEnumerator(List<IEnumerator<int>> enumerators)
+        {
+            _enumerators = enumerators;
+            _queue = new PriorityQueue<IEnumerator<int>, int>(enumerators.Count);
+            Fill();
+        }
+
+        public bool MoveNext()
+        {
+            if (!_queue.TryPeek(out IEnumerator<int>? enumerator, out int current))
+                return false;
+
+            do
+            {
+                if (enumerator.MoveNext())
+                    _queue.DequeueEnqueue(enumerator, enumerator.Current);
+                else
+                    _queue.Dequeue();
+            } while (_queue.TryPeek(out enumerator, out int next) && next == current);
+
+            Current = current;
+            return true;
+        }
+
+        private void Fill()
+        {
+            foreach (IEnumerator<int> enumerator in _enumerators)
+            {
+                if (enumerator.MoveNext())
+                    _queue.Enqueue(enumerator, enumerator.Current);
+            }
+        }
+
+        public void Reset()
+        {
+            foreach (IEnumerator<int> enumerator in _enumerators)
+                enumerator.Reset();
+
+            _queue.Clear();
+            Fill();
+        }
+
+        public int Current { get; private set; }
+
+        object? IEnumerator.Current => Current;
+
+        public void Dispose()
+        {
+            foreach (IEnumerator<int> enumerator in _enumerators)
+                enumerator.Dispose();
+        }
+    }
+
+    private struct UnionBuilder(int capacity)
+    {
+        private IEnumerator<int>? _first;
+        private IEnumerator<int>? _second;
+        private List<IEnumerator<int>>? _all;
+
+        public void Add(IEnumerator<int> enumerator)
+        {
+            if (_first is null)
+                _first = enumerator;
+            else if (_second is null)
+                _second = enumerator;
+            else
+                (_all ??= [with(capacity), _first, _second]).Add(enumerator);
+        }
+
+        public readonly IEnumerator<int>? Build() =>
+            _all is not null ? new KWayUnionEnumerator(_all) :
+            _second is not null ? new UnionEnumerator(_first!, _second) :
+            _first;
+    }
+
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public IEnumerator<int> GetEnumerator()
@@ -123,15 +203,12 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     private IEnumerator<int>? Visit(AddressFilter addressFilter)
     {
-        IEnumerator<int>? result = null;
+        UnionBuilder union = new(addressFilter.Addresses.Count);
 
         foreach (AddressAsKey address in addressFilter.Addresses)
-        {
-            IEnumerator<int> next = Visit(address);
-            result = result is null ? next : new UnionEnumerator(result, next);
-        }
+            union.Add(Visit(address));
 
-        return result;
+        return union.Build();
     }
 
     private IEnumerator<int>? Visit(TopicsFilter topicsFilter)
@@ -160,17 +237,15 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
     private IEnumerator<int>? Visit(int topicIndex, OrExpression orExpression)
     {
-        IEnumerator<int>? result = null;
+        UnionBuilder union = new(orExpression.SubExpressions.TryGetNonEnumeratedCount(out int count) ? count : 0);
 
         foreach (TopicExpression expression in orExpression.SubExpressions)
         {
-            if (Visit(topicIndex, expression) is not { } next)
-                continue;
-
-            result = result is null ? next : new UnionEnumerator(result, next);
+            if (Visit(topicIndex, expression) is { } next)
+                union.Add(next);
         }
 
-        return result;
+        return union.Build();
     }
 
     private IEnumerator<int> Visit(Address address) =>

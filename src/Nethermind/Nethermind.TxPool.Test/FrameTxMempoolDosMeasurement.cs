@@ -427,16 +427,20 @@ public class FrameTxMempoolDosMeasurement
 
         long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
         _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count + 1);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh),
             $"{count + 1} entries declare more than {ceiling} and must be refused by the declared-gas gate; "
             + "if they are not, the pool is not enforcing the ceiling this row claims");
+#pragma warning restore NUnit2045
         Assert.That(Metrics.PendingTransactionsFrameTxVerifyGasTooHigh, Is.EqualTo(gasRefusalsBefore + 1));
         _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.Not.EqualTo(AcceptTxResult.Accepted), "the probe was admitted");
+#pragma warning restore NUnit2045
         Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(signatureFailuresBefore + 1),
             "the refusal must come from the signature filter, or this measures a cheaper upstream one");
         Assert.That(_simulateMicros, Is.Empty,
@@ -450,10 +454,13 @@ public class FrameTxMempoolDosMeasurement
             result => result != AcceptTxResult.Accepted,
             (i, _) => $"sample {i} was admitted");
 
-        Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
-            Is.EqualTo(sampledFailuresBefore + Samples),
-            "every timed submission must have been refused by the signature filter");
-        Assert.That(_simulateMicros, Is.Empty, "the EVM must not run for any sample");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
+                Is.EqualTo(sampledFailuresBefore + Samples),
+                "every timed submission must have been refused by the signature filter");
+            Assert.That(_simulateMicros, Is.Empty, "the EVM must not run for any sample");
+        }
 
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);

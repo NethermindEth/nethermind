@@ -281,8 +281,13 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
                     PublishCoveredAccountKeySpace(AccountKeySpace);
-                    // Healing writes are not checkpointed, so a restart from here on has to start the sync over.
-                    if (_checkpointInterval is not null) _snapTrieFactory.SaveCheckpoint(null);
+                    // Healing deletes this checkpoint before it writes, and saves it again at a graceful shutdown once its
+                    // writes are flushed. The last periodic one is deleted first, so a failed save leaves none to resume.
+                    if (_checkpointInterval is not null)
+                    {
+                        _snapTrieFactory.SaveCheckpoint(null);
+                        if (_anchor is not null) SaveCheckpoint();
+                    }
                 }
 
                 LogRequest(NO_REQUEST);

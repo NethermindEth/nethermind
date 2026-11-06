@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
@@ -71,13 +72,20 @@ public class FlatSnapTrieFactory(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A checkpoint that cannot be read, or was saved with a different number of account range partitions, is not
-    /// returned, so every caller, including those ahead of <see cref="EnsureInitialize"/>, treats it as gone.
+    /// A checkpoint that cannot be read, was saved with a different number of account range partitions, or outlived a
+    /// wipe of the data it describes, is not returned, so every caller, including those ahead of
+    /// <see cref="EnsureInitialize"/>, treats it as gone.
     /// </remarks>
     public SnapCheckpoint? LoadCheckpoint()
     {
         byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));
         if (record is null) return null;
+
+        if (!BasePersistence.HasSnapCheckpointSentinel(flatDb))
+        {
+            if (_logger.IsWarn) _logger.Warn("Ignoring the snap sync checkpoint: the data it describes was wiped after it was saved, likely by an older Nethermind version.");
+            return null;
+        }
 
         SnapCheckpoint checkpoint;
         try
@@ -269,6 +277,8 @@ public class FlatSnapTrieFactory(
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => Inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Inner.TryLoadStorageRlp(address, path, flags);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => Inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => Inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => Inner.CreateAccountIterator(startKey, endKey);

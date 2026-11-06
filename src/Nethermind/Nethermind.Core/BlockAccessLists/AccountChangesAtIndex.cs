@@ -26,6 +26,8 @@ public class AccountChangesAtIndex(Address address)
     public bool? AccountExists { get; internal set; }
 
     public UInt256? PreTxBalance { get; internal set; }
+    /// <summary>The nonce before the transaction, or <see langword="null"/> until a nonce change records it.</summary>
+    public ulong? PreTxNonce { get; internal set; }
     /// <summary>The code before the transaction, or <see langword="default"/> until a code change records it.</summary>
     public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
@@ -121,6 +123,7 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         AccountExists = null;
         PreTxBalance = null;
+        PreTxNonce = null;
         PreTxCode = default;
         _preTxStorage?.ClearAndTrim();
         _storageChanges.ClearAndTrim();

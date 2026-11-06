@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -30,7 +29,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
-            AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
+            AuRaValidatorFactory factory = new(
                 Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),

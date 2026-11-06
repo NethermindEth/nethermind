@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
+using System.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -11,17 +10,15 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
-    public class AccountRangeMessageSerializer : IZeroMessageSerializer<AccountRangeMessage>
+    public class AccountRangeMessageSerializer : IOwningMessageSerializer<AccountRangeMessage>
     {
         private readonly AccountDecoder _decoder = new(true);
 
-        public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
+        public int Serialize(Span<byte> destination, AccountRangeMessage message)
         {
-            (int contentLength, int pwasLength) = GetLength(message);
+            (int contentLength, int pwasLength) = GetContentLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(destination);
             writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
@@ -47,18 +44,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
 
             writer.WriteByteArrayList(message.Proofs);
+            return writer.Position;
         }
 
-        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
+        /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
+        public AccountRangeMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
+
+        public AccountRangeMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            IMemoryOwner<byte>? memoryOwner = owner;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
             try
             {
+                RlpReader ctx = new(data.Span);
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
 
@@ -77,10 +77,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
                 message.PathsWithAccounts = pathsWithAccounts;
                 pathsWithAccounts = null;
-                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, owner, data, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
-
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                ctx.CheckEnd();
 
                 return message;
             }
@@ -93,7 +92,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)
+        public int GetLength(AccountRangeMessage message) => Rlp.LengthOfSequence(GetContentLength(message).contentLength);
+
+        private (int contentLength, int pwasLength) GetContentLength(AccountRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 

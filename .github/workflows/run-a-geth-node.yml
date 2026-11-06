@@ -164,7 +164,7 @@ jobs:
             -f timeout="$TIMEOUT"
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Wait for creation of node
         id: wait

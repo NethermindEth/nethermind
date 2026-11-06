@@ -88,6 +88,31 @@ public class StatelessInputGeneratorTests
 
     [Test]
     [NonParallelizable]
+    public async Task Encoded_input_holds_its_witness_offset_where_the_decoder_reads_it([Values] bool amsterdam)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            ReadOnlySpan<byte> data = encoded.AsSpan(sizeof(ushort));
+            int offset = BinaryPrimitives.ReadInt32LittleEndian(data[InputDecoder.WitnessOffsetPosition..]);
+            ExecutionWitness decoded = amsterdam ? DecodeWitness<SszExecutionPayloadAmsterdam>(data) : DecodeWitness<SszExecutionPayload>(data);
+
+            Assert.That(data[offset..].ToArray(), Is.EqualTo(ExecutionWitness.Encode(decoded)));
+            int stateList = offset + BinaryPrimitives.ReadInt32LittleEndian(data[offset..]);
+            int firstNode = stateList + BinaryPrimitives.ReadInt32LittleEndian(data[stateList..]);
+            Assert.That(data[firstNode..].StartsWith(decoded.State[0].Node.AsSpan()), Is.True);
+        }
+
+        static ExecutionWitness DecodeWitness<TPayload>(ReadOnlySpan<byte> data) where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+        {
+            StatelessInput<TPayload>.Decode(data, out StatelessInput<TPayload> input);
+            return input.Witness;
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
     public async Task Encoded_execution_rejects_an_empty_transaction_entry()
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
@@ -214,7 +239,9 @@ public class StatelessInputGeneratorTests
 
             Block restored;
             byte[]? encoded = await InputGenerator.EncodeInput(rawBlock, witness, specProvider);
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded),
                 Is.EqualTo((amsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId()));
             if (amsterdam)
@@ -268,7 +295,9 @@ public class StatelessInputGeneratorTests
 
         byte[]? encoded = await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(requestsEnabled ? Osaka.Instance : Cancun.Instance));
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
@@ -342,8 +371,9 @@ public class StatelessInputGeneratorTests
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether);
-            byte[] depositLog = AbiEncoder.Instance.Encode(AbiEncodingStyle.None,
-                ExecutionRequestsProcessor.DepositEventAbi, TestItem.ExecutionRequestA.RequestDataParts!);
+            byte[][] parts = TestItem.ExecutionRequestA.RequestDataParts!;
+            byte[] depositLog = AbiCodec.Encode(new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+                (parts[0], parts[1], parts[2], parts[3], parts[4]));
             AddCode(spec.DepositContractAddress!, Prepare.EvmCode.StoreDataInMemory(0, depositLog)
                 .Log(depositLog.Length, 0, [ExecutionRequestsProcessor.DepositEventAbi.Hash])
                 .Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done);

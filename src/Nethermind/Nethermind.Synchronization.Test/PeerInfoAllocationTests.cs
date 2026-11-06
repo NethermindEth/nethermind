@@ -66,13 +66,16 @@ namespace Nethermind.Synchronization.Test
         [TestCase(EthVersions.Eth70, 256UL)]
         // A peer behind the highest requested block cannot have every list.
         [TestCase(EthVersions.Eth71, 199UL)]
-        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists(byte currentProtocolVersion, ulong currentHeadNumber)
+        // A peer that answered without a list sleeps for lists.
+        [TestCase(EthVersions.Eth71, 256UL, true)]
+        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists(byte currentProtocolVersion, ulong currentHeadNumber, bool currentAsleepForLists = false)
         {
             using BlocksRequest request = new();
             request.BlockAccessListsRequests.Dispose();
             request.BlockAccessListsRequests = BuildHeaders(100, 200);
 
             PeerInfo currentPeer = SetupPeerInfo("Nethermind/current", currentHeadNumber, currentProtocolVersion, 30303);
+            if (currentAsleepForLists) currentPeer.PutToSleep(AllocationContexts.BlockAccessLists, DateTime.UtcNow);
             PeerInfo highPreEth71Peer = SetupPeerInfo("Nethermind/high-eth70", 256, EthVersions.Eth70, 30304);
             PeerInfo highEth71Peer = SetupPeerInfo("Nethermind/high-eth71", 200, EthVersions.Eth71, 30305);
             INodeStatsManager nodeStatsManager = SetupNodeStatsManager();
@@ -146,8 +149,11 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer peer = SetupSyncPeer(versionString);
 
             Version? version = peer.GetOpenEthereumVersion(out int releaseCandidate);
-            Assert.That(version, Is.EqualTo(expectedVersion));
-            Assert.That(releaseCandidate, Is.EqualTo(expectedReleaseCandidate));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(version, Is.EqualTo(expectedVersion));
+                Assert.That(releaseCandidate, Is.EqualTo(expectedReleaseCandidate));
+            }
         }
 
         private static ArrayPoolList<BlockHeader> BuildHeaders(int start, int end)

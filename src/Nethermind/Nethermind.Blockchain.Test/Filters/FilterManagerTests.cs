@@ -407,11 +407,11 @@ public class FilterManagerTests
         BlockFilter blockFilter = new(_currentFilterId++);
         _filterStore.SaveFilter(blockFilter);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { processedBeforeInstall.Hash }));
             Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.Empty);
-        });
+        }
 
         Block next = RaiseBlockProcessed();
         Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { next.Hash }));
@@ -429,12 +429,12 @@ public class FilterManagerTests
         _filterStore.SaveFilter(late);
         RaiseBlockProcessed(BuildReceipt(static r => r.WithBlockNumber(2L)));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Drain(_filterManager.PollLogs(early.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 1, 2 }));
             Assert.That(Drain(_filterManager.PollLogs(late.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 2 }));
             Assert.That(Drain(_filterManager.PollLogs(early.Id)), Is.Empty);
-        });
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -452,12 +452,12 @@ public class FilterManagerTests
         _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(kept));
         _txPool.ContainsTx(kept.Hash!, kept.Type).Returns(true);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.EqualTo(new[] { kept.Hash }));
             Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.Empty);
             Assert.That(Drain(_filterManager.PollPendingTransactionHashes(second.Id)), Is.EqualTo(new[] { kept.Hash }));
-        });
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -475,12 +475,12 @@ public class FilterManagerTests
         // Removed from the pool and admitted again, e.g. included and then reorged out.
         _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(beforeReAdd, Is.EqualTo(pollBeforeReAdd ? new[] { transaction.Hash } : []));
             Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.EqualTo(new[] { transaction.Hash }));
             Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.Empty);
-        });
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -509,11 +509,11 @@ public class FilterManagerTests
 
         WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(IsCollected(receipt), Is.True);
             Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Has.Length.EqualTo(1));
-        });
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -577,7 +577,7 @@ public class FilterManagerTests
 
         RaiseBlockProcessed([.. receipts]);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             foreach (LogFilter filter in filters.OfType<LogFilter>())
             {
@@ -587,7 +587,7 @@ public class FilterManagerTests
 
             using ArrayPoolList<Hash256> hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
             Assert.That(hashes.Count, Is.EqualTo(1));
-        });
+        }
     }
 
     private LogFilter BuildFilter(Action<FilterBuilder> builder)
