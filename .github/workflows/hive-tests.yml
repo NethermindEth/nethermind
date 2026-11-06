@@ -74,26 +74,45 @@ jobs:
           LIMIT: ${{ github.event.inputs.limit }}
           PARALLELISM: ${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}
         run: |
+          # Matches any text that does not start with the literal $1 (letters, spaces and commas
+          # only): Go RE2 has no lookahead, so the complement is spelled out character by character.
+          not_prefixed() {
+            local re='' i
+            for (( i = ${#1} - 1; i >= 0; i-- )); do
+              re="(\$|[^${1:i:1}]${re:+|${1:i:1}$re})"
+            done
+            printf '%s' "$re"
+          }
+
           if [[ "${{ github.event_name }}" != "workflow_dispatch" || "$SUITE" == "all" ]]; then
             # engine-withdrawals at parallelism 2: the 128-block primary build takes
             # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
             # test timeout before the syncing client starts.
-            # engine-cancun and engine-api split into two runners each (I* vs non-I*)
-            # to reduce contention.
-            # engine-[^acw] catches exchange-capabilities and any future engine suites.
+            # engine-cancun, engine-api and engine-withdrawals are split by test-name prefix so
+            # that no shard runs much past 5 min, which kept engine-cancun's I* tests (12 min)
+            # on the critical path of every PR. The patterns of each suite partition its tests:
+            # "Invalid NewPayload, <field>" splits at the field's first letter (most fields start
+            # with T, for Transaction), and the i-other shards take every other I* name.
+            # engine-(auth|[^acw]) catches exchange-capabilities and any future engine suites.
+            # The suites that finish in seconds share a job, as most of a job is image builds.
+            # ethereum/graphql is left to manual runs: Nethermind serves no GraphQL, so it can only fail.
+            cancun_i_other="^I$(not_prefixed 'nvalid NewPayload, ')"
+            api_i_other="^I$(not_prefixed 'nvalid NewPayload')"
             {
               echo 'matrix<<MATRIX_END'
               echo '[
-                {"suite":"ethereum/engine", "limit":"engine-cancun/^I", "parallelism":3, "name":"engine-cancun-i"},
-                {"suite":"ethereum/engine", "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
-                {"suite":"ethereum/engine", "limit":"engine-api/^I", "parallelism":3, "name":"engine-api-i"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^Invalid NewPayload, [A-S]", "parallelism":3, "name":"engine-cancun-newpayload-a-s"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^Invalid NewPayload, ([^A-S]|$)", "parallelism":3, "name":"engine-cancun-newpayload-t-z"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/'"$cancun_i_other"'", "parallelism":3, "name":"engine-cancun-i-other"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^[N-Z]", "parallelism":3, "name":"engine-cancun-n-z"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^[^IN-Z]", "parallelism":3, "name":"engine-cancun-other"},
+                {"suite":"ethereum/engine", "limit":"engine-api/^Invalid NewPayload", "parallelism":3, "name":"engine-api-newpayload"},
+                {"suite":"ethereum/engine", "limit":"engine-api/'"$api_i_other"'", "parallelism":3, "name":"engine-api-i-other"},
                 {"suite":"ethereum/engine", "limit":"engine-api/^[^I]", "parallelism":3, "name":"engine-api-other"},
-                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2, "name":"engine-withdrawals"},
-                {"suite":"ethereum/engine", "limit":"engine-auth", "parallelism":2, "name":"engine-auth"},
-                {"suite":"ethereum/engine", "limit":"engine-[^acw]", "parallelism":2, "name":"engine-other"},
-                {"suite":"ethereum/graphql"},
-                {"suite":"ethereum/rpc-compat"},
-                {"suite":"ethereum/sync"}
+                {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[SG]", "parallelism":2, "name":"engine-withdrawals-sync-bodies"},
+                {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[^SG]", "parallelism":2, "name":"engine-withdrawals-other"},
+                {"suite":"ethereum/engine", "limit":"engine-(auth|[^acw])", "parallelism":2, "name":"engine-auth-other"},
+                {"suite":"ethereum/(rpc-compat|sync)", "name":"rpc-compat-sync"}
               ]'
               echo 'MATRIX_END'
             } >> "$GITHUB_OUTPUT"

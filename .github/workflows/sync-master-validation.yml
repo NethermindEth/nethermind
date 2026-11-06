@@ -90,7 +90,7 @@ jobs:
       - name: Set up .NET for CI scripts
         uses: ./.github/actions/setup-dotnet
         with:
-          dotnet-version: 10.0.402
+          dotnet-version: 10.0.403
 
       - name: Set Matrix
         id: set-matrix
@@ -247,7 +247,7 @@ jobs:
       - name: Set up .NET for CI scripts
         uses: ./.github/actions/setup-dotnet
         with:
-          dotnet-version: 10.0.402
+          dotnet-version: 10.0.403
 
       - name: Append records to sync-metrics branch
         env:
