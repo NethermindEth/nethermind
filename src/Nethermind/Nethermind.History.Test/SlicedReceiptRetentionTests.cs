@@ -74,8 +74,7 @@ public class SlicedReceiptRetentionTests
         for (int i = 0; i < 80; i++) await chain.AddBlock();
         tree.SyncPivot = (tree.Head!.Number, Hash256.Zero);
 
-        HistoryPruner pruner = (HistoryPruner)chain.Container.Resolve<IHistoryPruner>();
-        pruner.TryPruneHistory(CancellationToken.None);
+        TryPruneHistory(chain);
 
         IPrunedLogsRetention retention = chain.Container.Resolve<IPrunedLogsRetention>();
         using (Assert.EnterMultipleScope())
