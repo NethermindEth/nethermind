@@ -463,6 +463,25 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
+    [Test]
+    public void Addmod_with_small_modulus_continues_at_the_following_opcode()
+    {
+        byte[] program =
+        [
+            (byte)Instruction.PUSH1, 7, (byte)Instruction.PUSH1, 3, (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.ADDMOD, (byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        Outcome untraced = Run(100, [], 0, new CodeInfo(program), Table.Untraced);
+        Outcome traced = Run(100, [], 0, new CodeInfo(program), Table.Traced);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(untraced, Is.EqualTo(traced));
+            Assert.That(untraced.Memory, Is.EqualTo(Convert.ToHexString(new UInt256(6).ToBigEndian())));
+        }
+    }
+
     /// <remarks>
     /// Addends below the modulus take the guest's ADDMOD: the inline one when both top limbs are below the modulus's,
     /// and the full compare otherwise, as for the largest addend or any modulus below 2^192. Their sums fall on both

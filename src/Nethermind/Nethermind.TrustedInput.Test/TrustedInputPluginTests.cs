@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -84,14 +85,15 @@ public class TrustedInputPluginTests
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            Assert.That(processor.TryScheduleCapture(() => { started.SetResult(); release.Wait(); }), Is.True);
+            Assert.Throws<InvalidOperationException>(() => processor.TryScheduleCapture(() => throw new InvalidOperationException()));
+            Assert.That(processor.TryScheduleCapture(() => () => { started.SetResult(); release.Wait(); }), Is.True);
             await started.Task;
-            Assert.That(processor.TryScheduleCapture(() => { }), Is.False);
+            Assert.That(processor.TryScheduleCapture(() => throw new AssertionException("Busy capture must not build a witness")), Is.False);
             ValueTask shutdown = processor.DisposeAsync();
             Assert.That(shutdown.IsCompleted, Is.False);
             release.Set();
             await shutdown;
-            Assert.That(processor.TryScheduleCapture(() => { }), Is.False);
+            Assert.That(processor.TryScheduleCapture(() => throw new AssertionException("Stopped capture must not build a witness")), Is.False);
         }
         finally
         {

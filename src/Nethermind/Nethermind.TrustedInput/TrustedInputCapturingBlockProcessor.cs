@@ -66,8 +66,11 @@ public sealed class TrustedInputCapturingBlockProcessor(
 
         try
         {
-            Witness blockWitness = witness.GetWitness(parent);
-            if (!TryScheduleCapture(() => Capture(suggestedBlock, blockWitness))) blockWitness.Dispose();
+            TryScheduleCapture(() =>
+            {
+                Witness blockWitness = witness.GetWitness(parent);
+                return () => Capture(suggestedBlock, blockWitness);
+            });
         }
         catch (Exception ex)
         {
@@ -92,11 +95,12 @@ public sealed class TrustedInputCapturingBlockProcessor(
         }
     }
 
-    internal bool TryScheduleCapture(Action capture)
+    internal bool TryScheduleCapture(Func<Action> createCapture)
     {
         lock (_captureLock)
         {
             if (_stopping || !_capture.IsCompleted) return false;
+            Action capture = createCapture();
             _capture = Task.Run(capture);
             return true;
         }

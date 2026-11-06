@@ -1415,7 +1415,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint next = HandlerAt(handlers, PairAt(ref ip));
+                    nint next = NextHandler(handlers, ref ip);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
