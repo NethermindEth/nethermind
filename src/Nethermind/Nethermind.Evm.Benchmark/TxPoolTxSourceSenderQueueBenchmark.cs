@@ -255,7 +255,7 @@ public class TxPoolTxSourceSenderQueueBenchmark
     {
         BlockToProduce block = CreateBlock([]);
         using IDisposable stateScope = _worldState.BeginScope(_parentHeader);
-        HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+        HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
         int visited = 0;
         int included = 0;
         ulong gasUsed = 0;
