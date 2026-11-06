@@ -11,7 +11,7 @@ use sphincs::{SphincsPublicKey, SphincsSignature};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Barrier, Mutex, OnceLock, RwLock};
+use std::sync::{Barrier, Condvar, Mutex, OnceLock};
 use std::thread::ThreadId;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -88,23 +88,99 @@ fn parse_c_integer(value: &str) -> Option<i32> {
 #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn restore_system_heap() {}
 
-/// Held exclusively by every arena phase and shared by every verification. A phase opening resets the slabs that hold live
-/// `ArenaVec`s, and an open phase routes any thread's `ArenaVec` into the arena, so verification runs only between phases,
-/// on system-allocated buffers, and waits at most for one phase rather than for the whole proof under PROVER.
-static ARENA_PHASE: RwLock<()> = RwLock::new(());
-
-fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
-    let _phase = ARENA_PHASE
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    prove()
+/// Keeps verifications off arena phase openings. A thread's `ArenaVec`s die when it next allocates after a phase opens,
+/// and an allocation racing the opening can land in the stale phase, so no phase may open while a verification runs.
+/// Verifications may run inside an open phase, on their own slabs, so they wait only for an opening, not for the proof
+/// node: a node takes several seconds on a few cores, which held up block import and wrapper admission.
+struct PhaseGate {
+    state: Mutex<GateState>,
+    changed: Condvar,
 }
 
+struct GateState {
+    verifications: usize,
+    /// The arena generation an opening started from, while one is pending or its node is still proving.
+    opening_from: Option<usize>,
+}
+
+static PHASE_GATE: PhaseGate = PhaseGate {
+    state: Mutex::new(GateState {
+        verifications: 0,
+        opening_from: None,
+    }),
+    changed: Condvar::new(),
+};
+
+/// How often a verification held at an opening checks whether the phase has opened, which nothing signals.
+const OPENING_POLL: std::time::Duration = std::time::Duration::from_millis(1);
+
+impl PhaseGate {
+    fn lock(&self) -> std::sync::MutexGuard<'_, GateState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+struct OpeningGuard;
+
+impl Drop for OpeningGuard {
+    fn drop(&mut self) {
+        PHASE_GATE.lock().opening_from = None;
+        PHASE_GATE.changed.notify_all();
+    }
+}
+
+/// Runs `prove`, which must open at most one arena phase, once no verification is in flight.
+fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
+    let mut state = PHASE_GATE.lock();
+    let generation = zk_alloc::stats().phases;
+    state.opening_from = Some(generation);
+    while state.verifications > 0 {
+        state = PHASE_GATE
+            .changed
+            .wait(state)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    }
+    drop(state);
+    let _opening = OpeningGuard;
+    let result = prove();
+    debug_assert!(
+        zk_alloc::stats().phases - generation <= 1,
+        "a gated prove opened more than one arena phase"
+    );
+    result
+}
+
+/// Runs `verify` outside any arena phase opening: before it, or once the phase it waits for has opened.
 fn verify_between_phases<T>(verify: impl FnOnce() -> T) -> T {
-    let _phase = ARENA_PHASE
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut state = PHASE_GATE.lock();
+    while let Some(generation) = state.opening_from {
+        if zk_alloc::stats().phases != generation {
+            break;
+        }
+        state = PHASE_GATE
+            .changed
+            .wait_timeout(state, OPENING_POLL)
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .0;
+    }
+    state.verifications += 1;
+    drop(state);
+    let _verification = VerificationGuard;
     verify()
+}
+
+struct VerificationGuard;
+
+impl Drop for VerificationGuard {
+    fn drop(&mut self) {
+        let mut state = PHASE_GATE.lock();
+        state.verifications -= 1;
+        if state.verifications == 0 {
+            PHASE_GATE.changed.notify_all();
+        }
+    }
 }
 
 fn aggregate_mixed(
@@ -1629,17 +1705,43 @@ mod tests {
         // Phase churn as a prover produces it, then a real proof whose arena buffers the verifier must not touch.
         while verified.load(Ordering::Acquire) < 20 {
             let _guard = begin_proof();
-            in_arena_phase(|| {
-                for _ in 0..1000 {
-                    drop(zk_alloc::enter_phase());
-                }
-            });
+            for _ in 0..1000 {
+                in_arena_phase(|| drop(zk_alloc::enter_phase()));
+            }
         }
         let (other_hash, other_input) = single_signature_input(45);
         let other = prove_aggregate(&other_hash, &other_input);
         stop.store(true, Ordering::Release);
         assert_eq!(verifier.join().unwrap(), 0);
         verify_aggregate(&other_hash, &other.unwrap()).unwrap();
+    }
+
+    #[test]
+    fn verification_does_not_wait_for_an_open_phase() {
+        const PHASE: std::time::Duration = std::time::Duration::from_secs(4);
+        let (hash, input) = single_signature_input(46);
+        let proof = prove_aggregate(&hash, &input).unwrap();
+        let opened = std::sync::Arc::new(Barrier::new(2));
+        let prover = {
+            let opened = opened.clone();
+            std::thread::spawn(move || {
+                let _guard = begin_proof();
+                in_arena_phase(|| {
+                    let _phase = zk_alloc::enter_phase();
+                    opened.wait();
+                    std::thread::sleep(PHASE);
+                });
+            })
+        };
+        opened.wait();
+        let started = std::time::Instant::now();
+        verify_aggregate(&hash, &proof).unwrap();
+        let waited = started.elapsed();
+        prover.join().unwrap();
+        assert!(
+            waited < PHASE / 2,
+            "verification waited {waited:?} for the open phase"
+        );
     }
 
     #[cfg(all(target_os = "linux", target_env = "gnu"))]

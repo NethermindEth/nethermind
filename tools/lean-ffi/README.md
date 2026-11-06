@@ -27,8 +27,8 @@ with an illegal instruction (SIGILL) on an older CPU: build on the oldest CPU th
 set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
 `-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
 across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
-Verification never allocates from that arena: it waits for the proof node in flight, whose arena phase
-holds an exclusive lock (1–3 s per node measured on a 12-core arm64 host), not for the whole proof.
+No arena phase opens while a verification runs; a verification waits only for an opening in progress, then runs
+alongside the proof node on its own slab rather than for the node (1–3 s on a 12-core arm64 host, about 7 s on 2 cores).
 The arena keeps its touched slabs resident between proofs. leanVM also switches glibc's heap trimming and
 large-allocation mmap off process-wide when it enables the arena; at the first proof the backend restores the
 operator's `GLIBC_TUNABLES`/`MALLOC_*_` values or glibc's defaults, so the host's own freed memory still returns to
