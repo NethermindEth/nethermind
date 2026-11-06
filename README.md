@@ -153,6 +153,11 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
 
+Runner startup, cancellation and dependency-resolution smoke tests apply
+`Plugin.PluginOrder` through the same loader ordering used by the production runner.
+External plugins with dependent modules therefore use their configured order rather
+than filesystem assembly-discovery order; built-in core config coverage is retained.
+
 Read-only execution environments use geth's precompile override behavior by default:
 any account override replaces the native precompile with the account's code.
 An extension can register `PrecompileOverridePolicy(disableOnAccountOverride: false)`
