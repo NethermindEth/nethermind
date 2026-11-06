@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
             // EIP-3675: a proof-of-stake block must follow a terminal or proof-of-stake block, i.e. a parent at or above
             // TTD (any parent when TTD is zero). The header's own TD is not always known when it is validated, so the
             // parent's known TD decides.
-            if (header.Difficulty == 0 && parent is not null
+            if (header.Difficulty.IsZero && parent is not null
                 && poSSwitcher.TerminalTotalDifficulty is { IsZero: false } terminalTotalDifficulty
                 && GetKnownTotalDifficulty(parent) is { } parentTotalDifficulty
                 && parentTotalDifficulty < terminalTotalDifficulty)
