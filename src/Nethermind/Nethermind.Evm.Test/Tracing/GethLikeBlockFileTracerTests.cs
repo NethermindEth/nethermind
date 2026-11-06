@@ -120,7 +120,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "revert" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
             "return" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
-            _ => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done
+            "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
         };
         string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string errorField = error is null ? "" : $",\"error\":\"{error}\"";
