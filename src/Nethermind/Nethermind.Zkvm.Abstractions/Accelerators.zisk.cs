@@ -158,8 +158,9 @@ public static partial class Accelerators
     /// <param name="destination">The buffer to receive them.</param>
     /// <remarks>
     /// Calls ZisK's <c>memmove</c> precompile directly. Corelib's span copy reaches the same routine for longer runs,
-    /// but through a wrapper that spills every callee-saved register. The spans are not pinned: the import suppresses
-    /// the GC transition, so no GC can run between taking their addresses and the call returning.
+    /// but through a wrapper that spills every callee-saved register. The spans are not pinned: a guest is
+    /// single-threaded and collects only when it allocates, so no GC can run between taking their addresses and the
+    /// call returning. That does not hold on a multithreaded host.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">The <c>destination</c> must be at least as long as <c>source</c>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

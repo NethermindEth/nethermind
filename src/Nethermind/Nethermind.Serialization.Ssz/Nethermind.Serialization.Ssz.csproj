@@ -4,6 +4,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
+    <ZkEvmNoopThreadStatic>false</ZkEvmNoopThreadStatic>
   </PropertyGroup>
 
   <ItemGroup>
