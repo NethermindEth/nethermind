@@ -559,9 +559,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
         ulong value = parent.Value;
 
-        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref parent, parent.StateGasAllowance), Is.True);
-        Assert.That((parent.StateGasDrawn, parent.Value), Is.EqualTo((parent.StateGasAllowance, value)),
-            "the whole allowance is drawn from the reservoir");
+        bool charged = EthereumGasPolicy.TryConsumeStateGas(ref parent, parent.StateGasAllowance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.True);
+            Assert.That((parent.StateGasDrawn, parent.Value), Is.EqualTo((parent.StateGasAllowance, value)),
+                "the whole allowance is drawn from the reservoir");
+        }
     }
 
     [Test]
@@ -865,9 +870,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy top = new() { Value = 1_000_000, StateReservoir = 10_000_000 };
 
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref top, 50_000);
-        Assert.That((child.HasStateGasAllowance, child.StateGasAllowance), Is.EqualTo((true, 382_500L)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((child.HasStateGasAllowance, child.StateGasAllowance), Is.EqualTo((true, 382_500L)));
+            Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, 300_000), Is.True);
+        }
 
-        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, 300_000), Is.True);
         EthereumGasPolicy grandchild = EthereumGasPolicy.CreateChildFrameGas(ref child, 50_000);
         Assert.That(grandchild.StateGasAllowance, Is.EqualTo(82_500L), "limited by what is left of the parent's allowance");
     }
@@ -923,10 +931,15 @@ public class Eip8037Tests : VirtualMachineTestsBase
             "the create frame must pay 1,530 from gas_left, which the deposit check uses");
         EthereumGasPolicy.Refund(ref parent, in child);
 
-        Assert.That(EthereumGasPolicy.TryConsumeCodeDepositGas(ref parent, in child, depositStateGas, depositExecutionGas), Is.True);
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill, parent.StateGasDrawn),
-            Is.EqualTo((98_422UL, 9_617_500L, depositStateGas, 1_530L, 382_500L)),
-            "the deposit draws only the create frame's allowance, although the parent has more");
+        bool charged = EthereumGasPolicy.TryConsumeCodeDepositGas(ref parent, in child, depositStateGas, depositExecutionGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.True);
+            Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill, parent.StateGasDrawn),
+                Is.EqualTo((98_422UL, 9_617_500L, depositStateGas, 1_530L, 382_500L)),
+                "the deposit draws only the create frame's allowance, although the parent has more");
+        }
     }
 
     [Test]
@@ -938,9 +951,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy grandchild = EthereumGasPolicy.CreateChildFrameGas(ref child, 200_000);
         long reservoir = grandchild.StateReservoir;
 
-        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref grandchild, GasCostOf.SSetState), Is.True);
-        Assert.That((grandchild.StateGasAllowance, grandchild.Value, grandchild.StateReservoir),
-            Is.EqualTo((0L, 200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+        bool charged = EthereumGasPolicy.TryConsumeStateGas(ref grandchild, GasCostOf.SSetState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.True);
+            Assert.That((grandchild.StateGasAllowance, grandchild.Value, grandchild.StateReservoir),
+                Is.EqualTo((0L, 200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+        }
     }
 
     [Test]
@@ -953,8 +971,13 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.AddStateGasRefundToReservoir(ref child, GasCostOf.SSetState);
         long reservoir = child.StateReservoir;
 
-        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref child, GasCostOf.SSetState), Is.True);
-        Assert.That((child.Value, child.StateReservoir), Is.EqualTo((200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+        bool charged = EthereumGasPolicy.TryConsumeStateGas(ref child, GasCostOf.SSetState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(charged, Is.True);
+            Assert.That((child.Value, child.StateReservoir), Is.EqualTo((200_000UL - (ulong)GasCostOf.SSetState, reservoir)));
+        }
     }
 
     [Test]
