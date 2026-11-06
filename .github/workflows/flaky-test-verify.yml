@@ -7,12 +7,17 @@ on:
         description: Commit to run the test on before and after the patch in the flaky-fix artifact.
         required: true
         type: string
+      baseline:
+        description: Also run the test before the patch.
+        required: false
+        type: boolean
+        default: true
     outputs:
       runs:
         description: Number of test runs before and after the patch.
         value: ${{ jobs.verify.outputs.runs }}
       before:
-        description: Failed runs before the patch.
+        description: Failed runs before the patch, or "skipped" without a baseline.
         value: ${{ jobs.verify.outputs.before }}
       after:
         description: Failed runs after the patch.
@@ -57,6 +62,8 @@ jobs:
 
       - name: Run the test before and after the fix
         id: run
+        env:
+          BASELINE: ${{ inputs.baseline }}
         run: |
           project=$(sed -n 1p "$RUNNER_TEMP/fix/test.txt")
           filter=$(sed -n 2p "$RUNNER_TEMP/fix/test.txt")
@@ -70,7 +77,8 @@ jobs:
             done
             if [ "$not_run" -gt 0 ]; then echo "n/a (no matching test in $not_run runs)"; else echo "$failed"; fi
           }
-          before=$(count_failures)
+          before=skipped
+          if [ "$BASELINE" = true ]; then before=$(count_failures); fi
           git apply --binary "$RUNNER_TEMP/fix/fix.patch"
           after=$(count_failures)
           echo "before=$before" >> "$GITHUB_OUTPUT"
