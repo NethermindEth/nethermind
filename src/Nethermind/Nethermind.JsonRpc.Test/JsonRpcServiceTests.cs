@@ -1467,6 +1467,32 @@ public class JsonRpcServiceTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ByteParameterCases()
+    {
+        (object Value, int? Expected)[] cases = [(0, 0), (255, 255), ("0x0", 0), ("0xff", 255),
+            (-1, null), (256, null), ("0x100", null), ("0xgg", null)];
+        foreach ((object value, int? expected) in cases)
+        {
+            yield return new TestCaseData(value, expected, false);
+            yield return new TestCaseData(value, expected, true);
+        }
+    }
+
+    [TestCaseSource(nameof(ByteParameterCases))]
+    public void Parameter_specific_byte_converter_accepts_quantities_and_rejects_invalid_values(object value, int? expected, bool rawUtf8)
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        module.test_byte(Arg.Any<byte>()).Returns(callInfo => ResultWrapper<int>.Success(callInfo.Arg<byte>()));
+        using JsonRpcResponse response = rawUtf8
+            ? TestRawRequest(module, "test_byte", JsonSerializer.Serialize(new[] { value }))
+            : TestRequest(module, "test_byte", value);
+
+        if (expected is { } expectedValue)
+            Assert.That(RpcTest.AssertSuccess<int>(response), Is.EqualTo(expectedValue));
+        else
+            AssertJsonRpcError(response, ErrorCodes.InvalidParams);
+    }
+
     [TestCaseSource(nameof(BlockForRpcTestSource))]
     public void BlockForRpc_should_expose_withdrawals_if_any(bool expected, Block block)
     {
@@ -1784,6 +1810,9 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC array parameter metadata handling.")]
         ResultWrapper<int> test_byte_arrays(byte[][] value);
+
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC byte parameter metadata handling.")]
+        ResultWrapper<int> test_byte([JsonRpcParameter(ConverterType = typeof(ByteConverter))] byte value);
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter binding faults.")]
         ResultWrapper<string> test_node_fault(NodeFaultPayload value);
