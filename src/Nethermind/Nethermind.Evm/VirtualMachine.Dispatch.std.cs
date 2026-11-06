@@ -484,6 +484,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
                     state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
             }
+            else if (DispatchFlags.ConstTracing && TContinuable.IsActive && TOpcode.TraceStackInputs is int traceStackInputs &&
+                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
+            {
+                // These bodies keep the depth they started with when they underflow, so it is read on failure rather than before every run.
+                state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {traceStackInputs})");
+            }
             return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
 

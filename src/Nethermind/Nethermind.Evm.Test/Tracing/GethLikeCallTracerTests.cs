@@ -567,12 +567,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> PartialPopUnderflowCases()
     {
-        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2 })
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2,
+                     Instruction.KECCAK256, Instruction.EXP, Instruction.BLOCKHASH, Instruction.BLOBHASH, Instruction.MCOPY, Instruction.LOG4, Instruction.SELFDESTRUCT })
         {
             int required = opcode switch
             {
                 Instruction.CALL or Instruction.CALLCODE => 7,
-                Instruction.DELEGATECALL or Instruction.STATICCALL => 6,
+                Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.LOG4 => 6,
+                Instruction.KECCAK256 or Instruction.EXP => 2,
+                Instruction.BLOCKHASH or Instruction.BLOBHASH or Instruction.SELFDESTRUCT => 1,
+                Instruction.MCOPY => 3,
                 _ => 4
             };
             for (int depth = 0; depth < required; depth++)
