@@ -183,7 +183,7 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 `pq.sh` builds the leanSig signer (`tools/lean-ffi` example `fixtures`, key from seed `[42; 32]`, test-only) and `pq-tx.cs`, which encodes frame transactions against this tree. One series, all through `eth_sendProofWrapper`:
 
 1. A frame transaction with a leanSig dependency on nonce key 0. Its corrupted wrapper is rejected, the valid one is included.
-2. The same on a random nonce key, sequence 0, then sequence 1 in a later block.
+2. The same on a random nonce key, sequence 0. Before it is sent, a sequence 1 transaction is rejected as `keyed nonce sequence not current`. After sequence 0 is included, sequence 1 is sent and included.
 3. A byte-identical resend of sequence 0 is rejected as `already known`; a new transaction on sequence 0 as `keyed nonce sequence not current`.
 
 - Every included receipt must have status `0x1`. Expected last line: `PASS pq: blocks <b0> <b1> <b2>`.
