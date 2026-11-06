@@ -447,7 +447,8 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Pool refusals a flood caused: the shape's rejection counter plus admission sheds.</summary>
     private static Func<long> RefusalCounterFor(string shape) => shape == "signature-stuffed"
-        ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid + ShedCount()
+        ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid
+                + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSignatureVerificationsPreempted) + ShedCount()
         : () => Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed) + ShedCount();
 
     /// <summary>Runs one level and checks, over the whole level, that the pool refused or shed every submission.</summary>

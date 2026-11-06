@@ -330,7 +330,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
-            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // Flagged bundles are one-off full scans (trie verification, snap range serving) that never read through the slot filter, so
             // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _nodeRecordBuffer.PinAll(),

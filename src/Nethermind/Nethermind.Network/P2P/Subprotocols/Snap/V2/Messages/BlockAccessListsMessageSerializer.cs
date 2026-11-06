@@ -2,26 +2,25 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 {
-    public class BlockAccessListsMessageSerializer : IZeroMessageSerializer<BlockAccessListsMessage>
+    public class BlockAccessListsMessageSerializer : IMessageSerializer<BlockAccessListsMessage>
     {
         private const int UnavailableEntryLength = 1;
 
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
             SnapMessageLimits.MaxRequestHashes, nameof(BlockAccessListsMessage.BlockAccessLists));
 
-        public void Serialize(IByteBuffer byteBuffer, BlockAccessListsMessage message)
+        public int Serialize(Span<byte> destination, BlockAccessListsMessage message)
         {
             int entriesContentLength = GetEntriesContentLength(message.BlockAccessLists);
-            int contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
-            RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
-            RlpSequence sequence = writer.StartSequence(contentLength);
+
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message, entriesContentLength));
             writer.Encode(message.RequestId);
             RlpSequence sequence2 = writer.StartSequence(entriesContentLength);
 
@@ -33,8 +32,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 
             writer.EndSequence(sequence2);
             writer.EndSequence(sequence);
-            byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
+            return writer.Length;
         }
+
+        public int GetLength(BlockAccessListsMessage message) =>
+            Rlp.LengthOfSequence(GetContentLength(message, GetEntriesContentLength(message.BlockAccessLists)));
+
+        private static int GetContentLength(BlockAccessListsMessage message, int entriesContentLength) =>
+            Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
 
         private static void WriteBlockAccessListEntry(ref RlpWriter writer, ReadOnlySpan<byte> entry)
         {
@@ -44,9 +49,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
                 writer.WriteEncoded(entry);
         }
 
-        public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
+        public BlockAccessListsMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            RlpReader reader = new(byteBuffer.AsSpan());
+            RlpReader reader = new(data);
             ArrayPoolList<byte[]>? blockAccessLists = null;
 
             try
@@ -56,7 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 
                 blockAccessLists = DecodeBlockAccessLists(ref ctx);
                 reader.ExitSequence(ctx, itemLength);
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + reader.BytesRead);
+                reader.CheckEnd();
                 return new BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = requestId };
             }
             catch

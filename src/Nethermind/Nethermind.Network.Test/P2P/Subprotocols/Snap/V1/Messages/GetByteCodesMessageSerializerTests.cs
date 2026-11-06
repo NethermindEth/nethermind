@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             GetByteCodesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetByteCodesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, hashes, bytes].
-            SerializerTester.TestZero(serializer, msg, "c5" + SnapSerializerGoldens.RequestId1111Rlp + "c0" + "0a");
+            SerializerTester.Test(serializer, msg, "c5" + SnapSerializerGoldens.RequestId1111Rlp + "c0" + "0a");
         }
 
         [Test]
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             GetByteCodesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }

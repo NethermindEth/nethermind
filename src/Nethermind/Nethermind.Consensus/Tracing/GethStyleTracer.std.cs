@@ -277,7 +277,7 @@ public class GethStyleTracer(
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block? block = FindBlockForTrace(blockParameter);
-        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
+        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter, includeErrorResult: options.Tracer is { Length: > 0 });
     }
 
     private Block? FindBlockForTrace(BlockParameter selector)
@@ -469,7 +469,7 @@ public class GethStyleTracer(
             logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header));
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, bool includeErrorResult = false)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -506,7 +506,7 @@ public class GethStyleTracer(
             }
             else
             {
-                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken);
+                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken, includeErrorResult);
                 bool streamed;
                 try
                 {
@@ -540,7 +540,7 @@ public class GethStyleTracer(
                 effective => CreateOptionsTracer(block.Header, options with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex),
                 options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken)
             : streamsNative
-                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
+                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken, includeErrorResult)
                 : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try

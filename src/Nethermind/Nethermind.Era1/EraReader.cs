@@ -80,6 +80,11 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
+                if (err.Block.Header.Number != blockNumber)
+                {
+                    throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                }
+
                 if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
                     throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");

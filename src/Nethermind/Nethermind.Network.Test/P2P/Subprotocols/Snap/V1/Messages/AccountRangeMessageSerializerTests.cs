@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            Assert.That(serializer.Serialize(msg).ToHexString(), Is.EqualTo("c301c0c0"));
+            Assert.That(serializer.SerializeToArray(msg).ToHexString(), Is.EqualTo("c301c0c0"));
         }
 
         [Test]
@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -67,13 +67,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1,
                 PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new(TestItem.KeccakA, acc01), new(TestItem.KeccakB, acc02) },
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg,
+                "f8df01f8d2f867a003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760f8448001a010d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a054a8c0ab653c15bfb48b47fd011ba2b9617af01cb45cab344acd57c924d56798" +
+                "f867a01f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111f8448002a020d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a049d03a195e239b52779866b33024210fc7dc66e9c2998975c0aa45c1702549d5c9830102038404050607");
         }
 
         [Test]
@@ -93,7 +95,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]
@@ -109,7 +111,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             if (shouldThrow)
             {
@@ -154,7 +156,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]

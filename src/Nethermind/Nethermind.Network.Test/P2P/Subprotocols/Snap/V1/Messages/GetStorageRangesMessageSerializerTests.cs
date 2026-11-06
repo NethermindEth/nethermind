@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             GetStorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetStorageRangesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, rootHash, accountPaths, startingHash, limitHash, responseBytes].
-            SerializerTester.TestZero(serializer, msg,
+            SerializerTester.Test(serializer, msg,
                 "f84a" + SnapSerializerGoldens.RequestId1111Rlp +
                 SnapSerializerGoldens.EmptyStringKeccakRlp +
                 "c0" +
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Serialize(msg), Throws.InvalidOperationException);
+            Assert.That(() => serializer.SerializeToArray(msg), Throws.InvalidOperationException);
         }
 
         [Test]
@@ -102,7 +102,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            GetStorageRangeMessage deserialized = serializer.Deserialize(serializer.Serialize(msg));
+            GetStorageRangeMessage deserialized = serializer.Deserialize(serializer.SerializeToArray(msg));
 
             using (Assert.EnterMultipleScope())
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             GetStorageRangesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }

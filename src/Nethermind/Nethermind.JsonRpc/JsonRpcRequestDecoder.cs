@@ -52,7 +52,7 @@ internal static class JsonRpcRequestDecoder
     {
         request = null;
         ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
-        if (body.IsEmpty || !TryReadObjectRequest(body, out request, out int objectLength) || HasNonWhitespace(body.Span[objectLength..]))
+        if (body.IsEmpty || !TryReadObjectRequest(body, out request))
         {
             request = null;
             return false;
@@ -125,21 +125,19 @@ internal static class JsonRpcRequestDecoder
         return CreateRequest(envelope, paramsElement: default, paramsUtf8);
     }
 
+    /// <returns><c>false</c> if <paramref name="objectBody"/> is not exactly one JSON object followed by optional whitespace.</returns>
     private static bool TryReadObjectRequest(
         ReadOnlyMemory<byte> objectBody,
-        [NotNullWhen(true)] out JsonRpcRequest? request,
-        out int objectLength)
+        [NotNullWhen(true)] out JsonRpcRequest? request)
     {
         request = null;
-        objectLength = 0;
 
         JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
-        if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
+        // Trailing data is checked before CreateRequest, so a body that is not valid JSON is never answered as an Invalid Request.
+        if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope) || HasNonWhitespace(objectBody.Span[envelopeReader.ObjectLength..]))
         {
             return false;
         }
-
-        objectLength = envelopeReader.ObjectLength;
 
         ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
             ? objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
@@ -215,8 +213,15 @@ internal static class JsonRpcRequestDecoder
     public static JsonReaderState CreateJsonReaderState(JsonRpcProcessingOptions options) =>
         new(options.InputMode == JsonRpcInputMode.MultipleDocuments ? SocketJsonReaderOptions : default);
 
-    private static JsonRpcRequest CreateRequest(JsonRpcEnvelope envelope, JsonElement paramsElement, ReadOnlyMemory<byte> paramsUtf8) =>
-        new()
+    /// <exception cref="JsonRpcInvalidRequestException">The envelope has an ID of an unsupported type.</exception>
+    private static JsonRpcRequest CreateRequest(JsonRpcEnvelope envelope, JsonElement paramsElement, ReadOnlyMemory<byte> paramsUtf8)
+    {
+        if (envelope.HasUnsupportedId)
+        {
+            ThrowUnsupportedId();
+        }
+
+        return new()
         {
             JsonRpc = envelope.JsonRpc!,
             Id = envelope.Id,
@@ -225,6 +230,11 @@ internal static class JsonRpcRequestDecoder
             ParamsUtf8 = paramsUtf8,
             ParamsKind = envelope.HasParams ? envelope.ParamsKind : JsonValueKind.Undefined
         };
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnsupportedId() =>
+            throw new JsonRpcInvalidRequestException("Unsupported JSON-RPC ID value.");
+    }
 
     private static int CountLeadingJsonWhitespace(ReadOnlySpan<byte> span)
     {

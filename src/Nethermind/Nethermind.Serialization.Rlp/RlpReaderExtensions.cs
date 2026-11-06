@@ -628,7 +628,7 @@ public static class RlpReaderExtensions
     {
         RlpReader items = reader.EnterSequence(out int itemLength);
         T[] result = new T[items.CountItems(limit)];
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
         for (int i = 0; i < result.Length; i++)
         {
             result[i] = DecodeNonNullItem(ref items, decodeItem, hasDefaultElement, defaultElement, decodeEmptyList: false, i);
@@ -667,7 +667,7 @@ public static class RlpReaderExtensions
         RlpReader items = reader.EnterSequence(out int itemLength);
         int count = items.CountItems(limit);
         ArrayPoolList<T> result = new(count, count);
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
         int i = 0;
         try
         {
@@ -699,7 +699,10 @@ public static class RlpReaderExtensions
             return defaultElement!;
         }
 
-        return decodeItem(ref items) ?? throw new RlpReaderException($"Unexpected null array element at index {index}");
+        T value = decodeItem(ref items);
+        // `default(T) is null` folds at every tier; stored in a local it boxes structs in Debug and Tier0.
+        if (default(T) is null && value is null) ThrowInvalid($"Unexpected null array element at index {index}");
+        return value;
     }
 
     /// <summary>Builds a <see cref="UInt256"/> from the big-endian bytes of an integer of at most 32 bytes.</summary>

@@ -67,7 +67,7 @@ public class SnapMessageLimitsTests
             Proofs = EmptyByteArrayList.Instance,
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.PathsWithAccounts.Count, Is.EqualTo(count));
@@ -92,7 +92,7 @@ public class SnapMessageLimitsTests
             Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()),
         };
 
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.Slots[0].Count, Is.EqualTo(slotCount));
