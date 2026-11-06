@@ -332,5 +332,9 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of pending transactions evicted by the local verifier-change rule for lack of proof coverage.")]
         public static long Eip8288UpgradeEvictedTransactions { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions not executable at the head evicted to make proof capacity for a proof wrapper.")]
+        public static long Eip8288CapacityEvictedTransactions { get; set; }
     }
 }

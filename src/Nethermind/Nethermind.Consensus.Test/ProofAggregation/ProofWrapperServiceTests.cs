@@ -993,6 +993,87 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // Pinned witnesses are never evicted, so with proof capacity full a wrapper of executable transactions evicts pending ones the
+    // next blocks could not include, oldest first, but only when that frees enough, and never one whose witness stays pinned.
+    [TestCase(64, false, false, 0UL, 2, TestName = "Non-executable transactions are evicted")]
+    [TestCase(0, false, false, 0UL, 0, TestName = "Executable transactions are kept")]
+    [TestCase(1, false, false, 0UL, 0, TestName = "Nothing is evicted when it would not free enough")]
+    [TestCase(64, true, false, 0UL, 0, TestName = "Nothing is evicted when another owner keeps the witnesses pinned")]
+    [TestCase(64, false, true, 0UL, 2, TestName = "A transaction whose witness an executable one shares is kept")]
+    [TestCase(64, false, false, 1UL, 0, TestName = "A non-executable wrapper evicts nothing")]
+    public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
+        bool oldestSharedWithExecutable, ulong incomingNonce, int removed)
+    {
+        const int pinnedCount = 64;
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        object poolOwner = new();
+        static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0)
+        {
+            Transaction transaction = new()
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [],
+                ChainId = 1,
+                SenderAddress = sender,
+                Nonce = nonce,
+                Timestamp = timestamp,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+            };
+            transaction.Hash = transaction.CalculateHash();
+            return transaction;
+        }
+        // Pinned witnesses filling the store but for less than the incoming witness, which needs two of them released.
+        List<Transaction> pinned = [];
+        for (int i = 0; i < pinnedCount; i++)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"pinned:{i}"), default);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Transaction transaction = Transaction(dependency, TestItem.Addresses[i], (ulong)i);
+            Assert.That(store.PinPending(transaction, poolOwner), Is.True);
+            if (sharedPins) Assert.That(store.PinPending(transaction, new object()), Is.True);
+            pinned.Add(transaction);
+            if (i == 0 && oldestSharedWithExecutable)
+            {
+                Transaction sharing = Transaction(dependency, TestItem.Addresses[pinnedCount]);
+                Assert.That(store.PinPending(sharing, poolOwner), Is.True);
+                pinned.Add(sharing);
+            }
+        }
+        Transaction oldest = pinned[0];
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
+            Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable ? ulong.MaxValue : 0UL);
+        pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
+        {
+            store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
+            return true;
+        });
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.TestObject);
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
+        FrameDependency incoming = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("incoming"), default);
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [Transaction(incoming, Address.Zero, nonce: incomingNonce)],
+            Deps = [incoming],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]]
+        }).Bytes;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure), result.Result.Error);
+            pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
+            pool.Received(removed != 0 && !oldestSharedWithExecutable ? 1 : 0).RemoveTransaction(oldest.Hash);
+        }
+    }
+
     [Test]
     public async Task Pool_rejected_direct_witnesses_do_not_consume_pending_proof_capacity()
     {

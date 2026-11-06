@@ -104,24 +104,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         admission = null;
         lock (_lock)
         {
-            Dictionary<FrameDependency, ProofRecord> records = [];
-            ProofRecord? recursive = null;
-            HashSet<ProofRecord> incoming = [];
-            for (int i = 0; i < dependencies.Count; i++)
-            {
-                FrameDependency dependency = dependencies[i];
-                if (records.ContainsKey(dependency)) continue;
-                // A direct witness replaces recursive coverage: folding it is far cheaper than merging a recursive child.
-                if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || witnesses is not null && record.Witnesses is null)
-                {
-                    record = witnesses is null
-                        ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
-                        : CreateRecord([dependency], [witnesses[i]], null);
-                    if (_identities.TryGetValue(record.Identity, out ProofRecord? existing)) record = existing;
-                    else incoming.Add(record);
-                }
-                records[dependency] = record;
-            }
+            (Dictionary<FrameDependency, ProofRecord> records, HashSet<ProofRecord> incoming) = PlanAdmission(dependencies, witnesses, recursiveProof);
             HashSet<ProofRecord> selected = [.. records.Values];
             // Protect existing coverage before finding room for the missing part of this wrapper.
             foreach (ProofRecord record in selected) record.Pins++;
@@ -140,6 +123,82 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             _admission.Value = scope;
             admission = scope;
             return true;
+        }
+    }
+
+    /// <summary>The record covering each dependency of an admission, and those of them not yet stored.</summary>
+    private (Dictionary<FrameDependency, ProofRecord> Records, HashSet<ProofRecord> Incoming) PlanAdmission(
+        IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses, byte[]? recursiveProof)
+    {
+        Dictionary<FrameDependency, ProofRecord> records = [];
+        ProofRecord? recursive = null;
+        HashSet<ProofRecord> incoming = [];
+        for (int i = 0; i < dependencies.Count; i++)
+        {
+            FrameDependency dependency = dependencies[i];
+            if (records.ContainsKey(dependency)) continue;
+            // A direct witness replaces recursive coverage: folding it is far cheaper than merging a recursive child.
+            if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || witnesses is not null && record.Witnesses is null)
+            {
+                record = witnesses is null
+                    ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
+                    : CreateRecord([dependency], [witnesses[i]], null);
+                if (_identities.TryGetValue(record.Identity, out ProofRecord? existing)) record = existing;
+                else incoming.Add(record);
+            }
+            records[dependency] = record;
+        }
+        return (records, incoming);
+    }
+
+    /// <summary>The fewest of <paramref name="candidates"/>, pending transactions considered in order, whose pins must be released
+    /// for <see cref="TryBeginAdmission"/> of these witnesses to fit: empty when it fits already, null when releasing them all would
+    /// not suffice.</summary>
+    /// <remarks>Only a transaction pinned by a single owner counts as releasing its records, a record frees capacity only once no
+    /// pin is left on it, and a candidate freeing no record is left out, so nothing is released that frees nothing.</remarks>
+    public List<ValueHash256>? ReleasesForAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
+        byte[]? recursiveProof, IReadOnlyList<ValueHash256> candidates)
+    {
+        ValidateShape(dependencies, witnesses, recursiveProof);
+        lock (_lock)
+        {
+            (Dictionary<FrameDependency, ProofRecord> records, HashSet<ProofRecord> incoming) = PlanAdmission(dependencies, witnesses, recursiveProof);
+            HashSet<ProofRecord> selected = [.. records.Values];
+            long bytes = _storedBytes;
+            int count = _records.Count;
+            foreach (ProofRecord record in incoming)
+            {
+                bytes += record.Size;
+                count++;
+            }
+            foreach (ProofRecord record in _records)
+                if (record.Pins == 0 && !selected.Contains(record)) { bytes -= record.Size; count--; }
+            if (Fits()) return [];
+            Dictionary<ValueHash256, List<PendingProof>> pinsByHash = [];
+            foreach (((object? Owner, ValueHash256 Hash) key, PendingProof pending) in _pending)
+                (CollectionsMarshal.GetValueRefOrAddDefault(pinsByHash, key.Hash, out _) ??= []).Add(pending);
+            Dictionary<ProofRecord, int> released = [];
+            List<(ValueHash256 Hash, ProofRecord[] Records)> considered = [];
+            foreach (ValueHash256 candidate in candidates)
+            {
+                if (!pinsByHash.TryGetValue(candidate, out List<PendingProof>? pins) || pins.Count != 1) continue;
+                considered.Add((candidate, pins[0].Records));
+                foreach (ProofRecord record in pins[0].Records)
+                {
+                    int drops = released.GetValueOrDefault(record) + 1;
+                    released[record] = drops;
+                    if (drops == record.Pins && record.Node is not null && !selected.Contains(record)) { bytes -= record.Size; count--; }
+                }
+                if (!Fits()) continue;
+                List<ValueHash256> needed = [];
+                foreach ((ValueHash256 hash, ProofRecord[] pinned) in considered)
+                    if (Array.Exists(pinned, record => released[record] == record.Pins && record.Node is not null && !selected.Contains(record)))
+                        needed.Add(hash);
+                return needed;
+            }
+            return null;
+
+            bool Fits() => bytes <= MaxStoredBytes && count <= MaxStoredRecords;
         }
     }
 

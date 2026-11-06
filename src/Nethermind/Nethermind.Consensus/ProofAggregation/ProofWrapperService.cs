@@ -318,7 +318,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope))
+                if (!TryBeginAdmission(decoded, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
             using (scope)
@@ -386,6 +386,82 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (entered) ExitAdmission(queue);
             Interlocked.Decrement(ref queue.Callers);
         }
+    }
+
+    /// <summary>Reserves the wrapper's witnesses, first evicting pending transactions not executable at the head when proof
+    /// capacity is full.</summary>
+    /// <remarks>Witnesses pinned by pending transactions are never evicted, so a full store would otherwise refuse every wrapper.
+    /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
+    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
+    /// eviction frees witness capacity.</remarks>
+    private bool TryBeginAdmission(MempoolWrapper decoded, out IDisposable? scope)
+    {
+        if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
+        FeeFloors floors = ExecutableFeeFloors();
+        if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
+        List<Transaction> evictable = NotExecutable(decoded.Transactions, floors);
+        if (evictable.Count == 0) return false;
+        ValueHash256[] hashes = new ValueHash256[Math.Min(evictable.Count, MaxEvictedPerAdmission)];
+        for (int i = 0; i < hashes.Length; i++) hashes[i] = evictable[i].Hash!.ValueHash256;
+        if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
+            is not { Count: > 0 } releases) return false;
+        foreach (ValueHash256 hash in releases)
+            if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+        return leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope);
+    }
+
+    /// <summary>Pending transactions one admission may evict to make room for its witnesses.</summary>
+    internal const int MaxEvictedPerAdmission = AdmissionChunk;
+
+    /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
+    /// first.</summary>
+    private List<Transaction> NotExecutable(IReadOnlyList<Transaction> wrapped, FeeFloors floors)
+    {
+        List<Transaction> notExecutable = [];
+        HashSet<Hash256> skipped = [];
+        foreach (Transaction transaction in wrapped) skipped.Add(transaction.Hash!);
+        List<Transaction> executable = [];
+        Collect(txPool.GetPendingTransactionsBySender());
+        Collect(txPool.GetPendingLightBlobTransactionsBySender());
+        notExecutable.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
+        return notExecutable;
+
+        void Collect(IDictionary<AddressAsKey, Transaction[]> bySender)
+        {
+            foreach ((AddressAsKey sender, Transaction[] transactions) in bySender)
+            {
+                executable.Clear();
+                AddExecutable(sender, transactions, floors, executable);
+                foreach (Transaction transaction in transactions)
+                    if (Eip8288Dependencies.IsDependencyBearing(transaction) && !skipped.Contains(transaction.Hash!)
+                        && !executable.Contains(transaction))
+                        notExecutable.Add(transaction);
+            }
+        }
+    }
+
+    /// <summary>Whether <paramref name="wrapped"/> adds transactions to the pool and each it adds would be executable at the head:
+    /// fees of at least <paramref name="floors"/> and account nonces continuing the sender's pending ones.</summary>
+    /// <remarks>An EIP-8250 keyed transaction is never judged executable here, as its nonce lives in state this does not read.</remarks>
+    private bool AddsOnlyExecutable(IReadOnlyList<Transaction> wrapped, in FeeFloors floors)
+    {
+        List<Transaction> added = [];
+        foreach (Transaction transaction in wrapped)
+        {
+            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
+            if (KeyedNonceManager.UsesKeyedNonce(transaction) || !IsPriced(transaction, floors)) return false;
+            added.Add(transaction);
+        }
+        added.Sort(static (x, y) => x.SenderAddress!.Bytes.SequenceCompareTo(y.SenderAddress!.Bytes) is var bySender && bySender != 0
+            ? bySender : x.Nonce.CompareTo(y.Nonce));
+        Address? sender = null;
+        ulong next = 0;
+        foreach (Transaction transaction in added)
+        {
+            if (transaction.SenderAddress != sender) next = txPool.GetLatestPendingNonce(sender = transaction.SenderAddress!);
+            if (transaction.Nonce != next++) return false;
+        }
+        return added.Count != 0;
     }
 
     /// <summary>Takes the source's turn and then admission, within <see cref="AdmissionWaitTimeout"/>.</summary>
@@ -729,10 +805,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         bool blocked = false;
         foreach (Transaction transaction in bucket)
         {
-            // An EIP-8141 max_fee is checked as a budget: its implied per-gas cap leaves out intrinsic gas, recursive_stark_gas included.
-            bool priced = transaction.SupportsFrames
-                ? floors.Spec is null || FrameTxValidation.CoversRequiredMaxFee(transaction, floors.Spec, floors.PerGas, floors.PerBlobGas)
-                : transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
+            bool priced = IsPriced(transaction, floors);
             if (KeyedNonceManager.UsesKeyedNonce(transaction))
             {
                 if (!priced) continue;
@@ -746,6 +819,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (transaction.SupportsFrames) executable.Add(transaction);
         }
     }
+
+    // An EIP-8141 max_fee is checked as a budget: its implied per-gas cap leaves out intrinsic gas, recursive_stark_gas included.
+    private static bool IsPriced(Transaction transaction, in FeeFloors floors) => transaction.SupportsFrames
+        ? floors.Spec is null || FrameTxValidation.CoversRequiredMaxFee(transaction, floors.Spec, floors.PerGas, floors.PerBlobGas)
+        : transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
 
     private static bool HasBit(Hash256 hash, int bit) => (hash.Bytes[bit >> 3] >> (7 - (bit & 7)) & 1) != 0;
 
