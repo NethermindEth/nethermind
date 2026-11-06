@@ -183,7 +183,7 @@ public sealed partial class OtsRpcModule
             return new("Stored block rewards are incomplete.", ErrorCodes.ResourceUnavailable);
         foreach (BlockHeader uncle in block.Uncles)
         {
-            if (!uncleAuthors.Remove(uncle.Beneficiary))
+            if (uncle.Beneficiary is not { } beneficiary || !uncleAuthors.Remove(beneficiary))
                 return new("Stored uncle rewards are inconsistent.", ErrorCodes.ResourceUnavailable);
         }
         return new(new OtsIssuance { BlockReward = blockReward, UncleReward = uncleReward });
@@ -210,7 +210,7 @@ public sealed partial class OtsRpcModule
     {
         JsonElement json = JsonSerializer.SerializeToElement(value,
             EthereumJsonSerializer.JsonOptions.GetTypeInfo(value.GetType()));
-        Dictionary<string, object?> fields = new();
+        Dictionary<string, object?> fields = [];
         foreach (JsonProperty property in json.EnumerateObject()) fields.Add(property.Name, property.Value);
         return fields;
     }

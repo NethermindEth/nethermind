@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Test.Threading;
@@ -144,7 +145,8 @@ public class OtsRpcModuleTests
     [Test]
     public async Task Block_fees_include_base_fee_on_a_chain_without_execution_rewards()
     {
-        using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance);
+        using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, configure: builder =>
+            builder.WithGenesisPostProcessor((genesis, _) => genesis.Header.BaseFeePerGas = 1_000_000_000));
         Transaction tx = ExecutionTransaction(0, TestItem.AddressA, [], 0);
         Block block = await chain.AddBlock(tx);
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
@@ -242,8 +244,11 @@ public class OtsRpcModuleTests
             ? f.Module.ots_getBlockDetailsByHash(block.Hash!) : f.Module.ots_getBlockDetails(new BlockParameter(block.Number));
         if (storedRewards)
         {
-            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-            Assert.That(response.Data!.Issuance.BlockReward, Is.EqualTo((UInt256)123));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+                Assert.That(response.Data!.Issuance.BlockReward, Is.EqualTo((UInt256)123));
+            }
         }
         else
         {
@@ -431,7 +436,7 @@ public class OtsRpcModuleTests
             Assert.That(json.RootElement.GetProperty("result").GetProperty("receipts").GetArrayLength(), Is.EqualTo(1));
     }
 
-    private static ParityLikeTxTrace RewardTrace(Block block, string type, Address author, UInt256 value) => new()
+    private static ParityLikeTxTrace RewardTrace(Block block, string type, Address? author, UInt256 value) => new()
     {
         BlockHash = block.Hash,
         BlockNumber = block.Number,
@@ -1855,7 +1860,7 @@ public class OtsRpcModuleTests
         Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(500_000).WithGasPrice(2_000_000_000)
             .WithValue(value).WithData(data).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
-    private static Task<BasicTestBlockchain> CreateExecutionChain(IReleaseSpec spec, bool recordReads = false)
+    private static Task<BasicTestBlockchain> CreateExecutionChain(IReleaseSpec spec, bool recordReads = false, Action<ContainerBuilder>? configure = null)
     {
         TraceStoreConfig traceConfig = new() { Enabled = true, BlocksToKeep = 0 };
         JsonRpcConfig rpcConfig = new();
@@ -1867,6 +1872,7 @@ public class OtsRpcModuleTests
                 .AddModule(new TraceStorePlugin(traceConfig, rpcConfig).Module);
             if (recordReads)
                 builder.AddDecorator<ITraceSerializer<ParityLikeTxTrace>>((_, inner) => new RecordingSerializer(inner));
+            configure?.Invoke(builder);
         });
     }
 
