@@ -90,6 +90,7 @@ public class EraStoreTests
         HashOnly,
         HashOnlyIdenticalCopies,
         NoEntry,
+        NoEntryOnlyPlaceholders,
     }
 
     [Test]
@@ -107,12 +108,16 @@ public class EraStoreTests
             DuplicateManifest.NamesOneOfTwoCaseVariants => named.Replace(hash, hash.ToUpperInvariant()),
             DuplicateManifest.NamesAbsentFile or DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies or DuplicateManifest.NoEntry
                 => $"{EraTestModule.TestNetwork}-00002-0000000a.era1",
+            // An unpadded epoch number makes a second placeholder name for epoch 2, also on a case-insensitive file system.
+            DuplicateManifest.NoEntryOnlyPlaceholders => $"{EraTestModule.TestNetwork}-2-00000000.era1",
             _ => $"{EraTestModule.TestNetwork}-00002-00000000.era1",
         };
         Assume.That(File.Exists(Path.Combine(directory, stale)), Is.False, "needs a case-sensitive file system");
         File.Copy(EpochFile(manifest == DuplicateManifest.HashOnlyIdenticalCopies ? 2 : 1), Path.Combine(directory, stale));
         if (manifest == DuplicateManifest.NamesOneOfThree)
             File.Copy(EpochFile(1), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000001.era1"));
+        if (manifest == DuplicateManifest.NoEntryOnlyPlaceholders)
+            File.Move(EpochFile(2), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000000.era1"));
         string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
         string[] lines = await File.ReadAllLinesAsync(checksumsPath);
         lines = manifest switch
@@ -122,7 +127,7 @@ public class EraStoreTests
             DuplicateManifest.PlaceholderNamesFromARelease => [.. lines.Select(static line => line[..^"00000000.era1".Length] + "00000000.era1")],
             DuplicateManifest.NamesAbsentFile => [.. lines.Select(line => line.Replace(named, $"{EraTestModule.TestNetwork}-00002-ffffffff.era1"))],
             DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies => [.. lines.Select(static line => line.Split(' ')[0])],
-            DuplicateManifest.NoEntry => [.. lines.Where(static line => !line.Contains("-00002-"))],
+            DuplicateManifest.NoEntry or DuplicateManifest.NoEntryOnlyPlaceholders => [.. lines.Where(static line => !line.Contains("-00002-"))],
             _ => lines,
         };
         await File.WriteAllLinesAsync(checksumsPath, lines);
@@ -153,7 +158,7 @@ public class EraStoreTests
         {
             for (ulong block = 0; block < 64; block += 8)
             {
-                if (manifest == DuplicateManifest.NoEntry && block is >= 32 and < 48)
+                if (manifest is DuplicateManifest.NoEntry or DuplicateManifest.NoEntryOnlyPlaceholders && block is >= 32 and < 48)
                     Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.TypeOf<EraVerificationException>(), $"block {block}");
                 else
                     Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
