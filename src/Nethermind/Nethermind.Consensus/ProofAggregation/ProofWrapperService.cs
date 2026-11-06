@@ -615,6 +615,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
+    /// <summary>Dependencies and wrapper-encoded length of the transactions the last plan saw, by hash; read and replaced under
+    /// the aggregation lock.</summary>
+    private Dictionary<ValueHash256, (List<FrameDependency> Deps, int EncodedLength)> _candidateShapes = [];
+
     /// <summary>A pending dependency-bearing transaction with its dependencies and encoded size.</summary>
     private readonly record struct Candidate(Transaction Transaction, List<FrameDependency> Deps, int EncodedLength);
 
@@ -640,14 +644,20 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             AddExecutable(sender, bucket, floors, pending);
         AddBlobCandidates(pending, floors);
         List<Candidate> candidates = new(pending.Count);
+        Dictionary<ValueHash256, (List<FrameDependency> Deps, int EncodedLength)> shapes = new(_candidateShapes.Count);
         foreach (Transaction transaction in pending)
         {
             if (!transaction.SupportsFrames) continue;
-            List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
-            if (deps.Count == 0) continue;
-            int encodedLength = Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors));
-            if (encodedLength <= MaxWrapperTransactionBytes) candidates.Add(new(transaction, deps, encodedLength));
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            if (!_candidateShapes.TryGetValue(hash, out (List<FrameDependency> Deps, int EncodedLength) shape))
+                shape = (Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
+                    Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors)));
+            shapes[hash] = shape;
+            if (shape.Deps.Count != 0 && shape.EncodedLength <= MaxWrapperTransactionBytes)
+                candidates.Add(new(transaction, shape.Deps, shape.EncodedLength));
         }
+        // Only transactions still pending are remembered, so removed ones are dropped.
+        _candidateShapes = shapes;
         candidates.Sort(static (a, b) => a.Transaction.Hash!.Bytes.SequenceCompareTo(b.Transaction.Hash!.Bytes));
         List<Bucket> buckets = [];
         Plan(0, candidates.Count, 0);
@@ -673,13 +683,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             fits = false;
             long bytes = 0;
-            List<FrameDependency> union = [];
-            for (int i = start; i < end; i++)
-            {
-                bytes += candidates[i].EncodedLength;
-                union.AddRange(candidates[i].Deps);
-            }
+            for (int i = start; i < end; i++) bytes += candidates[i].EncodedLength;
             if (bytes > MaxWrapperTransactionBytes) return null;
+            List<FrameDependency> union = [];
+            for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
             if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
                 || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
