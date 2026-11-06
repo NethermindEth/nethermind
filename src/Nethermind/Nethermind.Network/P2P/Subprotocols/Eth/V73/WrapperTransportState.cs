@@ -293,7 +293,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>When the first request was sent; the fetch deadline runs from here.</summary>
     public long? Started { get; set; }
 
-    /// <summary>Peers that announced or served the wrapper, up to <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>.</summary>
+    /// <summary>Peers that announced or served the wrapper, up to <see cref="WrapperTransportLimits.MaxAnnouncersPerWrapper"/>.</summary>
     public List<WrapperPeer> Sources { get; } = [];
     public HashSet<WrapperPeer> Tried { get; } = [];
     public bool Requested { get; set; }
@@ -317,7 +317,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
 
     public void AddSource(WrapperPeer peer, int mode, int length, WrapperCoverage coverage)
     {
-        if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
+        if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxAnnouncersPerWrapper) return;
         Sources.Add(peer);
         _metadata[peer] = (mode, length, coverage);
     }
@@ -335,8 +335,8 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public WrapperCoverage CoverageFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Coverage : Announcement.Coverage;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
-    /// <remarks>Sources are asked in announcement order, except that one whose wrappers repeatedly failed verification is asked
-    /// only after the others.</remarks>
+    /// <remarks>Sources are asked in announcement order, except that deprioritized ones are asked only after the others, the
+    /// lowest failure score first.</remarks>
     public WrapperPeer? NextSource()
     {
         if (Tried.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
@@ -345,7 +345,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
         {
             if (peer.Closed || Tried.Contains(peer)) continue;
             if (!peer.IsDeprioritized) return peer;
-            deprioritized ??= peer;
+            if (deprioritized is null || peer.FailureScore < deprioritized.FailureScore) deprioritized = peer;
         }
         return deprioritized;
     }

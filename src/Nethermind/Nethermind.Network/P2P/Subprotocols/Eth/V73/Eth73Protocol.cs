@@ -74,7 +74,11 @@ public static class WrapperTransportLimits
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     /// <summary>How long a wanted wrapper may take from its first request to the end of its validation.</summary>
     public static readonly TimeSpan FetchDeadline = TimeSpan.FromSeconds(120);
+    /// <summary>Sources asked for one wrapper before it is abandoned.</summary>
     public const int MaxSourcesPerWrapper = 3;
+
+    /// <summary>Announcers of one wrapper tracked as sources, from which the <see cref="MaxSourcesPerWrapper"/> asked are chosen.</summary>
+    public const int MaxAnnouncersPerWrapper = 16;
 
     /// <summary>Outstanding GetProofWrappers requests per peer.</summary>
     public const int MaxRequestsPerPeer = 4;

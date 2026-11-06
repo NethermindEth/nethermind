@@ -422,6 +422,29 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A wrapper first announced by peers that leave requests unserved is fetched from a later announcer, which is tracked
+    // although as many peers announced it before as are ever asked.
+    [Test]
+    public void Later_announcer_is_asked_before_earlier_ones_that_left_requests_unserved()
+    {
+        using WrapperTestNode node = new();
+        WrapperPeer[] silent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
+        foreach (WrapperPeer peer in silent)
+            node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, WrapperTransportLimits.MaxRequestsPerPeer)
+                .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
+        node.Tick(WrapperTransportLimits.RequestTimeout);
+        // Their one remaining request slot each is taken, so the wanted wrapper can only be requested from another source.
+        foreach (WrapperPeer peer in silent)
+            node.Transport.OnAnnounce(peer, new([Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));
+        FakeWrapperLink late = new("late");
+        WrapperPeer latePeer = node.Connect(late);
+        WrapperAnnouncement announcement = Describe(Wrapper(64, FrameTransaction(1)));
+
+        foreach (WrapperPeer peer in silent.Append(latePeer)) node.Transport.OnAnnounce(peer, new([announcement]));
+
+        Assert.That(late.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { announcement.Hash }));
+    }
+
     [Test]
     public void Requests_stay_within_four_outstanding_and_the_soft_response_limit()
     {
