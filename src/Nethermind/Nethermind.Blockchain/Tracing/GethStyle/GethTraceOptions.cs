@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -32,6 +33,10 @@ public record GethTraceOptions
 
     internal TimeProvider? DeadlineClock { get; init; }
 
+    internal GethTraceDeadlineScope? DeadlineScope { get; init; }
+
+    internal CancellationToken ExecutionCancellationToken { get; init; }
+
     public bool DisableStack { get; init; }
 
     /// <summary>
@@ -42,9 +47,12 @@ public record GethTraceOptions
     /// <remarks>Buffered traces can stop earlier than Geth or streamed traces, especially for repeated storage accesses
     /// and small stack values. Storage updates are counted without tracking distinct slots for the estimate.
     /// JSON Lines file budgets count emitted records including their terminating line feeds and suppress
-    /// the final summary once the budget has been exceeded.</remarks>
+    /// the final summary once the budget has been exceeded.
+    /// The traceBlock, ByNumber, ByHash and traceTransaction RPC entry points normalize their step-count limits separately from this byte budget.</remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
+
+    internal long OpcodeStepLimit { get; init; }
 
     internal ParsedTraceDuration ParsedTimeout { get; init; }
 

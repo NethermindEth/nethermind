@@ -176,6 +176,7 @@ public class SnapshotCompactor(
     {
         Snapshot final = snapshots[^1];
         content.StateRootPointer = final.StateRootPointer;
+        content.MaxPointer = final.MaxPointer;
 
         foreach (Snapshot source in snapshots)
         {

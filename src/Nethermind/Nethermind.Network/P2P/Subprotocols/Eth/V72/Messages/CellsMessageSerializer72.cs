@@ -3,7 +3,6 @@
 
 using System;
 using CkzgLib;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage72>
+public class CellsMessageSerializer72 : IMessageSerializer<CellsMessage72>
 {
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(CellsMessage72.Hashes));
     private readonly int _maxBlobsPerTransaction;
@@ -34,13 +33,10 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         _cellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(maxCellsPerTransaction, nameof(CellsMessage72.Cells));
     }
 
-    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
+    public int Serialize(Span<byte> destination, CellsMessage72 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = new(destination);
+        writer.StartSequence(GetContentLength(message));
         writer.Encode(message.RequestId);
 
         int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
@@ -60,9 +56,16 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
 
         writer.Encode(message.CellMask);
+        return writer.Position;
     }
 
-    public CellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+    public CellsMessage72 Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        CellsMessage72 message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
+    }
 
     private CellsMessage72 Deserialize(ref RlpReader ctx)
     {
@@ -111,14 +114,13 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public int GetLength(CellsMessage72 message, out int contentLength)
-    {
-        contentLength = Rlp.LengthOf(message.RequestId)
-            + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
-            + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
-            + Rlp.LengthOf(message.CellMask);
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    public int GetLength(CellsMessage72 message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+    private static int GetContentLength(CellsMessage72 message) =>
+        Rlp.LengthOf(message.RequestId)
+        + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
+        + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
+        + Rlp.LengthOf(message.CellMask);
 
     private static int GetCellsContentLength(byte[][][] cellsByTx)
     {
@@ -132,7 +134,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         return contentLength;
     }
 
-    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] cells)
+    private static void EncodeCellGroup(ref RlpWriter writer, byte[][] cells)
     {
         int contentLength = 0;
         for (int i = 0; i < cells.Length; i++)
