@@ -15,7 +15,7 @@ internal static partial class WitnessNodeStorage
 {
     /// <summary>Builds a hash-keyed node storage holding the witness' state nodes.</summary>
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
-    /// <remarks>Checks each node's own path, and each node it serves against its depth (see <see cref="SecuredTriePath"/>).</remarks>
+    /// <remarks>Checks each node it serves against its depth (see <see cref="SecuredTriePath"/>).</remarks>
     public static INodeStorage Create(IOwnedReadOnlyList<byte[]> state) => new DepthCheckingNodeStorage(CreateWitnessNodes(state));
 
     /// <summary>Builds a trie store over <see cref="Create"/>'s node storage that also checks each inlined node a trie
@@ -27,13 +27,12 @@ internal static partial class WitnessNodeStorage
         return new DepthCheckingTrieStore(new DepthCheckingNodeStorage(nodes) { StorageNodeLoading = paths });
     }
 
-    /// <summary>Builds the node storage holding the witness' state nodes, each checked against its own path only.</summary>
+    /// <summary>Builds the node storage holding the witness' state nodes, unchecked.</summary>
     private static INodeStorage CreateWitnessNodes(IOwnedReadOnlyList<byte[]> state)
     {
         IKeyValueStore db = MemDb.WithCapacity(state.Count);
         foreach (byte[] stateElement in state)
         {
-            SecuredTriePath.ValidateWitnessNode(stateElement);
             ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
             db.Set(hash, stateElement);
         }

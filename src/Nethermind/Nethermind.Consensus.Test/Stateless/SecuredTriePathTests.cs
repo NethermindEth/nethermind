@@ -59,6 +59,18 @@ public class SecuredTriePathTests
         Assert.That(() => ReadBalance(root, accountLeaf), extraNibbles == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
+    /// <remarks>The spec checks the paths of the nodes a decoded trie reaches, and only hashes a witness node no trie reaches.</remarks>
+    [Test]
+    public void Witness_node_no_trie_reaches_is_not_checked()
+    {
+        byte[] accountLeaf = AccountLeaf(0);
+        byte[] root = Branch((AccountKey[0], accountLeaf), (AccountKey[0] ^ 1, AccountLeaf(0)));
+        byte[] disconnectedLeaf = Leaf(new byte[KeyNibbles + 1], [0x01]);
+        Assert.That(disconnectedLeaf, Has.Length.EqualTo(36));
+
+        Assert.That(() => ReadBalance(root, accountLeaf, disconnectedLeaf), Throws.Nothing);
+    }
+
     public enum StorageAccess { Read, Write, Clear, ClearThenWrite }
 
     /// <remarks>The slot's leaf is checked once a read or a write decodes the storage trie; a clear discards the old storage

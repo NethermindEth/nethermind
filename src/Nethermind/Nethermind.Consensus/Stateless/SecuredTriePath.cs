@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -11,39 +10,13 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>Checks the paths of witness nodes of the state and storage tries, whose keys are keccaks of 64 nibbles.</summary>
 /// <remarks>
-/// Each witness node's own path is checked once (<see cref="ValidateWitnessNode"/>), and each node a trie operation visits
-/// against its depth. A node off every visited path is checked against its depth by <see cref="WitnessTriePaths"/>' walk.
+/// Each node a trie operation visits is checked against its depth. A node off every visited path is checked against its
+/// depth by <see cref="WitnessTriePaths"/>' walk. A witness node no decoded trie reaches is left unchecked, as the spec
+/// only hashes it.
 /// </remarks>
 internal static class SecuredTriePath
 {
     public const int KeyNibbles = 2 * Hash256.Size;
-
-    /// <summary>Rejects a leaf whose path is longer than a key, or an extension whose path is empty or not shorter than a key.</summary>
-    /// <param name="rlp">A witness node; one that is not a two-item list starting with a non-empty string is left alone.</param>
-    /// <exception cref="TrieException">The node's path cannot fit a key.</exception>
-    /// <remarks>
-    /// Only a path of one byte, an empty extension's, or of 33 bytes or more can fail, so a node whose first item starts
-    /// otherwise is passed on that byte alone: every branch, whose first item is empty, a keccak or an inlined node, and
-    /// nearly every leaf.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ValidateWitnessNode(ReadOnlySpan<byte> rlp)
-    {
-        if (rlp.IsEmpty) return;
-
-        int first = rlp[0] < 0xf8 ? 1 : rlp[0] - 0xf6;
-        if ((uint)first >= (uint)rlp.Length) return;
-
-        int prefix = rlp[first];
-        if (prefix < 0x10 || prefix == 0x81 || (uint)(prefix - 0xa1) <= 0xbf - 0xa1) ValidatePath(rlp);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ValidatePath(ReadOnlySpan<byte> rlp)
-    {
-        if (TryGetPath(rlp, out int nibbles, out bool isLeaf) && (isLeaf ? nibbles > KeyNibbles : nibbles is 0 or >= KeyNibbles))
-            ThrowPathExceedsKey();
-    }
 
     /// <summary>Rejects a node that cannot sit <paramref name="depth"/> nibbles below a root: a leaf whose path does not end at
     /// the key, an extension whose path is empty or reaches it, or any other node at the key's length.</summary>
