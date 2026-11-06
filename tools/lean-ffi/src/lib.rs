@@ -31,22 +31,43 @@ fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
     let guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    lean_vm::init_prover();
-    restore_system_heap();
+    static ARENA: std::sync::Once = std::sync::Once::new();
+    ARENA.call_once(|| {
+        lean_vm::init_prover();
+        restore_system_heap();
+    });
     guard
 }
 
-/// Undoes the process-wide glibc tuning `init_prover` applies: the arena is its own mapping and does not rely on it, while
-/// the host would otherwise never trim its heap or mmap large allocations again.
+/// Undoes the process-wide glibc tuning `init_prover` applies, restoring the operator's setting or glibc's default.
+///
+/// The arena is its own mapping and does not rely on that tuning, while the host would otherwise never trim its heap or
+/// mmap large allocations again. glibc's adaptive mmap threshold stays off: `init_prover` already disabled it, and no
+/// mallopt re-enables it.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn restore_system_heap() {
-    const DEFAULT_TRIM_THRESHOLD: i32 = 128 * 1024;
-    const DEFAULT_MMAP_MAX: i32 = 65536;
+    let trim = glibc_setting("trim_threshold", "MALLOC_TRIM_THRESHOLD_", 128 * 1024);
+    let mmap_max = glibc_setting("mmap_max", "MALLOC_MMAP_MAX_", 65536);
     // SAFETY: mallopt only adjusts allocator tuning parameters.
     unsafe {
-        libc::mallopt(libc::M_TRIM_THRESHOLD, DEFAULT_TRIM_THRESHOLD);
-        libc::mallopt(libc::M_MMAP_MAX, DEFAULT_MMAP_MAX);
+        libc::mallopt(libc::M_TRIM_THRESHOLD, trim);
+        libc::mallopt(libc::M_MMAP_MAX, mmap_max);
     }
+}
+
+/// The `glibc.malloc.<tunable>` value from `GLIBC_TUNABLES`, else the legacy environment alias, else `default`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn glibc_setting(tunable: &str, alias: &str, default: i32) -> i32 {
+    let key = format!("glibc.malloc.{tunable}=");
+    std::env::var("GLIBC_TUNABLES")
+        .ok()
+        .and_then(|tunables| {
+            tunables
+                .split(':')
+                .find_map(|entry| entry.strip_prefix(key.as_str())?.parse().ok())
+        })
+        .or_else(|| std::env::var(alias).ok()?.parse().ok())
+        .unwrap_or(default)
 }
 #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn restore_system_heap() {}
