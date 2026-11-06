@@ -15,6 +15,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -156,10 +157,14 @@ public class HistoryReaderTests
         _reader.GetAccount(10, Address, null);
         _reader.TryGetStorage(10, Address, Slot, out _);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Account? cached = _reader.GetAccount(10, Address, null);
-        bool slotFound = _reader.TryGetStorage(10, Address, Slot, out UInt256 slot);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Account? cached = null;
+        bool slotFound = false;
+        UInt256 slot = default;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            cached = _reader.GetAccount(10, Address, null);
+            slotFound = _reader.TryGetStorage(10, Address, Slot, out slot);
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -339,9 +344,7 @@ public class HistoryReaderTests
     public void ReadScopeState_WithAtMostOneRead_DoesNotAllocate([Values] bool enabled, [Values(0, 1)] int reads)
     {
         ReadScopeWithoutRows(enabled, reads);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        ReadScopeWithoutRows(enabled, reads);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() => ReadScopeWithoutRows(enabled, reads));
 
         Assert.That(allocated, Is.Zero);
     }

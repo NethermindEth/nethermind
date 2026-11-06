@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Autofac;
+using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,6 +17,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.MessageDecodingCompatibility;
@@ -23,6 +25,10 @@ using Eth62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Eth63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Eth65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Eth66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Eth68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using Eth72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using Snap1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Snap2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 
 namespace Nethermind.Network.Test.P2P;
 
@@ -77,6 +83,46 @@ public class MessageDecodingCompatibilityTests
         yield return Sample.Of(static () => new ReceiptsMessage70(1, Receipts(), lastBlockIncomplete: true));
         yield return Sample.Of(static () => new GetBlockAccessListsMessage(1, Hashes()));
         yield return Sample.Of(static () => new BlockAccessListsMessage(1, new ArrayPoolList<byte[]?>(2) { null, new byte[] { 0xc1, 0x01 } }));
+        yield return Sample.Of(static () => new Eth68.NewPooledTransactionHashesMessage68(
+            new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 }, new ArrayPoolList<int>(1) { 100 }, new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA.ValueHash256 }));
+        yield return Sample.Of(static () => new StatusMessage69
+        {
+            ProtocolVersion = 69,
+            NetworkId = 1,
+            GenesisHash = TestItem.KeccakA,
+            ForkId = new ForkId(0xfc64ec04, 1150000),
+            LatestBlock = 1,
+            LatestBlockHash = TestItem.KeccakB
+        });
+        yield return Sample.Of(static () => new BlockRangeUpdateMessage { LatestBlock = 1, LatestBlockHash = TestItem.KeccakA });
+        yield return Sample.Of(static () => new Eth72.NewPooledTransactionHashesMessage72([(byte)TxType.Blob], [1024], [TestItem.KeccakA.ValueHash256], CellMask()));
+        yield return Sample.Of(static () => new Eth72.GetCellsMessage72(1, [TestItem.KeccakA.ValueHash256], CellMask()));
+        yield return Sample.Of(static () => new Eth72.CellsMessage72(1, [TestItem.KeccakA.ValueHash256], [[new byte[Ckzg.BytesPerCell], new byte[Ckzg.BytesPerCell]]], CellMask()));
+        yield return Sample.Of(static () => new Snap1.GetAccountRangeMessage { RequestId = 1, AccountRange = new(TestItem.KeccakA, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256), ResponseBytes = 1000 });
+        yield return Sample.Of(static () => new Snap1.AccountRangeMessage
+        {
+            RequestId = 1,
+            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakA.ValueHash256, Build.An.Account.WithBalance(1).TestObject) },
+            Proofs = NodeData()
+        });
+        yield return Sample.Of(static () => new Snap1.GetStorageRangeMessage
+        {
+            RequestId = 1,
+            StorageRange = new() { RootHash = TestItem.KeccakA, Accounts = new ArrayPoolList<PathWithAccount>(1) { new() { Path = TestItem.KeccakB.ValueHash256 } }, StartingHash = TestItem.KeccakC, LimitHash = TestItem.KeccakD },
+            ResponseBytes = 1000
+        });
+        yield return Sample.Of(static () => new Snap1.StorageRangeMessage
+        {
+            RequestId = 1,
+            Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1) { new ArrayPoolList<PathWithStorageSlot>(1) { new(TestItem.KeccakA.ValueHash256, [0x01]) } },
+            Proofs = NodeData()
+        });
+        yield return Sample.Of(static () => new Snap1.GetByteCodesMessage { RequestId = 1, Hashes = new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA.ValueHash256 }, Bytes = 1000 });
+        yield return Sample.Of(static () => new Snap1.ByteCodesMessage(NodeData()) { RequestId = 1 });
+        yield return Sample.Of(static () => new Snap1.GetTrieNodesMessage { RequestId = 1, RootHash = TestItem.KeccakA, Paths = PathGroup.EncodeToRlpPathGroupList([new() { Group = [[0x01], [0x02]] }]), Bytes = 1000 });
+        yield return Sample.Of(static () => new Snap1.TrieNodesMessage(NodeData()) { RequestId = 1 });
+        yield return Sample.Of(static () => new Snap2.GetBlockAccessListsMessage { RequestId = 1, BlockHashes = new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA.ValueHash256 }, Bytes = 1000 });
+        yield return Sample.Of(static () => new Snap2.BlockAccessListsMessage(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { Array.Empty<byte>(), new byte[] { 0xc1, 0x01 } })) { RequestId = 1 });
     }
 
     [Test]
@@ -87,6 +133,10 @@ public class MessageDecodingCompatibilityTests
     public void Accepts_a_trailing_byte_only_where_the_handlers_always_did([ValueSource(nameof(Samples))] Sample sample, [Values] bool trailingByte) =>
         AssertTrailingByteHandling(Service, sample, trailingByte);
 
+    [Test]
+    public void Releases_the_received_buffer_however_decoding_ends([ValueSource(nameof(Samples))] Sample sample) =>
+        AssertReleasesBuffer(Service, sample);
+
     private static IEnumerable<TestCaseData> Payloads()
     {
         Func<IMessageSerializationService, IByteBuffer, P2PMessage> getBlockBodies66 = Deserializer<Eth66.GetBlockBodiesMessage>();
@@ -94,6 +144,10 @@ public class MessageDecodingCompatibilityTests
         Func<IMessageSerializationService, IByteBuffer, P2PMessage> receipts63 = Deserializer<Eth63.ReceiptsMessage>();
         Func<IMessageSerializationService, IByteBuffer, P2PMessage> blockBodies62 = Deserializer<Eth62.BlockBodiesMessage>();
         Func<IMessageSerializationService, IByteBuffer, P2PMessage> getBlockHeaders62 = Deserializer<Eth62.GetBlockHeadersMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> blockRangeUpdate69 = Deserializer<BlockRangeUpdateMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> getByteCodes = Deserializer<Snap1.GetByteCodesMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> byteCodes = Deserializer<Snap1.ByteCodesMessage>();
+        Func<IMessageSerializationService, IByteBuffer, P2PMessage> blockAccessLists = Deserializer<Snap2.BlockAccessListsMessage>();
 
         yield return new TestCaseData(getBlockBodies66, "c201c0", true).SetName("eth66 envelope");
         yield return new TestCaseData(getBlockBodies66, "f8", false).SetName("eth66 truncated header");
@@ -107,6 +161,10 @@ public class MessageDecodingCompatibilityTests
         yield return new TestCaseData(receipts63, "c000", false).SetName("eth63 empty receipts list with a trailing byte");
         yield return new TestCaseData(blockBodies62, "c0c0", true).SetName("eth62 bodies counted past their list");
         yield return new TestCaseData(getBlockHeaders62, "c301018080", true).SetName("eth62 header request with a short list length");
+        yield return new TestCaseData(blockRangeUpdate69, $"e20102a0{new string('0', 64)}", true).SetName("eth69 block range update with a short list length");
+        yield return new TestCaseData(getByteCodes, "c201c00a", true).SetName("snap bytecodes request with a short list length");
+        yield return new TestCaseData(byteCodes, "c201c180", true).SetName("snap bytecodes with a short list length");
+        yield return new TestCaseData(blockAccessLists, "c201c1c0", false).SetName("snap block access lists with a short list length");
     }
 
     [TestCaseSource(nameof(Payloads))]
@@ -126,4 +184,6 @@ public class MessageDecodingCompatibilityTests
     private static ByteArrayListAdapter NodeData() => new(new ArrayPoolList<byte[]>(1) { new byte[] { 0xde, 0xad } });
 
     private static ArrayPoolList<TxReceipt[]> Receipts() => new(1) { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject } };
+
+    private static byte[] CellMask() => BlobCellMask.FromIndices([4, 9]).ToBytes();
 }

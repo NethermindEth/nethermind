@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class DiscoveryV5TransportTests
 {
@@ -116,7 +116,34 @@ public class DiscoveryV5TransportTests
     }
 
     [Test]
-    [NonParallelizable]
+    public async Task Packet_traces_mask_both_endpoints([Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        TestLogger logger = new();
+        DiscoveryV5Transport transport = new(new OneLoggerLogManager(new ILogger(logger)));
+        transport.BindSocket(new RecordingDatagramSocket());
+        IPEndPoint endpoint = IPEndPoint.Parse("192.0.2.31:31417");
+        try
+        {
+            transport.Receive(PooledUdpReceiveResult.Copy([1, 2, 3], endpoint));
+            await transport.SendAsync([1, 2, 3], endpoint, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logger.LogList, Has.Count.EqualTo(2));
+                Assert.That(logger.LogList, Has.All.Contains(maskSensitiveData ? "[redacted]" : endpoint.ToString()));
+                if (maskSensitiveData) Assert.That(logger.LogList, Has.None.Contains(endpoint.ToString()));
+            }
+        }
+        finally
+        {
+            transport.Close();
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
+    [Test]
     public async Task UpdatesDiscoveryBytesSentMetric()
     {
         byte[] sentData = [1, 2, 3, 4];
