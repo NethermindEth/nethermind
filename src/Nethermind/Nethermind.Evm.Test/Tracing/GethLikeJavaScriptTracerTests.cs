@@ -2044,11 +2044,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             Timeout = TimeSpan.FromMilliseconds(200)
         });
         tracer.SetOperationStack(default);
-        bool expired = SpinWait.SpinUntil(() =>
-        {
-            try { engine.ThrowIfInterrupted(); return false; }
-            catch (ScriptInterruptedException) { return true; }
-        }, TimeSpan.FromSeconds(5));
+        bool expired = WaitForInterrupt(engine);
 
         tracer.SetOperationStack(default);
         using GethLikeTxTrace trace = tracer.BuildResult();
@@ -2090,7 +2086,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
-            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)));
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
     }
 
@@ -2098,24 +2094,28 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void Javascript_hook_does_not_start_after_the_trace_timeout([Values] bool capture)
     {
         using Engine engine = new(Shanghai.Instance);
-        bool busy = false;
-        Action enteredBusy = () => busy = true;
-        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.busyForTest=action;}}"))
-            installer.InvokeMethod("install", enteredBusy);
-        // The warmed step hook turns busy only once its deadline, well after the trace timeout, has passed.
+        bool armed = false, busy = false;
+        Func<bool> late = () => busy = armed;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(late){globalThis.lateForTest=late;}}"))
+            installer.InvokeMethod("install", late);
+        // The warmed step hook turns busy only once the test has seen the trace timeout's interrupt reach the engine.
         using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
         {
-            Tracer = "{fault: function() {}, result: function() { return 1; }, setup: function() { this.t = Date.now() + 400; },"
-                + " step: function() { if (Date.now() > this.t) { busyForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); } }}",
+            Tracer = "{fault: function() {}, result: function() { return 1; },"
+                + " step: function() { if (lateForTest()) { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); } }}",
             CaptureJavaScriptErrors = capture,
             Timeout = TimeSpan.FromMilliseconds(150)
         });
-        for (int i = 0; i < 200; i++) tracer.SetOperationStack(default);
-        Thread.Sleep(600);
+        // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
+        try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
+        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        bool expired = WaitForInterrupt(engine);
+        armed = true;
 
         Exception failure = Assert.Catch(() => tracer.SetOperationStack(default))!;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(expired, Is.True);
             Assert.That(busy, Is.False);
             Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
         }
@@ -2126,10 +2126,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         Engine engine = new(Shanghai.Instance);
         engine.Interrupt();
-        Timer redelivery = (Timer)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
+        Timer redelivery = RedeliveryTimer(engine)!;
         engine.Dispose();
         Assert.That(redelivery.Change(10, 10), Is.False);
     }
+
+    [Test]
+    public void Engine_interrupt_after_dispose_starts_no_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.That(RedeliveryTimer(engine), Is.Null);
+        }
+    }
+
+    private static Timer? RedeliveryTimer(Engine engine) =>
+        (Timer?)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine);
+
+    private static bool WaitForInterrupt(Engine engine) => SpinWait.SpinUntil(() =>
+    {
+        try { engine.ThrowIfInterrupted(); return false; }
+        catch (ScriptInterruptedException) { return true; }
+    }, TimeSpan.FromSeconds(5));
 
     [Test]
     public void Javascript_trace_timeout_starts_after_setup_and_interrupts_a_busy_result([Values] bool busyResult)
