@@ -257,8 +257,9 @@ public sealed partial class ProofWrapperTransport
                 else if (position > last && entries.Length > 0) fetch.Tried.Remove(peer);
                 else unavailable++;
             }
-            // Requested wrappers withheld count toward the failure score in proportion, so serving one of many does not evade it.
-            if (unavailable > 0) peer.RecordFailure((double)unavailable / fetches.Length);
+            // Requested wrappers withheld count toward the failure score in proportion, so serving one of many does not evade it;
+            // an empty response is a spent serving budget.
+            if (unavailable > 0 && entries.Length > 0) peer.RecordFailure(WrapperTransportLimits.UnservedFailureWeight * unavailable / fetches.Length);
             WrapperMetrics.Record(WrapperEvent.Received, entries.Length);
             Schedule(outbox);
         }

@@ -89,6 +89,11 @@ public static class WrapperTransportLimits
     /// <summary>The failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
     public const double DeprioritizedFailureScore = 3;
 
+    /// <summary>What a request left unserved adds to a peer's failure score, against 1 for a wrapper failing verification.</summary>
+    /// <remarks>Fractional, since an honest peer may time out or have evicted a wrapper; an empty response, which signals a spent
+    /// serving budget (EIP-8437), adds nothing.</remarks>
+    public const double UnservedFailureWeight = 0.25;
+
     /// <summary>The cap on a peer's verification-failure score, so it recovers within a few half-lives.</summary>
     public const double MaxFailureScore = 16;
 

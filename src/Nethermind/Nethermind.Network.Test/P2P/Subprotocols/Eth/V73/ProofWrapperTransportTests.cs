@@ -361,33 +361,36 @@ public class ProofWrapperTransportTests
         }
     }
 
-    // A peer that leaves requests unanswered, or withholds requested wrappers, is fetched from as one whose wrappers fail
-    // verification; withholding all but one of a request's wrappers counts nearly as much as an empty response.
-    [TestCase("timeout")]
-    [TestCase("empty")]
-    [TestCase("partial")]
-    public void Unserved_requests_deprioritize_the_peer(string scenario)
+    // A peer that leaves requests unanswered, or withholds requested wrappers, is eventually fetched from as one whose wrappers
+    // fail verification; an empty response signals a spent serving budget and never deprioritizes an honest peer.
+    [TestCase("timeout", true)]
+    [TestCase("empty", false)]
+    [TestCase("partial", true)]
+    public void Unserved_requests_deprioritize_the_peer(string scenario, bool deprioritized)
     {
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
+        int seed = 0;
+        for (int round = 0; round < 5; round++)
         {
-            byte[][] wrappers = [.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest)
-                .Select(i => Wrapper(64, FrameTransaction(request * Eth73Protocol.MaxWrappersPerRequest + i)))];
-            node.Transport.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
-            GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
-            Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
-            if (scenario == "timeout") continue;
-            // Only the last requested wrapper is returned, so every other one was withheld rather than cut.
-            byte[] last = wrappers.Single(w => Describe(w).Hash == sent.Hashes[^1]);
-            node.Transport.OnProofWrappers(peer, new(sent.RequestId, scenario == "empty" ? [] : [Entry(last)]));
+            for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
+            {
+                byte[][] wrappers = [.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest).Select(_ => Wrapper(64, FrameTransaction(seed++)))];
+                node.Transport.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
+                GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
+                Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
+                if (scenario == "timeout") continue;
+                // Only the last requested wrapper is returned, so every other one was withheld rather than cut.
+                byte[] last = wrappers.Single(w => Describe(w).Hash == sent.Hashes[^1]);
+                node.Transport.OnProofWrappers(peer, new(sent.RequestId, scenario == "empty" ? [] : [Entry(last)]));
+            }
+            node.Tick(scenario == "timeout" ? WrapperTransportLimits.RequestTimeout : TimeSpan.FromSeconds(1));
         }
-        if (scenario == "timeout") node.Tick(WrapperTransportLimits.RequestTimeout);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peer.IsDeprioritized, Is.True);
+            Assert.That(peer.IsDeprioritized, Is.EqualTo(deprioritized));
             Assert.That(link.Penalties, Is.Empty);
         }
     }
@@ -429,10 +432,7 @@ public class ProofWrapperTransportTests
     {
         using WrapperTestNode node = new();
         WrapperPeer[] silent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
-        foreach (WrapperPeer peer in silent)
-            node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, WrapperTransportLimits.MaxRequestsPerPeer)
-                .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
-        node.Tick(WrapperTransportLimits.RequestTimeout);
+        foreach (WrapperPeer peer in silent) peer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore);
         // Their one remaining request slot each is taken, so the wanted wrapper can only be requested from another source.
         foreach (WrapperPeer peer in silent)
             node.Transport.OnAnnounce(peer, new([Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));
