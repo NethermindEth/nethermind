@@ -9,7 +9,7 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 
 ## Quick start
 
-From a clone of this branch, on Linux x86_64 with Docker:
+From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites](#prerequisites):
 
 1. Build both images: step 1 below.
 2. Start a throwaway single-host chain and wait for finality past the fork (about 9 minutes):
