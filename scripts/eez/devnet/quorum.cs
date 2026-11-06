@@ -1,3 +1,4 @@
+#!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -6,6 +7,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("Quorum node tests require Linux.");
@@ -55,17 +57,17 @@ var source = (await Run("git", ["rev-parse", "HEAD"], cancellationToken, upstrea
 if (source != Environment.GetEnvironmentVariable("EEZ_QUORUM_REVISION"))
     throw new InvalidOperationException("Upstream source differs from the selected revision.");
 var protocol = (await Run("git", ["-C", "eez-core-protocol", "rev-parse", "HEAD"], cancellationToken, upstream)).Trim();
-var identity = new
+var identity = new JsonObject
 {
-    upstream = source,
-    protocol,
-    candidate = revision,
-    image = imageId,
-    testBinary = Hash(binary),
-    composer = Hash(composer),
-    nativeSigner = Hash(nativeSigner)
+    ["upstream"] = source,
+    ["protocol"] = protocol,
+    ["candidate"] = revision,
+    ["image"] = imageId,
+    ["testBinary"] = Hash(binary),
+    ["composer"] = Hash(composer),
+    ["nativeSigner"] = Hash(nativeSigner)
 };
-await File.WriteAllTextAsync(Path.Combine(output, "identity.json"), JsonSerializer.Serialize(identity));
+await File.WriteAllTextAsync(Path.Combine(output, "identity.json"), identity.ToJsonString());
 var failures = 0;
 foreach (var name in cases)
 {
@@ -75,12 +77,12 @@ foreach (var name in cases)
     var launcher = Path.Combine(directory, "eez-proof-signer");
     File.Copy("scripts/eez/devnet/quorum-prover.sh", launcher);
     File.SetUnixFileMode(launcher, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-    await File.WriteAllTextAsync(Path.Combine(directory, "config.json"), JsonSerializer.Serialize(new
+    await File.WriteAllTextAsync(Path.Combine(directory, "config.json"), new JsonObject
     {
-        image = imageId,
-        nativeSigner,
-        container
-    }));
+        ["image"] = imageId,
+        ["nativeSigner"] = nativeSigner,
+        ["container"] = container
+    }.ToJsonString());
     Environment.SetEnvironmentVariable("EEZ_TEST_PROOF_SIGNER_BIN", launcher);
     Environment.SetEnvironmentVariable("EEZ_TEST_LOG_DIR", Path.Combine(directory, "logs"));
     var started = Stopwatch.StartNew();
@@ -121,13 +123,13 @@ foreach (var name in cases)
             var removal = await ScriptProcess.Run("docker", ["rm", "-f", container], cleanup.Token);
             if (removal.Code != 0 && !removal.Error.Contains("No such container", StringComparison.Ordinal))
                 throw new InvalidOperationException($"Could not remove owned test prover: {removal.Error}");
-            await File.WriteAllTextAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(new
+            await File.WriteAllTextAsync(Path.Combine(directory, "result.json"), new JsonObject
             {
-                test = name,
-                passed,
-                elapsedSeconds = started.Elapsed.TotalSeconds,
-                identity
-            }));
+                ["test"] = name,
+                ["passed"] = passed,
+                ["elapsedSeconds"] = started.Elapsed.TotalSeconds,
+                ["identity"] = identity.DeepClone()
+            }.ToJsonString());
         }
     }
 }
