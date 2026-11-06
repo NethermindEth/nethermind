@@ -263,8 +263,6 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <see cref="WrapperTransportLimits.MaxRequestsPerFailingPeer"/> outstanding requests.</summary>
     public bool IsDeprioritized => FailureScore >= WrapperTransportLimits.DeprioritizedFailureScore;
 
-    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
-    /// or withheld wrappers from, weighted by the share withheld.</summary>
     /// <summary>Restores a failure score recorded at <paramref name="since"/>, from which it keeps decaying.</summary>
     public void RestoreFailureScore(double score, long since)
     {
@@ -272,6 +270,8 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
         _failuresUpdated = since;
     }
 
+    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
+    /// or withheld wrappers from, at <paramref name="weight"/>.</summary>
     public void RecordFailure(double weight = 1) => _failures = Math.Min(FailureScore + weight, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;
