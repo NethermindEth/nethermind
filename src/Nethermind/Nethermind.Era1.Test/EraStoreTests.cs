@@ -85,8 +85,11 @@ public class EraStoreTests
         NamesOneOfThree,
         NamesOneInReversedLines,
         NamesOneOfTwoCaseVariants,
-        NamesNeither,
+        PlaceholderNamesFromARelease,
+        NamesAbsentFile,
         HashOnly,
+        HashOnlyIdenticalCopies,
+        NoEntry,
     }
 
     [Test]
@@ -96,14 +99,18 @@ public class EraStoreTests
         string directory = ctx.ResolveTempDirPath();
         string EpochFile(int epoch) => Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-{epoch:D5}-*.era1").Single();
         string named = Path.GetFileName(EpochFile(2));
-        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail. Its name sorts before the named
-        // file's, or differs from it only in case.
+        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail: a placeholder, a finished name, or
+        // the named file's name in another case. Its name sorts before the named file's.
         string hash = named.Split('-')[2][..8];
-        string stale = manifest == DuplicateManifest.NamesOneOfTwoCaseVariants
-            ? named.Replace(hash, hash.ToUpperInvariant())
-            : $"{EraTestModule.TestNetwork}-00002-00000000.era1";
+        string stale = manifest switch
+        {
+            DuplicateManifest.NamesOneOfTwoCaseVariants => named.Replace(hash, hash.ToUpperInvariant()),
+            DuplicateManifest.NamesAbsentFile or DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies or DuplicateManifest.NoEntry
+                => $"{EraTestModule.TestNetwork}-00002-0000000a.era1",
+            _ => $"{EraTestModule.TestNetwork}-00002-00000000.era1",
+        };
         Assume.That(File.Exists(Path.Combine(directory, stale)), Is.False, "needs a case-sensitive file system");
-        File.Copy(EpochFile(1), Path.Combine(directory, stale));
+        File.Copy(EpochFile(manifest == DuplicateManifest.HashOnlyIdenticalCopies ? 2 : 1), Path.Combine(directory, stale));
         if (manifest == DuplicateManifest.NamesOneOfThree)
             File.Copy(EpochFile(1), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000001.era1"));
         string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
@@ -111,8 +118,11 @@ public class EraStoreTests
         lines = manifest switch
         {
             DuplicateManifest.NamesOneInReversedLines => [.. lines.AsEnumerable().Reverse()],
-            DuplicateManifest.NamesNeither => [.. lines.Where(static line => !line.Contains("-00002-"))],
-            DuplicateManifest.HashOnly => [.. lines.Select(static line => line.Split(' ')[0])],
+            // Releases up to 2.2.2 listed the placeholder name instead of the file it was renamed to.
+            DuplicateManifest.PlaceholderNamesFromARelease => [.. lines.Select(static line => line[..^"00000000.era1".Length] + "00000000.era1")],
+            DuplicateManifest.NamesAbsentFile => [.. lines.Select(line => line.Replace(named, $"{EraTestModule.TestNetwork}-00002-ffffffff.era1"))],
+            DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies => [.. lines.Select(static line => line.Split(' ')[0])],
+            DuplicateManifest.NoEntry => [.. lines.Where(static line => !line.Contains("-00002-"))],
             _ => lines,
         };
         await File.WriteAllLinesAsync(checksumsPath, lines);
@@ -130,7 +140,8 @@ public class EraStoreTests
         fileSystem.Directory.Returns(listing);
         EraStore Create() => new(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), fileSystem, EraTestModule.TestNetwork, 16, null, directory);
 
-        if (manifest is DuplicateManifest.NamesNeither or DuplicateManifest.HashOnly)
+        // Without a usable name, the store takes the only finished file, else the only one whose SHA-256 is listed.
+        if (manifest is DuplicateManifest.HashOnlyIdenticalCopies or DuplicateManifest.NoEntry)
         {
             Assert.That(() => Create(), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 2").And.Message.Contains(named).And.Message.Contains(stale));
             return;

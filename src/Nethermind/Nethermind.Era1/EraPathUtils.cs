@@ -67,7 +67,10 @@ public static class EraPathUtils
     /// rest of the name was a placeholder. A line with only a hash, as geth writes checksums.txt, is keyed by its
     /// position: line i belongs to epoch <paramref name="firstEpoch"/> + i.
     /// </remarks>
-    /// <param name="fileNames">When given, receives the file name each named line lists for its epoch.</param>
+    /// <param name="fileNames">
+    /// When given, receives the file name each named line lists for its epoch. Placeholder names are left out: releases up
+    /// to 2.2.2 listed the placeholder instead of the file it was renamed to.
+    /// </param>
     /// <exception cref="EraException">A listed file name has no epoch.</exception>
     internal static Dictionary<long, ValueHash256> ParseManifest(string[] lines, long firstEpoch, Dictionary<long, string>? fileNames = null)
     {
@@ -81,7 +84,7 @@ public static class EraPathUtils
             long epoch = firstEpoch + i;
             if (fileName.Length > 0 && !TryGetEpoch(fileName, out epoch))
                 throw new EraException($"Invalid manifest entry: {line}");
-            if (fileName.Length > 0 && fileNames is not null)
+            if (fileName.Length > 0 && fileNames is not null && !IsPlaceholderName(fileName))
                 fileNames[epoch] = fileName;
 
             entries[epoch] = ExtractHashFromAccumulatorAndCheckSumEntry(line);
@@ -89,6 +92,37 @@ public static class EraPathUtils
 
         return entries;
     }
+
+    /// <summary>
+    /// Picks the file of an epoch that its checksum manifest entry belongs to: the only file, else the file the entry
+    /// names, else the only finished file (not a placeholder), else the only finished file whose SHA-256 is the listed
+    /// checksum. Only the last step reads the files.
+    /// </summary>
+    /// <returns>The file, or <c>null</c> when none or several qualify.</returns>
+    internal static string? ResolveEpochFile(IReadOnlyList<string> files, string? listedName, ValueHash256? checksum)
+    {
+        if (files.Count == 1) return files[0];
+        if (listedName is not null && files.FirstOrDefault(f => Path.GetFileName(f) == listedName) is { } named) return named;
+
+        string[] finished = [.. files.Where(static f => !IsPlaceholderName(f))];
+        if (finished.Length == 1) return finished[0];
+        if (checksum is null) return null;
+
+        string[] matching = [.. finished.Where(f =>
+        {
+            using E2StoreReader reader = new(f);
+            return reader.CalculateChecksum() == checksum.Value;
+        })];
+        return matching.Length == 1 ? matching[0] : null;
+    }
+
+    internal static string DuplicateEpochMessage(long epoch, IEnumerable<string> files) =>
+        $"Epoch {epoch} has more than one era1 file and {EraExporter.ChecksumsFileName} does not tell which one to read: " +
+        $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch with a range that contains " +
+        $"these files and starts at the same offset within an era, or keep only the file whose SHA-256 matches {EraExporter.ChecksumsFileName}.";
+
+    private static bool IsPlaceholderName(string fileName) =>
+        Path.GetFileNameWithoutExtension(fileName).EndsWith("-00000000", StringComparison.Ordinal);
 
     internal static bool TryGetEpoch(string fileName, out long epoch)
     {

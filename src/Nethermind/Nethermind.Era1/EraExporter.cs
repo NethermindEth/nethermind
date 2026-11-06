@@ -85,7 +85,7 @@ public class EraExporter(
             if (earlierFiles.Count == 0 || epoch < firstEarlierEpoch) firstEarlierEpoch = epoch;
             if (!earlierFiles.TryGetValue(epoch, out List<string>? files))
                 earlierFiles[epoch] = files = [];
-            files.Add(Path.GetFileName(file));
+            files.Add(file);
         }
         Dictionary<ulong, List<(string Path, bool IsPlaceholder)>> earlierEpochFiles = [];
         foreach (string file in fileSystem.Directory.EnumerateFiles(destinationPath).Order(StringComparer.Ordinal))
@@ -97,6 +97,7 @@ public class EraExporter(
                 earlierEpochFiles[epoch] = files = [];
             files.Add((file, isPlaceholder));
         }
+        Dictionary<long, string> keptFiles = ResolveEarlierFiles();
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> accumulatorEntries = ReadEarlierEntries(accumulatorPath);
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> checksumEntries = ReadEarlierEntries(checksumPath);
 
@@ -140,6 +141,29 @@ public class EraExporter(
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
+        // Picks, for each epoch this export leaves alone, the file its earlier entries belong to, as the store does, so a
+        // hash stays with its own file when an epoch has two. This export replaces the entries of its own epochs.
+        Dictionary<long, string> ResolveEarlierFiles()
+        {
+            Dictionary<long, string> listed = [];
+            Dictionary<long, ValueHash256> checksums = fileSystem.File.Exists(checksumPath)
+                ? EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(checksumPath), firstEarlierEpoch, listed)
+                : [];
+            Dictionary<long, string> kept = [];
+            foreach ((long epoch, List<string> files) in earlierFiles)
+            {
+                if (epoch >= (long)startEpoch && epoch < (long)(startEpoch + epochCount)) continue;
+
+                string? file = EraPathUtils.ResolveEpochFile(files, listed.GetValueOrDefault(epoch), checksums.TryGetValue(epoch, out ValueHash256 checksum) ? checksum : null);
+                if (file is not null)
+                    kept[epoch] = Path.GetFileName(file);
+                else if (checksums.ContainsKey(epoch))
+                    throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files));
+            }
+
+            return kept;
+        }
+
         // Keeps the entries of an earlier export into this directory whose epochs still have an era file,
         // so the rewritten manifest covers every epoch in the directory.
         SortedDictionary<long, (ValueHash256 Hash, string FileName)> ReadEarlierEntries(string path)
@@ -147,22 +171,10 @@ public class EraExporter(
             SortedDictionary<long, (ValueHash256 Hash, string FileName)> entries = [];
             if (!fileSystem.File.Exists(path)) return entries;
 
-            Dictionary<long, string> named = [];
-            foreach ((long epoch, ValueHash256 hash) in EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(path), firstEarlierEpoch, named))
+            foreach ((long epoch, ValueHash256 hash) in EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(path), firstEarlierEpoch))
             {
-                if (!earlierFiles.TryGetValue(epoch, out List<string>? files)) continue;
-
-                // Keep the hash with the file its line names while that file exists, since the store reads that file when
-                // an epoch has two. A line without an existing name, as older exports and geth write, takes the epoch's
-                // only file. This export replaces the entries of its own epochs, so only untouched epochs must resolve.
-                if (named.TryGetValue(epoch, out string? fileName) && files.Contains(fileName))
+                if (keptFiles.TryGetValue(epoch, out string? fileName))
                     entries[epoch] = (hash, fileName);
-                else if (files.Count == 1)
-                    entries[epoch] = (hash, files[0]);
-                else if (epoch < (long)startEpoch || epoch >= (long)(startEpoch + epochCount))
-                    throw new EraException(
-                        $"Epoch {epoch} has more than one era1 file and {Path.GetFileName(path)} names none of them: " +
-                        $"{string.Join(", ", files)}. Re-export the epoch or remove the stale file.");
             }
 
             return entries;

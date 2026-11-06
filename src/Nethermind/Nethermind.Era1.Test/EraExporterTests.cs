@@ -198,26 +198,64 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Export_AfterAFailedReexport_KeepsTheManifestEntryOfAnUntouchedEpoch(bool reversed)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public async Task Export_AfterAFailedReexport_KeepsTheManifestEntryOfAnUntouchedEpoch(bool reversed, bool placeholderNames)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).AddSingleton(ListedInOrder(reversed)).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         await sut.Export(directory, 0, 20);
+        string finished = Path.GetFileName(Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00001-*.era1").Single());
         string[] Epoch1Entries() => [.. new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName }
             .SelectMany(manifest => File.ReadAllLines(Path.Combine(directory, manifest))).Where(static line => line.Contains("-00001-"))];
         string[] before = Epoch1Entries();
+        // Releases up to 2.2.2 listed each placeholder name instead of the file it was renamed to.
+        foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName }.Where(_ => placeholderNames))
+        {
+            string path = Path.Combine(directory, manifest);
+            await File.WriteAllLinesAsync(path, (await File.ReadAllLinesAsync(path)).Select(static line => line[..^"00000000.era1".Length] + "00000000.era1"));
+        }
         for (ulong number = 32; number <= 40; number++)
             container.Resolve<IReceiptStorage>().RemoveReceipts(container.Resolve<IBlockTree>().FindBlock(number, BlockTreeLookupOptions.None)!);
 
         // Epoch 1 is rewritten under a new name beside the old one, then epoch 2 fails; a later export leaves epoch 1 alone.
         Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>());
         Assert.That(Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00001-*.era1"), Has.Length.EqualTo(2));
+        using (IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null))
+            Assert.That(async () => await eraStore.FindBlockAndReceipts(16), Throws.Nothing);
         await sut.Export(directory, 48, 63);
 
-        Assert.That(Epoch1Entries(), Is.EqualTo(before));
+        Assert.That(Epoch1Entries(), Is.EqualTo(before), $"both manifests keep {finished} with its hashes");
+        using (IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null))
+            Assert.That(async () => await eraStore.FindBlockAndReceipts(16), Throws.Nothing);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Export_WhenAnEpochHasTwoIdenticalFiles_RepairsItOnlyWhenRequested(bool requested)
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 47);
+        File.Copy(Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00001-*.era1").Single(), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00001-0000000a.era1"));
+        string checksums = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        await File.WriteAllLinesAsync(checksums, (await File.ReadAllLinesAsync(checksums)).Select(static line => line.Split(' ')[0]));
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+
+        if (!requested)
+        {
+            // Neither a name nor the checksum tells the copies apart, so an export that leaves epoch 1 alone writes nothing.
+            Assert.That(() => sut.Export(directory, 48, 63), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 1 has more than one era1 file"));
+            Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+            return;
+        }
+
+        await sut.Export(directory, 16, 31);
+        Assert.That(Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00001-*.era1"), Has.Length.EqualTo(1));
         using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
         Assert.That(async () => await eraStore.FindBlockAndReceipts(16), Throws.Nothing);
     }
