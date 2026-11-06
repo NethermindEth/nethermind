@@ -1192,6 +1192,10 @@ public partial class DebugRpcModuleTests
     [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", true)]
     [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", false)]
     [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", true)]
+    [TestCase("{result:{},fault:function(){}}", "trace object must expose a function result()", false)]
+    [TestCase("{result:{},fault:function(){}}", "trace object must expose a function result()", true)]
+    [TestCase("{result:function(){},fault:[]}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){},fault:[]}", "trace object must expose a function fault()", true)]
     public async Task Debug_traceCall_javascript_selector_errors(string tracer, string message, bool mux)
     {
         using Context ctx = await Context.Create();
@@ -1236,6 +1240,8 @@ public partial class DebugRpcModuleTests
     [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", true)]
     [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", false)]
     [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", true)]
+    [TestCase("{fault:function(){},result:function(){return 7;},setup:{}}", false)]
+    [TestCase("{fault:function(){},result:function(){return 7;},setup:{}}", true)]
     public async Task Debug_traceCall_javascript_selector_expressions(string tracer, bool mux)
     {
         using Context ctx = await Context.Create();

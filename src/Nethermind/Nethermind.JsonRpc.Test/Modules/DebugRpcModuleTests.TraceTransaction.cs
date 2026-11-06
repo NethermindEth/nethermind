@@ -303,6 +303,42 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceTransaction_javascript_selector_errors(
+        [Values("debug_traceTransaction", "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method,
+        [Values("unknownTracer", "{fault:function(){}} ")] string tracer,
+        [Values] bool mux)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        Block block = context.Blockchain.BlockTree.Head!;
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string blockRlp = Rlp.Encode(block).ToString();
+        object[] parameters = method switch
+        {
+            "debug_traceTransaction" => [transaction.Hash!, options],
+            "debug_traceTransactionByBlockAndIndex" => [block.Number, "0x0", options],
+            "debug_traceTransactionByBlockhashAndIndex" => [block.Hash!, "0x0", options],
+            "debug_traceTransactionInBlockByHash" => [blockRlp, transaction.Hash!, options],
+            _ => [blockRlp, "0x0", options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string expectedMessage = tracer == "unknownTracer"
+            ? "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)"
+            : "trace object must expose a function result()";
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedMessage), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+        }
+    }
+
     [TestCase(null, "{}")]
     [TestCase("missingTracer", "{}")]
     [TestCase("prestateTracer", "{\"diffMode\":[]}")]
