@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
+using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -80,6 +81,20 @@ internal class EraReaderTests
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
         Assert.That(verifiedRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [TestCase(3U, 0U, 2UL, TestName = "Duplicate number in pre-merge epoch")]
+    [TestCase(3U, 0U, 3UL, TestName = "Number past the last block")]
+    [TestCase(0U, 3U, 2UL, TestName = "Duplicate number in post-merge epoch")]
+    [TestCase(0U, 3U, 0UL, TestName = "Number below its slot in post-merge epoch")]
+    public async Task VerifyContent_HeaderNumberDiffersFromSlot_ThrowsEraVerificationException(uint preMergeCount, uint postMergeCount, ulong storedNumber)
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount, postMergeCount);
+        file.OverwriteHeaderNumber(1, storedNumber);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid),
+            Throws.TypeOf<EraVerificationException>().With.Message.Contains("header number"));
     }
 
     [Test]

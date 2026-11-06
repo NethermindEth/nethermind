@@ -53,7 +53,7 @@ public class CompressingStoreTests
     }
 
     [Test]
-    public void EOA()
+    public void EOA([Values] bool spanAction)
     {
         Context ctx = new();
 
@@ -62,7 +62,8 @@ public class CompressingStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+            Assert.That(encoded.Bytes, Is.EqualTo(KeyValueStoreReads.Read(ctx.Compressed, Key, ReadFlags.HintReadAhead, spanAction)).AsCollection);
+            ctx.Wrapped.KeyWasReadWithFlags(Key, ReadFlags.HintReadAhead);
             Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
         }
     }
@@ -89,14 +90,14 @@ public class CompressingStoreTests
     }
 
     [Test]
-    public void Backward_compatible_read()
+    public void Backward_compatible_read([Values] bool spanAction)
     {
         Context ctx = new();
         byte[] value = { 1, 2, 34 };
 
         ctx.Wrapped[Key] = value;
 
-        Assert.That(value, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
+        Assert.That(value, Is.EqualTo(KeyValueStoreReads.Read(ctx.Compressed, Key, ReadFlags.None, spanAction)).AsCollection);
     }
 
     [Test]
