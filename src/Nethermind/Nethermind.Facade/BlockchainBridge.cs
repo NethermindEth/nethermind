@@ -302,7 +302,6 @@ namespace Nethermind.Facade
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 
-        // The single-call paths reject a beacon root or withdrawals first, see GetUnsupportedBlockOverrideError.
         internal static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
@@ -310,9 +309,7 @@ namespace Nethermind.Facade
             blockOverride.GasLimit is not null ||
             blockOverride.FeeRecipient is not null ||
             blockOverride.BaseFeePerGas is not null ||
-            blockOverride.BlobBaseFee is not null ||
-            blockOverride.BeaconRoot is not null ||
-            blockOverride.Withdrawals is not null;
+            blockOverride.BlobBaseFee is not null;
 
         /// <summary>
         /// Returns the blob base fee override <paramref name="tx"/> runs with: zero for a blob call without a positive blob

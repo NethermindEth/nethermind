@@ -1139,6 +1139,9 @@ public class DebugRpcModule(
             return headerError;
         }
 
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(overrideError, ErrorCodes.InvalidInput);
+
         if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
