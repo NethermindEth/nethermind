@@ -5,44 +5,29 @@ using Nethermind.Config;
 
 namespace Nethermind.InvalidChainDump;
 
-/// <summary>
-/// Configuration for uploading invalid-block diagnostic bundles.
-/// </summary>
-[ConfigCategory(Description = "Configuration of invalid-block diagnostic bundle uploads.")]
+[ConfigCategory(Description = "Configuration of uploads of invalid-block diagnostics to S3-compatible storage.")]
 public interface IInvalidChainDumpConfig : IConfig
 {
     [ConfigItem(
-        Description = "The S3-compatible service URL used for direct uploads, for example `http://127.0.0.1:9000` for MinIO.",
+        Description = "The URL of the S3-compatible service to upload invalid-block diagnostics to, for example `http://127.0.0.1:9000` for MinIO. When set, uploads are enabled and `Init.AutoDump` is extended to `All`.",
         DefaultValue = "")]
     string ServiceUrl { get; set; }
 
-    [ConfigItem(
-        Description = "The bucket name used for direct S3-compatible invalid-block diagnostic uploads.",
-        DefaultValue = "")]
+    [ConfigItem(Description = "The bucket to upload invalid-block diagnostics to.", DefaultValue = "invalid-blocks")]
     string BucketName { get; set; }
 
-    [ConfigItem(
-        Description = "The access key used for direct S3-compatible invalid-block diagnostic uploads.",
-        DefaultValue = "")]
+    [ConfigItem(Description = "The access key for uploads of invalid-block diagnostics.", DefaultValue = "", IsSensitive = true)]
     string AccessKey { get; set; }
 
-    [ConfigItem(
-        Description = "The secret key used for direct S3-compatible invalid-block diagnostic uploads.",
-        DefaultValue = "")]
+    [ConfigItem(Description = "The secret key for uploads of invalid-block diagnostics.", DefaultValue = "", IsSensitive = true)]
     string SecretKey { get; set; }
 
-    [ConfigItem(
-        Description = "The AWS region used for direct S3-compatible invalid-block diagnostic uploads.",
-        DefaultValue = "us-east-1")]
+    [ConfigItem(Description = "The region used to sign uploads of invalid-block diagnostics.", DefaultValue = "us-east-1")]
     string Region { get; set; }
 
-    [ConfigItem(
-        Description = "An optional object-key prefix used for direct S3-compatible invalid-block diagnostic uploads.",
-        DefaultValue = "dumps")]
+    [ConfigItem(Description = "The object key prefix of uploaded invalid-block diagnostics.", DefaultValue = "dumps")]
     string ObjectKeyPrefix { get; set; }
 
-    [ConfigItem(
-        Description = "The timeout, in milliseconds, for uploading an invalid-block diagnostic archive.",
-        DefaultValue = "300000")]
-    int UploadTimeoutMilliseconds { get; set; }
+    [ConfigItem(Description = "The timeout, in milliseconds, of an upload of invalid-block diagnostics.", DefaultValue = "300000")]
+    int UploadTimeoutMs { get; set; }
 }

@@ -2,159 +2,151 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.InvalidChainDump.Test;
 
 public class InvalidChainDumpPluginTests
 {
-    [Test]
-    public async Task Init_enables_required_auto_dump_flags_when_direct_s3_upload_is_configured()
-    {
-        IInitConfig initConfig = new InitConfig() { AutoDump = DumpOptions.None };
-        IInvalidChainDumpConfig invalidChainDumpConfig = new InvalidChainDumpConfig()
-        {
-            ServiceUrl = "http://127.0.0.1:9000",
-            BucketName = "fails",
-            AccessKey = "minioadmin",
-            SecretKey = "secret",
-        };
-        NethermindApi api = BuildApi(initConfig, invalidChainDumpConfig, Substitute.For<IReceiptFinder>(), Substitute.For<IBlockchainProcessor>());
-
-        await using InvalidChainDumpPlugin plugin = new(invalidChainDumpConfig);
-
-        await plugin.Init(api);
-
-        initConfig.AutoDump.Should().HaveFlag(DumpOptions.Rlp);
-        initConfig.AutoDump.Should().HaveFlag(DumpOptions.Receipts);
-        initConfig.AutoDump.Should().HaveFlag(DumpOptions.Parity);
-        initConfig.AutoDump.Should().HaveFlag(DumpOptions.Geth);
-    }
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
     [Test]
-    public async Task Invalid_block_creates_archive_with_expected_artifacts()
+    public async Task Invalid_block_diagnostics_are_uploaded_as_one_archive([Values] bool shutDownOnRejection)
     {
-        using TempPath tempDirectory = TempPath.GetTempDirectory();
-        BlockHeader header = Build.A.BlockHeader.WithNumber(7).WithHash(TestItem.KeccakA).TestObject;
-        Block block = Build.A.Block.WithHeader(header).TestObject;
-
-        TxReceipt[] receipts =
-        [
-            Build.A.Receipt
-                .WithBlockHash(block.Hash!)
-                .WithBlockNumber(block.Number)
-                .WithIndex(0)
-                .TestObject
-        ];
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns(receipts);
-
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        IInvalidChainDumpConfig invalidChainDumpConfig = new InvalidChainDumpConfig()
+        CapturingStore store = new();
+        string[] dumps = [];
+        try
         {
-            ServiceUrl = "http://127.0.0.1:9000",
-            BucketName = "fails",
-            AccessKey = "minioadmin",
-            SecretKey = "secret",
-        };
-        IInitConfig initConfig = new InitConfig() { AutoDump = DumpOptions.None };
-        CapturingUploader uploader = new();
-        NethermindApi api = BuildApi(initConfig, invalidChainDumpConfig, receiptFinder, blockchainProcessor);
-
-        File.WriteAllText(BlockTraceDumper.GetDiagnosticFilePath(BlockTraceDumper.GetParityTraceFileName(block.Hash!, isSuccess: false)), "parity");
-        File.WriteAllText(BlockTraceDumper.GetDiagnosticFilePath(BlockTraceDumper.GetGethTraceFileName(block.Hash!, isSuccess: false)), "geth");
-        File.WriteAllText(BlockTraceDumper.GetDiagnosticFilePath(BlockTraceDumper.GetReceiptsTraceFileName(block.Hash!, isSuccess: false)), "receipts");
-
-        await using InvalidChainDumpPlugin plugin = new(invalidChainDumpConfig, _ => uploader, tempDirectory.Path);
-        await plugin.Init(api);
-
-        blockchainProcessor.InvalidBlock += Raise.EventWith(
-            this,
-            new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = block });
-
-        byte[] archiveBytes = await uploader.WaitForUploadAsync();
-
-        using MemoryStream memoryStream = new(archiveBytes);
-        using ZipArchive zipArchive = new(memoryStream, ZipArchiveMode.Read);
-
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain(BlockTraceDumper.GetInvalidBlockRlpFileName(block.Hash!));
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain($"receipts_{block.Hash}.rlp");
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain(BlockTraceDumper.GetParityTraceFileName(block.Hash!, isSuccess: false));
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain(BlockTraceDumper.GetGethTraceFileName(block.Hash!, isSuccess: false));
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain(BlockTraceDumper.GetReceiptsTraceFileName(block.Hash!, isSuccess: false));
-        zipArchive.Entries.Select(static entry => entry.FullName).Should().Contain("manifest.txt");
-    }
-
-    private static NethermindApi BuildApi(
-        IInitConfig initConfig,
-        IInvalidChainDumpConfig invalidChainDumpConfig,
-        IReceiptFinder receiptFinder,
-        IBlockchainProcessor blockchainProcessor)
-    {
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
-        IConfigProvider configProvider = new ConfigProvider(initConfig, invalidChainDumpConfig);
-        ILifetimeScope container = new ContainerBuilder()
-            .AddSingleton(mainProcessingContext)
-            .AddSingleton(receiptFinder)
-            .Build();
-
-        NethermindApi.Dependencies dependencies = new(
-            configProvider,
-            new EthereumJsonSerializer(),
-            LimboLogs.Instance,
-            new ChainSpec { Parameters = new ChainParameters(), },
-            MainnetSpecProvider.Instance,
-            [],
-            Substitute.For<IProcessExitSource>(),
-            container);
-
-        return new NethermindApi(dependencies);
-    }
-
-    private sealed class CapturingUploader : IInvalidChainDumpUploader
-    {
-        private readonly TaskCompletionSource<byte[]> _taskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task UploadAsync(S3UploadTarget uploadTarget, string archivePath, string objectKey, CancellationToken cancellationToken)
-        {
-            _taskCompletionSource.TrySetResult(File.ReadAllBytes(archivePath));
-            return Task.CompletedTask;
-        }
-
-        public async Task<byte[]> WaitForUploadAsync()
-        {
-            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
-            Task completedTask = await Task.WhenAny(_taskCompletionSource.Task, Task.Delay(Timeout.Infinite, timeout.Token));
-            if (completedTask != _taskCompletionSource.Task)
+            BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+                .Intercept<IInitConfig>(static initConfig => initConfig.AutoDump = DumpOptions.None)
+                .AddModule(new InvalidChainDumpModule())
+                .AddSingleton<IInvalidChainDumpConfig>(new InvalidChainDumpConfig { ServiceUrl = "http://127.0.0.1:9000", AccessKey = "key", SecretKey = "secret" })
+                .AddSingleton<IDumpArchiveStore>(store));
+            Block invalid;
+            try
             {
-                throw new TimeoutException("Timed out waiting for diagnostic archive upload.");
+                Block head = await chain.AddBlock();
+                invalid = Build.A.Block.WithParent(head).WithGasLimit(head.GasLimit).WithBaseFeePerGas(head.BaseFeePerGas)
+                    .WithStateRoot(Keccak.Zero).TestObject;
+                dumps = [$"block_{invalid.Hash}.rlp", $"receipts_{invalid.Hash}_failed.txt", $"parityStyle_{invalid.Hash}_failed.txt", $"gethStyle_{invalid.Hash}_failed.txt"];
+
+                using ManualResetEventSlim rejected = new();
+                chain.MainProcessingContext.BlockProcessingQueue.BlockRemoved += (_, e) =>
+                {
+                    if (e.BlockHash == invalid.Hash && e.ProcessingResult != ProcessingResult.Success) rejected.Set();
+                };
+                chain.BlockTree.SuggestBlock(invalid);
+                Assert.That(rejected.Wait(Wait), Is.True, "the block should be rejected");
+                if (!shutDownOnRejection) await store.Uploaded.WaitAsync(Wait);
+            }
+            finally
+            {
+                chain.Dispose();
             }
 
-            return await _taskCompletionSource.Task;
+            Assert.That(store.Uploaded.IsCompletedSuccessfully, Is.True, "shutdown should not complete before the dump is uploaded");
+            (string[] entries, string manifest) = ReadArchive(await store.Uploaded);
+            string[] allEntries = [.. dumps, InvalidChainDumpUploader.ManifestFileName];
+            using (Assert.EnterMultipleScope())
+            {
+                // A disposing container can no longer open the replay env, so a shutdown only guarantees the block RLP.
+                Assert.That(entries, shutDownOnRejection
+                    ? Is.SupersetOf(new[] { dumps[0], InvalidChainDumpUploader.ManifestFileName }).And.SubsetOf(allEntries)
+                    : Is.EqualTo(allEntries));
+                Assert.That(manifest, Does.Contain($"hash={invalid.Hash}").And.Contain($"number={invalid.Number}"));
+                Assert.That(store.ArchivePaths.Any(File.Exists), Is.False, "an uploaded archive should be deleted");
+            }
+        }
+        finally
+        {
+            foreach (string dump in dumps) File.Delete(Path.Combine(Path.GetTempPath(), dump));
+        }
+    }
+
+    [Test]
+    public async Task Failed_upload_does_not_stop_later_uploads([Values] bool timesOut)
+    {
+        using TempPath dump = TempPath.GetTempFile();
+        await File.WriteAllTextAsync(dump.Path, "trace");
+        CapturingStore store = new(failures: 1, hang: timesOut);
+        Block first = Build.A.Block.WithNumber(1).TestObject;
+        Block second = Build.A.Block.WithNumber(2).TestObject;
+
+        try
+        {
+            using (InvalidChainDumpUploader uploader = new(new InvalidChainDumpConfig { UploadTimeoutMs = 100 }, store, LimboLogs.Instance))
+            {
+                uploader.OnDumped(first, [dump.Path]);
+                uploader.OnDumped(second, [dump.Path]);
+            }
+
+            Assert.That(store.Uploaded.IsCompletedSuccessfully, Is.True, "disposal should let the queued upload run after the failed one");
+            (string[] entries, string manifest) = ReadArchive(await store.Uploaded);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries, Is.EqualTo(new[] { Path.GetFileName(dump.Path), InvalidChainDumpUploader.ManifestFileName }));
+                Assert.That(manifest, Does.Contain($"hash={second.Hash}"));
+                Assert.That(File.Exists(store.ArchivePaths.First()), Is.True, "a failed upload should keep its archive");
+            }
+        }
+        finally
+        {
+            foreach (string archivePath in store.ArchivePaths) File.Delete(archivePath);
+        }
+    }
+
+    [TestCase("", "key", "secret")]
+    [TestCase("ftp://127.0.0.1", "key", "secret")]
+    [TestCase("http://127.0.0.1:9000", "", "secret")]
+    [TestCase("http://127.0.0.1:9000", "key", " ")]
+    public void Incomplete_s3_configuration_is_rejected(string serviceUrl, string accessKey, string secretKey) =>
+        Assert.That(
+            () => new S3DumpArchiveStore(new InvalidChainDumpConfig { ServiceUrl = serviceUrl, AccessKey = accessKey, SecretKey = secretKey }),
+            Throws.TypeOf<InvalidConfigurationException>());
+
+    private static (string[] Entries, string Manifest) ReadArchive(byte[] archiveBytes)
+    {
+        using ZipArchive archive = new(new MemoryStream(archiveBytes), ZipArchiveMode.Read);
+        using StreamReader manifest = new(archive.GetEntry(InvalidChainDumpUploader.ManifestFileName)!.Open());
+        return ([.. archive.Entries.Select(static entry => entry.FullName)], manifest.ReadToEnd());
+    }
+
+    /// <summary>Fails the first <c>failures</c> uploads, by hanging until cancelled when <c>hang</c> is set, and captures the next one.</summary>
+    private sealed class CapturingStore(int failures = 0, bool hang = false) : IDumpArchiveStore
+    {
+        private readonly TaskCompletionSource<byte[]> _uploaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls;
+
+        public ConcurrentQueue<string> ArchivePaths { get; } = new();
+
+        public Task<byte[]> Uploaded => _uploaded.Task;
+
+        public async Task<string> UploadAsync(string archivePath, CancellationToken cancellationToken)
+        {
+            ArchivePaths.Enqueue(archivePath);
+            if (Interlocked.Increment(ref _calls) <= failures)
+            {
+                if (hang) await Task.Delay(Timeout.Infinite, cancellationToken);
+                throw new IOException("Upload failed.");
+            }
+
+            _uploaded.TrySetResult(await File.ReadAllBytesAsync(archivePath, cancellationToken));
+            return Path.GetFileName(archivePath);
         }
     }
 }

@@ -69,8 +69,8 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.3.3",
-        "contentHash": "YQv10JuxnciWh0QwnkarSbge4gXQV1qTURf5jkBjNUH/3jYS9QrbxopA4TK1qdjfOfP37tqiJkLSrRRNqX81aw=="
+        "resolved": "4.0.102.17",
+        "contentHash": "GgPhSG8GB0ZkQptRifKaHxEDq7quS4frFW4G9y5fMWv1IwNhWIgLeKeekz6s0+KS9Hpm/niwU60Dwuya9PeeTg=="
       },
       "BinaryEncoding": {
         "type": "Transitive",
@@ -903,12 +903,9 @@
       "nethermind.invalidchaindump": {
         "type": "Project",
         "dependencies": {
-          "AWSSDK.S3": "[4.0.14, )",
-          "Nethermind.Api": "[1.37.0-unstable, )",
-          "Nethermind.Blockchain": "[1.37.0-unstable, )",
-          "Nethermind.Core": "[1.37.0-unstable, )",
-          "Nethermind.Logging": "[1.37.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )"
+          "AWSSDK.S3": "[4.0.104.9, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )"
         }
       },
       "nethermind.jsonrpc": {
@@ -1357,11 +1354,11 @@
       },
       "AWSSDK.S3": {
         "type": "CentralTransitive",
-        "requested": "[4.0.14, )",
-        "resolved": "4.0.14",
-        "contentHash": "fDCodgci9lznbQnLp+t0ed15OGsO4teOtd5p2RZBIGvlnegAwefifVbLr3FKTZrdAyzUIc6aHLcd5DVVPR87Ig==",
+        "requested": "[4.0.104.9, )",
+        "resolved": "4.0.104.9",
+        "contentHash": "6eM22TbT/Rr/Qkd+NHnba57QL7FJg6xA1MEQF8hRJUaDdE/3/MGW0dLVLj6KuYsYox47aosu2T67KcEzCkuFoA==",
         "dependencies": {
-          "AWSSDK.Core": "[4.0.3.3, 5.0.0)"
+          "AWSSDK.Core": "[4.0.102.17, 5.0.0)"
         }
       },
       "BouncyCastle.Cryptography": {

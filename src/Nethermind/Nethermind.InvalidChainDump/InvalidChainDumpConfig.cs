@@ -11,6 +11,5 @@ public class InvalidChainDumpConfig : IInvalidChainDumpConfig
     public string SecretKey { get; set; } = string.Empty;
     public string Region { get; set; } = "us-east-1";
     public string ObjectKeyPrefix { get; set; } = "dumps";
-
-    public int UploadTimeoutMilliseconds { get; set; } = 300000;
+    public int UploadTimeoutMs { get; set; } = 300_000;
 }
