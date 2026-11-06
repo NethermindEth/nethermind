@@ -19,7 +19,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
 
