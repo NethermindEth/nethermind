@@ -27,15 +27,15 @@ public class MessageSerializationService : IMessageSerializationService
 
             if (!serializerInterface.IsAssignableFrom(Serializer.GetType()))
             {
-                ThrowInvalidSerializer(Serializer, serializerInterface);
+                ThrowInvalidSerializer(Serializer, MessageType);
             }
 
             _serializers[MessageType.TypeHandle] = Serializer;
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidSerializer(object serializer, Type serializerInterface)
-            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {serializerInterface.Name}.");
+        static void ThrowInvalidSerializer(object serializer, Type messageType)
+            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {nameof(IMessageSerializer<>)}<{messageType.Name}>.");
     }
 
     public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase

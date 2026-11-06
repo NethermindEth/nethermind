@@ -65,7 +65,7 @@ public class MessageSerializationServiceTests
     [Test]
     public void Rejects_a_serializer_of_another_message_type() =>
         Assert.That(() => new MessageSerializationService(new SerializerInfo(typeof(PingMessage), new SpanSerializer())),
-            Throws.ArgumentException.With.Message.Contains(nameof(SpanSerializer)));
+            Throws.ArgumentException.With.Message.EqualTo($"Serializer of type {nameof(SpanSerializer)} must implement IMessageSerializer<{nameof(PingMessage)}>."));
 
     [TestCaseSource(nameof(P2PMessages))]
     public void ZeroSerialize_writes_the_packet_type_then_the_message(Func<IMessageSerializationService, IByteBuffer> zeroSerialize, string expected)
