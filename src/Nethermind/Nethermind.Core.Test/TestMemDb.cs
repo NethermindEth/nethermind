@@ -108,7 +108,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     }
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
     {
-        ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
+        ArrayPoolList<(byte[], byte[]?)> sortedValue = [with(1)];
 
         foreach (KeyValuePair<byte[], byte[]> keyValuePair in GetAll())
         {

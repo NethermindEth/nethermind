@@ -211,9 +211,9 @@ public class ReadOnlySnapshotBundleBenchmark
         }
 
         // Collect state/storage trie nodes from all snapshots
-        List<(TreePath Path, Hash256 Hash)> shortPaths = new(ArraySize);
-        List<(TreePath Path, Hash256 Hash)> longPaths = new(ArraySize);
-        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> storageNodesList = new(ArraySize);
+        List<(TreePath Path, Hash256 Hash)> shortPaths = [with(ArraySize)];
+        List<(TreePath Path, Hash256 Hash)> longPaths = [with(ArraySize)];
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> storageNodesList = [with(ArraySize)];
 
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
@@ -254,7 +254,7 @@ public class ReadOnlySnapshotBundleBenchmark
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
 
         Hash256 sameAddrHash = Keccak.Compute(sameAddr.Bytes);
-        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> sameAccountNodesList = new(ArraySize);
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> sameAccountNodesList = [with(ArraySize)];
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
             foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)

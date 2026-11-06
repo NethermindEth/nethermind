@@ -181,7 +181,7 @@ public static class McpAbiCodec
             return false;
         }
 
-        List<McpAbiParam> dataParams = new(signature.Inputs.Count);
+        List<McpAbiParam> dataParams = [with(signature.Inputs.Count)];
         foreach (McpAbiParam input in signature.Inputs)
         {
             if (!input.Indexed) dataParams.Add(input);

@@ -13,7 +13,7 @@ internal static class McpToolCalls
 {
     public static async Task<CallToolResult> Call(McpClient client, string toolName, (string Name, object? Value)[] args, CancellationToken cancellationToken = default)
     {
-        Dictionary<string, object?> arguments = new(args.Length);
+        Dictionary<string, object?> arguments = [with(args.Length)];
         foreach ((string name, object? value) in args) arguments[name] = value;
         return await client.CallToolAsync(toolName, arguments, cancellationToken: cancellationToken);
     }

@@ -35,7 +35,7 @@ internal static class McpToolFactory
     public static IEnumerable<McpServerTool> Create(object target, Func<MethodInfo, string> descriptionSuffix, int maxResultSize)
     {
         MethodInfo[] methods = target.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
-        List<McpServerTool> tools = new(methods.Length);
+        List<McpServerTool> tools = [with(methods.Length)];
         foreach (MethodInfo method in methods)
         {
             if (method.GetCustomAttribute<McpServerToolAttribute>() is null)

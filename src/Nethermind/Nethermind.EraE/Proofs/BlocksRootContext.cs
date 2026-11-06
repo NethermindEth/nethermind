@@ -20,9 +20,9 @@ public enum AccumulatorType
 
 public sealed class BlocksRootContext : IDisposable
 {
-    private readonly ArrayPoolList<ValueHash256> _blockRoots = new(8192);
-    private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192);
-    private readonly ArrayPoolList<(Hash256 Hash, UInt256 Td)> _blockHashes = new(8192);
+    private readonly ArrayPoolList<ValueHash256> _blockRoots = [with(8192)];
+    private readonly ArrayPoolList<ValueHash256> _stateRoots = [with(8192)];
+    private readonly ArrayPoolList<(Hash256 Hash, UInt256 Td)> _blockHashes = [with(8192)];
 
     public AccumulatorType AccumulatorType { get; }
 

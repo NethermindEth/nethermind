@@ -37,7 +37,7 @@ public static class BuiltInConfigs
 
     private static Dictionary<string, string> LoadResourceNames()
     {
-        Dictionary<string, string> resources = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> resources = [with(StringComparer.OrdinalIgnoreCase)];
 
         foreach (string resourceName in ResourceAssembly.GetManifestResourceNames())
         {

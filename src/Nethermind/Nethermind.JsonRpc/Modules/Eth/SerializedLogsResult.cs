@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 [JsonConverter(typeof(SerializedLogsResultConverter))]
 internal sealed class SerializedLogsResult(IEnumerable<FilterLog> logs) : IEnumerable<FilterLog>, IDisposable
 {
-    private readonly ArrayPoolList<SerializedLogs> _blocks = new(16);
+    private readonly ArrayPoolList<SerializedLogs> _blocks = [with(16)];
 
     public int Count { get; private set; }
 

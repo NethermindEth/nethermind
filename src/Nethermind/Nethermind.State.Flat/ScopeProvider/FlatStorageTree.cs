@@ -172,7 +172,7 @@ public sealed class FlatStorageTree(
         try
         {
             Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
+            Dictionary<UInt256, UInt256> latest = [with(writes.Count)];
             while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);
             Unsafe.SkipInit(out EvmWord word);
@@ -341,7 +341,7 @@ public sealed class FlatStorageTree(
         Action<Address, Hash256> onRootUpdated,
         Dictionary<UInt256, UInt256>? earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = [with(estimatedEntries)];
         private bool _hasSelfDestruct;
         private Dictionary<UInt256, UInt256>? _earlyApplied = earlyApplied;
         private int _reused;

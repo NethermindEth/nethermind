@@ -48,7 +48,7 @@ internal struct NativeCallTracerBuffer
     {
         if (_chunk is not null)
         {
-            (_filledChunks ??= new ArrayPoolList<byte[]>(4)).Add(_chunk);
+            (_filledChunks ??= [with(4)]).Add(_chunk);
         }
 
         _chunkLength = _chunkLength == 0 ? MinChunkLength : Math.Min(2 * _chunkLength, MaxChunkLength);

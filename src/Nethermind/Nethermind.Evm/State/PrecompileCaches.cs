@@ -142,7 +142,7 @@ public sealed partial class PrecompileCaches
     {
         FrozenDictionary<AddressAsKey, CodeInfo> precompiles = precompileProvider.GetPrecompiles();
 
-        List<CacheablePrecompile> cacheable = new(precompiles.Count);
+        List<CacheablePrecompile> cacheable = [with(precompiles.Count)];
         foreach (KeyValuePair<AddressAsKey, CodeInfo> precompile in precompiles)
         {
             if (precompile.Value.Precompile?.SupportsCaching == true)

@@ -49,7 +49,7 @@ public class TraceStreamingAllocsBenchmarks
     [Benchmark(Baseline = true, Description = "Buffered: accumulate all tx trees in memory, then serialize at end")]
     public int Buffered()
     {
-        List<ParityLikeTxTrace> traces = new(TxsPerBlock);
+        List<ParityLikeTxTrace> traces = [with(TxsPerBlock)];
         for (int txIdx = 0; txIdx < TxsPerBlock; txIdx++)
         {
             ParityLikeTxTracer tracer = new(_block, _tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);

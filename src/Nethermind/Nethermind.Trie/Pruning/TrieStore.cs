@@ -771,7 +771,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <returns>A tuple of the block to be committed and the canonical block number if known.</returns>
     private (ArrayPoolList<BlockCommitSet>, ulong?) DetermineCommitSetToPersistInSnapshot(int count)
     {
-        ArrayPoolList<BlockCommitSet> candidateSets = new(count);
+        ArrayPoolList<BlockCommitSet> candidateSets = [with(count)];
         try
         {
             if (!_commitSetQueue.TryGetBounds(out ulong minBlockNumber, out ulong maxBlockNumber))

@@ -1486,7 +1486,7 @@ internal sealed class McpTransactionTools(
                 return false;
             }
 
-            List<SimulateCallInput> parsed = new(calls.Length);
+            List<SimulateCallInput> parsed = [with(calls.Length)];
             ulong totalGas = 0;
             for (int i = 0; i < calls.Length; i++)
             {
@@ -1738,7 +1738,7 @@ internal sealed class McpTransactionTools(
         }
 
         TransactionForRpc[] transactions = block.Transactions?.Full ?? [];
-        SortedDictionary<string, int> types = new(StringComparer.Ordinal);
+        SortedDictionary<string, int> types = [with(StringComparer.Ordinal)];
         Dictionary<AddressAsKey, int> recipients = [];
         int creations = 0;
         int classificationsOmitted = 0;

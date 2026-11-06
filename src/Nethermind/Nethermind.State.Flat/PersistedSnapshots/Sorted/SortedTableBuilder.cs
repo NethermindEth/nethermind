@@ -41,7 +41,7 @@ internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWrite
         _tableStart = writer.Written;
         _dataBlock = new BlockBuilder(restartInterval, SortedTable.BlockSize);
         _indexBlock = new BlockBuilder(restartInterval);
-        _prevKey = new NativeMemoryList<byte>(256);
+        _prevKey = [with(256)];
     }
 
     /// <summary>Stream one record. Keys must arrive in strictly ascending order and be unique; key and

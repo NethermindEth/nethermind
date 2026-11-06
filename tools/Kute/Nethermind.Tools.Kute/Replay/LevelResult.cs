@@ -141,7 +141,7 @@ public sealed record LevelResult
 /// <param name="expectedRequests">Hint used to size the latency buffer up front.</param>
 public sealed class WorkerTally(int expectedRequests)
 {
-    private readonly List<long> _latencyTimestamps = new(Math.Max(expectedRequests, 4));
+    private readonly List<long> _latencyTimestamps = [with(Math.Max(expectedRequests, 4))];
 
     /// <summary>Requests that returned a JSON-RPC result.</summary>
     public int Succeeded { get; private set; }

@@ -490,7 +490,7 @@ internal sealed class McpEthExtraTools(
 
         // Tips of empty blocks are zero by definition, so only blocks that carried transactions vote.
         UInt256[] tips = new UInt256[rewardPercentiles.Length];
-        List<UInt256> samples = new(count);
+        List<UInt256> samples = [with(count)];
         for (int p = 0; p < rewardPercentiles.Length; p++)
         {
             samples.Clear();

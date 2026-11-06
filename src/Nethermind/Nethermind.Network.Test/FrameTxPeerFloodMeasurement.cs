@@ -239,7 +239,7 @@ public class FrameTxPeerFloodMeasurement
     /// <remarks>Its content does not matter: the controller sees only the verdict the substitute pool returns.</remarks>
     private static byte[] SerializeTransactions(int count)
     {
-        ArrayPoolList<Transaction> transactions = new(count);
+        ArrayPoolList<Transaction> transactions = [with(count)];
         for (int i = 0; i < count; i++)
         {
             transactions.Add(Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject);

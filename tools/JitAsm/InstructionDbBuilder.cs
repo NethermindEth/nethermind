@@ -44,7 +44,7 @@ internal static class InstructionDbBuilder
         string[] fallbacks = FallbackChain.TryGetValue(targetArch, out string[]? fb) ? fb : [];
 
         InstructionDb db = new(targetArch);
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
 
         using FileStream stream = File.OpenRead(xmlPath);
         using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });

@@ -201,7 +201,7 @@ public static class McpKnownAbi
             list.Add(new KnownEvent(signature, standard));
         }
 
-        Dictionary<Hash256, KnownEvent[]> result = new(byTopic.Count);
+        Dictionary<Hash256, KnownEvent[]> result = [with(byTopic.Count)];
         foreach (KeyValuePair<Hash256, List<KnownEvent>> pair in byTopic) result[pair.Key] = [.. pair.Value];
         return result;
     }

@@ -122,7 +122,7 @@ public static class NodeRecordBufferExtensions
         private readonly INodeRecordBuffer _buffer = buffer;
         private readonly ulong _rootPointer = rootPointer;
         private readonly ulong _lowerBound = lowerBound;
-        private readonly ArrayPoolList<Frame> _stack = new(4);
+        private readonly ArrayPoolList<Frame> _stack = [with(4)];
         private bool _started;
         private bool _disposed;
 

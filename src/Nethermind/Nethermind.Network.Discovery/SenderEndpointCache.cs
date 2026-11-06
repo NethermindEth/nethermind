@@ -20,7 +20,7 @@ internal sealed class SenderEndpointCache(int capacity)
     private static readonly IPEndPoint IPv4Template = new(IPAddress.Any, 0);
     private static readonly IPEndPoint IPv6Template = new(IPAddress.IPv6Any, 0);
 
-    private readonly Dictionary<SocketAddress, IPEndPoint> _endpoints = new(capacity);
+    private readonly Dictionary<SocketAddress, IPEndPoint> _endpoints = [with(capacity)];
 
     /// <summary>
     /// Returns the normalized endpoint of <paramref name="address"/>, which may be overwritten after the call.

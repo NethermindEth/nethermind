@@ -69,7 +69,7 @@ public static class EraPathUtils
     /// <exception cref="EraException">A listed file name has no epoch.</exception>
     internal static Dictionary<long, ValueHash256> ParseManifest(string[] lines, long firstEpoch)
     {
-        Dictionary<long, ValueHash256> entries = new(lines.Length);
+        Dictionary<long, ValueHash256> entries = [with(lines.Length)];
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];

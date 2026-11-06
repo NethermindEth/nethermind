@@ -88,7 +88,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     {
         if (tx is not null && (_txHash is null || _txHash == tx.Hash))
             _transactions.Add(tx.Hash);
-        List<ITxTracer> started = new(_children.Count);
+        List<ITxTracer> started = [with(_children.Count)];
         try
         {
             foreach (IBlockTracer<GethLikeTxTrace> child in _children.Values)
@@ -129,7 +129,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         GethLikeTxTrace[] results = new GethLikeTxTrace[_transactions.Count];
         for (int i = 0; i < results.Length; i++)
         {
-            values[i] = new Dictionary<string, JsonElement>(_children.Count);
+            values[i] = [with(_children.Count)];
             results[i] = new GethLikeTxTrace
             {
                 TxHash = _transactions[i],

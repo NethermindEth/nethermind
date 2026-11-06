@@ -21,7 +21,7 @@ internal static class JsonRpcEndpoint
                 return Results.Json(JsonRpcResponse.Failure(null, -32600, $"Batch must contain between 1 and {MaxBatchSize} requests."));
             }
 
-            List<JsonRpcResponse> responses = new(requestCount);
+            List<JsonRpcResponse> responses = [with(requestCount)];
             foreach (JsonElement request in payload.EnumerateArray())
             {
                 JsonRpcResponse? response = HandleSingle(request, store, status);

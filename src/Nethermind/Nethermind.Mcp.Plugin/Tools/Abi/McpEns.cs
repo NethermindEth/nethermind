@@ -132,7 +132,7 @@ public static class McpEns
     public static byte[] DnsEncode(string normalizedName)
     {
         string[] labels = normalizedName.Split('.');
-        List<byte> result = new(normalizedName.Length + 2);
+        List<byte> result = [with(normalizedName.Length + 2)];
         foreach (string label in labels)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(label);

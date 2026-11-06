@@ -56,7 +56,7 @@ internal sealed class TransactionDiffView
     public static TransactionDiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
     {
         // AccountChanges also holds read-only accesses; filtering first keeps the sort down to the diff.
-        List<AccountChangesAtIndex> accounts = new(slice.AccountCount);
+        List<AccountChangesAtIndex> accounts = [with(slice.AccountCount)];
         int balanceCount = 0, codeCount = 0, nonceCount = 0, slotCount = 0;
         foreach (AccountChangesAtIndex account in slice.AccountChanges)
         {

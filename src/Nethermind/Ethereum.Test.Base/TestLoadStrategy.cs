@@ -172,7 +172,7 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
             count += loadedByFile[i].Count;
         }
 
-        List<EthereumTest> result = new(count);
+        List<EthereumTest> result = [with(count)];
         for (int i = 0; i < loadedByFile.Length; i++)
         {
             result.AddRange(loadedByFile[i]);

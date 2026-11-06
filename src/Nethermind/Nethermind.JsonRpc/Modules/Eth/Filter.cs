@@ -113,7 +113,7 @@ public class Filter : IJsonRpcParam
                     throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
                 }
 
-                HashSet<AddressAsKey> result = new(addressCount);
+                HashSet<AddressAsKey> result = [with(addressCount)];
                 int index = 0;
                 foreach (JsonElement element in token.EnumerateArray())
                 {

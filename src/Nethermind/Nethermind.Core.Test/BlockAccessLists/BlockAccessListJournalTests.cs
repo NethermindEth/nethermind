@@ -393,7 +393,7 @@ public class BlockAccessListJournalTests
     {
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF];
         BlockAccessListAtIndex slice = new(8, maxPooledAccountChanges);
-        HashSet<AccountChangesAtIndex> firstRun = new(ReferenceEqualityComparer.Instance);
+        HashSet<AccountChangesAtIndex> firstRun = [with(ReferenceEqualityComparer.Instance)];
         foreach (Address address in addresses) firstRun.Add(slice.RecordReadAndGet(address));
 
         slice.Clear();

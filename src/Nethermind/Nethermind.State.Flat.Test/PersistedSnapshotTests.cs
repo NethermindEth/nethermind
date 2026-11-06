@@ -1312,7 +1312,7 @@ public class PersistedSnapshotTests
     {
         int n = snapshots.Count;
         SortedDictionary<byte[], (int Source, byte[] Value)> entries =
-            new(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)));
+            [with(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)))];
         Dictionary<Address, int> barriers = [];
         List<(byte[] Key, byte[] Value)> oldest = [];
         List<(byte[] Key, byte[] Value)> newest = [];

@@ -68,7 +68,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         Func<DiscoveryApp> discoveryV4Factory,
         Func<DiscoveryV5App> discoveryV5Factory)
     {
-        List<KademliaDiscoveryApp> discoveryApps = new(2);
+        List<KademliaDiscoveryApp> discoveryApps = [with(2)];
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
             discoveryApps.Add(discoveryV4Factory());

@@ -16,7 +16,7 @@ public sealed class McpToolCatalog(IEnumerable<IMcpToolSet> toolSets)
     internal IReadOnlyList<McpServerTool> CreateServerTools()
     {
         List<McpServerTool> tools = [];
-        HashSet<string> names = new(StringComparer.Ordinal);
+        HashSet<string> names = [with(StringComparer.Ordinal)];
         foreach (IMcpToolSet toolSet in toolSets)
         {
             foreach (McpServerTool tool in toolSet.CreateServerTools())

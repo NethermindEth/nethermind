@@ -37,7 +37,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     private static readonly TimeSpan DefaultOldRequestThreshold = Timeouts.Cleanup;
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
-    private readonly Dictionary<long, Request<T66Msg, TData>> _requests = new(MaxConcurrentRequest);
+    private readonly Dictionary<long, Request<T66Msg, TData>> _requests = [with(MaxConcurrentRequest)];
     private ClockCache<long, byte>? _expiredRequests;
     private readonly Lock _lock = new();
     private readonly CancellationToken _cancellationToken = cancellationToken;

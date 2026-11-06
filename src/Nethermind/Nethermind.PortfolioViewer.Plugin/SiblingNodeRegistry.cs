@@ -88,7 +88,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
             }
             foreach (int port in expired) _lastSeen.Remove(port);
 
-            List<SiblingNode> siblings = new(_lastSeen.Count);
+            List<SiblingNode> siblings = [with(_lastSeen.Count)];
             foreach (KeyValuePair<int, (SiblingNode Node, DateTimeOffset LastSeen)> entry in _lastSeen) siblings.Add(entry.Value.Node);
             siblings.Sort(static (a, b) => a.Port.CompareTo(b.Port));
             _siblings = siblings;

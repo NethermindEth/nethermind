@@ -79,8 +79,9 @@ internal static class Program
 
     private static int RunCli(string[] args)
     {
-        RootCommand rootCommand = new("JIT Assembly Disassembler - Generate JIT assembly output for .NET methods")
-        {
+        RootCommand rootCommand =
+        [
+            with("JIT Assembly Disassembler - Generate JIT assembly output for .NET methods"),
             AssemblyOption,
             TypeOption,
             MethodOption,
@@ -91,7 +92,7 @@ internal static class Program
             NoAnnotateOption,
             ArchOption,
             VerboseOption
-        };
+        ];
 
         int exitCode = 0;
         rootCommand.SetAction(parseResult =>
@@ -518,7 +519,7 @@ internal static class Program
     /// </summary>
     private static Dictionary<string, string> BuildAssemblyMap(string assemblyPath, string assemblyDir, bool verbose)
     {
-        Dictionary<string, string> map = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> map = [with(StringComparer.OrdinalIgnoreCase)];
         string depsPath = Path.ChangeExtension(assemblyPath, ".deps.json");
         if (!File.Exists(depsPath))
             return map;

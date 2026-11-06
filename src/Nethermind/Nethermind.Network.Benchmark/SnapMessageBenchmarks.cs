@@ -80,13 +80,13 @@ public class SnapMessageBenchmarks
                 });
                 break;
             case Message.AccountRange:
-                ArrayPoolList<PathWithAccount> accounts = new(256);
+                ArrayPoolList<PathWithAccount> accounts = [with(256)];
                 foreach (Hash256 hash in Hashes(256))
                     accounts.Add(new PathWithAccount(hash.ValueHash256, new Account((ulong)accounts.Count, UInt256.One << 64, hash, TestItem.KeccakA)));
                 SetUp(service, new Snap1.AccountRangeMessage { RequestId = RequestId, PathsWithAccounts = accounts, Proofs = Nodes(8, 532) });
                 break;
             case Message.GetStorageRanges:
-                ArrayPoolList<PathWithAccount> storageAccounts = new(128);
+                ArrayPoolList<PathWithAccount> storageAccounts = [with(128)];
                 foreach (Hash256 hash in Hashes(128))
                     storageAccounts.Add(new PathWithAccount { Path = hash.ValueHash256 });
                 SetUp(service, new Snap1.GetStorageRangeMessage
@@ -97,10 +97,10 @@ public class SnapMessageBenchmarks
                 });
                 break;
             case Message.StorageRanges:
-                ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> slots = new(4);
+                ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> slots = [with(4)];
                 for (int i = 0; i < 4; i++)
                 {
-                    ArrayPoolList<PathWithStorageSlot> accountSlots = new(128);
+                    ArrayPoolList<PathWithStorageSlot> accountSlots = [with(128)];
                     foreach (Hash256 hash in Hashes(128))
                         accountSlots.Add(new PathWithStorageSlot(hash.ValueHash256, Rlp.Encode(hash.Bytes[..20]).Bytes));
                     slots.Add(accountSlots);
@@ -108,7 +108,7 @@ public class SnapMessageBenchmarks
                 SetUp(service, new Snap1.StorageRangeMessage { RequestId = RequestId, Slots = slots, Proofs = Nodes(8, 532) });
                 break;
             case Message.GetByteCodes:
-                ArrayPoolList<ValueHash256> codeHashes = new(64);
+                ArrayPoolList<ValueHash256> codeHashes = [with(64)];
                 foreach (Hash256 hash in Hashes(64)) codeHashes.Add(hash.ValueHash256);
                 SetUp(service, new Snap1.GetByteCodesMessage { RequestId = RequestId, Hashes = codeHashes, Bytes = ResponseBytes });
                 break;
@@ -125,12 +125,12 @@ public class SnapMessageBenchmarks
                 SetUp(service, new Snap1.TrieNodesMessage(Nodes(384, 100)) { RequestId = RequestId });
                 break;
             case Message.GetBlockAccessLists:
-                ArrayPoolList<ValueHash256> blockHashes = new(64);
+                ArrayPoolList<ValueHash256> blockHashes = [with(64)];
                 foreach (Hash256 hash in Hashes(64)) blockHashes.Add(hash.ValueHash256);
                 SetUp(service, new Snap2.GetBlockAccessListsMessage { RequestId = RequestId, BlockHashes = blockHashes, Bytes = ResponseBytes });
                 break;
             case Message.BlockAccessLists:
-                ArrayPoolList<byte[]> blockAccessLists = new(16);
+                ArrayPoolList<byte[]> blockAccessLists = [with(16)];
                 for (int i = 0; i < 16; i++)
                     blockAccessLists.Add(Rlp.Encode(new byte[16 * 1024]).Bytes);
                 SetUp(service, new Snap2.BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = RequestId });
@@ -184,7 +184,7 @@ public class SnapMessageBenchmarks
 
     private static ByteArrayListAdapter Nodes(int count, int size)
     {
-        ArrayPoolList<byte[]> nodes = new(count);
+        ArrayPoolList<byte[]> nodes = [with(count)];
         for (int i = 0; i < count; i++)
         {
             byte[] node = new byte[size];

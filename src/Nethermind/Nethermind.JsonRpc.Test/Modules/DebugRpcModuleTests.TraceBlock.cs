@@ -3553,7 +3553,7 @@ public partial class DebugRpcModuleTests
 
     private static async Task AssertBlockResultSerialization(int traceCount, bool errors, bool includeErrorResult)
     {
-        List<GethLikeTxTrace> traces = new(traceCount);
+        List<GethLikeTxTrace> traces = [with(traceCount)];
         for (int i = 0; i < traceCount; i++)
         {
             GethLikeTxTrace trace = new();

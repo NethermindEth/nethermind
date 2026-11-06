@@ -14,8 +14,8 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity = maxCapacity;
         private readonly string _name = name ?? throw new ArgumentNullException(nameof(name));
         private readonly Dictionary<TKey, int> _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, int>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, int>(startCapacity);
+                ? [with((IEqualityComparer<TKey>)Bytes.EqualityComparer)]
+                : [with(startCapacity)];
         private readonly McsLock _lock = new();
         private readonly LruSlots<TKey> _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
 

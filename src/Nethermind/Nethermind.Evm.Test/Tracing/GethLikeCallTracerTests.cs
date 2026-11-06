@@ -1021,7 +1021,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using NativeCallTracerCallFrame frame = new() { Type = Instruction.CALL, From = TestItem.AddressA, Gas = 0x5208 };
         string withoutLogs = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
 
-        frame.Logs = new ArrayPoolList<NativeCallTracerLogEntry>(logs);
+        frame.Logs = [with(logs)];
 
         string entries = string.Join(',', logs.Select(static log => JsonSerializer.Serialize(log, EthereumJsonSerializer.JsonOptions)));
         Assert.That(JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions), Is.EqualTo($"{withoutLogs[..^1]},\"logs\":[{entries}]}}"));

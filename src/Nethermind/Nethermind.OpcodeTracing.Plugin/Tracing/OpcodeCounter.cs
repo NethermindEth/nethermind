@@ -80,5 +80,5 @@ public sealed class OpcodeCounter
     /// Gets an immutable snapshot of current opcode counts as a dictionary.
     /// </summary>
     /// <returns>A dictionary mapping opcode bytes to counts.</returns>
-    public Dictionary<byte, long> ToOpcodeCountsDictionary() => new(_counters);
+    public Dictionary<byte, long> ToOpcodeCountsDictionary() => [with(_counters)];
 }

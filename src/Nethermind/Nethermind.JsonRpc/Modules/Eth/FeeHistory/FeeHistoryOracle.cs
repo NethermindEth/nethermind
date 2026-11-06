@@ -310,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 }
             }
 
-            List<RewardInfo> rewardInfos = new(txs.Length);
+            List<RewardInfo> rewardInfos = [with(txs.Length)];
             ulong gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
@@ -369,7 +369,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             List<RewardInfo> rewardsInBlock = blockRewards.SortedByPremium;
             ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
-            ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
+            ArrayPoolList<UInt256> percentileValues = [with(rewardPercentiles.Length)];
 
             foreach (double percentile in rewardPercentiles)
             {

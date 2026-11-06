@@ -959,7 +959,7 @@ public class SnapProviderTests
             IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
             DrainAccountRangePartition(progressTracker);
 
-            ArrayPoolList<byte[]> items = new(response.Length);
+            ArrayPoolList<byte[]> items = [with(response.Length)];
             using IByteArrayList codes = new ByteArrayListAdapter(items);
             foreach (char c in response) items.Add(code[c]);
 
@@ -1487,7 +1487,7 @@ public class SnapProviderTests
     }
 
     private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
-        new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+        [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
 
     /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
     private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot
@@ -1666,7 +1666,7 @@ public class SnapProviderTests
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
-        ArrayPoolList<PathWithAccount> accounts = new(accountCount);
+        ArrayPoolList<PathWithAccount> accounts = [with(accountCount)];
         for (int i = 0; i < accountCount; i++)
         {
             accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
@@ -1677,7 +1677,7 @@ public class SnapProviderTests
 
     private static SlotsAndProofs CreateEmptySlotsResponse(int slotListCount)
     {
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = new(slotListCount);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = [with(slotListCount)];
         for (int i = 0; i < slotListCount; i++)
         {
             pathsAndSlots.Add(new ArrayPoolList<PathWithStorageSlot>(0));

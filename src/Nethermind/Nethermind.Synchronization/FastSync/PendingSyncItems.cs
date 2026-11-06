@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.FastSync
                 length = maxSize;
             }
 
-            List<StateSyncItem> requestItems = new(length);
+            List<StateSyncItem> requestItems = [with(length)];
 
             // Codes have priority over State Nodes
             if (!CodeItems.IsEmpty)

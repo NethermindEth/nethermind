@@ -24,8 +24,8 @@ namespace Nethermind.KeyStore
     public class MemKeyStore(PrivateKey[] privateKeys, string ketStoreDir) : IKeyStore
     {
         private readonly Dictionary<Address, PrivateKey> _privateKeys =
-                new(privateKeys.Select(static pk =>
-                    new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
+                [with(privateKeys.Select(static pk =>
+                    new KeyValuePair<Address, PrivateKey>(pk.Address, pk)))];
         private readonly string _ketStoreDir = ketStoreDir;
 
         public (KeyStoreItem? KeyData, Result Result) Verify(string keyJson) => throw new System.NotImplementedException();

@@ -43,7 +43,7 @@ internal static partial class StaticCtorDetector
 
     public static IReadOnlyList<string> DetectStaticCtors(string disassemblyOutput)
     {
-        HashSet<string> detectedTypes = new(StringComparer.Ordinal);
+        HashSet<string> detectedTypes = [with(StringComparer.Ordinal)];
 
         // Detect direct .cctor calls
         foreach (Match match in CctorCallPattern().Matches(disassemblyOutput))
