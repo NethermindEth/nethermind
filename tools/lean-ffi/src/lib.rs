@@ -64,10 +64,26 @@ fn glibc_setting(tunable: &str, alias: &str, default: i32) -> i32 {
         .and_then(|tunables| {
             tunables
                 .split(':')
-                .find_map(|entry| entry.strip_prefix(key.as_str())?.parse().ok())
+                .find_map(|entry| parse_c_integer(entry.strip_prefix(key.as_str())?))
         })
-        .or_else(|| std::env::var(alias).ok()?.parse().ok())
+        .or_else(|| parse_c_integer(&std::env::var(alias).ok()?))
         .unwrap_or(default)
+}
+
+/// Parses an unsigned integer as `strtoul(s, _, 0)` does (decimal, `0x` hex or leading-`0` octal), saturating at `i32::MAX`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn parse_c_integer(value: &str) -> Option<i32> {
+    let parsed = if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16)
+    } else if value.len() > 1 && value.starts_with('0') {
+        u64::from_str_radix(&value[1..], 8)
+    } else {
+        value.parse()
+    };
+    parsed.ok().map(|v| i32::try_from(v).unwrap_or(i32::MAX))
 }
 #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn restore_system_heap() {}
@@ -1624,6 +1640,17 @@ mod tests {
         stop.store(true, Ordering::Release);
         assert_eq!(verifier.join().unwrap(), 0);
         verify_aggregate(&other_hash, &other.unwrap()).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn glibc_settings_parse_like_strtoul() {
+        assert_eq!(parse_c_integer("131072"), Some(131072));
+        assert_eq!(parse_c_integer("0x40000"), Some(0x40000));
+        assert_eq!(parse_c_integer("0100"), Some(64));
+        assert_eq!(parse_c_integer("0"), Some(0));
+        assert_eq!(parse_c_integer("4294967296"), Some(i32::MAX));
+        assert_eq!(parse_c_integer("lots"), None);
     }
 
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
