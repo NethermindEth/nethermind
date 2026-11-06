@@ -357,13 +357,19 @@ fn encode_program(program: &Program) -> Vec<u8> {
     }
     out
 }
-fn stark_program(code: &[u8]) -> Result<Program, ()> {
-    use cpu::{DerefMode, Op};
+/// The instruction count of `code` if its length matches it, checked without decoding any instruction.
+fn instruction_count(code: &[u8]) -> Result<usize, ()> {
     let mut r = Reader { bytes: code };
     let n = r.number()?;
     if n == 0 || n > MAX_INSTRUCTIONS || !n.is_power_of_two() || r.bytes.len() != n * 45 {
         return Err(());
     }
+    Ok(n)
+}
+fn stark_program(code: &[u8]) -> Result<Program, ()> {
+    use cpu::{DerefMode, Op};
+    let n = instruction_count(code)?;
+    let mut r = Reader { bytes: &code[4..] };
     let mut ops = Vec::with_capacity(n);
     for _ in 0..n {
         let tag = r.take(1)?[0];
@@ -466,10 +472,11 @@ fn decode_stark(
     }
     let mut r = Reader { bytes: witness };
     let code = r.blob()?;
-    let program = stark_program(code)?;
+    instruction_count(code)?;
     if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
         return Err(());
     }
+    let program = stark_program(code)?;
     let mut preflight = Preflight::new(r.bytes);
     preflight.cpu()?;
     preflight.end()?;
