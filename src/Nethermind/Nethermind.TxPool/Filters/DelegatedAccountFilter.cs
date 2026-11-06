@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters
             if (!state.HeadSpec.IsEip7702Enabled)
                 return AcceptTxResult.Accepted;
 
-            if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
+            if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
             if (!state.SenderHasDelegatedCode(worldState)
@@ -44,9 +44,9 @@ namespace Nethermind.TxPool.Filters
             (standardPool.ContainsBucket(tx.SenderAddress!) || blobPool.ContainsBucket(tx.SenderAddress!))
             && PendingReplacement.Find(tx, standardPool, blobPool) is null;
 
-        private bool AuthorityHasPendingTx(AuthorizationTuple[] authorizations)
+        private bool AuthorityHasPendingTx(Transaction tx)
         {
-            foreach (AuthorizationTuple authorization in authorizations)
+            foreach (AuthorizationTuple authorization in tx.AuthorizationList!)
             {
                 //RecoverAuthorityFilter runs before this, so if a signature is null, we assume it is bad
                 if (pendingDelegations.GetAuthority(authorization) is not { } authority)
@@ -55,12 +55,20 @@ namespace Nethermind.TxPool.Filters
                 }
                 // An authorization below the authority's nonce can never apply, so it cannot disturb the pending transactions.
                 if ((standardPool.ContainsBucket(authority) || blobPool.ContainsBucket(authority))
-                    && authorization.Nonce >= worldState.GetNonce(authority))
+                    && authorization.Nonce >= worldState.GetNonce(authority)
+                    && !IsOnlyPendingTxOfAuthorityReplacedBy(tx, authority))
                 {
                     return true;
                 }
             }
             return false;
         }
+
+        /// <summary>Whether the only pooled transaction of <paramref name="authority"/> is the one <paramref name="tx"/> replaces.</summary>
+        /// <remarks>Lets a self-sponsored set-code transaction be sped up or cancelled, as Geth allows one in-flight transaction per authority.</remarks>
+        private bool IsOnlyPendingTxOfAuthorityReplacedBy(Transaction tx, Address authority) =>
+            authority == tx.SenderAddress
+            && standardPool.GetBucketCount(authority) + blobPool.GetBucketCount(authority) == 1
+            && PendingReplacement.Find(tx, standardPool, blobPool) is not null;
     }
 }
