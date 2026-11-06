@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -20,10 +21,10 @@ public sealed class NeighborsMsgSerializer(
 {
     private static readonly RlpLimit NodesRlpLimit = RlpLimit.For<NeighborsMsg>(16, nameof(NeighborsMsg.Nodes));
 
-    private static Node DecodeNode(ref RlpReader ctx)
+    private static Node DecodeNode(ref RlpReader reader)
     {
-        int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
-        int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
+        int count = ctx.CountItems();
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         IPEndPoint discoveryAddress = GetAddress(ip, ctx.DecodeInt());
         IPEndPoint address = discoveryAddress;
@@ -36,6 +37,7 @@ public sealed class NeighborsMsgSerializer(
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
+        reader.ExitSequenceIgnoringRest(ctx, itemLength);
         return new Node(new PublicKey(id), address, discoveryAddress.Port);
     }
 
@@ -44,15 +46,17 @@ public sealed class NeighborsMsgSerializer(
         (_, int contentLength, int nodesContentLength) = GetDataLength(msg);
 
         RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {
-            writer.StartSequence(nodesContentLength);
+            RlpSequence nodes = writer.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
                 SerializeNode(ref writer, node);
             }
+
+            writer.EndSequence(nodes);
         }
         else
         {
@@ -60,6 +64,7 @@ public sealed class NeighborsMsgSerializer(
         }
 
         writer.Encode(msg.ExpirationTime);
+        writer.EndSequence(sequence);
 
         return CompletePacket(destination, in writer, out _);
     }
@@ -68,25 +73,22 @@ public sealed class NeighborsMsgSerializer(
     {
         (PublicKey FarPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
 
-        RlpReader ctx = new(data);
-        ctx.ReadSequenceLength();
-        int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
-        int count = ctx.PeekNumberOfItemsRemaining(nodesEnd);
-        ctx.GuardLimit(count, NodesRlpLimit);
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
+        RlpReader nodes = ctx.EnterSequence(out int nodesLength);
+        int count = nodes.CountItems(NodesRlpLimit);
         Node[] decoded = new Node[count];
         int nodeCount = 0;
         for (int i = 0; i < count; i++)
         {
-            if (ctx.IsNextItemEmptyList())
+            if (nodes.TryReadEmptySequence())
             {
-                ctx.SkipItem();
                 continue;
             }
 
-            decoded[nodeCount++] = DecodeNode(ref ctx);
+            decoded[nodeCount++] = DecodeNode(ref nodes);
         }
 
-        ctx.Check(nodesEnd);
+        ctx.ExitSequence(nodes, nodesLength);
         if (nodeCount != decoded.Length)
         {
             Array.Resize(ref decoded, nodeCount);

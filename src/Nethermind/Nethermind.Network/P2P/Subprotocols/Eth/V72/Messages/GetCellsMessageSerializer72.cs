@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -16,20 +17,22 @@ public class GetCellsMessageSerializer72 : IMessageSerializer<GetCellsMessage72>
 
     public int Serialize(Span<byte> destination, GetCellsMessage72 message)
     {
-        RlpWriter writer = new(destination);
-        writer.StartSequence(GetContentLength(message));
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
         writer.Encode(message.RequestId);
 
         int hashesLength = GetHashesContentLength(message.Hashes);
-        writer.StartSequence(hashesLength);
+        RlpSequence hashes = writer.StartSequence(hashesLength);
 
         foreach (ValueHash256 hash in message.Hashes)
         {
             writer.Encode(hash);
         }
 
+        writer.EndSequence(hashes);
         writer.Encode(message.CellMask);
-        return writer.Position;
+        writer.EndSequence(sequence);
+        return writer.Length;
     }
 
     public GetCellsMessage72 Deserialize(ReadOnlySpan<byte> data)
@@ -40,31 +43,29 @@ public class GetCellsMessageSerializer72 : IMessageSerializer<GetCellsMessage72>
         return message;
     }
 
-    private static GetCellsMessage72 Deserialize(ref RlpReader ctx)
+    private static GetCellsMessage72 Deserialize(ref RlpReader reader)
     {
-        int sequenceLength = ctx.ReadSequenceLength();
-        int checkPosition = ctx.Position + sequenceLength;
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
         long requestId = ctx.DecodeLong();
 
-        int hashesCheckPosition = ctx.ReadSequenceLength() + ctx.Position;
-        int hashCount = ctx.PeekNumberOfItemsRemaining(hashesCheckPosition, HashesRlpLimit.Limit + 1);
-        ctx.GuardLimit(hashCount, HashesRlpLimit);
+        RlpReader hashesReader = ctx.EnterSequence(out int hashesItemLength);
+        int hashCount = hashesReader.CountItems(HashesRlpLimit);
         int retainedHashCount = Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
         ValueHash256[] hashes = new ValueHash256[retainedHashCount];
         for (int i = 0; i < retainedHashCount; i++)
         {
-            hashes[i] = ctx.DecodeValueKeccakNonNull();
+            hashes[i] = hashesReader.DecodeValueKeccakNonNull();
         }
 
         for (int i = retainedHashCount; i < hashCount; i++)
         {
-            ctx.DecodeByteArraySpan(size: Hash256.Size);
+            hashesReader.DecodeByteArraySpan(size: Hash256.Size);
         }
 
-        ctx.Check(hashesCheckPosition);
+        ctx.ExitSequence(hashesReader, hashesItemLength);
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
-        ctx.Check(checkPosition);
+        reader.ExitSequence(ctx, itemLength);
         return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 

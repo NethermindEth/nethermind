@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Stateless.Execution.IO;
@@ -64,7 +65,7 @@ public class WitnessTests
             Keys = IOwnedReadOnlyList<byte[]>.Empty
         };
 
-        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpException>());
+        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]

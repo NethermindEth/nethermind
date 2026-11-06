@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             NewPooledTransactionHashesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -102,7 +103,7 @@ public class KeccaksIteratorTests
     private static byte[] Encode(Hash256[] input, int totalLength)
     {
         byte[] rlp = new byte[Rlp.LengthOfSequence(totalLength)];
-        RlpWriter writer = new(rlp);
+        RlpWriter writer = RlpWriter.ContentWriter(rlp);
         writer.StartSequence(totalLength);
         foreach (Hash256 keccak in input)
         {

@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State;
@@ -91,6 +92,10 @@ public sealed class StateBoundaryStore(
         }
     }
 
-    private static ulong? DecodeBlockNumber(byte[]? rlp) =>
-        rlp is null ? null : new RlpReader(rlp).DecodeULong();
+    private static ulong? DecodeBlockNumber(byte[]? rlp)
+    {
+        if (rlp is null) return null;
+        RlpReader reader = new(rlp);
+        return reader.DecodeULong<OffFlag>();
+    }
 }

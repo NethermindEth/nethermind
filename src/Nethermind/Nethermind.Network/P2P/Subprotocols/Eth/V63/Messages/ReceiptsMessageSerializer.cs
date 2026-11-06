@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
@@ -20,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private static RlpLimit BlockReceiptsRlpLimit => RlpLimit.For<TxReceipt[]>(BlockBodyDecoder.TransactionsCountLimit.Limit, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
         private readonly IRlpDecoder<TxReceipt> _decoder;
-        private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
+        private readonly RefRlpReaderFunc<TxReceipt[]> _decodeArrayFunc;
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetDecoderOrThrow<TxReceipt>()) { }
 
@@ -36,14 +37,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public int Serialize(Span<byte> destination, ReceiptsMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
             Serialize(ref writer, message);
-            return writer.Position;
+            return writer.Length;
         }
 
         internal void Serialize(ref RlpWriter writer, ReceiptsMessage message)
         {
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
@@ -57,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
 
                 int innerLength = GetInnerLength(txReceipts);
-                writer.StartSequence(innerLength);
+                RlpSequence receipts = writer.StartSequence(innerLength);
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
                     // Only fetch a new spec when the block number changes
@@ -70,7 +71,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
                     _decoder.Encode(ref writer, txReceipt, behaviors);
                 }
+
+                writer.EndSequence(receipts);
             }
+
+            writer.EndSequence(sequence);
         }
 
         public ReceiptsMessage Deserialize(ReadOnlySpan<byte> data)
@@ -81,9 +86,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             }
 
             RlpReader ctx = new(data);
-            if (data[0] == Rlp.OfEmptyList[0])
+            if (ctx.TryReadEmptySequence())
             {
-                ctx.Position = 1;
                 ctx.CheckEnd();
                 return new ReceiptsMessage(null);
             }

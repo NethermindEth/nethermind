@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.RLP;
@@ -22,24 +23,24 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         byte[] extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
-    protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
+    protected override void DecodeHeaderSpecificFields(ref RlpReader fields, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))
         {
-            header.Validator = decoderContext.DecodeByteArray();
+            header.Validator = fields.DecodeByteArray();
         }
 
-        header.Validators = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
+        header.Validators = XdcRlpHelpers.DecodeAddressBytes(ref fields);
 
         if (!IsForSealing(rlpBehaviors))
         {
-            header.NextValidators = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
+            header.NextValidators = XdcRlpHelpers.DecodeAddressBytes(ref fields);
         }
 
-        header.Penalties = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
+        header.Penalties = XdcRlpHelpers.DecodeAddressBytes(ref fields);
     }
 
-    protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields(ref RlpWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))
         {
@@ -79,6 +80,6 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         }
 
         return value.AsSpan().ExtractAddresses()
-            ?? throw new RlpException($"Subnet address collection length must be a multiple of {Address.Size} bytes, got {value.Length}.");
+            ?? throw new RlpReaderException($"Subnet address collection length must be a multiple of {Address.Size} bytes, got {value.Length}.");
     }
 }

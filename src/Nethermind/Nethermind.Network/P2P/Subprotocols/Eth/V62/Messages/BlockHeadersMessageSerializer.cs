@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -15,16 +16,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int Serialize(Span<byte> destination, BlockHeadersMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
                 _headerDecoder.Encode(ref writer, blockHeaders[i]);
             }
 
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public BlockHeadersMessage Deserialize(ReadOnlySpan<byte> data)

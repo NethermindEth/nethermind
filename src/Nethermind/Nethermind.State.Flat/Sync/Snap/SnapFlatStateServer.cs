@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
@@ -278,7 +279,7 @@ public class SnapFlatStateServer(
 
                 return account.HasStorage ? account.StorageRoot.ToCommitment() : Keccak.EmptyTreeHash;
             }
-            catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
                 return AccountDecoder.Instance.Decode(bytes)?.StorageRoot;
             }

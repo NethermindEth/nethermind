@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
@@ -70,7 +70,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         NewPooledTransactionHashesMessageSerializer serializer = new();
         byte[] bytes = Convert.FromHexString("c502c10ac180");
 
-        Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpReaderException>());
     }
 
     // One method per case: these read message lists back from the process-wide MessageLists pool, and a
@@ -177,7 +177,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             "c802c164fb7fffffff", "c802c164fbffffffff", "c702fb7fffffffc0", "c702fbffffffffc0")] string malformed)
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
-        Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpReaderException>());
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
         using (Assert.EnterMultipleScope())
         {
@@ -195,7 +195,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
         first.Dispose();
 
-        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpReaderException>());
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
         Assert.That(next.Types, Is.SameAs(first.Types));
     }
@@ -244,7 +244,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             buffer.SetIndex(7, 7 + length);
             // NUnit 5.0.0 Assert.Catch(Action, string) only matches exactly System.Exception, so pass the type explicitly
             Exception error = Assert.Catch(typeof(Exception), () => serializer.Deserialize(buffer), $"cut {length}");
-            Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
+            Assert.That(error, Is.InstanceOf<RlpReaderException>().Or.InstanceOf<IndexOutOfRangeException>()
                 .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
             using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
             Assert.That(serializer.SerializeToArray(next), Is.EqualTo(bytes), $"lease after cut {length}");
@@ -264,7 +264,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         byte[] bytes = serializer.SerializeToArray(source);
         if (delta > 0)
         {
-            Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {

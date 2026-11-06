@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
@@ -15,15 +16,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             writer.Encode(message.Bytes);
         }
 
-        protected override GetByteCodesMessage Deserialize(ref RlpReader ctx)
+        protected override GetByteCodesMessage Deserialize(ref RlpReader reader)
         {
             GetByteCodesMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
 
             message.RequestId = ctx.DecodeLong();
             message.Hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), limit: SnapMessageLimits.GetByteCodesHashesRlpLimit);
             message.Bytes = ctx.DecodeLong();
 
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
 

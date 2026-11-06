@@ -22,6 +22,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -978,23 +979,20 @@ public class BlobTxStorageTests
     }
 
     /// <remarks>
-    /// A corrupt light record surfaces as one of three unrelated exception roots, so each case pins the one it
-    /// exercises: <see cref="RlpReader"/> slices without bounds checks, which turns truncation into
-    /// <see cref="ArgumentOutOfRangeException"/> or <see cref="IndexOutOfRangeException"/> rather than <see cref="RlpException"/>.
+    /// Each case pins the exception of the decode failure mode it exercises. Light records are read without the checks
+    /// of the canonical form, so a non-canonical scalar is not one of them.
     /// </remarks>
     private static IEnumerable<TestCaseData> CorruptLightTxRecords()
     {
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(ArgumentOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => valid[..2]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(truncated)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(IndexOutOfRangeException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => []), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(empty)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [0x82, 0x00, 0x01, .. valid[1..]]), typeof(RlpException))
-            .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
-        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
         // A record written by a newer version carrying one optional field beyond this build's set: every record
         // fails after a downgrade. Two elements, since EIP-8141 records already read one more than a blob record.
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpException))
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpReaderException))
             .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 

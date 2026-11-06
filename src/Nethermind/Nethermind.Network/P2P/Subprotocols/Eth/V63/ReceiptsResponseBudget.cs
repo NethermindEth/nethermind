@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -36,22 +37,21 @@ internal static class ReceiptsResponseBudget
     /// How many receipts of the first block an earlier response already returned; they do not count against its limit.
     /// </param>
     /// <exception cref="SubprotocolException">The response holds more blocks or receipts than allowed.</exception>
-    /// <exception cref="RlpException">The response is not well-formed RLP.</exception>
+    /// <exception cref="RlpReaderException">The response is not well-formed RLP.</exception>
     public static void ThrowIfExceeded(IByteBuffer content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
     {
         RlpReader ctx = new(content.AsSpan());
-        int limit = ctx.Length;
         if (fieldsBeforeReceipts is int fields)
         {
-            limit = ReadSequenceEnd(ref ctx, limit);
+            ctx = ctx.EnterSequence(out _);
             for (int i = 0; i < fields; i++)
             {
-                SkipItem(ref ctx, limit);
+                ctx.SkipItem();
             }
         }
 
-        int end = ReadSequenceEnd(ref ctx, limit);
-        int blocks = ctx.PeekNumberOfItemsRemaining(end, requestedBlocks + 1);
+        RlpReader blocksReader = ctx.EnterSequence(out _);
+        int blocks = CountItems(blocksReader, requestedBlocks + 1);
         if (blocks > requestedBlocks)
         {
             ThrowExceeded($"{blocks} blocks for {requestedBlocks} requested");
@@ -66,47 +66,31 @@ internal static class ReceiptsResponseBudget
                 maxReceipts = Math.Max(maxReceipts - firstBlockReceiptIndex, 0);
             }
 
-            if (maxReceipts < 0 || !ctx.IsSequenceNext())
+            if (maxReceipts < 0 || !blocksReader.IsNextSequence)
             {
-                SkipItem(ref ctx, end);
+                blocksReader.SkipItem();
                 continue;
             }
 
-            int blockEnd = ReadSequenceEnd(ref ctx, end);
-            if (ctx.PeekNumberOfItemsRemaining(blockEnd, (int)maxReceipts + 1) > maxReceipts)
+            if (CountItems(blocksReader.EnterSequence(out _), (int)maxReceipts + 1) > maxReceipts)
             {
                 ThrowExceeded($"more than {maxReceipts} receipts for block {i}");
             }
 
-            ctx.Position = blockEnd;
+            blocksReader.SkipItem();
         }
     }
 
-    // The RLP readers do not check declared lengths against the enclosing item, so every length, and the
-    // prefix that holds it, is checked here before anything inside it is read, which reports truncation
-    // as an RlpException. A length is compared with the space left rather than added to the position,
-    // which could overflow.
-    private static int ReadSequenceEnd(ref RlpReader ctx, int limit)
+    /// <summary>Counts the items of <paramref name="reader"/>, and stops at <paramref name="max"/>.</summary>
+    private static int CountItems(RlpReader reader, int max)
     {
-        ThrowIfTruncated(ctx.Position < limit && ctx.PeekPrefixLength() <= limit - ctx.Position);
-        int length = ctx.ReadSequenceLength();
-        ThrowIfTruncated(length <= limit - ctx.Position);
-        return ctx.Position + length;
-    }
-
-    private static void SkipItem(ref RlpReader ctx, int limit)
-    {
-        ThrowIfTruncated(ctx.Position < limit);
-        ctx.SkipItem();
-        ThrowIfTruncated(ctx.Position <= limit);
-    }
-
-    private static void ThrowIfTruncated(bool fits)
-    {
-        if (!fits)
+        int count = 0;
+        for (; count < max && reader.HasNext; count++)
         {
-            throw new RlpException("Receipts response is truncated.");
+            reader.SkipItem();
         }
+
+        return count;
     }
 
     [StackTraceHidden, DoesNotReturn]

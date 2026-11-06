@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -389,7 +390,7 @@ public class SnapStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
         PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
-        RlpException? expectedException = null;
+        RlpReaderException? expectedException = null;
         Account? expected = null;
         if (accountRlp.Length > 0)
         {
@@ -397,7 +398,7 @@ public class SnapStateServerTests
             {
                 expected = AccountDecoder.Instance.Decode(accountRlp);
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 expectedException = exception;
             }

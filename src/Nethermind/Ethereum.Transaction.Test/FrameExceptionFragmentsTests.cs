@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -41,7 +42,7 @@ public class FrameExceptionFragmentsTests
     private static string DecodeFailureMessage(byte[] payload)
     {
         // Catch, not Throws: the length guard raises the RlpLimitException subclass.
-        RlpException thrown = Assert.Catch<RlpException>(() =>
+        RlpReaderException thrown = Assert.Catch<RlpReaderException>(() =>
         {
             RlpReader reader = new(payload);
             Rlp.GetDecoder<Nethermind.Core.Transaction>()!
@@ -60,7 +61,7 @@ public class FrameExceptionFragmentsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(message, Does.Contain("RLP does not correspond to a sequence"));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
@@ -81,7 +82,7 @@ public class FrameExceptionFragmentsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(message, Does.Contain("RLP is truncated"));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
@@ -91,7 +92,7 @@ public class FrameExceptionFragmentsTests
     {
         string message = DecodeFailureMessage(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
-            maxFee: Rlp.Encode(new byte[33])); // one byte over the 32-byte field
+            maxFee: Rlp.Encode((byte[])[0x01, .. new byte[32]])); // one byte over the 32-byte field
 
         Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True, message);
     }
@@ -189,17 +190,17 @@ public class FrameExceptionFragmentsTests
     private static IEnumerable<TestCaseData> MalformedFrameCases()
     {
         // 0x81 0x01 is the byte 0x01 under a one-byte string header; RLP encodes a byte below 0x80 as itself.
-        yield return new TestCaseData(OneFrame(mode: new Rlp([0x81, 0x01])), "Non-canonical integer")
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x81, 0x01])), "RLP single byte below 0x80 must not have a prefix")
             .SetName("Decode covers a frame mode under a needless string header");
-        yield return new TestCaseData(OneFrame(data: new Rlp([0x81, 0x01])), "Non-canonical integer")
+        yield return new TestCaseData(OneFrame(data: new Rlp([0x81, 0x01])), "RLP single byte below 0x80 must not have a prefix")
             .SetName("Decode covers one byte of frame data under a needless string header");
-        // The mode 1 with a leading zero is the two-byte string 0x82 0x00 0x01, a prefix a one-byte field rejects.
-        yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "Unexpected byte value")
+        // The mode 1 with a leading zero is the two-byte string 0x82 0x00 0x01.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "RLP integer has leading zero bytes")
             .SetName("Decode covers a frame mode with a leading zero");
         // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
-        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
+        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "RLP length below 56 must use the short form")
             .SetName("Decode covers short frame data under a long-form header");
-        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "Data checkpoint failed")
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "RLP is truncated")
             .SetName("Decode covers frame limits missing an element");
     }
 

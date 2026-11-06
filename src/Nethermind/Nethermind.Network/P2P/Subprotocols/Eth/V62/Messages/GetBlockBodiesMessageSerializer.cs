@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -14,15 +15,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int Serialize(Span<byte> destination, GetBlockBodiesMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
                 writer.Encode(message.BlockHashes[i]);
             }
 
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public GetBlockBodiesMessage Deserialize(ReadOnlySpan<byte> data)
@@ -48,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private static GetBlockBodiesMessage Deserialize(ref RlpReader ctx)
         {
-            Hash256[] hashes = ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), false, limit: RlpLimit);
+            Hash256[] hashes = ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: RlpLimit);
             return new GetBlockBodiesMessage(hashes);
         }
     }

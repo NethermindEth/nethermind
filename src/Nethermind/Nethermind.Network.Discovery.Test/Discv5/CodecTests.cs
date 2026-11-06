@@ -11,6 +11,7 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto;
@@ -323,7 +324,7 @@ public class CodecTests
             Rlp.Encode(new byte[17]),
             Rlp.Encode(30303)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -361,7 +362,7 @@ public class CodecTests
         using TalkRespMsg message = new([0, 0, 0, 4], new byte[] { 5, 6, 7, 8 });
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
 
-        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -388,7 +389,7 @@ public class CodecTests
 
     private static string[] InvalidEnrKinds =>
         ["oversized", "scalar", "empty-record", "missing-sequence", "missing-value", "eth-scalar", "eth-flat", "eth-empty", "signature",
-            "truncated-sequence", "truncated-port", "truncated-fork-id"];
+            "truncated-sequence", "truncated-port", "truncated-fork-id", "truncated-long-prefix", "truncated-long-value", "truncated-large-length"];
 
     [Test]
     public void MessageCodec_Skips_Invalid_Enrs_In_Nodes([ValueSource(nameof(InvalidEnrKinds))] string invalidKind)
@@ -425,6 +426,9 @@ public class CodecTests
             {
                 "truncated-sequence" => [0x84, 0x75, 0x69],
                 "truncated-port" => [0x01, .. Rlp.Encode("udp"u8).Bytes, 0x83, 0x23, 0x28],
+                "truncated-long-prefix" => [0xb9, 0x01],
+                "truncated-long-value" => [0xb8, 0x38, 0x01],
+                "truncated-large-length" => [0xbb, 0xff, 0xff, 0xff, 0xff],
                 _ => [0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 }).Bytes]
             };
             invalidRecord = Rlp.Encode(Rlp.Encode(new byte[64]), new Rlp(tail)).Bytes;
@@ -473,7 +477,7 @@ public class CodecTests
         Array.Fill(distances, Rlp.Encode(1));
         byte[] message = CreateMessage(MessageType.FindNode, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(distances)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -483,7 +487,7 @@ public class CodecTests
         Array.Fill(records, Rlp.Encode(Array.Empty<byte>()));
         byte[] message = CreateMessage(MessageType.Nodes, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(1), Rlp.Encode(records)));
 
-        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpReaderException>());
     }
 
     private static PacketCodec CreateCodec(PrivateKey privateKey)

@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -160,7 +161,7 @@ internal class EraReaderTests
 
         Assert.That(
             () => DecodeReceipts(receiptsWithEmptyListItem),
-            Throws.TypeOf<RlpException>());
+            Throws.TypeOf<RlpReaderException>());
     }
 
     private static TxReceipt[] DecodeReceipts(byte[] bytes)

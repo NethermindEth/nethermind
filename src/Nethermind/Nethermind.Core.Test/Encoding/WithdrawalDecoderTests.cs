@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -55,7 +56,7 @@ public class WithdrawalDecoderTests
         };
         WithdrawalDecoder codec = new();
         byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
 
         codec.Encode(ref writer, withdrawal);
 
@@ -110,8 +111,12 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => new RlpReader(rlp).DecodeNonNullArray(decoder!);
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
+        void Decode()
+        {
+            RlpReader reader = new(rlp);
+            reader.DecodeNonNullArray(decoder!);
+        }
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>().And.Message.Contain("trailing bytes"));
     }
 
     private static byte[] CombineRlpList(params byte[][] encodedItems)

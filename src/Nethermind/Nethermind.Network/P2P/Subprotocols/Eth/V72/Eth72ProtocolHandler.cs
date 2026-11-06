@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -261,7 +262,7 @@ public class Eth72ProtocolHandler(
                     {
                         cellsMessage = Deserialize<CellsMessage72>(message.Content);
                     }
-                    catch (RlpException)
+                    catch (RlpReaderException)
                     {
                         RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;

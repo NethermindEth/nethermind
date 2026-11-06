@@ -22,7 +22,7 @@ public delegate void RefRlpWriterAction(ref RlpWriter arg);
 /// <remarks>
 /// <para>
 /// A sequence prefix depends on the length of its payload. The writer that
-/// <see cref="Rlp.Write{TContext}(TContext, RefRlpWriterAction{TContext})"/> uses writes in one pass to a growable
+/// <see cref="RlpCodec.Write{TContext}(TContext, RefRlpWriterAction{TContext})"/> uses writes in one pass to a growable
 /// buffer: it reserves one prefix byte for each sequence and, when the payload is longer than 55 bytes, inserts the
 /// long prefix while it copies the buffer to the output.
 /// </para>
@@ -77,7 +77,7 @@ public ref struct RlpWriter
     public static RlpWriter LengthWriter() => new(default, isContent: false);
 
     /// <summary>Creates a writer that writes the items to <paramref name="destination"/>.</summary>
-    /// <remarks>The write action of each sequence runs twice, so prefer <see cref="Rlp"/> to encode a whole item.</remarks>
+    /// <remarks>The write action of each sequence runs twice, so prefer <see cref="RlpCodec"/> to encode a whole item.</remarks>
     public static RlpWriter ContentWriter(Span<byte> destination) => new(destination, isContent: true);
 
     internal static RlpWriter BufferingWriter()
@@ -195,6 +195,23 @@ public ref struct RlpWriter
         value.CopyTo(destination[1..]);
 
         _length += 1 + value.Length;
+    }
+
+    /// <summary>Writes bytes that are already RLP, such as an item that was read with <see cref="RlpReader.ReadEncodedItem"/>.</summary>
+    /// <remarks>The bytes are not checked, so they must be one or more complete, canonical items.</remarks>
+    public void WriteEncoded(scoped ReadOnlySpan<byte> encoded)
+    {
+        encoded.CopyTo(Reserve(encoded.Length));
+        _length += encoded.Length;
+    }
+
+    /// <summary>Moves past the next <paramref name="count"/> bytes and returns them, for a caller that writes encoded items into them.</summary>
+    /// <remarks>The caller must fill all the bytes with complete, canonical items, as for <see cref="WriteEncoded"/>.</remarks>
+    internal Span<byte> ReserveEncoded(int count)
+    {
+        Span<byte> destination = Reserve(count);
+        _length += count;
+        return destination;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

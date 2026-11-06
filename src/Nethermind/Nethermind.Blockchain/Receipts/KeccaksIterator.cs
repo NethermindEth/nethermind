@@ -3,14 +3,15 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
     public ref struct KeccaksIterator
     {
-        private readonly int _length;
-        private readonly int _startPosition;
+        private readonly RlpReader _start;
         private RlpReader _reader;
         private readonly Span<byte> _buffer;
         public long Index { get; private set; }
@@ -18,16 +19,15 @@ namespace Nethermind.Blockchain.Receipts
         public KeccaksIterator(ReadOnlySpan<byte> data, Span<byte> buffer)
         {
             if (buffer.Length != 32) throw new ArgumentException("Buffer must be 32 bytes long");
-            _reader = new RlpReader(data);
-            _length = _reader.ReadSequenceLength();
-            _startPosition = _reader.Position;
+            _reader = new RlpReader(data).EnterSequence<OffFlag>(out _);
+            _start = _reader;
             _buffer = buffer;
             Index = -1;
         }
 
         public bool TryGetNext(out Hash256StructRef current)
         {
-            if (_reader.Position < _length + _startPosition)
+            if (_reader.HasNext)
             {
                 _reader.DecodeZeroPrefixedKeccakStructRef(out current, _buffer);
                 Index++;
@@ -40,6 +40,6 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Reset() => _reader.Position = _startPosition;
+        public void Reset() => _reader = _start;
     }
 }

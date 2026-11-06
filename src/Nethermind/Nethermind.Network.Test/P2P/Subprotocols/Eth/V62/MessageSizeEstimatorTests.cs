@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -103,7 +104,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
             RlpReader encoded = new(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).SerializeToArray(message));
-            int contentLength = encoded.ReadSequenceLength();
+            int contentLength = encoded.EnterSequence(out _).Remaining;
 
             // The outgoing size caps are only sound if a block's estimate covers every byte the
             // serializer writes for that block, framing included.

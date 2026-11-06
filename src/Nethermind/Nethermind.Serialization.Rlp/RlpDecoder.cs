@@ -4,7 +4,10 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -14,11 +17,10 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
     public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract void Encode<TWriter>(ref TWriter stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
+    public abstract void Encode(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     [return: MaybeNull]
-    protected abstract T DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    protected abstract T DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => default(T) is null && item is null ? Rlp.OfEmptyList : new Rlp(EncodeAsBytes(item!, rlpBehaviors));
@@ -29,14 +31,13 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <remarks>
     /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
     /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
-    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, RlpBehaviors)"/>
-    /// fills exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes.
+    /// allocated uninitialized because <see cref="Encode(ref RlpWriter, T, RlpBehaviors)"/>
+    /// fills exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes, which is checked.
     /// </remarks>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item, rlpBehaviors));
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
+        this.EncodeExact(bytes, item, rlpBehaviors);
         return bytes;
     }
 
@@ -47,23 +48,24 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return Rlp.OfEmptyList;
         }
 
-        byte[] bytes = new byte[GetLength(items, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
+        byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(items, rlpBehaviors));
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         Encode(ref writer, items, rlpBehaviors);
+        Rlp.CheckLength(in writer, bytes.Length);
         return new Rlp(bytes);
     }
 
     [DoesNotReturn]
     [StackTraceHidden]
     protected static void ThrowRlpException(Exception exception) =>
-        throw new RlpException($"Cannot decode stream of {typeof(T).Name}", exception);
+        throw new RlpReaderException($"Cannot decode stream of {typeof(T).Name}", exception);
 
     [return: MaybeNull]
-    public T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public T Decode(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         try
         {
-            return DecodeInternal(ref decoderContext, rlpBehaviors);
+            return DecodeInternal(ref reader, rlpBehaviors);
         }
         catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
@@ -72,64 +74,98 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         }
     }
 
-
-    public virtual T?[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    public virtual T?[] DecodeArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
-        int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
-        decoderContext.GuardLimit(length, limit);
-        T?[] result = new T?[length];
-        for (int i = 0; i < result.Length; i++)
+        try
         {
-            result[i] = Decode(ref decoderContext, rlpBehaviors);
+            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowRlpException(e);
+            return default;
+        }
+    }
+
+    private T?[] DecodeArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        T?[] result = new T?[items.CountItems<TCanonicalChecks>(limit)];
+        // A span store has no covariance check, unlike an array store of a reference type.
+        Span<T?> span = result;
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = DecodeItem(ref items, rlpBehaviors);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(checkPosition);
-        }
-
+        reader.ExitSequence(in items, itemLength, rlpBehaviors);
         return result;
     }
 
     /// <inheritdoc/>
-    public virtual T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    /// <remarks>The array has one exception wrapper, and its items are read with <see cref="DecodeInternal"/> without one.</remarks>
+    public virtual T[] DecodeNonNullArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
-        int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
-        decoderContext.GuardLimit(length, limit);
-        T[] result = new T[length];
-        for (int i = 0; i < result.Length; i++)
+        try
         {
-            if (decoderContext.PeekByte() == Rlp.EmptyListByte)
+            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowRlpException(e);
+            return default;
+        }
+    }
+
+    private T[] DecodeNonNullArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        T[] result = new T[items.CountItems<TCanonicalChecks>(limit)];
+        Span<T> span = result;
+        for (int i = 0; i < span.Length; i++)
+        {
+            if (items.IsNextItemEmptyList())
             {
-                RlpHelpers.ThrowNullArrayElement(i);
+                ThrowNullArrayElement(i);
             }
 
-            result[i] = DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
+            span[i] = DecodeItemNotNull(ref items, rlpBehaviors);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(checkPosition);
-        }
-
+        reader.ExitSequence(in items, itemLength, rlpBehaviors);
         return result;
+    }
+
+    // Not inlined: a profile-guided inline of the item decode into the array loop keeps the reader fields on the stack.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private T? DecodeItem(ref RlpReader reader, RlpBehaviors rlpBehaviors) => DecodeInternal(ref reader, rlpBehaviors);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [return: NotNull]
+    private T DecodeItemNotNull(ref RlpReader reader, RlpBehaviors rlpBehaviors)
+    {
+        T? value = DecodeItem(ref reader, rlpBehaviors);
+        if (default(T) is null && value is null)
+        {
+            ThrowNullDecodedValue();
+        }
+
+        return value!;
     }
 
     [return: MaybeNull]
     public virtual T Decode(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpReader context = new(bytes);
-        return Decode(ref context, rlpBehaviors);
+        RlpReader reader = new(bytes);
+        return Decode(ref reader, rlpBehaviors);
     }
 
     /// <inheritdoc/>
     [return: MaybeNull]
-    public virtual T DecodeComplete(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeComplete(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        T? value = Decode(ref context, rlpBehaviors);
-        context.CheckEnd();
+        T? value = Decode(ref reader, rlpBehaviors);
+        reader.CheckEnd();
         return value;
     }
 
@@ -137,14 +173,14 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     [return: MaybeNull]
     public virtual T DecodeComplete(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpReader context = new(bytes);
-        return DecodeComplete(ref context, rlpBehaviors);
+        RlpReader reader = new(bytes);
+        return DecodeComplete(ref reader, rlpBehaviors);
     }
 
     [return: NotNull]
-    public virtual T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeGuardNotNull(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        T? value = Decode(ref context, rlpBehaviors);
+        T? value = Decode(ref reader, rlpBehaviors);
         if (default(T) is null && value is null)
         {
             ThrowNullDecodedValue();
@@ -155,10 +191,10 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     /// <inheritdoc/>
     [return: NotNull]
-    public virtual T DecodeCompleteNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeCompleteNotNull(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        T value = DecodeGuardNotNull(ref context, rlpBehaviors);
-        context.CheckEnd();
+        T value = DecodeGuardNotNull(ref reader, rlpBehaviors);
+        reader.CheckEnd();
         return value;
     }
 
@@ -166,15 +202,15 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     [return: NotNull]
     public virtual T DecodeCompleteNotNull(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpReader context = new(bytes);
-        return DecodeCompleteNotNull(ref context, rlpBehaviors);
+        RlpReader reader = new(bytes);
+        return DecodeCompleteNotNull(ref reader, rlpBehaviors);
     }
 
     public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
     {
         int size = GetNullableLength(item, rlpBehaviors);
         CappedArray<byte> buffer = bufferPool.SafeRent(size);
-        RlpWriter writer = new(in buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer.AsSpan());
         if (default(T) is null && item is null)
         {
             writer.EncodeNullObject();
@@ -183,31 +219,34 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         {
             Encode(ref writer, item!, rlpBehaviors);
         }
+
+        Rlp.CheckLength(in writer, size);
         return buffer;
     }
 
-    public virtual void Encode<TWriter>(ref TWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public virtual void Encode(ref RlpWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
     {
         if (items is null)
         {
-            writer.WriteByte(Rlp.EmptyListByte);
+            writer.EncodeNullObject();
             return;
         }
 
-        writer.StartSequence(GetContentLength(items, behaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(items, behaviors));
         for (int index = 0; index < items.Length; index++)
         {
             T? item = items[index];
             if (default(T) is null && item is null)
             {
-                writer.WriteByte(Rlp.EmptyListByte);
+                writer.EncodeNullObject();
             }
             else
             {
                 Encode(ref writer, item!, behaviors);
             }
         }
+
+        writer.EndSequence(sequence);
     }
 
     public virtual int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -239,7 +278,12 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     [DoesNotReturn]
     [StackTraceHidden]
     private static T ThrowNullDecodedValue()
-        => throw new RlpException($"{typeof(T).Name} decoding returned null");
+        => throw new RlpReaderException($"{typeof(T).Name} decoding returned null");
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowNullArrayElement(int index)
+        => throw new RlpReaderException($"Unexpected null array element at index {index}");
 
     private int GetNullableLength(T? item, RlpBehaviors behaviors)
         => default(T) is null && item is null ? Rlp.OfEmptyList.Length : GetLength(item!, behaviors);

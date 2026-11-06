@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders;
@@ -14,7 +15,7 @@ public static class TxDecoderRoundtrip
     {
         TxDecoder decoder = TxDecoder.Instance;
         byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, transaction);
         RlpReader reader = new(bytes);
         return decoder.Decode(ref reader)!;

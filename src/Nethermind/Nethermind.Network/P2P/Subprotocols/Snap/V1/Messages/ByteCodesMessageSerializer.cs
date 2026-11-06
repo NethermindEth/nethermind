@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
@@ -11,11 +12,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
     {
         public int Serialize(Span<byte> destination, ByteCodesMessage message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(message));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             writer.Encode(message.RequestId);
             writer.WriteByteArrayList(message.Codes);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
@@ -28,13 +30,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             try
             {
-                RlpReader ctx = new(data.Span);
-                ctx.ReadSequenceLength();
+                RlpReader outer = new(data.Span);
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 long requestId = ctx.DecodeLong();
 
                 list = RlpByteArrayList.DecodeList(ref ctx, owner, data, SnapMessageLimits.ByteCodesRlpLimit);
                 memoryOwner = null;
-                ctx.CheckEnd();
+                outer.ExitSequence(ctx, itemLength);
+                outer.CheckEnd();
 
                 return new ByteCodesMessage(list) { RequestId = requestId };
             }

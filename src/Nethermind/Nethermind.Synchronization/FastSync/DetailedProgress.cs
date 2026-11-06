@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.FastSync
@@ -127,8 +128,7 @@ namespace Nethermind.Synchronization.FastSync
                 return;
             }
 
-            RlpReader ctx = new(serializedData);
-            ctx.ReadSequenceLength();
+            RlpReader ctx = new RlpReader(serializedData).EnterSequence(out _);
             ConsumedNodesCount = ctx.DecodeLong();
             SavedStorageCount = ctx.DecodeLong();
             SavedStateCount = ctx.DecodeLong();
@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.FastSync
             StateWasNotThere = ctx.DecodeLong();
             DataSize = ctx.DecodeLong();
 
-            if (ctx.Position != ctx.Length)
+            if (ctx.HasNext)
             {
                 SecondsInSync = ctx.DecodeLong();
             }
@@ -167,12 +167,13 @@ namespace Nethermind.Synchronization.FastSync
 
             int contentLength = GetLength(progress);
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             foreach (long entry in progress)
             {
                 writer.Encode(entry);
             }
+            writer.EndSequence(sequence);
             return bytes;
         }
 

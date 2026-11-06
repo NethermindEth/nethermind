@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -41,19 +42,21 @@ public class EthEntry : EnrContentEntry<ForkId>
         return Rlp.LengthOfSequence(Rlp.LengthOfSequence(forkIdContentLength));
     }
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer)
+    protected override void EncodeValue(ref RlpWriter writer)
     {
         if (_originalRlpValue is not null)
         {
-            writer.Write(_originalRlpValue);
+            writer.WriteEncoded(_originalRlpValue);
             return;
         }
 
         int contentLength = GetForkIdContentLength();
-        writer.StartSequence(Rlp.LengthOfSequence(contentLength));
-        writer.StartSequence(contentLength);
+        RlpSequence outer = writer.StartSequence(Rlp.LengthOfSequence(contentLength));
+        RlpSequence forkId = writer.StartSequence(contentLength);
         writer.Encode(Value.ForkHash);
         writer.Encode(Value.Next);
+        writer.EndSequence(forkId);
+        writer.EndSequence(outer);
     }
 
     private int GetForkIdContentLength() => Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.Next);

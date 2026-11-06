@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Forks;
@@ -284,7 +285,7 @@ public class HeaderDecoderTests
         byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [TestCaseSource(nameof(OptionalHashRoundtripSource))]
@@ -316,8 +317,8 @@ public class HeaderDecoderTests
         else
         {
             // Before the fork it fails exactly as the spec-less decoder does.
-            string expected = Assert.Throws<RlpException>(() => Decode(new HeaderDecoder()))!.Message;
-            Assert.That(() => Decode(decoder), Throws.TypeOf<RlpException>().With.Message.EqualTo(expected));
+            string expected = Assert.Throws<RlpReaderException>(() => Decode(new HeaderDecoder()))!.Message;
+            Assert.That(() => Decode(decoder), Throws.TypeOf<RlpReaderException>().With.Message.EqualTo(expected));
         }
 
         BlockHeader Decode(HeaderDecoder headerDecoder)
@@ -343,7 +344,7 @@ public class HeaderDecoderTests
 
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, listFormBloom);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -359,7 +360,7 @@ public class HeaderDecoderTests
 
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, MixHashFieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -372,7 +373,7 @@ public class HeaderDecoderTests
         byte[] validRlp = Rlp.Encode(header).Bytes;
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, WithdrawalsRootFieldIndex, [0x80]);
 
-        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpException>());
+        Assert.That(() => Rlp.Decode<BlockHeader>(crafted), Throws.InstanceOf<RlpReaderException>());
     }
 
     public static IEnumerable<TestCaseData> OptionalHashRoundtripSource()
@@ -471,25 +472,26 @@ public static class HeaderRlpTestHelper
 {
     public static byte[] ReplaceFieldEncoding(byte[] headerRlp, int fieldIndex, byte[] craftedField)
     {
-        RlpReader reader = new(headerRlp);
-        (int prefixLength, int contentLength) = reader.ReadPrefixAndContentLength();
+        RlpReader outer = new(headerRlp);
+        RlpReader reader = outer.EnterSequence(out int itemLength);
+        int contentLength = reader.Remaining;
+        int prefixLength = itemLength - contentLength;
 
-        int fieldStart = reader.Position;
+        int fieldStart = prefixLength;
         int fieldLength = 0;
         for (int i = 0; i <= fieldIndex; i++)
         {
-            fieldStart = reader.Position;
-            fieldLength = reader.PeekNextRlpLength();
-            reader.SkipItem();
+            fieldStart = prefixLength + reader.BytesRead;
+            fieldLength = reader.ReadEncodedItem().Length;
         }
 
         int contentLengthDelta = craftedField.Length - fieldLength;
         int craftedContentLength = contentLength + contentLengthDelta;
         byte[] result = new byte[Rlp.LengthOfSequence(craftedContentLength)];
-        RlpWriter writer = new(result);
+        RlpWriter writer = RlpWriter.ContentWriter(result);
         writer.StartSequence(craftedContentLength);
 
-        int craftedContentStart = writer.Position;
+        int craftedContentStart = writer.Length;
         headerRlp.AsSpan(prefixLength, fieldStart - prefixLength).CopyTo(result.AsSpan(craftedContentStart));
         craftedField.CopyTo(result.AsSpan(craftedContentStart + fieldStart - prefixLength));
         headerRlp.AsSpan(fieldStart + fieldLength, prefixLength + contentLength - fieldStart - fieldLength)

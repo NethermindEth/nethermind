@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -73,34 +74,33 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         }
     }
 
-    protected override TxReceipt[] DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt[] DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (TrySkipCompactPrefix(ref decoderContext, out _))
+        RlpBehaviors trusted = rlpBehaviors & RlpBehaviors.TrustedInput;
+        if (TrySkipCompactPrefix(ref reader, out _))
         {
-            return TakeCompletePrefix(CompactDecoder.DecodeArray(
-                ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));
+            return TakeCompletePrefix(DecodeCompact(ref reader, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | trusted));
         }
         else
         {
-            int startPosition = decoderContext.Position;
+            RlpReader start = reader;
             try
             {
-                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage));
+                return TakeCompletePrefix(Decoder.DecodeArray(ref reader, RlpBehaviors.Storage | trusted));
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
-                decoderContext.Position = startPosition;
-                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext));
+                reader = start;
+                return TakeCompletePrefix(Decoder.DecodeArray(ref reader, trusted));
             }
         }
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)
         {
-            writer.WriteByte(Rlp.EmptyListByte);
+            writer.EncodeNullObject();
             return;
         }
 
@@ -113,7 +113,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
                 writer.StartByteArray(items.Length * Hash256.Size, false);
                 for (int i = 0; i < items.Length; i++)
                 {
-                    writer.Write(items[i].TxHash!.Bytes);
+                    writer.WriteEncoded(items[i].TxHash!.Bytes);
                 }
             }
             else
@@ -121,7 +121,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
                 writer.WriteByte(CompactEncoding);
             }
 
-            writer.StartSequence(totalLength - 1);
+            // The stored compact format declares one byte less than its receipts take, so the prefix is written
+            // without a sequence that checks the length.
+            writer.WriteSequencePrefix(totalLength - 1);
 
             for (int i = 0; i < items.Length; i++)
             {
@@ -131,12 +133,14 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         else
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
-            writer.StartSequence(totalLength);
+            RlpSequence sequence = writer.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)
             {
                 Decoder.Encode(ref writer, items[i], rlpBehaviors);
             }
+
+            writer.EndSequence(sequence);
         }
     }
 
@@ -144,7 +148,10 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     public TxReceipt[] Decode(in Span<byte> receiptsData) => Decode(in receiptsData, RlpBehaviors.None);
 
     /// <param name="receiptsData">The stored receipts.</param>
-    /// <param name="compactBehaviors">Extra behaviors for the compact encoding, e.g. <see cref="RlpBehaviors.Eip7668Receipts"/>.</param>
+    /// <param name="compactBehaviors">
+    /// Extra behaviors for the compact encoding, e.g. <see cref="RlpBehaviors.Eip7668Receipts"/>.
+    /// <see cref="RlpBehaviors.TrustedInput"/> applies to every encoding.
+    /// </param>
     public TxReceipt[] Decode(in Span<byte> receiptsData, RlpBehaviors compactBehaviors)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
@@ -152,90 +159,93 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
             return [];
         }
 
-        RlpReader compactReader = new(receiptsData);
-        if (TrySkipCompactPrefix(ref compactReader, out _))
+        RlpReader reader = new(receiptsData);
+        if (TrySkipCompactPrefix(ref reader, out _))
         {
-            RlpReader decoderContext = new(receiptsData[compactReader.Position..]);
-            return TakeCompletePrefix(CompactDecoder.DecodeArray(
-                ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | compactBehaviors));
+            return TakeCompletePrefix(DecodeCompact(ref reader, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | compactBehaviors));
         }
         else
         {
-            RlpReader decoderContext = new(receiptsData);
+            RlpBehaviors trusted = compactBehaviors & RlpBehaviors.TrustedInput;
             try
             {
-                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage));
+                return TakeCompletePrefix(Decoder.DecodeArray(ref reader, RlpBehaviors.Storage | trusted));
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
-                decoderContext.Position = 0;
-                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext));
+                reader = new RlpReader(receiptsData);
+                return TakeCompletePrefix(Decoder.DecodeArray(ref reader, trusted));
             }
         }
     }
 
-    public TxReceipt?[] DecodeAllowingMissing(in Span<byte> receiptsData)
+    /// <inheritdoc cref="Decode(in Span{byte}, RlpBehaviors)"/>
+    /// <param name="rlpBehaviors"><see cref="RlpBehaviors.TrustedInput"/> applies; the other behaviors are set by the encoding.</param>
+    public TxReceipt?[] DecodeAllowingMissing(in Span<byte> receiptsData, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
             return [];
         }
 
-        RlpReader compactReader = new(receiptsData);
-        if (TrySkipCompactPrefix(ref compactReader, out _))
+        RlpBehaviors trusted = rlpBehaviors & RlpBehaviors.TrustedInput;
+        RlpReader reader = new(receiptsData);
+        if (TrySkipCompactPrefix(ref reader, out _))
         {
-            RlpReader decoderContext = new(receiptsData[compactReader.Position..]);
-            return DecodeArrayAllowingMissingReceipts(
-                ref decoderContext,
-                CompactDecoder,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes,
-                includeTrailingItems: true);
+            // The compact list holds a final empty item, which is a missing receipt, as one more item.
+            return DecodeCompact(ref reader, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | trusted);
         }
 
-        RlpReader reader = new(receiptsData);
         try
         {
-            return DecodeArrayAllowingMissingReceipts(ref reader, Decoder, RlpBehaviors.Storage);
+            return DecodeArrayAllowingMissingReceipts(ref reader, RlpBehaviors.Storage | trusted);
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
-            reader.Position = 0;
-            return DecodeArrayAllowingMissingReceipts(ref reader, Decoder, RlpBehaviors.None);
+            reader = new RlpReader(receiptsData);
+            return DecodeArrayAllowingMissingReceipts(ref reader, trusted);
         }
     }
 
-    private static TxReceipt?[] DecodeArrayAllowingMissingReceipts(
-        ref RlpReader decoderContext,
-        RlpDecoder<TxReceipt> decoder,
-        RlpBehaviors rlpBehaviors,
-        bool includeTrailingItems = false)
+    private static TxReceipt?[] DecodeArrayAllowingMissingReceipts(ref RlpReader reader, RlpBehaviors rlpBehaviors)
     {
-        int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        int length = decoderContext.PeekNumberOfItemsRemaining(
-            declaredEnd,
-            RlpLimit.DefaultLimit.Limit + 1);
-        decoderContext.GuardLimit(length);
-        TxReceipt?[] result = new TxReceipt?[length];
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        TxReceipt?[] result = new TxReceipt?[items.CountItems(RlpLimit.DefaultLimit)];
         for (int i = 0; i < result.Length; i++)
         {
-            result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+            result[i] = Decoder.Decode(ref items, rlpBehaviors);
         }
 
-        // The persisted compact format excludes its final byte from the outer sequence length.
-        // A missing final receipt is therefore the one valid item that starts at the boundary.
-        if (includeTrailingItems &&
-            decoderContext.Position == declaredEnd &&
-            decoderContext.Position < decoderContext.Length &&
-            decoderContext.PeekByte() == Rlp.EmptyListByte)
-        {
-            decoderContext.ReadByte();
-            Array.Resize(ref result, result.Length + 1);
-        }
+        reader.ExitSequence(in items, itemLength, rlpBehaviors);
+        return result;
+    }
 
-        if (!includeTrailingItems && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+    /// <summary>Decodes the receipt list of a compact value, after its prefix.</summary>
+    /// <returns>The receipts, with <see langword="null"/> for an empty item.</returns>
+    private static TxReceipt?[] DecodeCompact(ref RlpReader reader, RlpBehaviors rlpBehaviors)
+    {
+        try
         {
-            decoderContext.Check(declaredEnd);
+            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+                ? DecodeCompact<OffFlag>(ref reader, rlpBehaviors)
+                : DecodeCompact<OnFlag>(ref reader, rlpBehaviors);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            ThrowRlpException(e);
+            return default;
+        }
+    }
+
+    private static TxReceipt?[] DecodeCompact<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader items = EnterCompactReceiptList<TCanonicalChecks>(ref reader);
+        TxReceipt?[] result = new TxReceipt?[items.CountItems<TCanonicalChecks>(RlpLimit.DefaultLimit)];
+        // A span store has no covariance check, unlike an array store of a reference type.
+        Span<TxReceipt?> span = result;
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = CompactReceiptStorageDecoder.Decode<TCanonicalChecks>(ref items, rlpBehaviors);
         }
 
         return result;
@@ -262,9 +272,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
             receipt.TxHash = hash;
             return receipt;
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
-            context.Position = 0;
+            context = new RlpReader(receiptData);
             TxReceipt receipt = Decoder.DecodeGuardNotNull(ref context);
             receipt.TxHash = hash;
             return receipt;
@@ -286,26 +296,44 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     public static bool TrySkipCompactPrefix(scoped ref RlpReader reader, out ReadOnlySpan<byte> txHashes)
     {
         txHashes = default;
-        if (reader.Position >= reader.Length) return false;
+        if (!reader.HasNext) return false;
 
         switch (reader.PeekByte())
         {
             case CompactEncoding:
-                reader.ReadByte();
+                reader.ReadRaw(1);
                 return true;
             case CompactEncodingWithTxHashes:
-                reader.ReadByte();
-                (_, int contentLength) = reader.ReadPrefixAndContentLength();
-                if (contentLength % Hash256.Size != 0)
+                reader.ReadRaw(1);
+                ReadOnlySpan<byte> hashes = reader.ReadBytes();
+                if (hashes.Length % Hash256.Size != 0)
                 {
-                    throw new RlpException($"Stored transaction hashes length {contentLength} is not a multiple of {Hash256.Size}.");
+                    throw new RlpReaderException($"Stored transaction hashes length {hashes.Length} is not a multiple of {Hash256.Size}.");
                 }
 
-                txHashes = reader.Read(contentLength);
+                txHashes = hashes;
                 return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>Reads the receipt list of a compact value, which <see cref="TrySkipCompactPrefix"/> leaves the reader at.</summary>
+    /// <remarks>
+    /// The compact list declares one byte less than its receipts take, so its length is not checked as a sequence
+    /// length: the list ends one byte after its declared end, or at the end of the value.
+    /// </remarks>
+    /// <returns>A reader over the receipts of the list.</returns>
+    public static RlpReader EnterCompactReceiptList(scoped ref RlpReader reader) => EnterCompactReceiptList<OnFlag>(ref reader);
+
+    /// <inheritdoc cref="EnterCompactReceiptList(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static RlpReader EnterCompactReceiptList<TCanonicalChecks>(scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    {
+        RlpReader declared = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        int headerLength = itemLength - declared.Remaining;
+        reader.ReadRaw(headerLength);
+        return new RlpReader(reader.ReadRaw(Math.Min(declared.Remaining + 1, reader.Remaining)));
     }
 
     /// <summary>
@@ -321,18 +349,13 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
         ReadOnlySpan<byte> receipts = compactReceiptsData[1..];
         byte[] result = new byte[1 + Rlp.LengthOfByteString(txHashes.Length, byte.MaxValue) + receipts.Length];
-        RlpWriter writer = new(result);
-        Write(ref writer, txHashes, receipts);
+        RlpWriter writer = RlpWriter.ContentWriter(result);
+        writer.WriteByte(CompactEncodingWithTxHashes);
+        writer.StartByteArray(txHashes.Length, false);
+        writer.WriteEncoded(txHashes);
+        writer.WriteEncoded(receipts);
+        Rlp.CheckLength(in writer, result.Length);
         return result;
-
-        static void Write<TWriter>(ref TWriter writer, ReadOnlySpan<byte> txHashes, ReadOnlySpan<byte> receipts)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
-        {
-            writer.WriteByte(CompactEncodingWithTxHashes);
-            writer.StartByteArray(txHashes.Length, false);
-            writer.Write(txHashes);
-            writer.Write(receipts);
-        }
     }
 
     private bool WritesTxHashes(TxReceipt[] items)

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Flat.Persistence;
@@ -115,10 +116,9 @@ public sealed class ArchiveProofSource(
         storageRoot = default;
         if (cache.FirstUncachedDepth(stateRoot, identity, out byte[]? leaf) != ArchiveProofNodeCache.PathCached || leaf is null) return false;
 
-        RlpReader reader = new(leaf);
-        reader.ReadSequenceLength();
-        reader.SkipItem();
-        if (!AccountDecoder.Instance.TryDecodeStruct(reader.DecodeByteArraySpan(), out AccountStruct account)) return false;
+        RlpReader reader = new RlpReader(leaf).EnterSequence<OffFlag>(out _);
+        reader.SkipItem<OffFlag>();
+        if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(reader.ReadBytes<OffFlag>(), out AccountStruct account)) return false;
 
         storageRoot = account.StorageRoot;
         return true;

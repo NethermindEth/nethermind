@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -163,13 +164,12 @@ public class FrameTxReceiptDecoderTests
         IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
-        // Iterate while Position is below the sequence content length. TxReceiptStructRef is a ref
+        // Iterate while items remain. TxReceiptStructRef is a ref
         // struct, so capture the asserted fields into a tuple.
-        RlpReader reader = new(encoded);
-        int length = reader.ReadSequenceLength();
+        RlpReader reader = new RlpReader(encoded).EnterSequence(out _);
         int count = 0;
         (byte Status, ulong Gas, string Sender, TxType Type, LogEntry[] Logs)[] decoded = new (byte, ulong, string, TxType, LogEntry[])[3];
-        while (reader.Position < length)
+        while (reader.HasNext)
         {
             refDecoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef current);
             if (count < decoded.Length)
@@ -282,11 +282,10 @@ public class FrameTxReceiptDecoderTests
         byte[] encoded = Bytes.FromHexString(NonFrameArrayNonCompactHex);
 
         IReceiptRefDecoder refDecoder = new ReceiptStorageDecoder();
-        RlpReader reader = new(encoded);
-        int length = reader.ReadSequenceLength() + reader.Position;
+        RlpReader reader = new RlpReader(encoded).EnterSequence(out _);
         (string TxHash, string? Error, string Sender)[] decoded = new (string, string?, string)[2];
         int count = 0;
-        while (reader.Position < length)
+        while (reader.HasNext)
         {
             refDecoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef current);
             if (count < decoded.Length)
@@ -319,7 +318,7 @@ public class FrameTxReceiptDecoderTests
             [Log(0x01)], new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [Log(0x01)]));
         payerless.Payer = null;
 
-        Assert.That(() => EncodeStored(payerless, format), Throws.InstanceOf<RlpException>());
+        Assert.That(() => EncodeStored(payerless, format), Throws.InstanceOf<RlpReaderException>());
     }
 
     // The counterpart: the refusal must not stand between a payer-carrying frame receipt and the round trip.
@@ -343,7 +342,7 @@ public class FrameTxReceiptDecoderTests
         TxReceipt framesless = CreateStorageFrameReceipt([Log(0x01)]);
         framesless.FrameReceipts = empty ? [] : null;
 
-        Assert.That(() => EncodeStored(framesless, format), Throws.InstanceOf<RlpException>());
+        Assert.That(() => EncodeStored(framesless, format), Throws.InstanceOf<RlpReaderException>());
     }
 
     /// <summary>Both halves of the wire pair refuse it, not just the length half. Every message encoder happens to
@@ -357,9 +356,9 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(() =>
         {
-            RlpWriter writer = new(new byte[1024]);
+            RlpWriter writer = RlpWriter.ContentWriter(new byte[1024]);
             FrameReceiptRlp.EncodePayload(ref writer, payerless, framesLength: 0);
-        }, Throws.InstanceOf<RlpException>());
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     /// <summary>The bounds the payload decoder holds are enforced on the write paths, not the stored read path:
@@ -379,7 +378,7 @@ public class FrameTxReceiptDecoderTests
 
         if (rejected)
         {
-            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpException>());
+            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -406,7 +405,7 @@ public class FrameTxReceiptDecoderTests
 
         if (rejected)
         {
-            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpException>());
+            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -432,7 +431,7 @@ public class FrameTxReceiptDecoderTests
 
         if (over)
         {
-            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpException>());
+            Assert.That(() => EncodeStored(receipt, format), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -456,7 +455,7 @@ public class FrameTxReceiptDecoderTests
             Assert.That(decoded.FrameReceipts, Has.Length.EqualTo(1));
         }
 
-        Assert.That(() => new ReceiptMessageDecoder().EncodeNew(decoded, RlpBehaviors.None), Throws.InstanceOf<RlpException>(),
+        Assert.That(() => new ReceiptMessageDecoder().EncodeNew(decoded, RlpBehaviors.None), Throws.InstanceOf<RlpReaderException>(),
             "a payer-less receipt is still not servable, so the refusal belongs to the wire encoder");
     }
 
@@ -500,10 +499,9 @@ public class FrameTxReceiptDecoderTests
 
     private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp, bool compact)
     {
-        RlpReader reader = new(logsRlp);
-        int end = reader.ReadSequenceLength() + reader.Position;
+        RlpReader reader = new RlpReader(logsRlp).EnterSequence(out _);
         List<LogEntry> logs = [];
-        while (reader.Position < end)
+        while (reader.HasNext)
         {
             LogEntry log = compact
                 ? CompactLogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!
@@ -680,12 +678,13 @@ public class FrameTxReceiptDecoderTests
             ? new CompactReceiptStorageDecoder()
             : (IReceiptRefDecoder)new ReceiptStorageDecoder();
 
-        ReadOnlySpan<byte> body = ReceiptArrayStorageDecoder.IsCompactEncoding(encoded) ? encoded.AsSpan(1) : encoded;
-        RlpReader reader = new(body);
-        int length = reader.ReadSequenceLength();
+        RlpReader outer = new(encoded);
+        RlpReader reader = ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref outer, out _)
+            ? ReceiptArrayStorageDecoder.EnterCompactReceiptList(ref outer)
+            : outer.EnterSequence(out _);
         int count = 0;
         (string Sender, ulong Gas, TxType Type)[] seen = new (string, ulong, TxType)[3];
-        while (reader.Position < length)
+        while (reader.HasNext)
         {
             refDecoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
             if (count < seen.Length)
@@ -733,7 +732,7 @@ public class FrameTxReceiptDecoderTests
         Assert.That(DecodeMessage(encoded).FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped));
 
         encoded[statusOffset] = status;
-        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
+        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpReaderException>());
     }
 
     // The log ceiling is derived from a whole transaction's gas, so the frames share one budget; spent per frame
@@ -761,7 +760,7 @@ public class FrameTxReceiptDecoderTests
 
         if (rejected)
         {
-            Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
+            Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -781,7 +780,7 @@ public class FrameTxReceiptDecoderTests
 
         RlpLimit.InitMaxBlockGas(EightLogBlockGas);
 
-        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
+        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpReaderException>());
     }
 
     /// <summary>A frame transaction has at least one frame, so a receipt without one is malformed: accepting it
@@ -802,7 +801,7 @@ public class FrameTxReceiptDecoderTests
             Assert.That(decoded.FrameReceipts, Has.Length.EqualTo(1));
 
             Assert.That(() => DecodeFrameReceiptPayload(FrameReceiptPayload(frameCount: 0)),
-                Throws.InstanceOf<RlpException>());
+                Throws.InstanceOf<RlpReaderException>());
         }
     }
 
@@ -817,7 +816,7 @@ public class FrameTxReceiptDecoderTests
         int framesLength = frameCount * Rlp.LengthOfSequence(frameLength);
 
         byte[] payload = new byte[Rlp.LengthOf(21_000UL) + Rlp.LengthOf(TestItem.AddressA) + Rlp.LengthOfSequence(framesLength)];
-        RlpWriter writer = new(payload);
+        RlpWriter writer = RlpWriter.ContentWriter(payload);
         writer.Encode(21_000UL);
         writer.Encode(TestItem.AddressA);
         writer.StartSequence(framesLength);
@@ -838,7 +837,7 @@ public class FrameTxReceiptDecoderTests
     {
         TxReceipt receipt = new();
         RlpReader reader = new(payload);
-        FrameReceiptRlp.DecodePayload(ref reader, receipt, payload.Length, RlpBehaviors.None);
+        FrameReceiptRlp.DecodePayload(ref reader, receipt, RlpBehaviors.None);
         return receipt;
     }
 
@@ -848,14 +847,18 @@ public class FrameTxReceiptDecoderTests
     private static int FirstFrameStatusOffset(byte[] encoded)
     {
         RlpReader reader = new(encoded);
-        reader.SkipLength();
-        reader.SkipBytes(1);
-        reader.ReadSequenceLength();
-        reader.SkipItem();
-        reader.SkipItem();
-        reader.ReadSequenceLength();
-        reader.ReadSequenceLength();
-        return reader.Position;
+        ReadOnlySpan<byte> envelope = reader.ReadBytes();
+        int offset = reader.BytesRead - envelope.Length + 1;
+        RlpReader payload = new(envelope[1..]);
+        RlpReader fields = payload.EnterSequence(out int fieldsLength);
+        offset += fieldsLength - fields.Remaining;
+        fields.SkipItem();
+        fields.SkipItem();
+        offset += fields.BytesRead;
+        RlpReader frames = fields.EnterSequence(out int framesLength);
+        offset += framesLength - frames.Remaining;
+        RlpReader frame = frames.EnterSequence(out int frameLength);
+        return offset + frameLength - frame.Remaining;
     }
 
     private static TxReceipt DecodeMessage(TxReceipt receipt) => DecodeMessage(EncodeMessage(receipt));

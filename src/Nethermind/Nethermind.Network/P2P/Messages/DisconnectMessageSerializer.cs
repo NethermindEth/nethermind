@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -13,11 +14,12 @@ namespace Nethermind.Network.P2P.Messages
 
         public int Serialize(Span<byte> destination, DisconnectMessage msg)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(msg));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(msg));
             writer.Encode((byte)msg.Reason);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         private static int GetContentLength(DisconnectMessage message) => Rlp.LengthOf((byte)message.Reason);
@@ -36,13 +38,13 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             RlpReader reader = new(msg);
-            if (!reader.IsSequenceNext())
+            if (!reader.IsNextSequence)
             {
                 reader = new RlpReader(reader.DecodeByteArraySpan());
             }
 
-            reader.ReadSequenceLength();
-            int reason = reader.DecodeInt();
+            RlpReader fields = reader.EnterSequence(out _);
+            int reason = fields.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
         }

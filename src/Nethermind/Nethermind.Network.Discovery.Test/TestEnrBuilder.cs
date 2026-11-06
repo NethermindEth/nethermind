@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -72,5 +73,5 @@ internal sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
+    protected override void EncodeValue(ref RlpWriter writer) => writer.Encode(Value);
 }

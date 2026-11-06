@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm
@@ -26,12 +27,13 @@ namespace Nethermind.Evm
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
             Span<byte> bytes = stackalloc byte[totalLength];
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             writer.Encode(deployingAddress);
             writer.Encode(nonce);
+            writer.EndSequence(sequence);
 
-            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes[..writer.Position]);
+            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes);
 
             return new(in contractAddressKeccak);
         }

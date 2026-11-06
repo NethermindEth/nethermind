@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Blockchain.Headers;
@@ -520,14 +521,11 @@ public class HashesOnlyBlockReaderTests
     // A later fork's body field: one more item after the withdrawals.
     private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
-        RlpReader reader = new(storedBlock);
-        int end = reader.ReadSequenceLength() + reader.Position;
+        RlpReader reader = new RlpReader(storedBlock).EnterSequence(out _);
         List<Rlp> items = [];
-        while (reader.Position < end)
+        while (reader.HasNext)
         {
-            int length = reader.PeekNextRlpLength();
-            items.Add(new Rlp(reader.Peek(length).ToArray()));
-            reader.SkipBytes(length);
+            items.Add(new Rlp(reader.ReadEncodedItem().ToArray()));
         }
 
         items.Add(Rlp.OfEmptyList);

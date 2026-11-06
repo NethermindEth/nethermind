@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
@@ -20,6 +21,22 @@ public class RlpDecoderTests
     [Test]
     public void Transaction_decoder_is_registered() =>
         Assert.That(Rlp.GetDecoder<Transaction>(), Is.SameAs(TxDecoder.Instance));
+
+    // A missing registration is a configuration error, so it must not look like malformed input.
+    [Test]
+    public void Missing_decoder_throws_not_supported()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<NotSupportedException>(static () => Rlp.GetDecoderOrThrow<NonNullableItem>());
+            Assert.Throws<NotSupportedException>(static () =>
+            {
+                RlpReader reader = new(Rlp.OfEmptyByteArray.Bytes);
+                Rlp.Decode<NonNullableItem>(ref reader);
+            });
+            Assert.Throws<NotSupportedException>(static () => Rlp.Encode(new NonNullableItem()));
+        }
+    }
 
     [Test]
     public void Decode_complete_not_null_decodes_item()
@@ -54,17 +71,16 @@ public class RlpDecoderTests
         }
 
         byte[] bytes = new byte[decoder.GetLength(withdrawals)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, withdrawals);
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
 #pragma warning restore NUnit2045
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
-        context.Check(sequenceEnd);
+        context.CheckEnd();
     }
 
     [Test]
@@ -98,7 +114,7 @@ public class RlpDecoderTests
             decoder.DecodeNonNullArray(ref context);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -110,7 +126,7 @@ public class RlpDecoderTests
             UInt256Decoder.Instance.DecodeNonNullArray(ref context);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -118,19 +134,18 @@ public class RlpDecoderTests
     {
         byte[] input = index == 0 ? [0xc2, Rlp.EmptyListByte, 0x01] : [0xc2, 0x01, Rlp.EmptyListByte];
 
-        (RlpException? exception, int position, int guardCalls) = subject switch
+        (RlpReaderException? exception, int decodeCalls) = subject switch
         {
             Subject.Reference => Capture(new ReferenceItemDecoder(), input, DecodeApi.Array),
             Subject.NullableValue => Capture(new NullableIntDecoder(), input, DecodeApi.Array),
             _ => Capture(new IntDecoder(), input, DecodeApi.Array),
         };
 
-        Assert.That(exception, Is.TypeOf<RlpException>());
+        Assert.That(exception, Is.TypeOf<RlpReaderException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception!.Message, Is.EqualTo($"Unexpected null array element at index {index}"));
-            Assert.That(position, Is.EqualTo(index + 1), "The empty list must be rejected before it is consumed.");
-            Assert.That(guardCalls, Is.EqualTo(index), "The empty list must not reach the element decoder.");
+            Assert.That(decodeCalls, Is.EqualTo(index), "The empty list must not reach the element decoder.");
         }
     }
 
@@ -143,20 +158,20 @@ public class RlpDecoderTests
         // The test decoders consume DecodedNullMarker and return null, so the guard, not the 0xc0 check, must reject it.
         byte[] input = nullIndex == 0 ? [0xc2, DecodedNullMarker, 0x01] : [0xc2, 0x01, DecodedNullMarker];
 
-        (RlpException? exception, int position, _) = subject == Subject.Reference
+        (RlpReaderException? exception, int decodeCalls) = subject == Subject.Reference
             ? Capture(new ReferenceItemDecoder(), input, api)
             : Capture(new NullableIntDecoder(), input, api);
 
-        Assert.That(exception, Is.TypeOf<RlpException>());
+        Assert.That(exception, Is.TypeOf<RlpReaderException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception!.Message, Is.EqualTo(subject == Subject.Reference ? "ReferenceItem decoding returned null" : "Nullable`1 decoding returned null"));
-            Assert.That(position, Is.EqualTo(nullIndex + 2), "The null must be rejected right after it is decoded.");
+            Assert.That(decodeCalls, Is.EqualTo(nullIndex + 1), "The null must be rejected right after it is decoded.");
         }
     }
 
     [Test]
-    public void Decoder_lists_keep_values_and_call_the_guard_once_per_element([Values] Subject subject, [Values(DecodeApi.Array, DecodeApi.Pool)] DecodeApi api)
+    public void Decoder_lists_keep_values_and_decode_once_per_element([Values] Subject subject, [Values(DecodeApi.Array, DecodeApi.Pool)] DecodeApi api)
     {
         switch (subject)
         {
@@ -201,15 +216,9 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Decode_wraps_out_of_range_with_concrete_type_name()
+    public void Decode_of_empty_input_throws_truncated()
     {
-        RlpException? exception = Assert.Throws<RlpException>(DecodeEmptyInput);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
-            Assert.That(exception.Message, Does.Not.Contain(" T"));
-        }
+        Assert.That(DecodeEmptyInput, Throws.TypeOf<RlpReaderException>().With.Message.Contains("truncated"));
 
         static void DecodeEmptyInput()
         {
@@ -260,7 +269,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccak(), c.DecodeULong()));
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -272,7 +281,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt());
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -285,7 +294,7 @@ public class RlpDecoderTests
             else context.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccakOrNull()!);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -294,11 +303,11 @@ public class RlpDecoderTests
         void Decode()
         {
             RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
-            if (pooled) context.DecodeNonNullArrayPoolList<int?>(static (ref RlpReader c) => { c.Position++; return null; }).Dispose();
-            else context.DecodeNonNullArray<int?>(static (ref RlpReader c) => { c.Position++; return null; });
+            if (pooled) context.DecodeNonNullArrayPoolList<int?>(static (ref RlpReader c) => { c.SkipItem(); return null; }).Dispose();
+            else context.DecodeNonNullArray<int?>(static (ref RlpReader c) => { c.SkipItem(); return null; });
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     // Deterministic in Debug builds; in Release it can only fail while the measured loop still runs at Tier0.
@@ -347,18 +356,6 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Decode_array_pool_list_legacy_api_uses_value_type_default()
-    {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
-
-        using ArrayPoolList<int> result = context.DecodeArrayPoolList(
-            static (ref RlpReader _) => throw new InvalidOperationException(),
-            defaultElement: 42);
-
-        Assert.That(result, Is.EqualTo(new[] { 42 }));
-    }
-
-    [Test]
     public void Decode_nullable_delegate_array_allows_null_reference_element()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
@@ -377,7 +374,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(KeccakDecoder.Instance);
         }
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -402,26 +399,18 @@ public class RlpDecoderTests
         Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
+    // The exact-size buffers are not initialized, so an encoder that writes fewer bytes than it reports would leave
+    // stale bytes. 2 bytes take the stack buffer of the hash and 513 bytes take a pooled one.
     [Test]
-    public void Decode_nullable_array_pool_list_allows_null_reference_element()
+    public void Encoder_that_writes_less_than_its_length_throws([Values(2, 513)] int reportedLength)
     {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+        ShortWritingDecoder decoder = new(reportedLength);
 
-        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull());
-
-        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
-    }
-
-    [Test]
-    public void Decode_nullable_array_pool_list_uses_default_for_empty_list_element()
-    {
-        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
-
-        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(
-            static (ref RlpReader _) => throw new InvalidOperationException(),
-            defaultElement: TestItem.KeccakA);
-
-        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoder.EncodeAsBytes(new NonNullableItem()), Throws.InvalidOperationException);
+            Assert.That(() => decoder.ComputeValueHash(new NonNullableItem()), Throws.InvalidOperationException);
+        }
     }
 
     public enum Subject { Reference, NullableValue, Value }
@@ -432,17 +421,17 @@ public class RlpDecoderTests
 
     private const byte DecodedNullMarker = 0x7f;
 
-    private static (RlpException? Exception, int Position, int GuardCalls) Capture<T>(RecordingDecoder<T> decoder, byte[] input, DecodeApi api)
+    private static (RlpReaderException? Exception, int DecodeCalls) Capture<T>(RecordingDecoder<T> decoder, byte[] input, DecodeApi api)
     {
         RlpReader context = new(input);
-        RlpException? exception = null;
+        RlpReaderException? exception = null;
         try
         {
             switch (api)
             {
                 case DecodeApi.Guard:
-                    context.ReadSequenceLength();
-                    while (context.Position < input.Length) decoder.DecodeGuardNotNull(ref context);
+                    RlpReader items = context.EnterSequence(out _);
+                    while (items.HasNext) decoder.DecodeGuardNotNull(ref items);
                     break;
                 case DecodeApi.Array:
                     decoder.DecodeNonNullArray(ref context);
@@ -452,12 +441,12 @@ public class RlpDecoderTests
                     break;
             }
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             exception = e;
         }
 
-        return (exception, context.Position, decoder.GuardCalls);
+        return (exception, decoder.DecodeCalls);
     }
 
     private static void AssertDecodedList<T>(RecordingDecoder<T> decoder, byte[] input, DecodeApi api, T[] expected)
@@ -477,8 +466,8 @@ public class RlpDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded, Is.EqualTo(expected));
-            Assert.That(context.Position, Is.EqualTo(input.Length));
-            Assert.That(decoder.GuardCalls, Is.EqualTo(expected.Length), "Each element must go through DecodeGuardNotNull.");
+            Assert.That(context.HasNext, Is.False);
+            Assert.That(decoder.DecodeCalls, Is.EqualTo(expected.Length), "Each element must be decoded once.");
         }
     }
 
@@ -486,7 +475,7 @@ public class RlpDecoderTests
     {
         byte[] presentBytes = expected[^1..];
         byte[] written = new byte[expected.Length + 1];
-        RlpWriter writer = new(written);
+        RlpWriter writer = RlpWriter.ContentWriter(written);
         decoder.Encode(ref writer, items);
 
         using (Assert.EnterMultipleScope())
@@ -498,7 +487,7 @@ public class RlpDecoderTests
             Assert.That(decoder.GetContentLength(items), Is.EqualTo(expected.Length - 1), "GetContentLength");
             Assert.That(decoder.GetLength(items), Is.EqualTo(expected.Length), "GetLength");
             Assert.That(decoder.Encode(items).Bytes, Is.EqualTo(expected), "array Encode");
-            Assert.That(writer.Position, Is.EqualTo(expected.Length), "array Encode to a writer");
+            Assert.That(writer.Length, Is.EqualTo(expected.Length), "array Encode to a writer");
             Assert.That(written, Is.EqualTo((byte[])[.. expected, 0]), "array Encode to a writer");
             using ArrayPoolSpan<byte> scalarSpan = decoder.EncodeToArrayPoolSpan(default(T));
             Assert.That(((ReadOnlySpan<byte>)scalarSpan).ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes), "EncodeToArrayPoolSpan");
@@ -532,16 +521,16 @@ public class RlpDecoderTests
             switch (operation)
             {
                 case AllocationCase.ArrayDecode:
-                    Check(decoder.DecodeNonNullArray(ref reader), reader.Position == encoded.Length);
+                    Check(decoder.DecodeNonNullArray(ref reader), !reader.HasNext);
                     break;
                 case AllocationCase.PooledDecode:
-                    using (ArrayPoolList<UInt256> list = Rlp.DecodeArrayPool(ref reader, decoder)) Check(list.AsSpan(), reader.Position == encoded.Length);
+                    using (ArrayPoolList<UInt256> list = Rlp.DecodeArrayPool(ref reader, decoder)) Check(list.AsSpan(), !reader.HasNext);
                     break;
                 case AllocationCase.ArrayEncode:
                     output.AsSpan().Clear();
-                    RlpWriter writer = new(output);
+                    RlpWriter writer = RlpWriter.ContentWriter(output);
                     decoder.Encode(ref writer, values);
-                    if (writer.Position != encoded.Length || !output.AsSpan().SequenceEqual(encoded)) throw new InvalidOperationException("Encoding changed.");
+                    if (writer.Length != encoded.Length || !output.AsSpan().SequenceEqual(encoded)) throw new InvalidOperationException("Encoding changed.");
                     break;
                 case AllocationCase.CappedEncode:
                     int position = contentStart;
@@ -596,12 +585,12 @@ public class RlpDecoderTests
     private sealed record ReferenceItem(int Value);
 
     /// <summary>
-    /// Codec over RLP integers that returns a decoded null (default) for <see cref="DecodedNullMarker"/>, counts guard
-    /// calls, and throws if a null item reaches its element encoder.
+    /// Codec over RLP integers that returns a decoded null (default) for <see cref="DecodedNullMarker"/>, counts item
+    /// decodes, and throws if a null item reaches its element encoder.
     /// </summary>
     private abstract class RecordingDecoder<T> : RlpDecoder<T>
     {
-        public int GuardCalls { get; private set; }
+        public int DecodeCalls { get; private set; }
 
         protected abstract T FromInt(int value);
 
@@ -609,22 +598,17 @@ public class RlpDecoderTests
 
         public override int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOf(ToInt(item));
 
-        public override void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(ToInt(item));
-
-        [return: NotNull]
-        public override T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            GuardCalls++;
-            return base.DecodeGuardNotNull(ref context, rlpBehaviors);
-        }
+        public override void Encode(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(ToInt(item));
 
         [return: MaybeNull]
-        protected override T DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override T DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.PeekByte() != DecodedNullMarker) return FromInt(decoderContext.DecodeInt());
+            DecodeCalls++;
+            ReadOnlySpan<byte> encoded = reader.ReadEncodedItem();
+            if (encoded is [DecodedNullMarker]) return default;
 
-            decoderContext.Position++;
-            return default;
+            RlpReader item = new(encoded);
+            return FromInt(item.DecodeInt());
         }
     }
 
@@ -651,26 +635,24 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
 #pragma warning restore NUnit2045
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
-        context.Check(sequenceEnd);
+        context.CheckEnd();
     }
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        RlpReader context = new(bytes);
-        int sequenceEnd = context.ReadSequenceLength() + context.Position;
+        RlpReader context = new RlpReader(bytes).EnterSequence(out _);
 
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
-        Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
-        context.Check(sequenceEnd);
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyListByte));
+        Assert.That(context.ReadRaw(1)[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+        context.CheckEnd();
     }
 
     private sealed class NonNullableItem
@@ -685,11 +667,23 @@ public class RlpDecoderTests
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);
         }
+
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>Reports <paramref name="length"/> bytes and writes one, as a scalar, so that no sequence check throws first.</summary>
+    private sealed class ShortWritingDecoder(int length) : RlpDecoder<NonNullableItem>
+    {
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => length;
+
+        public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            writer.Encode(Rlp.OfEmptyByteArray);
 
         protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();

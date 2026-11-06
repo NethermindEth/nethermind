@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -19,13 +20,14 @@ namespace Nethermind.Network.Rlpx.Handshake
             msg.Signature.Bytes.CopyTo(signature);
             signature[^1] = msg.Signature.RecoveryId;
 
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(msg));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(msg));
             writer.Encode(signature);
             writer.Encode(msg.PublicKey.Bytes);
             writer.Encode(msg.Nonce);
             writer.Encode(msg.Version);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         private static int GetContentLength(AuthEip8Message msg) =>
@@ -39,9 +41,8 @@ namespace Nethermind.Network.Rlpx.Handshake
         /// </remarks>
         public AuthEip8Message Deserialize(ReadOnlySpan<byte> msgBytes)
         {
-            RlpReader ctx = new(msgBytes);
+            RlpReader ctx = new RlpReader(msgBytes).EnterSequence(out _);
             AuthEip8Message authMessage = new();
-            ctx.ReadSequenceLength();
             ReadOnlySpan<byte> sigAllBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
             Signature signature = new(sigAllBytes[..64], sigAllBytes[64]); // since Signature class is Ethereum style it expects V as the 65th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;

@@ -1110,6 +1110,13 @@
           "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
+      "nethermind.serialization.fluentrlp": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Numerics.Int256": "[1.12.0, )"
+        }
+      },
       "nethermind.serialization.json": {
         "type": "Project",
         "dependencies": {
@@ -1122,7 +1129,8 @@
         "dependencies": {
           "Ckzg.Bindings": "[2.1.8.1680, )",
           "Nethermind.Core": "[2.3.0-preview, )",
-          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )"
+          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )",
+          "Nethermind.Serialization.FluentRlp": "[2.3.0-preview, )"
         }
       },
       "nethermind.serialization.ssz": {

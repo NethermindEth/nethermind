@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Serialization.FluentRlp;
+
 namespace Nethermind.Serialization.Rlp;
 
 public sealed class RlpItemList : IRlpItemList
@@ -16,6 +18,8 @@ public sealed class RlpItemList : IRlpItemList
 
     private int _cachedIndex;
     private int _cachedPosition;
+    // Length of the item at _cachedIndex, so that a walk in index order reads each item once; zero before a read.
+    private int _cachedLength;
 
     private RlpItemList? _pooledChild;
     private RlpItemList? _parent;
@@ -29,7 +33,7 @@ public sealed class RlpItemList : IRlpItemList
     {
         _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
         _rlpRegion = rlpRegion;
-        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
+        _prefixLength = GetCheckedPrefixLength(rlpRegion.Span);
         _count = knownCount;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
@@ -39,7 +43,7 @@ public sealed class RlpItemList : IRlpItemList
     {
         _memoryOwner = memoryOwner;
         _rlpRegion = rlpRegion;
-        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
+        _prefixLength = GetPrefixLength(rlpRegion.Span);
         _count = -1;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
@@ -61,10 +65,11 @@ public sealed class RlpItemList : IRlpItemList
         {
             ReadOnlySpan<byte> span = _rlpRegion.Span;
             int position = GetPosition(span, index);
-            (int prefixLength, int contentLength) = PeekPrefixAndContentLength(span, position);
+            ReadOnlySpan<byte> item = ReadItem(span, position);
             _cachedIndex = index;
             _cachedPosition = position;
-            return span.Slice(position, prefixLength + contentLength);
+            _cachedLength = item.Length;
+            return item;
         }
     }
 
@@ -73,23 +78,20 @@ public sealed class RlpItemList : IRlpItemList
     public int RlpLength => _rlpRegion.Length;
     public ReadOnlySpan<byte> RlpSpan => _rlpRegion.Span;
 
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(_rlpRegion.Span);
+    public void Write(ref RlpWriter writer) => writer.WriteEncoded(_rlpRegion.Span);
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {
         ReadOnlySpan<byte> rawRlp = this[index];
-        (int prefixLength, int contentLength) = PeekPrefixAndContentLength(rawRlp, 0);
-        return contentLength == 0 ? ReadOnlySpan<byte>.Empty : rawRlp.Slice(prefixLength, contentLength);
+        return rawRlp[GetPrefixLength(rawRlp)..];
     }
 
     public IRlpItemList GetNestedItemList(int index)
     {
         ReadOnlySpan<byte> item = this[index];
-        if (item[0] < 0xc0) throw new RlpException("Item is not an RLP list");
+        if (item[0] < Rlp.EmptyListByte) throw new RlpReaderException("Item is not an RLP list");
 
-        (int prefixLength, int contentLength) = PeekPrefixAndContentLength(_rlpRegion.Span, _cachedPosition);
-        Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition, prefixLength + contentLength);
+        Memory<byte> nestedRegion = _rlpRegion.Slice(_cachedPosition, item.Length);
 
         RlpItemList? child = _pooledChild;
         if (child is not null)
@@ -109,12 +111,9 @@ public sealed class RlpItemList : IRlpItemList
     /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
     public static IRlpItemList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory)
     {
-        int prefixStart = ctx.Position;
-        int innerLength = ctx.ReadSequenceLength();
-        int totalLength = (ctx.Position - prefixStart) + innerLength;
-        RlpItemList list = new(memoryOwner, memory.Slice(prefixStart, totalLength));
-        ctx.Position = prefixStart + totalLength;
-        return list;
+        if (!ctx.IsNextSequence) throw new RlpReaderException("RLP does not correspond to a sequence");
+        ReadOnlySpan<byte> encoded = ctx.ReadEncodedItem();
+        return new RlpItemList(memoryOwner, memory.SliceOf(encoded));
     }
 
     private bool _wasDisposed = false;
@@ -145,33 +144,30 @@ public sealed class RlpItemList : IRlpItemList
     private void Reset(Memory<byte> rlpRegion)
     {
         _rlpRegion = rlpRegion;
-        _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
+        _prefixLength = GetPrefixLength(rlpRegion.Span);
         _count = -1;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
+        _cachedLength = 0;
         _wasDisposed = false;
     }
 
     private int ComputeCount()
     {
-        ReadOnlySpan<byte> span = _rlpRegion.Span;
-        int position = _prefixLength;
-        int count = 0;
-        while (position < span.Length)
-        {
-            (int pLen, int cLen) = PeekPrefixAndContentLength(span, position);
-            position += pLen + cLen;
-            count++;
-        }
-
-        return count;
+        RlpReader reader = new(_rlpRegion.Span[_prefixLength..]);
+        return reader.CountItems();
     }
 
     private int GetPosition(ReadOnlySpan<byte> span, int index)
     {
         int scanFrom;
         int position;
-        if (index >= _cachedIndex)
+        if (index > _cachedIndex && _cachedLength != 0)
+        {
+            scanFrom = _cachedIndex + 1;
+            position = _cachedPosition + _cachedLength;
+        }
+        else if (index >= _cachedIndex)
         {
             scanFrom = _cachedIndex;
             position = _cachedPosition;
@@ -184,15 +180,42 @@ public sealed class RlpItemList : IRlpItemList
 
         for (int i = scanFrom; i < index; i++)
         {
-            (int pLen, int cLen) = PeekPrefixAndContentLength(span, position);
-            position += pLen + cLen;
+            position += ReadItem(span, position).Length;
         }
 
         return position;
     }
 
+    /// <summary>Reads the encoded item at <paramref name="position"/>, and checks its prefix and length.</summary>
+    private static ReadOnlySpan<byte> ReadItem(ReadOnlySpan<byte> span, int position)
+    {
+        RlpReader reader = new(span[position..]);
+        return reader.ReadEncodedItem();
+    }
+
+    /// <summary>Gets the prefix length of an item that <see cref="ReadItem"/> checked; zero for a single byte below <c>0x80</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static (int prefixLength, int contentLength) PeekPrefixAndContentLength(
-        ReadOnlySpan<byte> span, int position)
-        => RlpHelpers.PeekPrefixAndContentLength(span, position);
+    internal static int GetPrefixLength(ReadOnlySpan<byte> item) => item[0] switch
+    {
+        < Rlp.EmptyByteArrayByte => 0,
+        <= 0xb7 => 1,
+        < Rlp.EmptyListByte => 1 + item[0] - 0xb7,
+        <= 0xf7 => 1,
+        _ => 1 + item[0] - 0xf7,
+    };
+
+    /// <summary>Gets the prefix length of the first item of a region that is not checked yet.</summary>
+    /// <exception cref="RlpReaderException">The prefix is not canonical, or the item is truncated.</exception>
+    private static int GetCheckedPrefixLength(ReadOnlySpan<byte> region)
+    {
+        RlpReader reader = new(region);
+        if (reader.IsNextSequence)
+        {
+            RlpReader content = reader.EnterSequence(out int itemLength);
+            return itemLength - content.Remaining;
+        }
+
+        int contentLength = reader.ReadBytes().Length;
+        return reader.BytesRead - contentLength;
+    }
 }

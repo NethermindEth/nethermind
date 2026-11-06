@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -55,17 +56,63 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        [return: MaybeNull]
-        public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
+        /// <summary>Starts to write exactly <paramref name="length"/> bytes of RLP at the writer index of <paramref name="buffer"/>.</summary>
+        /// <remarks>
+        /// The writer writes straight into the array of the buffer. Write the items, then call
+        /// <see cref="CompleteRlpWrite"/> to move the writer index.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">The buffer has no array.</exception>
+        public static RlpWriter StartRlpWrite(this IByteBuffer buffer, int length)
         {
-            RlpReader ctx = new(buffer.AsSpan());
+            buffer.EnsureWritable(length);
+            if (!buffer.HasArray) ThrowNoArray();
+            return RlpWriter.ContentWriter(buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length));
+        }
+
+        /// <summary>Ends a write that <see cref="StartRlpWrite"/> started, and moves the writer index past it.</summary>
+        /// <exception cref="InvalidOperationException"><paramref name="writer"/> wrote another number of bytes than <paramref name="length"/>.</exception>
+        public static void CompleteRlpWrite(this IByteBuffer buffer, scoped in RlpWriter writer, int length)
+        {
+            Rlp.CheckLength(in writer, length);
+            buffer.SetWriterIndex(buffer.WriterIndex + length);
+        }
+
+        /// <summary>Writes <paramref name="item"/> at the writer index of <paramref name="buffer"/>, and moves the writer index past it.</summary>
+        public static void WriteRlp<T>(this IByteBuffer buffer, IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int length = decoder.GetLength(item, rlpBehaviors);
+            RlpWriter writer = buffer.StartRlpWrite(length);
+            decoder.Encode(ref writer, item, rlpBehaviors);
+            buffer.CompleteRlpWrite(in writer, length);
+        }
+
+        /// <summary>Reads RLP at the reader index of <paramref name="buffer"/>, and moves the reader index past the bytes that were read.</summary>
+        [return: MaybeNull]
+        public static T DeserializeRlp<T>(this IByteBuffer buffer, RefRlpReaderFunc<T> deserialize)
+        {
+            RlpReader reader = new(buffer.AsSpan());
             try
             {
-                return deserialize(ref ctx);
+                return deserialize(ref reader);
             }
             finally
             {
-                buffer.SetReaderIndex(buffer.ReaderIndex + ctx.Position);
+                buffer.SetReaderIndex(buffer.ReaderIndex + reader.BytesRead);
+            }
+        }
+
+        /// <inheritdoc cref="DeserializeRlp{T}(IByteBuffer, RefRlpReaderFunc{T})"/>
+        [return: MaybeNull]
+        public static T DeserializeRlp<T>(this IByteBuffer buffer, IRlpDecoder<T> decoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            RlpReader reader = new(buffer.AsSpan());
+            try
+            {
+                return decoder.Decode(ref reader, rlpBehaviors);
+            }
+            finally
+            {
+                buffer.SetReaderIndex(buffer.ReaderIndex + reader.BytesRead);
             }
         }
 
@@ -96,5 +143,8 @@ namespace Nethermind.Serialization.Rlp
             return buffer.Array.AsMemory()
                 .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
         }
+
+        [DoesNotReturn]
+        private static void ThrowNoArray() => throw new InvalidOperationException("Byte buffer does not have array backing");
     }
 }

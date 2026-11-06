@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Filters;
@@ -58,7 +59,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
 
     /// <summary>Writes the log exactly as the JSON writer of <see cref="FilterLog"/> would, without materializing it.</summary>
     /// <exception cref="ArgumentException"><paramref name="transactionHash"/> is not <see cref="Hash256.Size"/> bytes, as when it was not recovered.</exception>
-    /// <exception cref="RlpException">The stored topics are malformed; the log is left partly written, possibly after some of its topics, and the instance must be disposed.</exception>
+    /// <exception cref="RlpReaderException">The stored topics are malformed; the log is left partly written, possibly after some of its topics, and the instance must be disposed.</exception>
     internal void Add(
         long logIndex,
         ulong blockNumber,

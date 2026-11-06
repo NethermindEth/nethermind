@@ -99,9 +99,9 @@ public class RlpDerivedTest
     public void FlatRecord()
     {
         Player player = new(Id: 42, Username: "SuperUser");
-        byte[] rlp = Rlp.Write(player, static (ref RlpWriter w, Player player) => w.Write(player));
+        byte[] rlp = RlpCodec.Write(player, static (ref RlpWriter w, Player player) => w.Write(player));
 
-        Player decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayer());
+        Player decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayer());
         Assert.That(decoded, Is.EqualTo(player));
     }
 
@@ -109,9 +109,9 @@ public class RlpDerivedTest
     public void RecordWithList()
     {
         PlayerWithFriends player = new(Id: 42, Username: "SuperUser", Friends: ["ana", "bob"]);
-        byte[] rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
+        byte[] rlp = RlpCodec.Write(player, static (ref RlpWriter w, PlayerWithFriends player) => w.Write(player));
 
-        PlayerWithFriends decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
+        PlayerWithFriends decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithFriends());
         Assert.That(decoded, Is.EqualTo(player).UsingPropertiesComparer());
     }
 
@@ -119,9 +119,9 @@ public class RlpDerivedTest
     public void RecordWithArray()
     {
         PlayerWithCodes player = new(Id: 42, Username: "SuperUser", Codes: [2, 4, 8, 16, 32, 64]);
-        byte[] rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithCodes player) => w.Write(player));
+        byte[] rlp = RlpCodec.Write(player, static (ref RlpWriter w, PlayerWithCodes player) => w.Write(player));
 
-        PlayerWithCodes decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithCodes());
+        PlayerWithCodes decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithCodes());
         Assert.That(decoded, Is.EqualTo(player).UsingPropertiesComparer());
     }
 
@@ -133,9 +133,9 @@ public class RlpDerivedTest
             { "foo", 42 },
             { "bar", 1337 }
         });
-        byte[] rlp = Rlp.Write(player, static (ref RlpWriter w, PlayerWithScores player) => w.Write(player));
+        byte[] rlp = RlpCodec.Write(player, static (ref RlpWriter w, PlayerWithScores player) => w.Write(player));
 
-        PlayerWithScores decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithScores());
+        PlayerWithScores decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadPlayerWithScores());
         Assert.That(decoded, Is.EqualTo(player).UsingPropertiesComparer());
     }
 
@@ -143,9 +143,9 @@ public class RlpDerivedTest
     public void RecordWithTuple()
     {
         IntegerTuple integerTuple = new((42, 1337));
-        byte[] rlp = Rlp.Write(integerTuple, static (ref RlpWriter w, IntegerTuple tuple) => w.Write(tuple));
+        byte[] rlp = RlpCodec.Write(integerTuple, static (ref RlpWriter w, IntegerTuple tuple) => w.Write(tuple));
 
-        IntegerTuple decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuple());
+        IntegerTuple decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuple());
         Assert.That(decoded, Is.EqualTo(integerTuple));
     }
 
@@ -153,9 +153,9 @@ public class RlpDerivedTest
     public void RecordWithTupleArray()
     {
         IntegerTuples tuples = new([(1, 2), (3, 4), (5, 6)]);
-        byte[] rlp = Rlp.Write(tuples, static (ref RlpWriter w, IntegerTuples tuples) => w.Write(tuples));
+        byte[] rlp = RlpCodec.Write(tuples, static (ref RlpWriter w, IntegerTuples tuples) => w.Write(tuples));
 
-        IntegerTuples decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuples());
+        IntegerTuples decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuples());
         Assert.That(decoded.Values, Is.EqualTo(tuples.Values));
     }
 
@@ -169,9 +169,9 @@ public class RlpDerivedTest
             new Tree("qux",
                 [new Tree("cat", [])])
         ]);
-        byte[] rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
+        byte[] rlp = RlpCodec.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
 
-        Tree decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
+        Tree decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
         Assert.That(decoded, Is.EqualTo(tree).UsingPropertiesComparer());
     }
 
@@ -182,13 +182,13 @@ public class RlpDerivedTest
         Tree tree = new("leaf", []);
         for (int i = 0; i < 1_000; i++) tree = new Tree("node", [tree]);
 
-        byte[] rlp = Rlp.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
-        Tree decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
+        byte[] rlp = RlpCodec.Write(tree, static (ref RlpWriter w, Tree tree) => w.Write(tree));
+        Tree decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadTree());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(TreeRlpConverter).IsAssignableTo(typeof(IRlpLengthConverter<Tree>)), Is.False);
-            Assert.That(Rlp.Write(decoded, static (ref RlpWriter w, Tree tree) => w.Write(tree)), Is.EqualTo(rlp));
+            Assert.That(RlpCodec.Write(decoded, static (ref RlpWriter w, Tree tree) => w.Write(tree)), Is.EqualTo(rlp));
         }
     }
 
@@ -197,15 +197,15 @@ public class RlpDerivedTest
     {
         Address address = new("0x1234567890ABCDEF");
 
-        byte[] rlp = Rlp.Write(address, static (ref RlpWriter writer, Address address)
+        byte[] rlp = RlpCodec.Write(address, static (ref RlpWriter writer, Address address)
             => writer.Write(address));
 
-        byte[] rlpExplicit = Rlp.Write(address, (ref RlpWriter writer, Address value)
+        byte[] rlpExplicit = RlpCodec.Write(address, (ref RlpWriter writer, Address value)
             => writer.Write(value.HexString));
 
         Assert.That(rlp, Is.EqualTo(rlpExplicit));
 
-        Address decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAddress());
+        Address decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadAddress());
 
         Assert.That(decoded, Is.EqualTo(address));
     }
@@ -218,9 +218,9 @@ public class RlpDerivedTest
             (new Address("0xFEDCBA0987654321"), [2, 4, 6, 8, 10])
         ]);
 
-        byte[] rlp = Rlp.Write(accessList, (ref RlpWriter writer, AccessList value) => writer.Write(value));
+        byte[] rlp = RlpCodec.Write(accessList, (ref RlpWriter writer, AccessList value) => writer.Write(value));
 
-        AccessList decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessList());
+        AccessList decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadAccessList());
         Assert.That(decoded, Is.EqualTo(accessList).UsingPropertiesComparer());
     }
 
@@ -229,9 +229,9 @@ public class RlpDerivedTest
     {
         FixedAddress fixedAddress = new([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
 
-        byte[] rlp = Rlp.Write(fixedAddress, (ref RlpWriter writer, FixedAddress value) => writer.Write(value));
+        byte[] rlp = RlpCodec.Write(fixedAddress, (ref RlpWriter writer, FixedAddress value) => writer.Write(value));
 
-        FixedAddress decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedAddress());
+        FixedAddress decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedAddress());
         Assert.That(decoded, Is.EqualTo(fixedAddress).UsingPropertiesComparer());
     }
 
@@ -239,21 +239,21 @@ public class RlpDerivedTest
     public void RecordWithUnsignedIntegerLimits()
     {
         UnsignedIntegers integers = new(byte.MaxValue, ushort.MaxValue, uint.MaxValue, ulong.MaxValue, UInt128.MaxValue, UInt256.MaxValue);
-        byte[] rlp = Rlp.Write(integers, static (ref RlpWriter w, UnsignedIntegers value) => w.Write(value));
+        byte[] rlp = RlpCodec.Write(integers, static (ref RlpWriter w, UnsignedIntegers value) => w.Write(value));
 
-        UnsignedIntegers decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadUnsignedIntegers());
+        UnsignedIntegers decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadUnsignedIntegers());
         Assert.That(decoded, Is.EqualTo(integers));
     }
 
     [Test]
     public void RecordWithFixedLengthRejectsOtherLengths()
     {
-        byte[] shortRlp = Rlp.Write(static (ref RlpWriter w) => w.Write(new byte[FixedAddress.Size - 1]));
+        byte[] shortRlp = RlpCodec.Write(static (ref RlpWriter w) => w.Write(new byte[FixedAddress.Size - 1]));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => Rlp.Read(shortRlp, static (scoped ref RlpReader r) => r.ReadFixedAddress()), Throws.TypeOf<RlpReaderException>());
-            Assert.That(() => Rlp.Write(new FixedAddress(new byte[FixedAddress.Size + 1]), static (ref RlpWriter w, FixedAddress value) => w.Write(value)),
+            Assert.That(() => RlpCodec.Read(shortRlp, static (scoped ref RlpReader r) => r.ReadFixedAddress()), Throws.TypeOf<RlpReaderException>());
+            Assert.That(() => RlpCodec.Write(new FixedAddress(new byte[FixedAddress.Size + 1]), static (ref RlpWriter w, FixedAddress value) => w.Write(value)),
                 Throws.ArgumentException);
         }
     }
@@ -265,16 +265,16 @@ public class RlpDerivedTest
         List<byte[]> keys = Enumerable.Range(0, keyCount).Select(static i => Enumerable.Repeat((byte)(i + 1), 32).ToArray()).ToList();
         FixedEntry entry = new(address, keys.Select(static k => new FixedKey(k)).ToList());
 
-        byte[] rlp = Rlp.Write(entry, static (ref RlpWriter w, FixedEntry value) => w.Write(value));
-        byte[] unhinted = Rlp.Write(new UnhintedEntry(address, keys), static (ref RlpWriter w, UnhintedEntry value) => w.Write(value));
-        FixedEntry decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry());
+        byte[] rlp = RlpCodec.Write(entry, static (ref RlpWriter w, FixedEntry value) => w.Write(value));
+        byte[] unhinted = RlpCodec.Write(new UnhintedEntry(address, keys), static (ref RlpWriter w, UnhintedEntry value) => w.Write(value));
+        FixedEntry decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rlp, Is.EqualTo(unhinted));
             Assert.That(decoded.Address, Is.EqualTo(address));
             Assert.That(decoded.Keys.Select(static k => k.Bytes), Is.EqualTo(keys));
-            Assert.That(() => Rlp.Write(entry with { Address = new byte[19] }, static (ref RlpWriter w, FixedEntry value) => w.Write(value)),
+            Assert.That(() => RlpCodec.Write(entry with { Address = new byte[19] }, static (ref RlpWriter w, FixedEntry value) => w.Write(value)),
                 Throws.InvalidOperationException);
         }
     }
@@ -297,29 +297,29 @@ public class RlpDerivedTest
 
     [Test]
     public void LengthConverterWithWrongFixedLength()
-        => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
+        => Assert.That(static () => RlpCodec.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
 
     // The integer converter would strip the leading zeros of a small key. Different limbs check their order.
     [Test]
     public void FixedLengthUInt256([Values] bool differentLimbs)
     {
         StorageSlot slot = new(differentLimbs ? new UInt256(1, 2, 3, 4) : UInt256.One, UInt256.One);
-        byte[] rlp = Rlp.Write<StorageSlotRlpConverter, StorageSlot>(slot);
+        byte[] rlp = RlpCodec.Write<StorageSlotRlpConverter, StorageSlot>(slot);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rlp, Has.Length.EqualTo(1 + 33 + 1));
-            Assert.That(Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Is.EqualTo(slot));
+            Assert.That(RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Is.EqualTo(slot));
         }
     }
 
     [Test]
     public void ListOfFixedLengthItemsWithWrongLengths()
-        => Assert.That(static () => Rlp.Write<BlobsRlpConverter, Blobs>(new Blobs([new Blob(new byte[31]), new Blob(new byte[33])])), Throws.InvalidOperationException);
+        => Assert.That(static () => RlpCodec.Write<BlobsRlpConverter, Blobs>(new Blobs([new Blob(new byte[31]), new Blob(new byte[33])])), Throws.InvalidOperationException);
 
     [Test]
     public void LengthConverterThatDoesNotEndASequence()
-        => Assert.That(static () => Rlp.Write<OpenSequenceConverter, int>(0), Throws.InvalidOperationException);
+        => Assert.That(static () => RlpCodec.Write<OpenSequenceConverter, int>(0), Throws.InvalidOperationException);
 
     private abstract class OpenSequenceConverter : IRlpLengthConverter<int>
     {
@@ -330,14 +330,14 @@ public class RlpDerivedTest
 
     [Test]
     public void BufferedWriteWithWrongFixedLength()
-        => Assert.That(static () => Rlp.Write(new NamedEntry(new byte[19], "name"), static (ref RlpWriter w, NamedEntry entry) => w.Write(entry)), Throws.InvalidOperationException);
+        => Assert.That(static () => RlpCodec.Write(new NamedEntry(new byte[19], "name"), static (ref RlpWriter w, NamedEntry entry) => w.Write(entry)), Throws.InvalidOperationException);
 
     private static void AssertDirect<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
     {
-        byte[] expected = Rlp.Write(value, static (ref RlpWriter w, T value) => TConverter.Write(ref w, value));
+        byte[] expected = RlpCodec.Write(value, static (ref RlpWriter w, T value) => TConverter.Write(ref w, value));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Rlp.Write<TConverter, T>(value), Is.EqualTo(expected), typeof(T).Name);
+            Assert.That(RlpCodec.Write<TConverter, T>(value), Is.EqualTo(expected), typeof(T).Name);
             Assert.That(TConverter.GetLength(value), Is.EqualTo(expected.Length), typeof(T).Name);
         }
     }
@@ -350,7 +350,7 @@ public class RlpDerivedTest
     {
         byte[] rlp = Convert.FromHexString(hex);
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry()), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry()), Throws.TypeOf<RlpReaderException>());
     }
 
     // A fixed-length UInt256 reads through ReadBytes(int), which checks prefix and length with one compare.
@@ -360,7 +360,7 @@ public class RlpDerivedTest
     {
         byte[] rlp = Convert.FromHexString(hex);
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Throws.TypeOf<RlpReaderException>());
     }
 
     [TestCase("public record Account(int Nonce) { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in the body")]

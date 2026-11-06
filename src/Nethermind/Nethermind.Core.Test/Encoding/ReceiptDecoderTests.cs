@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 #pragma warning disable 618
@@ -245,7 +246,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(
                 () => decoder.Encode(receipt),
-                Throws.TypeOf<RlpException>());
+                Throws.TypeOf<RlpReaderException>());
         }
 
         [Test]
@@ -258,7 +259,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(
                 () => decoder.Encode(receipt),
-                Throws.TypeOf<RlpException>());
+                Throws.TypeOf<RlpReaderException>());
         }
 
         [Test]
@@ -267,7 +268,7 @@ namespace Nethermind.Core.Test.Encoding
             byte[] encoded = EncodeReceiptMessageWithNullBloom();
             ReceiptMessageDecoder decoder = new();
 
-            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
             void Decode()
             {
@@ -391,7 +392,7 @@ namespace Nethermind.Core.Test.Encoding
             {
                 RlpReader reader = new(encoded);
                 decoder.Decode(ref reader);
-            }, Throws.TypeOf<RlpException>());
+            }, Throws.TypeOf<RlpReaderException>());
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
@@ -450,7 +451,7 @@ namespace Nethermind.Core.Test.Encoding
                 + 1
                 + Rlp.LengthOfSequence(0);
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(encoded);
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
             writer.StartSequence(contentLength);
             writer.Encode((byte)1);
             writer.Encode(1UL);
@@ -473,7 +474,7 @@ namespace Nethermind.Core.Test.Encoding
                 + 1
                 + Rlp.LengthOfSequence(0);
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(encoded);
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
             writer.StartSequence(contentLength);
             writer.Encode((byte)1);
             writer.Encode(TestItem.KeccakA);

@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -73,7 +74,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
                 Rlp.Encode(10L)).Bytes;
             GetBlockAccessListsMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
         }
     }
 }

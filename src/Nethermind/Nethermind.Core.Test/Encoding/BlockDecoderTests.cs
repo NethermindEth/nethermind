@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -332,7 +333,7 @@ public class BlockDecoderTests
                 Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+            Assert.Throws<RlpReaderException>(() => recovery.GetNextTransactionHash());
         }
         finally
         {
@@ -363,7 +364,7 @@ public class BlockDecoderTests
                 Assert.That(recovery.GetNextTransactionValueHash(), Is.EqualTo(transactions[i].Hash!.ValueHash256), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
+            Assert.Throws<RlpReaderException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
         }
         finally
         {
@@ -399,7 +400,7 @@ public class BlockDecoderTests
                 Assert.That(TxDecoder.Instance.Encode(decoded[i]).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(transactions[i]).Bytes), $"transaction {i}");
             }
 
-            Assert.Throws<RlpException>(() => recovery.GetTransaction(transactions.Length));
+            Assert.Throws<RlpReaderException>(() => recovery.GetTransaction(transactions.Length));
         }
     }
 
@@ -448,7 +449,7 @@ public class BlockDecoderTests
             transactionData,
             transactionCount: 1);
 
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             if (skip) recovery.SkipNextTransaction();
             else recovery.GetNextTransactionHash();
@@ -477,7 +478,7 @@ public class BlockDecoderTests
     public void Rejects_malformed_input(byte[] input)
     {
         BlockDecoder decoder = new();
-        Assert.Throws<RlpException>(() =>
+        Assert.Throws<RlpReaderException>(() =>
         {
             RlpReader ctx = new(input);
             decoder.Decode(ref ctx);

@@ -78,6 +78,28 @@ internal class NodeRecordCodecTests
     public void Rejects_invalid_rlp(string rlpHex) =>
         Assert.That(NodeRecordCodec.TryDecode(Bytes.FromHexString(rlpHex), out _, out _), Is.False);
 
+    // Trie nodes are found by hash, so the codec reads them without the checks of the canonical form.
+    private static IEnumerable<TestCaseData> NonCanonicalCases()
+    {
+        const string leafWithPrefixedByte = "c58220128105";
+        yield return new TestCaseData(leafWithPrefixedByte, NodeRecordKind.Leaf, (ushort)0).SetName("leaf, single byte value with a prefix");
+        yield return new TestCaseData("f6" + leafWithPrefixedByte + HashItem('7') + Repeat("80", 15), NodeRecordKind.InlineBranch, (ushort)0x0002)
+            .SetName("inline branch, inline child with a prefixed byte");
+    }
+
+    [TestCaseSource(nameof(NonCanonicalCases))]
+    public void Decodes_non_canonical_rlp(string rlpHex, NodeRecordKind expectedKind, ushort expectedMask)
+    {
+        bool decoded = NodeRecordCodec.TryDecode(Bytes.FromHexString(rlpHex), out NodeRecordKind kind, out ushort hashMask);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.True);
+            Assert.That(kind, Is.EqualTo(expectedKind));
+            Assert.That(hashMask, Is.EqualTo(expectedMask));
+        }
+    }
+
     [Test]
     public void ChildRef_is_48_bytes() => Assert.That(Unsafe.SizeOf<ChildRef>(), Is.EqualTo(48));
 

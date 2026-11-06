@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base;
@@ -30,7 +32,7 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
     /// <summary>keccak256 of the RLP list of the collected logs, the value a state test's <c>logs</c> holds.</summary>
     /// <remarks>
     /// Transfers, reverts and rejected transactions leave no logs, whose list hash is a constant; other lists are
-    /// encoded straight into the hasher rather than into an intermediate array.
+    /// encoded into a pooled buffer rather than into a new array.
     /// </remarks>
     public Hash256 LogsHash
     {
@@ -38,9 +40,10 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
         {
             if (_logs.Length == 0) return Keccak.OfAnEmptySequenceRlp;
 
-            KeccakRlpWriter writer = new();
+            using ArrayPoolSpan<byte> buffer = new(LogEntryDecoder.Instance.GetLength(_logs));
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
             LogEntryDecoder.Instance.Encode(ref writer, _logs);
-            return writer.GetHash();
+            return Keccak.Compute(buffer);
         }
     }
 

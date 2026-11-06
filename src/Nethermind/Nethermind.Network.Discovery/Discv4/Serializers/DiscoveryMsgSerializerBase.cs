@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -40,7 +41,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     protected static RlpWriter StartPacket(Span<byte> packet, byte msgType)
     {
         packet[MdcSigOffset] = msgType;
-        return new RlpWriter(packet[DataOffset..]);
+        return RlpWriter.ContentWriter(packet[DataOffset..]);
     }
 
     /// <summary>
@@ -50,7 +51,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     /// <returns>The packet length.</returns>
     protected int CompletePacket(Span<byte> packet, in RlpWriter writer, out ValueHash256 mdc)
     {
-        packet = packet[..GetPacketLength(writer.Position)];
+        packet = packet[..GetPacketLength(writer.Length)];
 
         ValueHash256 toSign = ValueKeccak.Compute(packet[MdcSigOffset..]);
         Signature signature = _ecdsa.Sign(_privateKey, in toSign);
@@ -96,26 +97,25 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
     {
-        if (length >= ctx.Length - ctx.Position)
+        if (length >= ctx.Remaining)
         {
-            throw new RlpException("Truncated discovery ENR sequence.");
+            throw new RlpReaderException("Truncated discovery ENR sequence.");
         }
 
-        byte firstByte = ctx.Peek(1, 1)[0];
+        byte firstByte = ctx.ReadRaw(2)[1];
         return length == 1 ? firstByte >= 128 : firstByte != 0;
     }
 
-    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    protected static void Encode(ref RlpWriter writer, IPEndPoint address, int length)
         => Encode(ref writer, address, address.Port, length);
 
-    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int tcpPort, int length)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    protected static void Encode(ref RlpWriter writer, IPEndPoint address, int tcpPort, int length)
     {
-        writer.StartSequence(length);
+        RlpSequence sequence = writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, address.Address);
         writer.Encode(address.Port);
         writer.Encode(tcpPort);
+        writer.EndSequence(sequence);
     }
 
     protected static int GetIPEndPointLength(IPEndPoint address) => GetIPEndPointLength(address, address.Port);
@@ -128,15 +128,15 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    protected static void SerializeNode(ref RlpWriter writer, Node node)
     {
         int length = GetLengthSerializeNode(node);
-        writer.StartSequence(length);
+        RlpSequence sequence = writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, node.Address.Address);
         writer.Encode(node.DiscoveryPort);
         writer.Encode(GetSerializedTcpPort(node));
         writer.Encode(node.Id.Bytes);
+        writer.EndSequence(sequence);
     }
 
     protected static int GetLengthSerializeNode(Node node)

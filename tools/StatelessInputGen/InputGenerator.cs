@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
@@ -192,7 +193,7 @@ internal static class InputGenerator
                 IRlpDecoder<Block> blockDecoder = Rlp.GetDecoderOrThrow<Block>();
                 RlpReader blockContext = new(rlp);
                 Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
-                blockContext.Check(rlp.Length);
+                blockContext.CheckEnd();
 
                 if (decodedBlock is null)
                 {

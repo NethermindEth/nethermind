@@ -86,20 +86,6 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         Assert.That((bool)result, Is.False);
     }
 
-    /// <summary>The truncation labels take only a decoder's explicit truncation report.</summary>
-    /// <remarks>The EIP-1559 decoder has no end-of-input check, so <c>0x02c0</c> reads past the end of the input and
-    /// <c>RlpDecoder</c> reports the index exception as <c>Cannot decode stream of Transaction</c>, the same text a
-    /// decoder indexing bug produces.</remarks>
-    [Test]
-    public void ReadPastTheEndOfTheInputIsNotTakenAsTruncation()
-    {
-        const string labels = "TransactionException.RLP_ERROR_EOF|TransactionException.RLP_TOO_FEW_ELEMENTS";
-
-        Result result = RunTest(TestFor("0x02c0", labels));
-
-        Assert.That(result.Error, Is.EqualTo($"Expected '{labels}' but got 'Cannot decode stream of Transaction'."));
-    }
-
     private static TransactionTest TestFor(string txBytes, string expectedException) =>
         new()
         {

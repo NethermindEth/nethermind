@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -680,9 +681,8 @@ public class GethStyleTracer(
         if (receipt.Logs is not null) return receipt.Logs.Length;
         if (receipt.LogsRlp.IsEmpty) return 0;
 
-        RlpReader logs = new(receipt.LogsRlp);
-        logs.SkipLength();
-        return logs.PeekNumberOfItemsRemaining();
+        RlpReader logs = new RlpReader(receipt.LogsRlp).EnterSequence<OffFlag>(out _);
+        return logs.CountItems<OffFlag>(int.MaxValue);
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
@@ -707,7 +707,7 @@ public class GethStyleTracer(
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp)
-            ?? throw new RlpException("Block decoded as null.");
+            ?? throw new RlpReaderException("Block decoded as null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

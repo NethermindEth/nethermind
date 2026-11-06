@@ -15,6 +15,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -163,11 +164,12 @@ public class TrieNodeTests
 
     private static byte[] WithBranchValue0x80(CappedArray<byte> branchRlp)
     {
-        RlpReader reader = new(branchRlp.AsSpan());
-        int contentLength = reader.ReadSequenceLength() + 1;
+        RlpReader content = new RlpReader(branchRlp.AsSpan()).EnterSequence(out int itemLength);
+        int prefixLength = itemLength - content.Remaining;
+        int contentLength = content.Remaining + 1;
         byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
         int position = Rlp.StartSequence(rlp, 0, contentLength);
-        branchRlp.AsSpan()[reader.Position..^1].CopyTo(rlp.AsSpan(position));
+        branchRlp.AsSpan()[prefixLength..^1].CopyTo(rlp.AsSpan(position));
         rlp[^2] = 0x81;
         rlp[^1] = 0x80;
         return rlp;
@@ -293,7 +295,7 @@ public class TrieNodeTests
         Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
     }
 
-    // A malformed node reaches the RLP reader as an out-of-range read rather than an RlpException: an empty key
+    // A malformed node reaches the RLP reader as an out-of-range read rather than an RlpReaderException: an empty key
     // indexes an empty span, a truncated length prefix slices past the end. Neither may escape the Try variant.
     [TestCase(new byte[] { 0xc2, 0x80, 0x01 })]
     [TestCase(new byte[] { 0xf8 })]
@@ -715,8 +717,8 @@ public class TrieNodeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpException>());
-            Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpException>());
+            Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpReaderException>());
+            Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpReaderException>());
         }
     }
 
@@ -976,7 +978,35 @@ public class TrieNodeTests
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 Assert.That(restoredNode.GetChildHash(i), Is.EqualTo(Keccak.Compute([(byte)i])), $"child {i}");
+                Assert.That(restoredNode.GetChildHashAsValueKeccak(i, out ValueHash256 keccak), Is.True, $"has child {i}");
+                Assert.That(keccak, Is.EqualTo(Keccak.Compute([(byte)i]).ValueHash256), $"value child {i}");
             }
+        }
+    }
+
+    /// <remarks>
+    /// Fifteen hashes, one empty child and a 32-byte value also make 532 bytes, the length of a branch with sixteen
+    /// hashes, so the length alone does not tell that every child is a hash.
+    /// </remarks>
+    [Test]
+    public void Get_child_hash_reads_an_empty_child_of_a_branch_with_full_length([Values(0, 7, 15)] int emptyChild)
+    {
+        Rlp[] items = new Rlp[TrieNode.BranchesCount + 1];
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            items[i] = i == emptyChild ? Rlp.OfEmptyByteArray : Rlp.Encode(Keccak.Compute([(byte)i]));
+        }
+
+        items[TrieNode.BranchesCount] = Rlp.Encode(Keccak.Compute("value"u8));
+        byte[] rlp = Rlp.Encode(items).Bytes;
+        TrieNode node = new(NodeType.Unknown, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Has.Length.EqualTo(532), "RLP length");
+            Assert.That(node.GetChildHashAsValueKeccak(emptyChild, out _), Is.False, "empty child");
+            Assert.That(node.GetChildHash(emptyChild), Is.Null, "empty child hash");
         }
     }
 

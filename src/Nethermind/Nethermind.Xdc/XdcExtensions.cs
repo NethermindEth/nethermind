@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -22,17 +23,13 @@ internal static partial class XdcExtensions
 
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _headerDecoder.ComputeValueHash(header, RlpBehaviors.ForSealing);
         return ecdsa.Sign(privateKey, in hash);
     }
 
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _voteDecoder.ComputeValueHash(vote, RlpBehaviors.ForSealing);
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
 
@@ -90,7 +87,7 @@ internal static partial class XdcExtensions
         //includes the list prefix, which is 2 bytes for a 65 byte signature
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
         if (sigBytes.Length != Signature.Size + 2)
-            throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
+            throw new RlpReaderException($"Invalid signature length in '{nameof(Vote)}'");
         Signature signature = new(sigBytes.Slice(2, 64), sigBytes[66]);
         decoderContext.SkipItem();
         return signature;

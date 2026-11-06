@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -615,7 +616,7 @@ public static class BasePersistence
             }
 
             RlpReader ctx = new(valueBuffer[..responseSize]);
-            return _accountDecoder.Decode(ref ctx);
+            return _accountDecoder.Decode(ref ctx, RlpBehaviors.TrustedInput);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

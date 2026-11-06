@@ -21,6 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -690,7 +691,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         TxReceipt[] receipts = beforeTarget ? [receipt, receipt] : [receipt];
         WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage));
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, block.Transactions[0].Hash!, out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(recoveryBlock, block.Transactions[0].Hash!, out _, out _, out _));
     }
 
     [Test]
@@ -704,7 +705,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(
             [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject], RlpBehaviors.Storage));
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
     }
 
     [Test]
@@ -719,7 +720,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Rlp receipts = beforeTarget ? Rlp.Encode(malformed, valid) : Rlp.Encode(valid, malformed);
         WriteStoredReceipts(block, [(byte)ReceiptArrayStorageDecoder.CompactEncoding, .. receipts.Bytes]);
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(RecoveryBlock(block, true), block.Transactions[1].Hash!, out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(RecoveryBlock(block, true), block.Transactions[1].Hash!, out _, out _, out _));
     }
 
     [Test]

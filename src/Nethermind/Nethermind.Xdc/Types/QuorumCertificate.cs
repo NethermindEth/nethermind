@@ -14,6 +14,5 @@ public class QuorumCertificate(BlockRoundInfo proposedBlockInfo, Signature[]? si
     public Signature[] Signatures { get; set; } = signatures;
     public ulong GapNumber { get; set; } = gapNumber;
 
-    protected override void Encode(ref KeccakRlpWriter writer) =>
-        _decoder.Encode(ref writer, this, RlpBehaviors.None);
+    protected override Hash256 CalculateHash() => _decoder.ComputeHash(this);
 }

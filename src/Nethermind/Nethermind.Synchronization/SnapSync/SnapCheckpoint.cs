@@ -7,6 +7,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -214,7 +215,7 @@ public sealed class SnapCheckpoint
                 UpdatedStorages = updatedStorages,
             };
         }
-        catch (Exception e) when (e is ArgumentOutOfRangeException or RlpException)
+        catch (Exception e) when (e is ArgumentOutOfRangeException or RlpReaderException)
         {
             throw new InvalidDataException("The snap checkpoint is truncated or malformed.", e);
         }

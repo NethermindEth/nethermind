@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Ethereum.Test.Base;
 
@@ -93,10 +94,10 @@ public static class FrameExceptionFragments
     ];
 
     /// <summary>
-    /// A fee field wider than its type, which the decoder rejects through its length guard.
+    /// A fee field wider than its type, which the decoder rejects as a too large integer or through its length guard.
     /// </summary>
     /// <remarks>
-    /// The guard names neither the field nor the type, so these widen both fee labels suite-wide to
+    /// The rejections name neither the field nor the type, so these widen both fee labels suite-wide to
     /// any untyped limit rejection, not merely to the other fee field. Both wordings are one
     /// rejection: <c>Rlp.ThrowCountOverLimit</c> composes the detailed text only when <c>Rlp</c>'s
     /// static logger has trace enabled and otherwise throws the bare message, so listing only the
@@ -104,6 +105,7 @@ public static class FrameExceptionFragments
     /// </remarks>
     public static readonly string[] FeeOverflow =
     [
+        "RLP integer is too large",
         "Collection count",
         "An RLP limit exceeded",
     ];
@@ -115,23 +117,23 @@ public static class FrameExceptionFragments
     /// </summary>
     public static readonly string[] Decode =
     [
-        "Unexpected length of integer value",
+        "RLP integer is too large",
         // A nonce or nonce_seq wider than 64 bits, as BaseTxDecoder.DecodeNonce reports it. EIP-8250's
         // seq_beyond_width labels it TYPE_6_INVALID_FRAME_FORMAT only; a plain nonce also matches NONCE_OVERFLOW.
         "NonceTooWide",
-        // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
-        // sequence and is not. The latter is trimmed of the byte range it goes on to name.
-        "Unexpected RLP prefix",
-        "Expected a sequence prefix",
-        "frame transaction payload is incomplete",
+        // A field of the wrong width, such as a bad address.
+        "RLP byte string has another length than expected",
+        "RLP does not correspond to a sequence",
+        "RLP is truncated",
         // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
-        // not need, a one-byte field (mode, flags) under a string or list prefix, and a long-form length on a string
+        // not need, a one-byte field (mode, flags) under a list prefix, and a long-form length on a string
         // shorter than 56 bytes.
-        "Non-canonical integer",
-        "Unexpected byte value",
-        "Expected length greater than or equal to 56",
-        // A list header that does not match the bytes its elements take up, e.g. a frame's limits missing one.
-        "Data checkpoint failed",
+        "RLP integer has leading zero bytes",
+        "RLP single byte below 0x80 must not have a prefix",
+        "RLP does not correspond to a byte string",
+        "RLP length below 56 must use the short form",
+        // A list header that does not match the bytes its elements take up.
+        "RLP has trailing bytes",
         // A fees list without both max_fee and max_priority_fee_per_gas.
         "fees must hold two items",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread

@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -97,5 +98,5 @@ public class SyncPointersTests
         new(blocksDb ?? new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), metadataDb, receiptConfig ?? new ReceiptConfig());
 
     private static long DecodePointer(byte[] pointerBytes) =>
-        new RlpReader(pointerBytes).DecodeLong();
+        RlpCodec.Read(pointerBytes, static (ref RlpReader r) => r.DecodeLong());
 }

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp.TxDecoders;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -22,70 +23,69 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
     // decoding; this mirrors the base tx data cap to guard the allocation.
     private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<TxFrame>((int)30.MiB, nameof(TxFrame.Data));
 
-    protected override TxFrame DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxFrame DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            ? Decode<OffFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors)
+            : Decode<OnFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors);
+
+    /// <param name="source">The memory that holds the bytes of <paramref name="reader"/>, so that the data refers to it; empty to copy it.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static TxFrame Decode<TCanonicalChecks>(ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
+        where TCanonicalChecks : struct, IFlag
     {
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        int length = decoderContext.ReadSequenceLength();
-        int check = length + decoderContext.Position;
+        RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
 
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        byte mode = decoderContext.DecodeByte();
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        byte flags = decoderContext.DecodeByte();
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        Address? target = decoderContext.DecodeAddressOrNull();
+        byte mode = fields.DecodeByte<TCanonicalChecks>();
+        byte flags = fields.DecodeByte<TCanonicalChecks>();
+        Address? target = fields.DecodeAddressOrNull();
 
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        int limitsLength = decoderContext.ReadSequenceLength();
-        int limitsCheck = limitsLength + decoderContext.Position;
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        ulong executionGasLimit = decoderContext.DecodeULong();
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        ulong stateGasLimit = decoderContext.DecodeULong();
-        decoderContext.Check(limitsCheck);
+        RlpReader limits = fields.EnterSequence<TCanonicalChecks>(out int limitsLength);
+        ulong executionGasLimit = limits.DecodeULong<TCanonicalChecks>();
+        ulong stateGasLimit = limits.DecodeULong<TCanonicalChecks>();
+        fields.ExitSequence(in limits, limitsLength);
 
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        UInt256 value = decoderContext.DecodeUInt256();
-        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
-        ReadOnlyMemory<byte> data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+        UInt256 value = fields.DecodeUInt256<TCanonicalChecks>();
+        ReadOnlyMemory<byte> data = fields.DecodeByteArrayMemory<TCanonicalChecks>(source, _dataRlpLimit);
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            decoderContext.Check(check);
-        }
+        reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         // Unchecked on purpose: an out-of-range mode or a reserved flag bit from a peer is rejected by
         // FrameTxValidation.IsWellFormed, not here, so the decode stays a pure structural read.
         return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrame item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    // A root of its own, so that the writes of each frame keep their inline budget.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public override void Encode(ref RlpWriter writer, TxFrame item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(GetContentLength(item));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item));
         writer.Encode((ulong)item.Mode);
         writer.Encode((ulong)item.Flags);
         writer.Encode(item.Target);
-        writer.StartSequence(GetLimitsContentLength(item));
+        RlpSequence limits = writer.StartSequence(GetLimitsContentLength(item));
         writer.Encode(item.ExecutionGasLimit);
         writer.Encode(item.StateGasLimit);
+        writer.EndSequence(limits);
         writer.Encode(item.Value);
         writer.Encode(item.Data);
+        writer.EndSequence(sequence);
     }
 
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrame[]? items)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public void EncodeArray(ref RlpWriter writer, TxFrame[]? items)
     {
         if (items is null)
         {
-            writer.WriteByte(Rlp.EmptyListByte);
+            writer.EncodeNullObject();
             return;
         }
 
-        writer.StartSequence(GetArrayContentLength(items));
+        RlpSequence sequence = writer.StartSequence(GetArrayContentLength(items));
         for (int i = 0; i < items.Length; i++)
         {
             Encode(ref writer, items[i]);
         }
+
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(TxFrame item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));

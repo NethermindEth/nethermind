@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -31,7 +33,7 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, quorumCert);
         RlpReader ctx = new(bytes);
         QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref ctx);
@@ -45,11 +47,22 @@ internal class QuorumCertificateDecoderTests
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, quorumCert);
         RlpReader decoderContext = new(bytes);
         QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
+    }
+
+    [Test]
+    public void BlockRoundInfo_decodes_with_a_trailing_item()
+    {
+        XdcBlockInfoDecoder decoder = new();
+        BlockRoundInfo info = new(Hash256.Zero, 2, 3);
+
+        BlockRoundInfo? decoded = decoder.Decode(RlpTestHelper.WithTrailingItem(decoder.EncodeAsBytes(info)));
+
+        Assert.That(decoded, Is.EqualTo(info).UsingXdcComparer());
     }
 }

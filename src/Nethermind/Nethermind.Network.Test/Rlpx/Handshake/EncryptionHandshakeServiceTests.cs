@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -223,7 +224,7 @@ public class EncryptionHandshakeServiceTests
 
         (_, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, auth.Data[2..], auth.Data[..2]);
         RlpReader body = new(plainText.AsSpan());
-        int bodyLength = body.ReadSequenceLength() + body.Position;
+        body.EnterSequence(out int bodyLength);
         Assert.That(plainText.AsSpan(bodyLength).ToArray(), Is.EqualTo(padding));
     }
 

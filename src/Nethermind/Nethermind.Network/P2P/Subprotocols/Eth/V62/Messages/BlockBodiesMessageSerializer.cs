@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -15,8 +16,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int Serialize(Span<byte> destination, BlockBodiesMessage message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(message));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
@@ -29,7 +30,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 }
             }
 
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public int GetLength(BlockBodiesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
@@ -56,12 +58,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             RlpReader ctx = new(data);
             try
             {
-                ctx.ReadSequenceLength();
-                int count = ctx.PeekNumberOfItemsRemaining(ctx.Length, RlpLimit.Limit + 1);
-                ctx.GuardLimit(count, RlpLimit);
+                RlpReader items = ctx.EnterSequence(out int itemLength);
+                int count = items.CountItems(RlpLimit);
                 BlockBody?[] bodies = new BlockBody?[count];
                 ownedBodies = new(bodies, ownsPooledTransactions: true);
-                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref ctx);
+                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref items);
+                ctx.ExitSequence(items, itemLength);
                 ctx.CheckEnd();
 
                 return new() { Bodies = ownedBodies };

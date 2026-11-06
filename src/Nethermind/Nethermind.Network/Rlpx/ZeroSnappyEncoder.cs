@@ -7,6 +7,7 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 
@@ -25,8 +26,7 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
 
     internal static void Compress(IByteBuffer input, IByteBuffer output, ILogger logger)
     {
-        RlpReader reader = new(input.AsSpan());
-        int packetTypeLen = reader.PeekNextRlpLength();
+        int packetTypeLen = new RlpReader(input.AsSpan()).ReadEncodedItem().Length;
 
         int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
         output.EnsureWritable(packetTypeLen + maxLength);

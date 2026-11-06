@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -138,7 +139,7 @@ public class BlockchainTestConversionTests
         Block block = Build.A.Block.WithBlockAccessListHash(Keccak.Compute(BlockAccessListAccountJson.Encode(malformed))).TestObject;
 
         Assert.That(() => BlockAccessListAccountJson.TryDeliver(block, malformed),
-            Throws.InstanceOf<RlpException>().With.Message.Contains("incorrect order"));
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("incorrect order"));
     }
 
     [Test]

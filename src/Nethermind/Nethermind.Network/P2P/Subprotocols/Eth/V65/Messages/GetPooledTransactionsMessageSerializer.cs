@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -19,10 +20,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
         public int Serialize(Span<byte> destination, T message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(message));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public int GetLength(T message) => Rlp.LengthOfSequence(GetContentLength(message));

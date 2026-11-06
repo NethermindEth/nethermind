@@ -4,6 +4,7 @@
 using Nethermind.Core.Collections;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Serializers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5;
@@ -29,9 +30,11 @@ internal static class MessageCodec
         {
             Span<byte> span = buffer;
             span[0] = (byte)message.MessageType;
-            RlpWriter writer = new(span[1..]);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(span[1..]);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             serializer.Serialize(ref writer, message);
+            writer.EndSequence(sequence);
+            Rlp.CheckLength(in writer, span.Length - 1);
         }
         catch
         {
@@ -44,7 +47,7 @@ internal static class MessageCodec
 
     public static Discv5Message Decode(ReadOnlySpan<byte> message)
         => RequiresOwnedMessage(message)
-            ? throw new RlpException("discv5 TALK messages require owned message memory. Use DecodeOwned.")
+            ? throw new RlpReaderException("discv5 TALK messages require owned message memory. Use DecodeOwned.")
             : Decode(message, default, null);
 
     public static Discv5Message DecodeOwned(ReadOnlyMemory<byte> message, ArrayPoolSpan<byte> owner)
@@ -55,7 +58,7 @@ internal static class MessageCodec
         if (message.IsEmpty)
         {
             DisposeOwner(owner);
-            throw new RlpException("Empty discv5 message.");
+            throw new RlpReaderException("Empty discv5 message.");
         }
 
         Discv5Message? decoded = null;
@@ -63,12 +66,12 @@ internal static class MessageCodec
         {
             MessageType messageType = (MessageType)message[0];
             IMsgSerializer serializer = GetSerializer(messageType);
-            RlpReader ctx = new(message[1..]);
-            int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
+            RlpReader reader = new(message[1..]);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
 
             decoded = serializer.Deserialize(ref ctx, ownedMessage, owner);
-            ctx.Check(checkPosition);
-            ctx.CheckEnd();
+            reader.ExitSequence(ctx, itemLength);
+            reader.CheckEnd();
             return decoded;
         }
         catch
@@ -94,7 +97,7 @@ internal static class MessageCodec
             return serializer;
         }
 
-        throw new RlpException($"Unsupported discv5 message type {(byte)messageType}.");
+        throw new RlpReaderException($"Unsupported discv5 message type {(byte)messageType}.");
     }
 
     private static void DisposeOwner(ArrayPoolSpan<byte>? owner)

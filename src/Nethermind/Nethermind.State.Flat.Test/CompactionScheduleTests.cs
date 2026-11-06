@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -29,7 +30,7 @@ public class CompactionScheduleTests
 #pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(stored, Is.Not.Null);
 #pragma warning restore NUnit2045
-        Assert.That(new RlpReader(stored).DecodeLong(), Is.EqualTo(schedule.Offset));
+        Assert.That(RlpCodec.Read(stored, static (ref RlpReader r) => r.DecodeLong()), Is.EqualTo(schedule.Offset));
     }
 
     [Test]
@@ -89,7 +90,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.EqualTo(7));
-        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
+        long stored = RlpCodec.Read(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!, static (ref RlpReader r) => r.DecodeLong());
         Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
     }
 
@@ -115,7 +116,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
-        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
+        long stored = RlpCodec.Read(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!, static (ref RlpReader r) => r.DecodeLong());
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
@@ -129,7 +130,7 @@ public class CompactionScheduleTests
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
-        long stored = new RlpReader(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
+        long stored = RlpCodec.Read(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!, static (ref RlpReader r) => r.DecodeLong());
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 

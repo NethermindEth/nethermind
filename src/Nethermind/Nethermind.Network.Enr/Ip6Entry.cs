@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -15,7 +16,7 @@ public class Ip6Entry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddres
 
     protected override int GetRlpLengthOfValue() => 17;
 
-    protected override void EncodeValue<TWriter>(ref TWriter writer)
+    protected override void EncodeValue(ref RlpWriter writer)
     {
         Span<byte> bytes = stackalloc byte[16];
         Value.MapToIPv6().TryWriteBytes(bytes, out int _);
