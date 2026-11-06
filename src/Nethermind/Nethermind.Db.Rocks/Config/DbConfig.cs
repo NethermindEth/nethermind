@@ -300,6 +300,35 @@ public class DbConfig : IDbConfig
     public string LogIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 
+    /// <inheritdoc />
+    public string TraceAddressIndexDbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexDbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexMetaDbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexMetaDbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexAddressesDbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexAddressesDbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics0DbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics0DbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics1DbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics1DbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics2DbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics2DbAdditionalRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics3DbRocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string TraceAddressIndexTopics3DbAdditionalRocksDbOptions { get; set; } = "";
+
     public bool? FlatDbVerifyChecksum { get; set; } = true;
     public string FlatDbRocksDbOptions { get; set; } =
 
