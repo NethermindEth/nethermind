@@ -350,8 +350,17 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    [SkipLocalsInit]
     public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
+        VmState<TGasPolicy> vmState,
+        IWorldState worldState,
+        ITxTracer txTracer)
+        where TTracingInst : struct, IFlag
+        => ExecuteTransactionCore<TTracingInst>(vmState, worldState, txTracer);
+
+    /// <inheritdoc cref="ExecuteTransaction{TTracingInst}"/>
+    /// <remarks>Not virtual, so a build can run a transaction without a generic virtual call.</remarks>
+    [SkipLocalsInit]
+    private TransactionSubstate ExecuteTransactionCore<TTracingInst>(
 
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
@@ -382,10 +391,32 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = UInt256.Zero;
         _previousCallOutputWindowLength = 0;
         nuint previousCallOutputLength = 0;
+        RunFrames<TTracingInst>(baseDepth: 0, ref previousCallOutputLength, out TransactionSubstate substate);
+        return substate;
+    }
 
+    /// <summary>
+    /// Processes call frames until the top-level call completes or, when the frames above <paramref name="baseDepth"/>
+    /// on the state stack have all finished, their caller resumes.
+    /// </summary>
+    /// <param name="baseDepth">The state stack depth below which the caller of the frames run here sits; zero for a transaction.</param>
+    /// <param name="previousCallOutputLength">The length of the output the resumed frame still has to copy.</param>
+    /// <param name="substate">The transaction's substate, once the top-level call completes.</param>
+    /// <returns>Whether the top-level call completed; otherwise the caller of the frames above the base resumes.</returns>
+    [SkipLocalsInit]
+    private bool RunFrames<TTracingInst>(int baseDepth, scoped ref nuint previousCallOutputLength, out TransactionSubstate substate)
+        where TTracingInst : struct, IFlag
+    {
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
         {
+            // Every frame above the base has finished, so the caller that ran them resumes itself.
+            if (_stateStack.Count < baseDepth)
+            {
+                substate = default;
+                return false;
+            }
+
             // For non-continuation frames, clear any previously stored return data.
             if (!_currentState.IsContinuation)
             {
@@ -441,11 +472,11 @@ public partial class VirtualMachine<TGasPolicy>(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
+                        substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
                         if (terminate)
                         {
                             _currentState = null!;
-                            return substate;
+                            return true;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
                         continue;
@@ -456,13 +487,13 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (_currentState.IsTopLevel)
                 {
                     // Restore reverted EIP-8037 state gas before the tracer observes the final gas remaining.
-                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    substate = PrepareTopLevelSubstate(in callResult);
                     if (IsTracingActions)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
                     _currentState = null!;
-                    return substate;
+                    return true;
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
@@ -547,17 +578,14 @@ public partial class VirtualMachine<TGasPolicy>(
 
             // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
+            substate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
             if (shouldExit)
             {
                 _currentState = null!;
-                return failSubstate;
+                return true;
             }
         }
     }
-
-    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
-        ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
 
     private void DisposeActiveFrames(VmState<TGasPolicy> topLevel)
     {
@@ -1851,7 +1879,7 @@ public partial class VirtualMachine<TGasPolicy>(
             tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (tracer.IsTracingStack || tracer.IsTracingOpLevelStorage && instruction == Instruction.SSTORE && stackHead >= 2)
+        if (tracer.IsTracingStack)
         {
             // Slots hold words in limb layout; TraceStack reverses the ones the tracer reads into the
             // big-endian words the EVM shows.
@@ -1860,13 +1888,7 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _tracedStackWords = new byte[EvmStack.MaxStackSize * EvmStack.WordSize];
             }
-            TraceStack traceStack = new(slots, _tracedStackWords.AsMemory(0, slots.Length));
-            if (tracer.IsTracingStack) tracer.SetOperationStack(traceStack);
-            if (instruction == Instruction.SSTORE && traceStack.Count >= 2)
-                tracer.ForEach<ITraceOperationStorage, (Address Address, UInt256 Key, UInt256 Value)>(
-                    static inner => inner.IsTracingOpLevelStorage,
-                    (vmState.Env.ExecutingAccount, traceStack.PeekUInt256(0), traceStack.PeekUInt256(1)),
-                    static (inner, storage) => inner.ReportStorageAttempt(storage.Address, storage.Key, storage.Value));
+            tracer.SetOperationStack(new TraceStack(slots, _tracedStackWords.AsMemory(0, slots.Length)));
         }
 
         if (tracer.IsTracingReturnData)

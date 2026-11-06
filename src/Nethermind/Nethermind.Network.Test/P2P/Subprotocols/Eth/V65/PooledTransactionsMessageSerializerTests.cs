@@ -37,7 +37,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.SenderAddress = null;
 
         using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
-        SerializerTester.TestZero(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
+        SerializerTester.Test(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
 
     [Test]
@@ -58,7 +58,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.SenderAddress = null;
 
         using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
-        SerializerTester.TestZero(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
+        SerializerTester.Test(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class PooledTransactionsMessageSerializerTests
         PooledTransactionsMessageSerializer serializer = new();
         using PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
-        SerializerTester.TestZero(serializer, message, EthSerializerGoldens.EmptyListRlp);
+        SerializerTester.Test(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
 
     [Test]
@@ -86,7 +86,7 @@ public class PooledTransactionsMessageSerializerTests
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_pass_roundtrip(PooledTransactionsMessage transactionsMessage)
     {
-        SerializerTester.TestZero(
+        SerializerTester.Test(
             new PooledTransactionsMessageSerializer(),
             transactionsMessage);
         transactionsMessage.Dispose();

@@ -380,6 +380,55 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Each destination has the bits of a JUMPDEST below 2^32 and a set bit above, which a 32-bit guest must not drop.
+    /// </remarks>
+    [TestCase("640100000007565B00", TestName = "JUMP")]
+    [TestCase("6001640100000009575B00", TestName = "JUMPI")]
+    [TestCase("64010000000A600090565B00", TestName = "SWAP1 JUMP")]
+    [TestCase("64010000000A600050565B00", TestName = "POP JUMP")]
+    public void Jumps_to_a_destination_above_32_bits_fault_in_every_table(string hex)
+    {
+        CodeInfo codeInfo = new(Convert.FromHexString(hex));
+        Outcome traced = Run(100_000, [], 0, codeInfo, Table.Traced, ReleaseSpec);
+        Outcome untraced = Run(100_000, [], 0, codeInfo, Table.Untraced, ReleaseSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced.Exception, Is.EqualTo(EvmExceptionType.InvalidJumpDestination));
+            Assert.That(Matches(untraced, traced), Is.True, $"untraced {untraced}\n traced   {traced}");
+        }
+    }
+
+    /// <remarks>
+    /// The guest charges the fixed cost of a plain stack opcode without testing it, and the next test of the gas halts
+    /// the frame. Every amount of gas up to the program's need ends the gas on each opcode before that test, which each
+    /// case makes a different one.
+    /// </remarks>
+    [TestCase("60016002016003025000", TestName = "STOP")]
+    [TestCase("60016002016008565B00", TestName = "JUMP")]
+    [TestCase("6001600201600957005B00", TestName = "JUMPI")]
+    [TestCase("600160020160005200", TestName = "MSTORE")]
+    [TestCase("60016002015A00", TestName = "GAS")]
+    [TestCase("600160020160006000F3", TestName = "RETURN")]
+    [TestCase("60018090505000", TestName = "DUP1 SWAP1 POP POP")]
+    public void Gas_shortfalls_of_untested_charges_halt_at_the_next_test(string hex)
+    {
+        byte[] code = Convert.FromHexString(hex);
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, ReleaseSpec);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
     /// stored to memory, and the gas each program leaves tells a charge that differs.
     /// </remarks>
@@ -697,8 +746,8 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
-    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
-    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion. Every amount
+    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code its
+    /// frame runs nested in the chain; a precompile runs inline; the chain goes on either way. The calls expand memory over their input or output, or need no expansion. Every amount
     /// of gas up to the program's need puts the end of the gas inside each charge.
     /// The calls move no value, except in a static frame, where each CALL moves value and faults.
     /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
@@ -756,8 +805,7 @@ public class GuestDispatchDifferentialTests
             Assert.That(mismatches, Is.Empty);
             Assert.That(complete.Exception, Is.EqualTo(
                 isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
-                : target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop
-                : EvmExceptionType.Suspend));
+                : EvmExceptionType.Stop));
         }
 
         static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>
