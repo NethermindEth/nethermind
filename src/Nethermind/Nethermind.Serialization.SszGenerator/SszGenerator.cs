@@ -1246,11 +1246,15 @@ internal static partial class SszCodecHelpers
                 ]);
             }
             bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
-            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
+            bool isConstructedByteListItself = decl.IsSszListItself && decl.IsStruct && IsConstructedByteList(variables[0]);
+            string byteListVariableName = isByteListItself || isConstructedByteListItself ? VarName(variables[0].Name) : string.Empty;
             string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
+            // The item is built in a local before its slot is addressed, so the slot address is not held across the build.
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
                 ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
-                : $"Decode({sliceExpression}, out {destination});";
+                : isConstructedByteListItself
+                    ? $"{{ ReadOnlySpan<byte> item = {sliceExpression}; ValidateSszListLimit(item, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {variables[0].CollectionTypeReferenceName} {byteListVariableName} = new {variables[0].CollectionTypeReferenceName}(item); {destination}.{variables[0].Name} = {byteListVariableName}; }}"
+                    : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
