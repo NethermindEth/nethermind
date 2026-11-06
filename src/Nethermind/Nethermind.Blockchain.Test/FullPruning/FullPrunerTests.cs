@@ -389,9 +389,12 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+            nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
+            PatriciaTree trie = new(new RawScopedTrieStore(nodeStorageFactory.WrapKeyValueStore(TrieDb)), LimboLogs.Instance);
             TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
+            Assert.That(visitor.LeafCount, Is.EqualTo(100));
         }
 
         public void ShouldCopyAllValues()
@@ -479,6 +482,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
+        public int LeafCount { get; private set; }
+
         private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) =>
             Assert.That(_nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak), Is.True);
 
@@ -489,9 +494,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
         }
 
-        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash)
-        {
-        }
+        public void VisitMissingNode(in TreePathContextWithStorage ctx, in ValueHash256 nodeHash) =>
+            Assert.Fail($"Missing trie node {nodeHash} at {ctx.Path}.");
 
         public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
@@ -499,7 +503,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node) =>
             CheckNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
+        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node)
+        {
+            CheckNode(ctx.Storage, ctx.Path, node);
+            LeafCount++;
+        }
 
         public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {

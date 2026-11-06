@@ -95,6 +95,27 @@ public class NodeStorageFactoryTests
         }
     }
 
+    [Test]
+    public void WrapKeyValueStore_PreservesDeletes([Values] bool useWriteBatch)
+    {
+        using MemDb memDb = new();
+        INodeStorage nodeStorage = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance).WrapKeyValueStore(memDb);
+        nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, Bytes.FromHexString(EoaNodeHex));
+        Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+
+        if (useWriteBatch)
+        {
+            using INodeStorage.IWriteBatch writeBatch = nodeStorage.StartWriteBatch();
+            writeBatch.Set(null, TreePath.Empty, TestItem.KeccakA, default, WriteFlags.None);
+        }
+        else
+        {
+            nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, default);
+        }
+
+        Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.False);
+    }
+
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)
     {
         MemDb memDb = new();
