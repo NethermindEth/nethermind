@@ -1088,16 +1088,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
         // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the
         // request, and its message tells the operator how to fix it - so it must not be demoted with the rest of
-        // the -32600 traffic. Unknown methods and failed authentication are genuine caller faults.
+        // the -32601 traffic. Unknown methods and failed authentication are genuine caller faults.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static (int? ErrorType, string ErrorMessage, bool OperatorActionable) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
             ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), false),
-            ModuleResolution.Disabled when context.RpcEndpoint == RpcEndpoint.IPC => (ErrorCodes.InvalidRequest,
+            ModuleResolution.Disabled when context.RpcEndpoint == RpcEndpoint.IPC => (ErrorCodes.MethodNotFound,
                 $"The method '{methodName}' is found but the namespace '{module}' is disabled for IPC. Consider adding the namespace '{module}' to JsonRpc.IpcEnabledModules, or to JsonRpc.EnabledModules when IpcEnabledModules is unset or empty.", true),
-            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
+            ModuleResolution.Disabled => (ErrorCodes.MethodNotFound,
                 $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL.", true),
-            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
+            ModuleResolution.EndpointDisabled => (ErrorCodes.MethodNotFound,
                 $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}.", true),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
             _ => (null, null, false)

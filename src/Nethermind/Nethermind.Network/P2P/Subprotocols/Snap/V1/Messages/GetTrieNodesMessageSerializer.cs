@@ -2,44 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
-    public class GetTrieNodesMessageSerializer : IZeroMessageSerializer<GetTrieNodesMessage>
+    public class GetTrieNodesMessageSerializer : IOwningMessageSerializer<GetTrieNodesMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
+        public int Serialize(Span<byte> destination, GetTrieNodesMessage message)
         {
-            int pathsRlpLen;
+            RlpWriter writer = new(destination);
 
-            if (message.Paths is null || message.Paths.Count == 0)
-            {
-                pathsRlpLen = 1;
-            }
-            else if (message.Paths is IRlpWrapper rlpWrapper)
-            {
-                pathsRlpLen = rlpWrapper.RlpLength;
-            }
-            else
-            {
-                pathsRlpLen = GetPathsRlpLength(message.Paths);
-            }
-
-            int contentLength = Rlp.LengthOf(message.RequestId)
-                + Rlp.LengthOf(message.RootHash)
-                + pathsRlpLen
-                + Rlp.LengthOf(message.Bytes);
-
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-
-            writer.StartSequence(contentLength);
+            writer.StartSequence(GetContentLength(message));
 
             writer.Encode(message.RequestId);
             writer.Encode(message.RootHash);
@@ -58,6 +36,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
 
             writer.Encode(message.Bytes);
+            return writer.Position;
+        }
+
+        public int GetLength(GetTrieNodesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(GetTrieNodesMessage message)
+        {
+            int pathsRlpLen;
+
+            if (message.Paths is null || message.Paths.Count == 0)
+            {
+                pathsRlpLen = 1;
+            }
+            else if (message.Paths is IRlpWrapper rlpWrapper)
+            {
+                pathsRlpLen = rlpWrapper.RlpLength;
+            }
+            else
+            {
+                pathsRlpLen = GetPathsRlpLength(message.Paths);
+            }
+
+            return Rlp.LengthOf(message.RequestId)
+                + Rlp.LengthOf(message.RootHash)
+                + pathsRlpLen
+                + Rlp.LengthOf(message.Bytes);
         }
 
         private static int GetPathsRlpLength(IOwnedReadOnlyList<PathGroup> paths)
@@ -110,28 +114,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
         }
 
-        public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
+        /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
+        public GetTrieNodesMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
+
+        public GetTrieNodesMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startingPosition = ctx.Position;
+            IMemoryOwner<byte>? memoryOwner = owner;
             GetTrieNodesMessage message = new();
             IRlpItemList? rawPaths = null;
 
             try
             {
+                RlpReader ctx = new(data.Span);
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
                 message.RootHash = ctx.DecodeKeccak();
 
-                rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
+                rawPaths = RlpItemList.DecodeList(ref ctx, owner, data);
                 memoryOwner = null;
                 ValidatePathGroups(rawPaths);
                 message.Paths = new RlpPathGroupList(rawPaths);
                 rawPaths = null;
 
                 message.Bytes = ctx.DecodeLong();
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                ctx.CheckEnd();
 
                 return message;
             }

@@ -764,16 +764,22 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Native_slice_get_counts_one_read([Values] bool present)
+        public void Native_slice_get_counts_one_read([Values] bool present, [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
         {
             byte[] key = [1, 2, 3];
             using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
             if (present) db.PutSpan(key, new byte[64], WriteFlags.None);
             long before = db.GatherMetric().TotalReads;
 
-            ReadBy(db, GetPath.NativeSlice, key, 64);
+            ReadOnlySpan<byte> value = db.GetNativeSlice(key, out nint handle, flags);
+            bool matches = present ? value.SequenceEqual(new byte[64]) : value.IsEmpty;
+            db.DangerousReleaseHandle(handle);
 
-            Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(matches, Is.True);
+                Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
+            }
         }
 
         // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
