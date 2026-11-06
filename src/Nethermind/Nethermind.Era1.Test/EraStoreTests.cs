@@ -82,6 +82,9 @@ public class EraStoreTests
     public enum DuplicateManifest
     {
         NamesOneFile,
+        NamesOneOfThree,
+        NamesOneInReversedLines,
+        NamesOneOfTwoCaseVariants,
         NamesNeither,
         HashOnly,
     }
@@ -93,13 +96,21 @@ public class EraStoreTests
         string directory = ctx.ResolveTempDirPath();
         string EpochFile(int epoch) => Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-{epoch:D5}-*.era1").Single();
         string named = Path.GetFileName(EpochFile(2));
-        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail.
-        string stale = $"{EraTestModule.TestNetwork}-00002-00000000.era1";
+        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail. Its name sorts before the named
+        // file's, or differs from it only in case.
+        string hash = named.Split('-')[2][..8];
+        string stale = manifest == DuplicateManifest.NamesOneOfTwoCaseVariants
+            ? named.Replace(hash, hash.ToUpperInvariant())
+            : $"{EraTestModule.TestNetwork}-00002-00000000.era1";
+        Assume.That(File.Exists(Path.Combine(directory, stale)), Is.False, "needs a case-sensitive file system");
         File.Copy(EpochFile(1), Path.Combine(directory, stale));
+        if (manifest == DuplicateManifest.NamesOneOfThree)
+            File.Copy(EpochFile(1), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000001.era1"));
         string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
         string[] lines = await File.ReadAllLinesAsync(checksumsPath);
         lines = manifest switch
         {
+            DuplicateManifest.NamesOneInReversedLines => [.. lines.AsEnumerable().Reverse()],
             DuplicateManifest.NamesNeither => [.. lines.Where(static line => !line.Contains("-00002-"))],
             DuplicateManifest.HashOnly => [.. lines.Select(static line => line.Split(' ')[0])],
             _ => lines,
@@ -119,7 +130,7 @@ public class EraStoreTests
         fileSystem.Directory.Returns(listing);
         EraStore Create() => new(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), fileSystem, EraTestModule.TestNetwork, 16, null, directory);
 
-        if (manifest != DuplicateManifest.NamesOneFile)
+        if (manifest is DuplicateManifest.NamesNeither or DuplicateManifest.HashOnly)
         {
             Assert.That(() => Create(), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 2").And.Message.Contains(named).And.Message.Contains(stale));
             return;

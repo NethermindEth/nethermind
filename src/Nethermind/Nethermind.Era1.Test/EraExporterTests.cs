@@ -198,6 +198,30 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Export_AfterAFailedReexport_KeepsTheManifestEntryOfAnUntouchedEpoch(bool reversed)
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).AddSingleton(ListedInOrder(reversed)).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 0, 20);
+        string[] Epoch1Entries() => [.. new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName }
+            .SelectMany(manifest => File.ReadAllLines(Path.Combine(directory, manifest))).Where(static line => line.Contains("-00001-"))];
+        string[] before = Epoch1Entries();
+        for (ulong number = 32; number <= 40; number++)
+            container.Resolve<IReceiptStorage>().RemoveReceipts(container.Resolve<IBlockTree>().FindBlock(number, BlockTreeLookupOptions.None)!);
+
+        // Epoch 1 is rewritten under a new name beside the old one, then epoch 2 fails; a later export leaves epoch 1 alone.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>());
+        Assert.That(Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00001-*.era1"), Has.Length.EqualTo(2));
+        await sut.Export(directory, 48, 63);
+
+        Assert.That(Epoch1Entries(), Is.EqualTo(before));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+        Assert.That(async () => await eraStore.FindBlockAndReceipts(16), Throws.Nothing);
+    }
+
     [Test]
     public async Task Export_WhenAnEpochFails_DeletesNoEarlierFile()
     {
@@ -289,6 +313,24 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
 
         Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
+    }
+
+    /// <summary>The real file system, listing files in ordinal order or in reverse.</summary>
+    private static IFileSystem ListedInOrder(bool reversed)
+    {
+        IFileSystem real = new RealFileSystem();
+        string[] Order(string[] files) => reversed ? [.. files.Order(StringComparer.Ordinal).Reverse()] : [.. files.Order(StringComparer.Ordinal)];
+        IDirectory listing = Substitute.For<IDirectory>();
+        listing.Exists(Arg.Any<string>()).Returns(static c => Directory.Exists(c.Arg<string>()));
+        listing.CreateDirectory(Arg.Any<string>()).Returns(c => real.Directory.CreateDirectory(c.Arg<string>()));
+        listing.EnumerateFiles(Arg.Any<string>()).Returns(c => Order(Directory.GetFiles(c.Arg<string>())));
+        listing.GetFiles(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EnumerationOptions>())
+            .Returns(c => Order(Directory.GetFiles(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<EnumerationOptions>(2))));
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(real.File);
+        fileSystem.Directory.Returns(listing);
+        fileSystem.FileStream.Returns(real.FileStream);
+        return fileSystem;
     }
 
     /// <summary>The real file system, except that File.Move and File.Delete match names ignoring case, as NTFS and APFS do.</summary>
