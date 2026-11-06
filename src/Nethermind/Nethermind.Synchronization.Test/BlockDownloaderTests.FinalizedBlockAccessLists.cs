@@ -108,27 +108,48 @@ public partial class BlockDownloaderTests
     }
 
     // Without a peer that serves lists, or with one behind the block, the block executes at once, without a list or receipts.
-    [TestCase(EthVersions.Eth70, 1UL)]
-    [TestCase(EthVersions.Eth71, 0UL)]
-    public async Task Finalized_catchup_executes_at_once_without_a_peer_that_serves_the_list(byte protocolVersion, ulong peerHead)
+    // A block whose list is stored waits for its receipts, so it reconstructs.
+    [TestCase(EthVersions.Eth70, 1UL, false)]
+    [TestCase(EthVersions.Eth71, 0UL, false)]
+    [TestCase(EthVersions.Eth70, 1UL, true)]
+    [TestCase(EthVersions.Eth71, 0UL, true)]
+    public async Task Finalized_catchup_executes_at_once_without_a_peer_that_serves_the_list(byte protocolVersion, ulong peerHead, bool stored)
     {
         await using CatchUp catchUp = CreateCatchUp(1);
         catchUp.Peer.SyncPeer.ProtocolVersion.Returns(protocolVersion);
         catchUp.Peer.SyncPeer.HeadNumber.Returns(peerHead);
         Block block = catchUp.Blocks[0];
+        if (stored) catchUp.BalStore.Insert(block.Number, block.Hash!, catchUp.Bal);
         bool suggested = false;
-        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+        bool receiptsAtSuggestion = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) =>
+        {
+            if (args.Block.Hash != block.Hash) return;
+            suggested = true;
+            receiptsAtSuggestion = catchUp.Ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!);
+        };
 
         BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
         bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
         catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
         BlocksRequest? next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+        if (stored)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next?.ReceiptsRequests.Select(static h => h.Number), Is.EqualTo(new[] { block.Number }));
+                Assert.That(suggested, Is.False);
+            }
+            next!.Receipts = new ArrayPoolList<TxReceipt[]?>(1) { catchUp.Receipts };
+            catchUp.Downloader.HandleResponse(next, catchUp.Peer);
+            next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(next, Is.Null);
             Assert.That(suggested, Is.True);
-            Assert.That(catchUp.Ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!), Is.False);
+            Assert.That(receiptsAtSuggestion, Is.EqualTo(stored));
         }
     }
 
