@@ -37,6 +37,7 @@ public sealed partial class ProofWrapperTransport
             long now = _clock.GetTimestamp();
             // Announcements beyond the rate limit are ignored, not penalized.
             if (!peer.AnnouncementsIn.TryTake(1)) return;
+            bool evictable = true;
             int share = Math.Max(WrapperTransportLimits.MinPendingAnnouncementsPerPeer, WrapperTransportLimits.MaxPendingAnnouncements / _peers.Count);
             foreach (WrapperAnnouncement announcement in message.Announcements)
             {
@@ -58,8 +59,13 @@ public sealed partial class ProofWrapperTransport
                 }
                 // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
                 // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
-                if (peer.PendingFetches >= share
-                    || _fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && !EvictPending(peer, share)) continue;
+                if (peer.PendingFetches >= share) continue;
+                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && (!evictable || !EvictPending(peer, share)))
+                {
+                    // Nothing becomes evictable while the rest of the message is handled.
+                    evictable = false;
+                    continue;
+                }
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
                 fetch.AddSource(peer, announcement);
