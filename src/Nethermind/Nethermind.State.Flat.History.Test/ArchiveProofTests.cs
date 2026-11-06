@@ -408,10 +408,12 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void Proofs_resolve_across_epoch_buckets([Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block)
+    public void Proofs_resolve_across_epoch_buckets(
+        [Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block,
+        [Values(1L, HistoryWalkVerifier.DefaultMaxRowsPerPartition)] long maxRowsPerPartition)
     {
         _policy = EpochPolicy;
-        BuildCommitments();
+        BuildCommitments(maxRowsPerPartition);
 
         foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
         {

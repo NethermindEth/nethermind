@@ -31,19 +31,29 @@ public partial class DebugRpcModuleTests
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", bad.Hash!, new { tracer, streamMode });
 
         JToken json = JToken.Parse(actual);
+        JToken expectedJson = JToken.Parse(expected);
         Assert.That(json["error"], Is.Null, actual);
         JArray entries = (JArray)json["result"]!;
+        if (tracer is ThrowingResultJavaScriptTracer)
+        {
+            foreach (JObject entry in expectedJson["result"]!)
+            {
+                Assert.That(entry["result"]?.Type, Is.EqualTo(JTokenType.Null));
+                entry.Remove("result");
+            }
+            foreach (JToken entry in entries)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
+                    Assert.That(entry["result"], Is.Null, actual);
+                }
+            }
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length));
-            Assert.That(actual, Is.EqualTo(expected));
-        }
-        if (tracer is ThrowingResultJavaScriptTracer)
-        {
-            foreach (JToken entry in entries)
-            {
-                Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
-            }
+            Assert.That(JToken.DeepEquals(json, expectedJson), Is.True, actual);
         }
     }
 

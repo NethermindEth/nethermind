@@ -255,6 +255,12 @@ public static partial class EvmInstructions
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        if (TTracingInst.IsActive && vm.IsTracingOperationStart && !outOfGas)
+        {
+            ulong accessCost = vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost, Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0);
+            if (words <= (ulong.MaxValue - accessCost) / GasCostOf.Memory)
+                vm.TraceMemoryOperationGasCost(in a, in result, accessCost + GasCostOf.Memory * words);
+        }
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 

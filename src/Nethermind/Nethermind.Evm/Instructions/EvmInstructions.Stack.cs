@@ -1186,7 +1186,12 @@ public static partial class EvmInstructions
     {
         VmState<TGasPolicy> vmState = vm.VmState;
         // Logging is not permitted in static call contexts.
-        if (vmState.IsStatic) goto StaticCallViolation;
+        if (vmState.IsStatic)
+        {
+            // Geth raises write protection while executing LOG, after a step that carries no error.
+            vm.TraceOperationReady(0);
+            goto StaticCallViolation;
+        }
 
         // Pop memory offset and length for the log data.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
