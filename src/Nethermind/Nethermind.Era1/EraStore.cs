@@ -21,7 +21,7 @@ public class EraStore : IEraStore
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly ValueHash256[] _checksums;
+    private readonly Dictionary<long, ValueHash256> _checksums;
 
     // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
     // But that is more relevant when we read directly from the directory
@@ -93,9 +93,7 @@ public class EraStore : IEraStore
         if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
-            .ToArray();
+        string[] checksumLines = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName));
 
         bool hasEraFile = false;
         _epochs = [];
@@ -116,6 +114,8 @@ public class EraStore : IEraStore
         {
             throw new EraException($"No relevant era files in directory {directory}");
         }
+
+        _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch);
     }
 
     private long GetEpochNumber(ulong blockNumber)
@@ -141,7 +141,8 @@ public class EraStore : IEraStore
             Task checksumTask = Task.Run(() =>
             {
                 ValueHash256 checksum = reader.CalculateChecksum();
-                ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
+                if (!_checksums.TryGetValue(epoch, out ValueHash256 expectedChecksum))
+                    throw new EraVerificationException($"No checksum entry found for epoch {epoch}.");
                 if (checksum != expectedChecksum)
                 {
                     throw new EraVerificationException(

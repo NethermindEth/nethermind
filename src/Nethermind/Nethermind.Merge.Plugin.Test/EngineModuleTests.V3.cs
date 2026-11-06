@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -586,6 +587,34 @@ public partial class EngineModuleTests
         Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_withdrawal_entry_without_preparing_payload(
+        [Values(EngineApiVersions.Fcu.V2, EngineApiVersions.Fcu.V3)] int version,
+        [Values] bool afterValidWithdrawal)
+    {
+        IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: version == EngineApiVersions.Fcu.V2 ? Shanghai.Instance : Cancun.Instance,
+            mockedPayloadService: payloadPreparationService);
+        Hash256 headHash = chain.BlockTree.HeadHash!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = afterValidWithdrawal ? [TestItem.WithdrawalA_1Eth, null!] : [null!],
+            ParentBeaconBlockRoot = version == EngineApiVersions.Fcu.V3 ? Keccak.Zero : null,
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_forkchoiceUpdatedV{version}",
+            chain.JsonSerializer.Serialize(new ForkchoiceStateV1(headHash, headHash, headHash)),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
+
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes), response);
+        payloadPreparationService.DidNotReceiveWithAnyArgs().StartPreparingPayload(default!, default!);
+    }
+
     private const string FurtherValidationStatus = "FurtherValidation";
 
     [TestCaseSource(nameof(BlobVersionedHashesMatchTestSource))]
@@ -876,6 +905,49 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(block1.BlockHash));
             Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(block2.BlockHash));
             Assert.That(forkChoiceUpdatedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_or_missing_forkchoice_state_hash_without_applying_it(
+        [Values(EngineApiVersions.Fcu.V3, EngineApiVersions.Fcu.V4, EngineApiVersions.Fcu.V5)] int version,
+        [Values("headBlockHash", "safeBlockHash", "finalizedBlockHash")] string field,
+        [Values] bool omit)
+    {
+        IReleaseSpec releaseSpec = version switch { EngineApiVersions.Fcu.V3 => Cancun.Instance, EngineApiVersions.Fcu.V4 => Amsterdam.Instance, _ => Bogota.Instance };
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, _, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(releaseSpec);
+        using MergeTestBlockchain disposeChain = chain;
+        IBlockCacheService blockCacheService = chain.Container.Resolve<IBlockCacheService>();
+        Hash256? cachedHead = blockCacheService.HeadBlockHash;
+        Hash256? safe = chain.BlockTree.SafeHash;
+        Hash256? finalized = chain.BlockTree.FinalizedHash;
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        // Unknown hashes take the syncing path, which would record whatever forkchoice state got through.
+        JsonObject forkchoiceState = new()
+        {
+            ["headBlockHash"] = TestItem.KeccakA.ToString(),
+            ["safeBlockHash"] = TestItem.KeccakB.ToString(),
+            ["finalizedBlockHash"] = TestItem.KeccakC.ToString()
+        };
+        if (omit)
+            forkchoiceState.Remove(field);
+        else
+            forkchoiceState[field] = null;
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(
+            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context);
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(cachedHead));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(safe));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(finalized));
+            Assert.That(forkChoiceUpdatedCount, Is.Zero);
         }
     }
 

@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -43,7 +44,7 @@ internal static class StructLogEnvelopeWriter
         {
             trace = runTrace(writer, pipeWriter, cancellationToken);
         }
-        catch (Exception ex) when ((!isSingleResult || ex is not (TraceDurationFormatException or DebugRpcModule.TransactionTraceNotFoundException)) && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when ((!isSingleResult || ex is not (TraceDurationFormatException or RpcErrorException)) && !cancellationToken.IsCancellationRequested)
         {
             failure = ex;
         }

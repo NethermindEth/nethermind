@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
@@ -17,39 +16,13 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
+    protected override void SerializeInternal(ref RlpWriter writer, BlockAccessListsMessage message)
     {
         IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
-        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
             WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
-        }
-    }
-
-    public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
-    {
-        RlpReader ctx = new(byteBuffer.AsSpan());
-        int startPosition = ctx.Position;
-        ArrayPoolList<byte[]?>? blockAccessLists = null;
-
-        try
-        {
-            int sequenceLength = ctx.ReadSequenceLength();
-            int checkPosition = ctx.Position + sequenceLength;
-            long requestId = ctx.DecodeLong();
-
-            blockAccessLists = DecodeBlockAccessLists(ref ctx);
-            ctx.Check(checkPosition);
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position - startPosition);
-            return new BlockAccessListsMessage(requestId, blockAccessLists);
-        }
-        catch
-        {
-            blockAccessLists?.Dispose();
-            throw;
         }
     }
 
