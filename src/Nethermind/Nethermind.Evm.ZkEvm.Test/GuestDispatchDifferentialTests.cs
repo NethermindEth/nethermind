@@ -464,24 +464,27 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
-    /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
-    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
-    /// above the modulus takes the general path.
+    /// Addends below the modulus take the guest's ADDMOD: the inline one when both top limbs are below the modulus's,
+    /// and the full compare otherwise, as for the largest addend or any modulus below 2^192. Their sums fall on both
+    /// sides of the modulus, and above 2^256 for a modulus above 2^255; the largest addend and one sum to the modulus
+    /// exactly. An addend at or above the modulus takes the shared handler.
     /// </remarks>
     [Test]
     public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
     {
         UInt256 bn254 = UInt256.Parse("21888242871839275222246405745257275088696311169201772083599007584476017209221");
+        UInt256 goldilocks = ulong.MaxValue - uint.MaxValue + 1;
         List<string> mismatches = [];
         Random random = new(seed * 7883);
         for (int i = 0; i < 400 && mismatches.Count < 5; i++)
         {
-            UInt256 modulus = random.Next(5) switch
+            UInt256 modulus = random.Next(6) switch
             {
                 0 => bn254,
                 1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
                 2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
                 3 => UInt256.Zero,
+                4 => goldilocks,
                 _ => RandomWord(random) | UInt256.One,
             };
 

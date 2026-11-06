@@ -141,6 +141,21 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public SpanBuiltBytes? Bytes { get; set; }
     }
 
+    /// <summary>A byte collection built from a span of its bytes, held in a struct as a decoded witness state node is.</summary>
+    public readonly struct SpanBuiltByteStruct(ReadOnlySpan<byte> bytes)
+    {
+        private readonly byte[] _bytes = bytes.ToArray();
+
+        public ReadOnlySpan<byte> AsSpan() => _bytes;
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItself
+    {
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
+    }
+
     [SszContainer]
     public partial class StaticClassCollectionItem
     {
