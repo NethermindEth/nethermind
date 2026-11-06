@@ -219,6 +219,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     /// </remarks>
     private RenderedJson MaterializeResult(object? scriptResult)
     {
+        // Rendering runs script getters; none starts after an interrupt was requested.
+        _engine.ThrowIfInterrupted();
         NumberConversion previousConversion = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
@@ -618,6 +620,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         bool observedNullThrow = false;
         try
         {
+            // No hook starts after an interrupt was requested; the catches below give each source its own answer.
+            _engine.ThrowIfInterrupted();
             if (_captureErrors)
             {
                 (object? First, object? Second, bool HasSecond) arguments = function switch

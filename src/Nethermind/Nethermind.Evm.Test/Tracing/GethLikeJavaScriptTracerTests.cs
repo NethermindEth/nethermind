@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -1926,8 +1927,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         // While the result renders, a getter cancels the request and returns; the cycle after it then reaches the depth limit,
         // which reports the interruption. A busy getter that V8 stops is reported as a pending script exception instead.
         Action entered = phase == "render" ? request.Cancel : () => request.CancelAfter(150);
-        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.enteredForTest=action;}}"))
-            installer.InvokeMethod("install", entered);
+        using ScriptObject spin = (ScriptObject)((ScriptObject)engine.CreateTracer("{f: function() { var e = Date.now() + 20; while (Date.now() < e) {} }}")).GetProperty("f");
+        Func<object> nested = () => spin.Invoke(false);
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action, nested){globalThis.enteredForTest=action;globalThis.nestedForTest=nested;}}"))
+            installer.InvokeMethod("install", entered, nested);
         // Every busy script ends on its own after 5 s, so a tracer the request cannot stop fails the bound instead of hanging.
         const string busy = "enteredForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
         string script = phase switch
@@ -1935,9 +1938,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             "expression" => "{fault: function() {}, result: (function() {" + busy + "})()}",
             "setup" => "{fault: function() {}, result: function() { return 1; }, setup: function() {" + busy + "}}",
             "result" => "{fault: function() {}, result: function() {" + busy + "}}",
-            // The host helper re-enters a busy replacement of Uint8Array, and the script catches what it throws.
-            "nested" => "{fault: function() {}, result: function() { enteredForTest(); Uint8Array = function() { var e = Date.now() + 1000; while (Date.now() < e) {} };"
-                + " var end = Date.now() + 5000; while (Date.now() < end) { try { toWord('0x01'); } catch (e) {} } throw new Error('escape'); }}",
+            // A host helper re-enters a 20 ms script, and the tracer catches what an interrupt there throws.
+            "nested" => "{fault: function() {}, result: function() { enteredForTest(); var end = Date.now() + 5000;"
+                + " while (Date.now() < end) { try { nestedForTest(); } catch (e) {} } throw new Error('escape'); }}",
             _ => "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { enteredForTest(); return 1; }, rest: o}; }}"
         };
         GethTraceOptions options = GethTraceOptions.Default with
@@ -1997,6 +2000,43 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)));
         }
+    }
+
+    [Test]
+    public void Javascript_hook_does_not_start_after_the_trace_timeout([Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        bool busy = false;
+        Action enteredBusy = () => busy = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.busyForTest=action;}}"))
+            installer.InvokeMethod("install", enteredBusy);
+        // The warmed step hook turns busy only once its deadline, well after the trace timeout, has passed.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, setup: function() { this.t = Date.now() + 400; },"
+                + " step: function() { if (Date.now() > this.t) { busyForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); } }}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(150)
+        });
+        for (int i = 0; i < 200; i++) tracer.SetOperationStack(default);
+        Thread.Sleep(600);
+
+        Exception failure = Assert.Catch(() => tracer.SetOperationStack(default))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(busy, Is.False);
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+        }
+    }
+
+    [Test]
+    public void Engine_dispose_stops_interrupt_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Interrupt();
+        Timer redelivery = (Timer)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
+        engine.Dispose();
+        Assert.That(redelivery.Change(10, 10), Is.False);
     }
 
     [Test]
