@@ -28,7 +28,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             GetReceiptsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
+            SerializerTester.Test(serializer, message, "f847820457f842a000000000000000000000000000000000000000000000000000000000deadc0dea000000000000000000000000000000000000000000000000000000000feedbeef");
         }
 
         [Test]
@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             GetReceiptsMessageSerializer serializer = new();
 
             // The request id -1 encodes as eight 0xff bytes behind the 0x88 length prefix.
-            SerializerTester.TestZero(serializer, message,
+            SerializerTester.Test(serializer, message,
                 "eb88ffffffffffffffffe1a00000000000000000000000000000000000000000000000000000000000000000");
         }
 

@@ -289,13 +289,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
-                // Convert operands to signed integers and perform division.
-                Int256.Divide(
-                    in As<UInt256, Int256>(ref AsRef(in a)),
-                    in As<UInt256, Int256>(ref AsRef(in b)),
-                    out As<UInt256, Int256>(ref result));
+                SignedDivide256(in a, in b, out result);
             }
         }
     }
@@ -427,6 +421,7 @@ public static partial class EvmInstructions
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
+            if (TTracingInst.IsActive) vm.TraceOperationReady(ExpGasCost.GasCost);
             // Exponent is zero, so the result is 1.
             return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, in stack, vm);
         }
@@ -438,6 +433,8 @@ public static partial class EvmInstructions
             if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
             return EvmExceptionType.OutOfGas;
         }
+
+        if (TTracingInst.IsActive) vm.TraceOperationReady(ExpCost<Eip160>(expSize));
 
         if (a.IsZero)
         {

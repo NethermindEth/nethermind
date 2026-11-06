@@ -716,19 +716,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
-        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        private sealed class WitnessingTransactionsMessageSerializer : IMessageSerializer<TransactionsMessage>
         {
             private readonly TransactionsMessageSerializer _serializer = new();
 
             public List<RecycledTransactionWitness> Witnesses { get; } = [];
 
-            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+            public int Serialize(Span<byte> destination, TransactionsMessage message) => _serializer.Serialize(destination, message);
 
-            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+            public int GetLength(TransactionsMessage message) => _serializer.GetLength(message);
 
-            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
             {
-                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                TransactionsMessage message = _serializer.Deserialize(data);
                 IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
                 for (int i = 0; i < transactions.Count; i++)
                 {

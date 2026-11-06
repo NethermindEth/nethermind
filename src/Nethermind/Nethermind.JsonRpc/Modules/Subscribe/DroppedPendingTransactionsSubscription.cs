@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class DroppedPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
-        private readonly Func<object?, Task> _send;
+        private readonly Func<Hash256?, Task> _send;
 
         public DroppedPendingTransactionsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -37,9 +37,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(_send, transaction.Hash);
         }
 
-        private async Task Send(object? hash)
+        private async Task Send(Hash256? hash)
         {
-            using JsonRpcResult result = CreateSubscriptionMessage((Hash256)hash!);
+            using JsonRpcResult result = CreateSubscriptionMessage(hash!);
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace)
                 _logger.Trace(

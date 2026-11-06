@@ -421,7 +421,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
             JsonElement storageEntry = json.RootElement.GetProperty("structLogs")[result.Entries.IndexOf(lastStorage)];
             bool hasStorage = storageEntry.TryGetProperty("storage", out JsonElement storage);
-            Assert.That(hasStorage, Is.True);
+            Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
             Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
