@@ -145,7 +145,6 @@ public sealed partial class KeccakHash
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
-
     /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
     /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, an unaligned source of at least one rate block, moved down
     /// to an aligned destination, is copied and absorbed in one pass, as the witness codes the guest moves within its
