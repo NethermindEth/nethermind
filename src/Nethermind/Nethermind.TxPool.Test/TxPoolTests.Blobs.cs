@@ -3666,6 +3666,46 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.False, "a pooled transaction stays known");
         }
 
+        [Test]
+        public async Task should_allow_resubmission_of_blob_tx_evicted_after_fork_for_bad_blob_hash()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            // The built-in spec-change rules cannot fail blob hashes; a plugin's fork-sensitive rule can.
+            ISpecChangeTxValidator specChangeTxValidator = Substitute.For<ISpecChangeTxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(new ValidationResult(TxErrorMessages.InvalidBlobHashes));
+            specChangeTxValidator.IsWellFormedAfterFullValidation(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                provider,
+                specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithGasLimit(1_000_000)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
+
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
         public enum OtherRejection
         {
             NonceGap,
