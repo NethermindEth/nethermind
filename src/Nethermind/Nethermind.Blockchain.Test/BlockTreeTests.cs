@@ -126,11 +126,12 @@ public class BlockTreeTests
             .WithParent(genesis)
             .WithDifficulty((UInt256)1)
             .TestObject;
-        Assert.That(tree.SuggestHeader(lowerBranch.Header), Is.EqualTo(AddBlockResult.Added));
-
-        Assert.That(tree.SuggestBlock(lowerBranch), Is.EqualTo(AddBlockResult.AlreadyKnown));
+        AddBlockResult headerResult = tree.SuggestHeader(lowerBranch.Header);
+        AddBlockResult blockResult = tree.SuggestBlock(lowerBranch);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(headerResult, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(blockResult, Is.EqualTo(AddBlockResult.AlreadyKnown));
             Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(mainHead.Hash));
             Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(mainHead.Hash));
         }
@@ -161,11 +162,16 @@ public class BlockTreeTests
         {
             if (args.Block.Hash == lower.Hash) lowerPromotionNotifications++;
         };
-        Assert.That(tree.SuggestHeader(lower.Header), Is.EqualTo(AddBlockResult.Added));
-        Assert.That(tree.SuggestBlock(lower), Is.EqualTo(AddBlockResult.Added));
-        Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(lower.Hash));
-        Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(lower.Hash));
-        Assert.That(lowerPromotionNotifications, Is.EqualTo(1));
+        AddBlockResult headerResult = tree.SuggestHeader(lower.Header);
+        AddBlockResult blockResult = tree.SuggestBlock(lower);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerResult, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(blockResult, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(lower.Hash));
+            Assert.That(tree.BestSuggestedBody?.Hash, Is.EqualTo(lower.Hash));
+            Assert.That(lowerPromotionNotifications, Is.EqualTo(1));
+        }
     }
 
     [Test]

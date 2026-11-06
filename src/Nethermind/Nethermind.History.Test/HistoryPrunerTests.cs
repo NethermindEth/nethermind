@@ -818,9 +818,13 @@ public class HistoryPrunerTests
             fullSync: true);
 
         Block pending = Build.A.Block.WithNumber((ulong)blocks + 1).WithParent(testBlockchain.BlockTree.Head!).TestObject;
-        Assert.That(testBlockchain.BlockTree.Insert(pending, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
-        Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)blocks));
-        Assert.That(testBlockchain.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo((ulong)blocks + 1));
+        AddBlockResult insertResult = testBlockchain.BlockTree.Insert(pending, BlockTreeInsertBlockOptions.SaveHeader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)blocks));
+            Assert.That(testBlockchain.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo((ulong)blocks + 1));
+        }
 
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode((ulong)blocks + 100).Bytes);
