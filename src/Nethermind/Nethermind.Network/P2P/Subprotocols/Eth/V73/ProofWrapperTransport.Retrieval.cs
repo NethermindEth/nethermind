@@ -69,22 +69,24 @@ public sealed partial class ProofWrapperTransport
         outbox.Flush();
     }
 
-    /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper announced
-    /// by a peer that is deprioritized or holds more than its share.</summary>
+    /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper every open
+    /// source of which is deprioritized or holds at least its share.</summary>
     /// <returns>Whether room was made; never for an announcer that is itself deprioritized.</returns>
     private bool EvictPending(WrapperPeer announcer, int share)
     {
         if (announcer.IsDeprioritized) return false;
         foreach (WrapperFetch fetch in _fetches.Values)
         {
-            if (fetch.Requested || fetch.Wrapper is not null || fetch.Announcer is not { } holder) continue;
-            if (holder.IsDeprioritized || holder.PendingFetches > share)
-            {
-                Remove(fetch, "evicted for another peer's announcement");
-                return true;
-            }
+            if (fetch.Requested || fetch.Wrapper is not null || fetch.Announcer is not { } holder || !Yields(holder, share)) continue;
+            bool evictable = true;
+            foreach (WrapperPeer source in fetch.Sources) evictable &= Yields(source, share);
+            if (!evictable) continue;
+            Remove(fetch, "evicted for another peer's announcement");
+            return true;
         }
         return false;
+
+        static bool Yields(WrapperPeer peer, int share) => peer.Closed || peer.IsDeprioritized || peer.PendingFetches >= share;
     }
 
     /// <summary>Requests queued wrappers from their next untried source, up to four outstanding requests per peer.</summary>
@@ -219,9 +221,8 @@ public sealed partial class ProofWrapperTransport
                 outbox.Flush();
                 return;
             }
-            if (entries.Length == 0) peer.RecordFailure();
             int last = entries.Length == 0 ? -1 : matched[^1];
-            int next = 0;
+            int next = 0, unavailable = 0;
             for (int position = 0; position < fetches.Length; position++)
             {
                 WrapperFetch fetch = fetches[position];
@@ -253,7 +254,10 @@ public sealed partial class ProofWrapperTransport
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
                 else if (position > last && entries.Length > 0) fetch.Tried.Remove(peer);
+                else unavailable++;
             }
+            // Requested wrappers withheld count toward the failure score in proportion, so serving one of many does not evade it.
+            if (unavailable > 0) peer.RecordFailure((double)unavailable / fetches.Length);
             WrapperMetrics.Record(WrapperEvent.Received, entries.Length);
             Schedule(outbox);
         }

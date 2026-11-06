@@ -261,8 +261,8 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     public bool IsDeprioritized => FailureScore >= WrapperTransportLimits.DeprioritizedFailureScore;
 
     /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
-    /// or answered empty.</summary>
-    public void RecordFailure() => _failures = Math.Min(FailureScore + 1, WrapperTransportLimits.MaxFailureScore);
+    /// or withheld wrappers from, weighted by the share withheld.</summary>
+    public void RecordFailure(double weight = 1) => _failures = Math.Min(FailureScore + weight, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;
 }

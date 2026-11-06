@@ -361,25 +361,64 @@ public class ProofWrapperTransportTests
         }
     }
 
-    // A peer that leaves requests unanswered or answers them empty is fetched from as one whose wrappers fail verification.
-    [Test]
-    public void Unserved_requests_deprioritize_the_peer([Values] bool answeredEmpty)
+    // A peer that leaves requests unanswered, or withholds requested wrappers, is fetched from as one whose wrappers fail
+    // verification; withholding all but one of a request's wrappers counts nearly as much as an empty response.
+    [TestCase("timeout")]
+    [TestCase("empty")]
+    [TestCase("partial")]
+    public void Unserved_requests_deprioritize_the_peer(string scenario)
     {
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, 2 * WrapperTransportLimits.MaxRequestsPerPeer)
-            .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"unserved:{i}").ValueHash256)).OrderBy(static a => a.Hash)]));
-        Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(WrapperTransportLimits.MaxRequestsPerPeer));
-
-        if (answeredEmpty)
-            foreach (GetProofWrappersMessage request in link.Sent<GetProofWrappersMessage>()) node.Transport.OnProofWrappers(peer, new(request.RequestId, []));
-        else node.Tick(WrapperTransportLimits.RequestTimeout);
+        for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
+        {
+            byte[][] wrappers = [.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest)
+                .Select(i => Wrapper(64, FrameTransaction(request * Eth73Protocol.MaxWrappersPerRequest + i)))];
+            node.Transport.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
+            GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
+            Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
+            if (scenario == "timeout") continue;
+            // Only the last requested wrapper is returned, so every other one was withheld rather than cut.
+            byte[] last = wrappers.Single(w => Describe(w).Hash == sent.Hashes[^1]);
+            node.Transport.OnProofWrappers(peer, new(sent.RequestId, scenario == "empty" ? [] : [Entry(last)]));
+        }
+        if (scenario == "timeout") node.Tick(WrapperTransportLimits.RequestTimeout);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peer.IsDeprioritized, Is.True);
             Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
+    // Eviction leaves a wanted wrapper that a peer within its share also announced.
+    [Test]
+    public void Eviction_spares_a_wrapper_with_a_source_within_its_share()
+    {
+        using WrapperTestNode node = new();
+        WrapperPeer[] silent = [.. Enumerable.Range(0, 4).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
+        // Large announced lengths keep each request to one wrapper, so the shared one stays unrequested.
+        WrapperAnnouncement shared = Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute("shared").ValueHash256,
+            new WrapperCoverage(Keccak.Compute("shared deps").ValueHash256, default));
+        int announced = 0;
+        WrapperAnnouncement Filler() => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"silent:{announced++}").ValueHash256);
+        for (int message = 0; message < 5; message++)
+        {
+            foreach (WrapperPeer peer in silent)
+                node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                    .Select(i => message == 0 && i == WrapperTransportLimits.MaxRequestsPerPeer && peer == silent[0] ? shared : Filler())]));
+            node.Tick(TimeSpan.FromSeconds(1));
+        }
+        node.Transport.OnAnnounce(node.Connect(new FakeWrapperLink("co-source")), new([shared]));
+        FakeWrapperLink honest = new("honest");
+
+        node.Transport.OnAnnounce(node.Connect(honest), new([Describe(Wrapper(64, FrameTransaction(1)))]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(honest.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1));
+            Assert.That(node.Transport.IsDependencySetOffered(shared.Coverage.DepsHash), Is.True);
         }
     }
 
