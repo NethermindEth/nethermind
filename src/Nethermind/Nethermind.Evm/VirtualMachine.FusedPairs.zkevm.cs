@@ -954,12 +954,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static bool IsOnesMask<TOpCount>(ref byte immediates) where TOpCount : struct, EvmInstructions.IOpCount
         {
             if (StrictAlignmentFlag.IsActive)
-            {
-                uint bits = byte.MaxValue;
-                for (int i = 0; i < TOpCount.Count; i++)
-                    bits &= Unsafe.Add(ref immediates, i);
-                return bits == byte.MaxValue;
-            }
+                return ZkEvmBitOperations.AreAllOnes(ref immediates, TOpCount.Count);
 
             return TOpCount.Count == 4
                 ? Unsafe.ReadUnaligned<uint>(ref immediates) == uint.MaxValue
