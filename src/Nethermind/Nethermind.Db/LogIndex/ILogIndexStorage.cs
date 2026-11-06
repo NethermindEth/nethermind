@@ -51,7 +51,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     /// This must be called for each reorged block in a sequential ascending order.
     /// </summary>
     /// <remarks>
-    /// A block deeper than the max reorg depth below <see cref="MaxBlockNumber"/> may already be compressed and cannot be reverted:
+    /// A block deeper than the max reorg depth below the highest <see cref="MaxBlockNumber"/> reached may already be compressed and cannot be reverted:
     /// the index is then capped below it, further forward writes throw until the index is reset, and this call throws.
     /// </remarks>
     Task RemoveReorgedAsync(BlockReceipts block);

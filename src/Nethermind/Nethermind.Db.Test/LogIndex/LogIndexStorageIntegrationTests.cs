@@ -610,6 +610,25 @@ namespace Nethermind.Db.Test.LogIndex
             }
         }
 
+        [Test]
+        public async Task Set_ReorgBelowRevertedMaxBlock_ThrowsBeyondPeakDepth_Test([Values] bool restart)
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+
+            ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            await AddReceiptsAsync(logIndexStorage, testData.Batches);
+            await logIndexStorage.RemoveReorgedAsync(blocks[^1]);
+
+            if (restart)
+            {
+                await logIndexStorage.DisposeAsync();
+                logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            }
+
+            await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)maxReorgDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
