@@ -35,6 +35,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly WrapperStore _store = new();
     private readonly WrapperEncodingBudget _encodingBudget = new(WrapperTransportLimits.MaxCachedEncodingBytes);
     private readonly Dictionary<ValueHash256, WrapperFetch> _fetches = [];
+    private readonly WrapperRateLimit _serving;
     private readonly WrapperBoundedSet _tombstones = new(WrapperTransportLimits.MaxTombstones);
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
     // target fork verifier may accept them.
@@ -54,6 +55,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         _wrappers = wrappers;
         _clock = timeProvider ?? TimeProvider.System;
         _logger = logManager.GetClassLogger<ProofWrapperTransport>();
+        _serving = new(WrapperTransportLimits.GlobalServeBytesPerSecond, _clock);
         _verifier = _wrappers.RefreshVerifier();
         _wrappers.WrapperValidated += OnWrapperValidated;
         _wrappers.VerifierChanged += OnVerifierChanged;
@@ -533,8 +535,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 served.Add((entry, replace));
                 content += EntryLength(replace is null ? entry.Wrapper.Length : WrapperCompaction.CompactLength(entry.Wrapper, replace));
             }
-            // Beyond the serving budget a responder answers with an empty list.
-            if (served.Count > 0 && !peer.Serving.TryTake(content)) served.Clear();
+            // Beyond the peer's or the global serving budget a responder answers with an empty list.
+            if (served.Count > 0 && !(_serving.CanTake(content) && peer.Serving.TryTake(content) && _serving.TryTake(content))) served.Clear();
             foreach ((WrapperStore.Entry entry, _) in served)
             {
                 peer.Exchanged.Add(entry.Announcement.Hash);

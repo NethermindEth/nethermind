@@ -410,6 +410,31 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // Each peer stays within its own serving budget, and all of them together within the global one.
+    [Test]
+    public void Serving_stays_within_the_global_budget_across_peers()
+    {
+        Transaction[] pooled = [.. Enumerable.Range(0, 8).Select(FrameTransaction)];
+        byte[][] wrappers = [.. pooled.Select(static t => Wrapper(Eip8288Constants.MaxAggregateProofBytes, t))];
+        using WrapperTestNode node = new();
+        node.AddPending(pooled);
+        foreach (byte[] wrapper in wrappers) Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        FakeWrapperLink[] links = [.. Enumerable.Range(0, 5).Select(static i => new FakeWrapperLink($"peer {i}"))];
+
+        foreach (FakeWrapperLink link in links)
+        {
+            WrapperPeer peer = node.Connect(link);
+            for (int i = 0; i < wrappers.Length; i++) node.Transport.OnGetProofWrappers(peer, new(i + 1, false, [Describe(wrappers[i]).Hash]));
+        }
+
+        long[] served = [.. links.Select(static l => l.Sent<ProofWrappersMessage>().SelectMany(static m => m.Entries).Sum(static e => (long)e.Wrapper.Length))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Has.All.LessThanOrEqualTo(WrapperTransportLimits.ServeBytesPerSecond));
+            Assert.That(served.Sum(), Is.LessThanOrEqualTo(WrapperTransportLimits.GlobalServeBytesPerSecond));
+        }
+    }
+
     // EIP-8437: responders treat hashes they have not announced on the connection as unavailable, including held wrappers
     // still queued behind the announcement rate limit and hashes the peer announced to them.
     [Test]

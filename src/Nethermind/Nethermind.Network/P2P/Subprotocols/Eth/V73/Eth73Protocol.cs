@@ -94,6 +94,9 @@ public static class WrapperTransportLimits
     /// <summary>ProofWrappers data served per peer per second, which is also the burst.</summary>
     public const long ServeBytesPerSecond = 8 * 1024 * 1024;
 
+    /// <summary>ProofWrappers data served across all peers per second, which is also the burst.</summary>
+    public const long GlobalServeBytesPerSecond = 4 * ServeBytesPerSecond;
+
     /// <summary>NewProofWrapperHashes messages per peer per second, in either direction.</summary>
     public const int AnnouncementsPerSecond = 4;
 
@@ -124,7 +127,7 @@ public static class WrapperTransportLimits
     public const long MaxCachedEncodingBytes = 64L * 1024 * 1024;
 
     public const int MaxTombstones = 4096;
-    public const int MaxKnownPerPeer = 4096;
+    public const int MaxKnownPerPeer = 1024;
     public static readonly TimeSpan SoftTombstone = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan BusyRetry = TimeSpan.FromMilliseconds(200);
     public static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(250);
