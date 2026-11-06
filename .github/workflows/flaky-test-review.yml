@@ -228,6 +228,7 @@ jobs:
       contents: read
     outputs:
       pushed: ${{ steps.push.outputs.pushed }}
+      stopped: ${{ steps.push.outputs.stopped }}
     env:
       PR: ${{ needs.check.outputs.pr }}
       CHANGED: ${{ needs.fix.outputs.changed }}
@@ -262,9 +263,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          if ! gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json state,isDraft,labels \
-            --jq '.state == "OPEN" and (.isDraft | not) and ([.labels[].name] | index("wip") | not)' | grep -qx true; then
+          active=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json state,isDraft,labels \
+            --jq '.state == "OPEN" and (.isDraft | not) and ([.labels[].name] | index("wip") | not)')
+          if [ "$active" != true ]; then
             echo "PR stopped by a person, nothing pushed"
+            echo "stopped=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           reply() {
@@ -305,7 +308,7 @@ jobs:
   handoff:
     needs: [check, fix, verify, publish]
     if: >-
-      ${{ !cancelled() && needs.check.outputs.pr != '' && (
+      ${{ !cancelled() && needs.check.outputs.pr != '' && needs.publish.outputs.stopped != 'true' && (
         needs.check.result == 'failure' || needs.check.outputs.next == 'handoff' ||
         (needs.check.outputs.next == 'fix' && (needs.publish.result != 'success' ||
           (needs.fix.outputs.changed != 'true' && needs.fix.outputs.done != 'true')))) }}
