@@ -816,8 +816,8 @@
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.12.0.197",
-    "hash": "sha256-xlA+iH1oBDVmtlDR1iXPWmUJ2EHH3DKEGwB0mtg5Gs4="
+    "version": "11.13.2.210",
+    "hash": "sha256-RzG5o29aAcwv5aV8Go26JUIHFQcts4SLFdt2hTGFJVk="
   },
   {
     "pname": "Nethermind.TurboPForBindings",
