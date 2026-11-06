@@ -588,6 +588,28 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - reorgDepth);
         }
 
+        [Test]
+        public async Task Set_ReorgBeyondRevertableDepth_CapsIndexAcrossRestart_Test()
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts reorged = testData.Batches.SelectMany(b => b).ToArray()[^((int)maxReorgDepth + 1)];
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(reorged), Throws.TypeOf<LogIndexStateException>());
+            }
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.EqualTo(reorged.BlockNumber - 1));
+                    await Assert.ThatAsync(() => logIndexStorage.AddReceiptsAsync([reorged], false), Throws.TypeOf<LogIndexStateException>());
+                }
+            }
+        }
+
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
@@ -624,7 +646,6 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
         }
 
-        [Ignore("Not supported, but is probably not needed.")]
         [Combinatorial]
         public async Task Set_ConsecutiveReorgsLast_Get_Test(
             [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,

@@ -38,17 +38,27 @@ public class LogIndexReorgTests
     private const int ChainBLength = 40;
     private const int CatchUpTimeoutMs = 60_000;
 
-    [TestCase(10, true, TestName = "Reorg deeper than the max reorg depth on a finalizing chain")]
-    [TestCase(ChainALength - 2, false, TestName = "Side branch known before the head moves to it")]
-    public async Task Indexed_logs_match_a_full_scan_after_a_reorg(int forkPoint, bool finalizing)
+    public enum Finality
+    {
+        None,
+        Canonical,
+        NotCanonicalDuringReorg
+    }
+
+    [TestCase(10, Finality.Canonical, ChainALength, false, TestName = "Reorg deeper than the max reorg depth on a finalizing chain")]
+    [TestCase(ChainALength - 2, Finality.None, ChainALength, false, TestName = "Side branch known before the head moves to it")]
+    [TestCase(ChainALength - 7, Finality.None, 10, false, TestName = "Reorg within the revertable depth of the index on a chain without finality")]
+    [TestCase(ChainALength - 7, Finality.NotCanonicalDuringReorg, 10, false, TestName = "Reorg of blocks indexed while the finalized block was not canonical")]
+    [TestCase(10, Finality.None, 10, true, TestName = "Reorg below the revertable depth of the index on a chain without finality")]
+    public async Task Indexed_logs_match_a_full_scan_after_a_reorg(int forkPoint, Finality finality, int startHead, bool beyondRevertableDepth)
     {
         InMemoryReceiptStorage receipts = new();
         BlockTree tree = Build.A.BlockTree().OfChainLength(1).TestObject;
 
         List<Block> chainA = Extend(tree, tree.FindBlock(0, BlockTreeLookupOptions.None)!, ChainALength, TestItem.AddressA, 0, receipts);
-        MoveHead(tree, chainA, receipts);
+        MoveHead(tree, chainA[..startHead], receipts);
         tree.SyncPivot = (tree.Head!.Number, tree.Head.Hash!);
-        if (finalizing)
+        if (finality is not Finality.None)
             Finalize(tree, chainA[forkPoint - 1]);
 
         using TempPath dbPath = TempPath.GetTempDirectory();
@@ -60,20 +70,42 @@ public class LogIndexReorgTests
 
         LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
         LogIndexStorage storage = new(dbFactory, LimboLogs.Instance, config);
-        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, LimboLogs.Instance);
+        TestErrorLogManager logManager = new();
+        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, logManager);
         try
         {
             await builder.StartAsync();
             await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromMilliseconds(CatchUpTimeoutMs));
             WaitForIndexToCatchUp(builder, storage);
 
+            if (startHead < ChainALength)
+            {
+                MoveHead(tree, chainA, receipts);
+                WaitForIndexToCatchUp(builder, storage);
+            }
+
             List<Block> chainB = Extend(tree, tree.FindBlock((ulong)forkPoint, BlockTreeLookupOptions.None)!, ChainBLength, TestItem.AddressB, 7, receipts);
+            if (finality is Finality.NotCanonicalDuringReorg)
+                Finalize(tree, chainB[^MaxReorgDepth]);
             WaitForIndexToCatchUp(builder, storage);
 
             MoveHead(tree, chainB, receipts);
-            if (finalizing)
+            if (finality is not Finality.None)
                 Finalize(tree, chainB[^MaxReorgDepth]);
-            WaitForIndexToCatchUp(builder, storage);
+
+            if (beyondRevertableDepth)
+            {
+                Assert.That(() => builder.LastError, Is.TypeOf<LogIndexStateException>().After(CatchUpTimeoutMs, 20));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(storage.MaxBlockNumber, Is.EqualTo(forkPoint));
+                    Assert.That(logManager.Errors.Select(static e => e.Exception), Has.Some.TypeOf<LogIndexStateException>());
+                }
+            }
+            else
+            {
+                WaitForIndexToCatchUp(builder, storage);
+            }
 
             AssertIndexedLogsMatchScan(tree, receipts, storage);
         }
@@ -84,7 +116,7 @@ public class LogIndexReorgTests
         }
     }
 
-    private static void MoveHead(BlockTree tree, List<Block> chain, InMemoryReceiptStorage receipts)
+    private static void MoveHead(BlockTree tree, IReadOnlyList<Block> chain, InMemoryReceiptStorage receipts)
     {
         tree.TryUpdateMainChain(chain[^1].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: chain.ToArray());
         foreach (Block block in chain)

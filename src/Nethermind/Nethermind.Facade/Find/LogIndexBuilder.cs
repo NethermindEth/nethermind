@@ -59,6 +59,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private ulong MaxReorgDepth => _config.MaxReorgDepth!.Value;
     private static readonly TimeSpan NewBlockWaitTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan QueueDrainPollInterval = TimeSpan.FromMilliseconds(10);
 
     private readonly ILogIndexStorage _logIndexStorage;
     private readonly ILogIndexConfig _config;
@@ -89,6 +90,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private bool _forwardBelowBarrierWarned;
     // The forward walk starts below the pivot when the stored index ends below the barrier the pivot is raised to.
     private ulong _forwardProgressStart;
+    private long _lowestReplacedBlock = long.MaxValue;
 
     public string Description => "log index builder";
 
@@ -176,6 +178,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 return;
 
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
+            _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+            _blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
 
             TrySetPivot(_logIndexStorage.MaxBlockNumber is { } storedMax ? (ulong)storedMax : null);
             TrySetPivot(_blockTree.SyncPivot.BlockNumber);
@@ -209,6 +213,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         if (!_config.Enabled)
             return;
+
+        _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+        _blockTree.BlockRemovedFromMain -= OnBlockRemovedFromMain;
 
         await SignalStopAsync();
 
@@ -300,9 +307,30 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
     }
 
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+    {
+        if (e.PreviousBlock is not null)
+            OnBlockReplaced(e.PreviousBlock.Number);
+    }
+
+    private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => OnBlockReplaced(e.Header.Number);
+
+    private void OnBlockReplaced(ulong number)
+    {
+        long current = Volatile.Read(ref _lowestReplacedBlock);
+        while ((long)number < current)
+        {
+            long seen = Interlocked.CompareExchange(ref _lowestReplacedBlock, (long)number, current);
+            if (seen == current)
+                return;
+
+            current = seen;
+        }
+    }
+
     /// <summary>The highest block the forward index may reach: the finalized block, or the head minus the max reorg depth without one.</summary>
     /// <remarks>
-    /// The index never reverts blocks, so it is kept to canonical blocks that are not expected to reorg.
+    /// Reverting indexed blocks is costly and limited to the max reorg depth, so the index is kept to canonical blocks that are not expected to reorg.
     /// The best known number is not used, as it also counts side branches that may never become canonical.
     /// </remarks>
     public ulong MaxTargetBlockNumber =>
@@ -432,10 +460,17 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             ProcessingQueue queue = Direction(isForward).Queue!;
 
             int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
+            int firstStart = start;
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
+                if (isForward && Interlocked.Exchange(ref _lowestReplacedBlock, long.MaxValue) is var replaced && replaced < start)
+                {
+                    await RevertReplacedBlocksAsync(replaced, firstStart, start);
+                    start = GetNextBlockNumber(isForward) ?? start;
+                }
+
                 // One read per iteration: the exit decision, the recorded floor and the completion test must
                 // all see the same value, or a drop between two reads of the moving property re-opens the hang.
                 int backwardFloor = isForward ? 0 : (int)BackwardTargetBlockNumber;
@@ -541,6 +576,43 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (_logger.IsTrace)
             _logger.Trace($"{GetLogPrefix(isForward)}: queueing completed.");
+    }
+
+    /// <summary>Removes the indexed blocks that a reorg replaced, so the forward walk indexes the new canonical blocks.</summary>
+    /// <remarks>
+    /// Runs on the forward queueing task after the queued batches are written, as the storage rejects concurrent writes in the same direction.
+    /// The removed keys are taken from every block at each reverted height, which covers the replaced block.
+    /// </remarks>
+    private async Task RevertReplacedBlocksAsync(long replaced, int firstStart, int start)
+    {
+        while (start != firstStart && GetNextBlockNumber(isForward: true) != start)
+            await Task.Delay(QueueDrainPollInterval, CancellationToken);
+
+        // Taken again after draining, so a single ascending revert covers the reorgs seen meanwhile
+        replaced = Math.Min(replaced, Interlocked.Exchange(ref _lowestReplacedBlock, long.MaxValue));
+        if (_logIndexStorage.MaxBlockNumber is not { } max || replaced > max)
+            return;
+
+        int from = (int)replaced;
+        if (_logger.IsInfo)
+            _logger.Info($"{GetLogPrefix(isForward: true)}: reverting blocks {from}-{max} replaced by a reorg.");
+
+        for (int number = from; number <= max; number++)
+            await _logIndexStorage.RemoveReorgedAsync(new(number, GetReceiptsAtHeight((ulong)number)));
+
+        UpdateProgress();
+    }
+
+    private TxReceipt[] GetReceiptsAtHeight(ulong number)
+    {
+        List<TxReceipt> receipts = [];
+        foreach (BlockInfo info in _blockTree.FindLevel(number)?.BlockInfos ?? [])
+        {
+            if (_blockTree.FindBlock(info.BlockHash, BlockTreeLookupOptions.ExcludeTxHashes, number) is { Header.HasTransactions: true } block)
+                receipts.AddRange(_receiptStorage.Get(block) ?? []);
+        }
+
+        return receipts.ToArray();
     }
 
     private void UpdateProgress()
