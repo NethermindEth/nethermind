@@ -12,7 +12,10 @@
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Numerics.Int256" />
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="'$(EnableZkEvm)' == 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" Condition="'$(EnableZkEvm)' == 'true'" />
   </ItemGroup>
 
 </Project>

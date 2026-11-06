@@ -16,8 +16,9 @@
     <None Include="**/*.zkevm.cs" />
   </ItemGroup>
 
-  <!-- Replace ThreadStatic with a no-op attribute in zkEVM -->
-  <ItemGroup Condition="'$(EnableZkEvm)' == 'true' AND '@(ProjectReference)' != ''">
+  <!-- Replace ThreadStatic with a no-op attribute in zkEVM. Nethermind.Serialization.Ssz references only the zkVM
+       abstractions, not Nethermind.Core. -->
+  <ItemGroup Condition="'$(EnableZkEvm)' == 'true' AND '@(ProjectReference)' != '' AND '$(MSBuildProjectName)' != 'Nethermind.Serialization.Ssz'">
     <Using Include="Nethermind.Core.Attributes.NoopThreadStaticAttribute" Alias="ThreadStaticAttribute" />
   </ItemGroup>
 
