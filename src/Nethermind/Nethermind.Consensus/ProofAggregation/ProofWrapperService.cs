@@ -213,6 +213,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             foreach (Transaction transaction in txPool.GetPendingTransactions())
                 if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
                     evicted++;
+            // The blob pool's light records carry no frames, so coverage is judged on the full transaction.
+            foreach (Transaction[] senderTransactions in txPool.GetPendingLightBlobTransactionsBySender().Values)
+                foreach (Transaction light in senderTransactions)
+                    if (Eip8288Dependencies.IsDependencyBearing(light)
+                        && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? full)
+                        && !leanProofStore.Covers(full) && txPool.RemoveTransaction(light.Hash))
+                        evicted++;
             return (dropped, evicted);
         }
     }

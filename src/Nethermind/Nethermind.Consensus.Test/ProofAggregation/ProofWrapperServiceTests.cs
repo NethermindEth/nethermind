@@ -1475,7 +1475,7 @@ public class ProofWrapperServiceTests
 
     // Local verifier-change rule: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
     // is dropped, a direct witness whose scheme parameters are unchanged is kept by reusing its verdict, and pending
-    // transactions left without proof coverage leave the pool.
+    // transactions left without proof coverage leave the pool, blob-carrying ones included.
     [Test]
     public void Verifier_change_applies_the_upgrade_rule()
     {
@@ -1488,10 +1488,13 @@ public class ProofWrapperServiceTests
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([direct], [[1]], null);
         store.AddVerified([aggregated], null, [2]);
+        Transaction blobTx = CreateBlobTransaction(TestItem.KeccakC);
+        store.AddVerified(Eip8288Dependencies.ForTransaction(blobTx, FrameTxSigHash.ComputeValue), null, [3]);
         FakeLeanProofVerifier verifier = new(true);
         ProofVerdictCache.VerifyDirect(verifier, Eip8288Verifier.Pinned, direct, [1]);
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns([directTx, aggregatedTx]);
+        AddBlobCandidate(pool, blobTx, new LightTransaction(blobTx));
         ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
         CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
             (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
@@ -1515,6 +1518,7 @@ public class ProofWrapperServiceTests
             Assert.That(store.Covers(aggregatedTx), Is.False, "every aggregate proof is dropped");
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the direct verdict is reused under unchanged scheme parameters");
             pool.Received(1).RemoveTransaction(aggregatedTx.Hash);
+            pool.Received(1).RemoveTransaction(blobTx.Hash);
             pool.DidNotReceive().RemoveTransaction(directTx.Hash);
             head = HeadWithParent(finder, 75, 1_810);
             Assert.That(service.RefreshVerifier(), Is.EqualTo(after));
