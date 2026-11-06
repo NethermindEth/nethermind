@@ -2144,8 +2144,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Engine_repeated_interrupt_waits_for_the_delivery_gate()
+    {
+        // Interrupt delivery takes the gate that disposal also takes, so a delivery cannot run while the gate is held.
+        Engine engine = new(Shanghai.Instance);
+        Thread second = new(engine.Interrupt);
+        bool started = false, finishedWhileHeld = false;
+        try
+        {
+            engine.Interrupt();
+            using (InterruptGate(engine).EnterScope())
+            {
+                second.Start();
+                started = true;
+                finishedWhileHeld = second.Join(300);
+            }
+        }
+        finally
+        {
+            if (started) second.Join();
+            engine.Dispose();
+        }
+        Assert.That(finishedWhileHeld, Is.False);
+    }
+
     private static Timer? RedeliveryTimer(Engine engine) =>
         (Timer?)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine);
+
+    private static Lock InterruptGate(Engine engine) =>
+        (Lock)typeof(Engine).GetField("_interruptGate", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
 
     private static bool WaitForInterrupt(Engine engine) => SpinWait.SpinUntil(() =>
     {
