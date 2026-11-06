@@ -116,6 +116,8 @@ foreach (var name in cases)
             using var diagnostics = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var logs = await ScriptProcess.Run("docker", ["logs", container], diagnostics.Token);
             await File.WriteAllTextAsync(Path.Combine(directory, "prover.log"), logs.Output + logs.Error);
+            var proxy = await ScriptProcess.Run("docker", ["exec", container, "cat", "/data/keystore/streaming/haproxy.log"], diagnostics.Token);
+            await File.WriteAllTextAsync(Path.Combine(directory, "proxy.log"), proxy.Output + proxy.Error);
         }
         finally
         {
