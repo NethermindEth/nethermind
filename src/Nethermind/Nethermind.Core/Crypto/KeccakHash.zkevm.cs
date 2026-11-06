@@ -135,7 +135,7 @@ public sealed partial class KeccakHash
         if (ZiskFlag.IsActive)
         {
             Unsafe.SkipInit(out ValueHash256 hash);
-            ZiskKeccak256(data, length, (byte*)&hash);
+            Accelerators.ZiskKeccak256(data, length, (byte*)&hash);
             return hash;
         }
 
@@ -145,12 +145,6 @@ public sealed partial class KeccakHash
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
-    /// <summary>ZisK's keccak256 library routine, a call thunk in the runtime.</summary>
-    /// <remarks>Callers may pass an unpinned <paramref name="output"/>: nothing between taking the pointer and the
-    /// call returning can reach a GC safepoint, as the import suppresses the GC transition and the guest is
-    /// single-threaded.</remarks>
-    [DllImport("__Internal", EntryPoint = "zisklib_keccak256", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe int ZiskKeccak256(byte* data, nuint length, byte* output);
 
     /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
     /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, an unaligned source of at least one rate block, moved down
@@ -454,7 +448,8 @@ public sealed partial class KeccakHash
                 {
                     if (ZiskFlag.IsActive)
                     {
-                        ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                        // The slot is not pinned: no GC can run before the call returns, as it suppresses the GC transition.
+                        Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
                         continue;
                     }
 
@@ -517,7 +512,7 @@ public sealed partial class KeccakHash
             {
                 if (ZiskFlag.IsActive)
                 {
-                    ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                    Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
                     continue;
                 }
 

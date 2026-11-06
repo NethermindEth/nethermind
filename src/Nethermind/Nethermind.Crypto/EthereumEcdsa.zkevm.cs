@@ -54,27 +54,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         byte recoveryId,
         ReadOnlySpan<byte> message,
         Span<byte> publicKey
-        ) => ZiskFlag.IsActive
-            ? RecoverWithZiskLibrary(signature, recoveryId, message, publicKey)
-            : Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey) == Accelerators.Status.OK;
-
-    /// <summary>Recovers the 64-byte public key with ZisK's own recovery routine, a call thunk in the runtime.</summary>
-    private static unsafe bool RecoverWithZiskLibrary(
-        ReadOnlySpan<byte> signature,
-        byte recoveryId,
-        ReadOnlySpan<byte> message,
-        Span<byte> publicKey)
-    {
-        ArgumentOutOfRangeException.ThrowIfNotEqual(message.Length, 32, nameof(message));
-        ArgumentOutOfRangeException.ThrowIfNotEqual(signature.Length, 64, nameof(signature));
-        ArgumentOutOfRangeException.ThrowIfNotEqual(publicKey.Length, 64, nameof(publicKey));
-
-        fixed (byte* m = message, s = signature, p = publicKey)
-            return ZiskSecp256k1Recover(m, s, recoveryId, p) == 0;
-    }
-
-    [DllImport("__Internal", EntryPoint = "zisklib_secp256k1_ecrecover", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe int ZiskSecp256k1Recover(byte* message, byte* signature, byte recoveryId, byte* publicKey);
+        ) => (ZiskFlag.IsActive
+            ? Accelerators.ZiskSecP256k1Recover(message, signature, recoveryId, publicKey)
+            : Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey)) == Accelerators.Status.OK;
 
     /// <summary>Sets the sender of each of <paramref name="transactions"/> from its signature, all in one call.</summary>
     /// <param name="transactions">The transactions, signed.</param>

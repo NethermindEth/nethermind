@@ -113,7 +113,7 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pq = &result)
-            ZiskArithmetic.Divide((ulong*)pa, (ulong*)pb, (ulong*)pq);
+            Accelerators.Div256((ulong*)pa, (ulong*)pb, (ulong*)pq);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
