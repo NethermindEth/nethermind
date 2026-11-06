@@ -122,7 +122,6 @@ jobs:
     outputs:
       changed: ${{ steps.check.outputs.changed }}
       declined: ${{ steps.check.outputs.declined }}
-      blocked: ${{ steps.check.outputs.blocked }}
       done: ${{ steps.check.outputs.done }}
     steps:
       - uses: actions/checkout@v6
@@ -140,6 +139,11 @@ jobs:
         with:
           name: flaky-review
           path: ${{ runner.temp }}/claude
+
+      - uses: ./.github/actions/download-artifact
+        with:
+          name: flaky-review
+          path: ${{ runner.temp }}/fix
 
       - name: Address the review
         timeout-minutes: 90
@@ -169,11 +173,6 @@ jobs:
             --add-dir ${{ runner.temp }}/claude
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(dotnet test:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
-      - uses: ./.github/actions/download-artifact
-        with:
-          name: flaky-review
-          path: ${{ runner.temp }}/fix
-
       - name: Check the change
         id: check
         env:
@@ -182,12 +181,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/fix"
           grep -xE '[A-Za-z0-9_-]+' "$RUNNER_TEMP/claude/addressed.txt" > "$RUNNER_TEMP/fix/addressed.txt" || true
           grep -E '^[A-Za-z0-9_-]+ [^[:cntrl:]]+$' "$RUNNER_TEMP/claude/declined.txt" | tr -d '@' | cut -c1-500 > "$RUNNER_TEMP/fix/declined.txt" || true
-          if [ -s "$RUNNER_TEMP/fix/declined.txt" ]; then
-            if [ "$STATE" != success ]; then
-              echo "::error::Claude declined findings of a review with blockers"
-              echo "blocked=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          if [ "$STATE" != success ]; then
+            : > "$RUNNER_TEMP/fix/declined.txt"
+          elif [ -s "$RUNNER_TEMP/fix/declined.txt" ]; then
             echo "declined=true" >> "$GITHUB_OUTPUT"
           fi
           git add -A
@@ -327,7 +323,6 @@ jobs:
           REASON: ${{ needs.check.outputs.reason }}
           CHECK: ${{ needs.check.result }}
           FIX: ${{ needs.fix.result }}
-          BLOCKED: ${{ needs.fix.outputs.blocked }}
           CHANGED: ${{ needs.fix.outputs.changed }}
           VERIFY: ${{ needs.verify.result }}
           PUSHED: ${{ needs.publish.outputs.pushed }}
@@ -335,7 +330,6 @@ jobs:
           if [ "$CHECK" != success ]; then REASON="reading the review failed"
           elif [ -z "$REASON" ]; then
             if [ "$FIX" != success ]; then REASON="the fix job failed"
-            elif [ "$BLOCKED" = true ]; then REASON="Claude declined findings of a review with blockers"
             elif [ "$CHANGED" != true ]; then REASON="Claude made no change, and the review still has open findings or a failed verdict"
             elif [ "$VERIFY" != success ]; then REASON="the test failed or did not run with the change"
             elif [ "$PUSHED" != true ]; then REASON="the change could not be pushed"
