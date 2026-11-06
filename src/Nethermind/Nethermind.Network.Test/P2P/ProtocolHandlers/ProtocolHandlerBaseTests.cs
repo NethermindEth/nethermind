@@ -155,7 +155,14 @@ public class ProtocolHandlerBaseTests
         public override string Protocol => "test";
         public bool IsDisposed { get; private set; }
 
-        public TestResponseMessage Serve() => fail ? throw new InvalidOperationException("serve failed") : new TestResponseMessage();
+        public bool Served { get; private set; }
+
+        public TestResponseMessage Serve()
+        {
+            if (fail) throw new InvalidOperationException("serve failed");
+            Served = true;
+            return new TestResponseMessage();
+        }
 
         public override void Dispose()
         {
@@ -303,6 +310,51 @@ public class ProtocolHandlerBaseTests
         await scheduler.RunNext();
         handler.ScheduleTransactionServe(new GetPooledTransactionsMessage(new ArrayPoolList<ValueHash256>(0)));
         Assert.That(scheduler.Count, Is.EqualTo(2 * limit), "A finished transaction request gives back its own slot");
+    }
+
+    [Test]
+    public async Task Sync_serve_request_is_skipped_when_the_outbound_buffer_is_full(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path,
+        [Values] bool bufferFull)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(bufferFull);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+        TestRequestMessage request = new();
+
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        session.Received(bufferFull ? 0 : 1).DeliverMessage(Arg.Any<TestResponseMessage>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.IsDisposed, Is.EqualTo(bufferFull));
+            Assert.That(request.Served, Is.EqualTo(!bufferFull));
+        }
+    }
+
+    [Test]
+    public async Task Skipped_sync_serve_requests_give_back_their_slot(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(true);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i < BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight; i++)
+        {
+            Schedule(handler, path, new TestRequestMessage());
+            await scheduler.ScheduledTask;
+        }
+
+        session.IsOutboundBufferFull.Returns(false);
+        TestRequestMessage request = new();
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        Assert.That(request.Served, Is.True);
     }
 
     [Test]
