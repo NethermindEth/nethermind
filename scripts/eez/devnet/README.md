@@ -1,5 +1,38 @@
 # Live EEZ integration tests
 
+## Rollup0 quorum preview
+
+The manual `quorum_revision` input selects the current public head of
+[Rollup0 PR171](https://github.com/eez-association/eez-rollup0/pull/171). This is
+a separate pre-merge qualification. Empty input retains the normal profile jobs.
+The selected commit must match that PR and its expected source repository.
+The ordinary main-history resolver is unchanged.
+
+This job builds the existing upstream `e2e` executable and runs four exact cases
+serially. Each case starts one candidate Nethermind prover; the remaining
+members use the selected upstream signer binary. The existing HTTP/2-to-mTLS
+adapter forwards the original frames. Tests require two signatures accepted on
+L1, settlement with an unresponsive third member, rejection of a wrong digest,
+and rejection of a foreign rollup identity after the correct identity succeeds.
+The outage case also settles an ordinary value transfer.
+
+The preview includes a cold Rust build under a separate 90-minute job limit.
+Each exact case has a three-minute execution limit. Normal live partition limits
+are unchanged.
+
+Source revisions, binary hashes, the immutable candidate image ID, participant
+identity and per-case results are retained in `eez-quorum-<run-id>`. A missing
+participant, an empty selection or a failed case fails the job. Each case owns
+its container and output directory. This preview does not report the normal
+Rollup0/RollupX profile matrix as passed.
+
+```sh
+gh workflow run eez-devnet-tests.yml --ref <nethermind-branch> \
+  -f quorum_revision=<current-pr171-head-sha>
+```
+
+## Live profile jobs
+
 One CI workflow builds the Nethermind follower and prover images once. Reusable preparation and test workflows keep each profile independent. Preparation runs alongside the common candidate build. Rollup0 does not wait for RollupX preparation, or vice versa. Each producer freezes upstream/Core revisions and prepares runtime binaries, contract artifacts, deploy images and Rust test executables. Test jobs download these same-run artifacts and execute separate suites in parallel. They do not compile Rust or Nethermind. Archives preserve executable modes. Producer artifact names use the run ID so failed-job reruns can reuse successful builds. A standard Actions cache reuses prepared upstream inputs for the selected repository/profile, source/Core revisions, execution settings and adapter/build files. Resolution-only metadata, such as the current upstream main and the selection origin of the same source, does not change the key. Fresh resolution metadata stays outside the cached payload. On a hit, preparation verifies the build identity and combines the current resolution with the cached runtime provenance and binary checksums. A new selected upstream revision or adapter change causes a rebuild. Candidate Nethermind images are still built from the current commit.
 
 The RollupX protocol job has a 20-minute limit, including setup, and an 18-minute upstream execution budget. Every other test job has a 15-minute limit, including setup. Cold build producers have separate limits and can take longer. The limit is a failure boundary; successful CI timings are required before claiming that every partition fits. The final job requires all 20 partitions, matching source manifests, wave prerequisites and complete protocol assignment. A partial job cannot report a complete suite.
