@@ -72,20 +72,20 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
     private long _updated = clock.GetTimestamp();
 
     /// <summary>Takes <paramref name="amount"/> if available; the allowance refills at its rate up to one second's worth.</summary>
-    public bool TryTake(double amount)
-    {
-        if (!CanTake(amount)) return false;
-        _available -= amount;
-        return true;
-    }
+    public bool TryTake(double amount) => TryTake(amount, amount);
 
-    /// <summary>Whether <paramref name="amount"/> is available, without taking it.</summary>
-    public bool CanTake(double amount)
+    /// <summary>Takes <paramref name="amount"/> once a full second's worth, or the amount if less, is available, leaving the
+    /// allowance in debt for an amount above one second's worth.</summary>
+    public bool TryBorrow(double amount) => TryTake(amount, Math.Min(amount, _rate));
+
+    private bool TryTake(double amount, double required)
     {
         long now = clock.GetTimestamp();
         _available = Math.Min(_rate, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
         _updated = now;
-        return amount <= _available;
+        if (required > _available) return false;
+        _available -= amount;
+        return true;
     }
 }
 

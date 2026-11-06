@@ -436,7 +436,8 @@ public class ProofWrapperTransportTests
         }
     }
 
-    // Each peer stays within its own serving budget, and all of them together within the global one.
+    // Each peer stays within its own serving budget, and all of them together within the global one, which greedy peers cannot
+    // spend on behalf of another.
     [Test]
     public void Serving_stays_within_the_global_budget_across_peers()
     {
@@ -445,19 +446,19 @@ public class ProofWrapperTransportTests
         using WrapperTestNode node = new();
         node.AddPending(pooled);
         foreach (byte[] wrapper in wrappers) Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
-        FakeWrapperLink[] links = [.. Enumerable.Range(0, 5).Select(static i => new FakeWrapperLink($"peer {i}"))];
+        FakeWrapperLink[] links = [.. Enumerable.Range(0, 6).Select(static i => new FakeWrapperLink($"peer {i}"))];
+        WrapperPeer[] peers = [.. links.Select(node.Connect)];
 
-        foreach (FakeWrapperLink link in links)
-        {
-            WrapperPeer peer = node.Connect(link);
-            for (int i = 0; i < wrappers.Length; i++) node.Transport.OnGetProofWrappers(peer, new(i + 1, false, [Describe(wrappers[i]).Hash]));
-        }
+        foreach (WrapperPeer peer in peers[..^1])
+            for (int i = 0; i < 2 * wrappers.Length; i++) node.Transport.OnGetProofWrappers(peer, new(i + 1, false, [Describe(wrappers[i % wrappers.Length]).Hash]));
+        node.Transport.OnGetProofWrappers(peers[^1], new(1, false, [Describe(wrappers[0]).Hash]));
 
         long[] served = [.. links.Select(static l => l.Sent<ProofWrappersMessage>().SelectMany(static m => m.Entries).Sum(static e => (long)e.Wrapper.Length))];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(served, Has.All.LessThanOrEqualTo(WrapperTransportLimits.ServeBytesPerSecond));
             Assert.That(served.Sum(), Is.LessThanOrEqualTo(WrapperTransportLimits.GlobalServeBytesPerSecond));
+            Assert.That(served[^1], Is.EqualTo(wrappers[0].Length), "the last peer still gets its share");
         }
     }
 

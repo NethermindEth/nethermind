@@ -94,7 +94,8 @@ public static class WrapperTransportLimits
     /// <summary>ProofWrappers data served per peer per second, which is also the burst.</summary>
     public const long ServeBytesPerSecond = 8 * 1024 * 1024;
 
-    /// <summary>ProofWrappers data served across all peers per second, which is also the burst.</summary>
+    /// <summary>ProofWrappers data served across all peers per second, split equally between them once each peer's
+    /// <see cref="ServeBytesPerSecond"/> would exceed it.</summary>
     public const long GlobalServeBytesPerSecond = 4 * ServeBytesPerSecond;
 
     /// <summary>NewProofWrapperHashes messages per peer per second, in either direction.</summary>
