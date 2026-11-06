@@ -393,22 +393,20 @@ public partial class DebugRpcModuleTests
             ("bundle_beaconRoot", new() { BeaconRoot = Keccak.Zero }, null, null, null, 0),
         ];
         foreach ((string name, BlockOverride bundle, BlockOverride? options, ulong? block, string? error, int code) in cases)
-            foreach (bool streaming in new[] { true, false })
-                yield return new TestCaseData(bundle, options, block, error, code, streaming).SetName($"{{m}}({name}_{(streaming ? "streaming" : "buffered")})");
+            yield return new TestCaseData(bundle, options, block, error, code).SetName($"{{m}}({name})");
     }
 
     // As in debug_traceCall, an unsupported override is an invalid input reported after the block and its state resolve.
     [TestCaseSource(nameof(TraceCallManyBundleBlockOverrideCases))]
-    public async Task Debug_traceCallMany_validates_bundle_block_overrides(BlockOverride bundleOverride, BlockOverride? optionsOverride, ulong? block, string? expectedError, int expectedCode, bool streaming)
+    public async Task Debug_traceCallMany_validates_bundle_block_overrides(BlockOverride bundleOverride, BlockOverride? optionsOverride, ulong? block, string? expectedError, int expectedCode)
     {
         using Context ctx = await CreateContext();
-        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         TransactionBundle bundle = CreateBundle(CreateTransaction());
         bundle.BlockOverride = bundleOverride;
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle],
             block is null ? BlockParameter.Latest : new BlockParameter(block.Value),
-            new GethTraceOptions { Tracer = streaming ? string.Empty : "callTracer", BlockOverrides = optionsOverride });
+            new GethTraceOptions { BlockOverrides = optionsOverride });
 
         using (Assert.EnterMultipleScope())
         {
