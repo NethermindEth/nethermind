@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -39,6 +43,8 @@ using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -305,6 +311,513 @@ public class OptimismEthRpcModuleTest
             Assert.That(sent.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
             Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
             Assert.That(sent.MaxFeePerGas, Is.EqualTo(2 * nextBaseFee + suggestedFee), "the fee cap must be twice the next base fee plus the tip");
+        }
+    }
+
+    private const string AcceptedByTheSequencer = $$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""";
+
+    /// <summary>
+    /// A sequencer that keeps every transaction forwarded to it and answers with <paramref name="respond"/>, called
+    /// with the index of the transaction, or accepts it.
+    /// </summary>
+    private sealed class RecordingSequencer(Func<int, Task<string?>>? respond = null) : IJsonRpcClient
+    {
+        private readonly List<Transaction> _received = [];
+
+        public Transaction[] Received
+        {
+            get
+            {
+                lock (_received)
+                    return _received.ToArray();
+            }
+        }
+
+        public ulong[] ReceivedNonces => Received.Select(static tx => tx.Nonce).ToArray();
+
+        public async Task<string?> Post(string method, params object?[] parameters)
+        {
+            Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull((byte[])parameters[0]!, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+            int index;
+            lock (_received)
+            {
+                index = _received.Count;
+                _received.Add(tx);
+            }
+
+            return respond is null ? AcceptedByTheSequencer : await respond(index);
+        }
+
+        public Task<T?> Post<T>(string method, params object?[] parameters) => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// Releases two sends from <paramref name="sender"/> that the test holds at the pool or the sequencer: the first, which
+    /// is held there when this is called, and then the second. The timeouts only keep a broken implementation from hanging
+    /// the test.
+    /// </summary>
+    /// <returns>
+    /// Whether the account's lock counted the second send as a user while the first still held the lock, before the second
+    /// reached the pool or the sequencer; and whether the second held the lock when it got there, after the first was done.
+    /// </returns>
+    internal static async Task<(bool Waited, bool HeldTheLock)> ReleaseTwoSendsInTurn(ForwardedNonceTracker nonceTracker,
+        Address sender, TaskCompletionSource releaseFirst, Task first, Task secondArrived, TaskCompletionSource releaseSecond)
+    {
+        bool countedWhileFirstHeld = SpinWait.SpinUntil(
+            () => nonceTracker.SenderLockState(sender) == (2, true) || secondArrived.IsCompleted, TimeSpan.FromSeconds(10));
+        bool waited = countedWhileFirstHeld && !secondArrived.IsCompleted;
+        releaseFirst.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(30));
+        await secondArrived.WaitAsync(TimeSpan.FromSeconds(30));
+        bool heldTheLock = nonceTracker.SenderLockState(sender) == (1, true);
+        releaseSecond.SetResult();
+        return (waited, heldTheLock);
+    }
+
+    private static async Task<TestRpcBlockchain> BuildSendRpc(IJsonRpcClient? sequencer, ITxSender? txSender = null, HeadState? headState = null)
+    {
+        TestSpecProvider specProvider = new(London.Instance);
+        TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(sealEngineType: SealEngineType.Optimism);
+        if (txSender is not null)
+            builder = builder.WithTxSender(txSender);
+
+        TestRpcBlockchain rpcBlockchain = await builder
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: new TxSealer(new WalletTxSigner(WalletWithKeysOfABAndC(), specProvider.ChainId), Timestamper.Default),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>(),
+                nonceStateReader: headState?.Reader)
+            .Build(specProvider);
+        if (headState is not null)
+            headState.Chain = rpcBlockchain;
+
+        return rpcBlockchain;
+    }
+
+    // The node's wallet: it signs for A, B and C, and for no other account.
+    private static IWallet WalletWithKeysOfABAndC()
+    {
+        PrivateKey[] keys = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+        IWallet wallet = Substitute.For<IWallet>();
+        wallet.TrySignTransaction(Arg.Any<Transaction>(), Arg.Any<ulong>()).Returns(call =>
+        {
+            Transaction tx = call.Arg<Transaction>();
+            if (keys.FirstOrDefault(key => key.Address == tx.SenderAddress) is not { } key)
+                return false;
+
+            new EthereumEcdsa(call.ArgAt<ulong>(1)).Sign(key, tx);
+            return true;
+        });
+        return wallet;
+    }
+
+    public enum StateFailure { MissingTrieNode, CorruptTrieNode, SnapshotNotGathered, StoreClosed }
+
+    /// <summary>
+    /// The chain's state as the nonce tracker reads it, which can fail: on a node that has not synced or has pruned the
+    /// head state, holds a corrupt trie node, cannot gather its flat state snapshot in time or is closing its database.
+    /// </summary>
+    private sealed class HeadState
+    {
+        public HeadState() =>
+            Reader.TryGetAccount(Arg.Any<BlockHeader?>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                IStateReader reader = Failure switch
+                {
+                    null => Chain!.StateReader,
+                    StateFailure.MissingTrieNode => throw new MissingTrieNodeException("The head state is not available", null, TreePath.Empty, Keccak.EmptyTreeHash),
+                    // The real reader, over a trie whose nodes do not decode.
+                    StateFailure.CorruptTrieNode => CorruptTrieReader(),
+                    // As FlatDbManager gives up gathering a snapshot.
+                    StateFailure.SnapshotNotGathered => throw new InvalidOperationException("Timed out gathering ReadOnlySnapshotBundle"),
+                    _ => throw new ObjectDisposedException("state db"),
+                };
+                bool exists = reader.TryGetAccount(call.ArgAt<BlockHeader?>(0), call.ArgAt<Address>(1), out AccountStruct account);
+                call[2] = account;
+                return exists;
+            });
+
+        public IStateReader Reader { get; } = Substitute.For<IStateReader>();
+
+        public TestRpcBlockchain? Chain { get; set; }
+
+        // Null while the state can be read.
+        public StateFailure? Failure { get; set; }
+
+        private static StateReader CorruptTrieReader()
+        {
+            IScopedTrieStore nodes = Substitute.For<IScopedTrieStore>();
+            nodes.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>(), new byte[] { 0xc0 }));
+            ITrieStore trieStore = Substitute.For<ITrieStore>();
+            trieStore.GetTrieStore(null).Returns(nodes);
+            return new StateReader(trieStore, Substitute.For<IKeyValueStore>(), LimboLogs.Instance);
+        }
+    }
+
+    private static Transaction SignedByC(TestRpcBlockchain rpcBlockchain, ulong nonce) =>
+        Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).WithType(TxType.EIP1559)
+            .WithChainId(rpcBlockchain.SpecProvider.ChainId)
+            .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+    private static Task<string> SendFromC(TestRpcBlockchain rpcBlockchain, string extraFields = "") =>
+        SendFrom(rpcBlockchain, TestItem.AddressC, extraFields);
+
+    // A send left waiting on a lock fails the test instead of hanging it.
+    private static Task<string> SendFrom(TestRpcBlockchain rpcBlockchain, Address from, string extraFields = "") =>
+        rpcBlockchain.TestEthRpc("eth_sendTransaction", JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{from}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1"{{extraFields}}}"""))
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+    private static void AssertSucceeded(string serialized) => Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+
+    [Test]
+    public async Task Forwarding_node_fills_consecutive_nonces_before_the_first_is_included()
+    {
+        RecordingSequencer sequencer = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }),
+            "the second send must follow the first, which the head does not include yet");
+    }
+
+    [Test]
+    public async Task Forwarding_node_sends_from_another_account_while_a_forward_is_held()
+    {
+        TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingSequencer sequencer = new(async index =>
+        {
+            if (index == 0)
+            {
+                firstArrived.SetResult();
+                await releaseFirst.Task;
+            }
+
+            return AcceptedByTheSequencer;
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        Task<string> fromC = SendFromC(rpcBlockchain);
+        await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<string> fromB = SendFrom(rpcBlockchain, TestItem.AddressB);
+        // The forward of C stays at the sequencer until B is done or has waited long enough to show it is blocked.
+        bool bDoneWhileCHeld = await Task.WhenAny(fromB, Task.Delay(TimeSpan.FromSeconds(5))) == fromB;
+        releaseFirst.SetResult();
+        AssertSucceeded(await fromC);
+        AssertSucceeded(await fromB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bDoneWhileCHeld, Is.True, "a forward held for one account must not hold the sends of another");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 0 }), "C follows its mined transaction, B starts at 0");
+        }
+    }
+
+    [Test]
+    public async Task Forwarding_node_follows_the_head_once_it_includes_the_forwarded_transactions()
+    {
+        RecordingSequencer sequencer = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+        // The head includes nonces 0 to 2 of the account, one more than this node forwarded.
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0), SignedByC(rpcBlockchain, 1), SignedByC(rpcBlockchain, 2));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 1, 3 }));
+    }
+
+    public enum ForwardFailure { Rejected, NoAnswer, NetworkError }
+
+    [TestCase(ForwardFailure.Rejected, TestName = "Forwarding_node_does_not_count_a_transaction_the_sequencer_rejects")]
+    [TestCase(ForwardFailure.NoAnswer, TestName = "Forwarding_node_does_not_count_a_transaction_the_sequencer_does_not_answer")]
+    [TestCase(ForwardFailure.NetworkError, TestName = "Forwarding_node_does_not_count_a_transaction_lost_to_a_network_error")]
+    public async Task Forwarding_node_does_not_count_a_failed_forward(ForwardFailure failure)
+    {
+        RecordingSequencer sequencer = new(index => index > 0
+            ? Task.FromResult<string?>(AcceptedByTheSequencer)
+            : failure switch
+            {
+                ForwardFailure.Rejected => Task.FromResult<string?>("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"insufficient funds for gas * price + value"}}"""),
+                ForwardFailure.NoAnswer => Task.FromResult<string?>(""),
+                _ => Task.FromException<string?>(new HttpRequestException("connection refused")),
+            });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        string failed = await SendFromC(rpcBlockchain);
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(failed)["error"], Is.Not.Null, failed);
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 1 }), "a failed forward must not use up its nonce");
+        }
+    }
+
+    [Test]
+    public async Task Send_transaction_keeps_an_explicit_nonce([Values] bool forwardToSequencer)
+    {
+        RecordingSequencer sequencer = new();
+        Transaction? sentToPool = null;
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sentToPool = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(forwardToSequencer ? sequencer : null, txSender);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        AssertSucceeded(await SendFromC(rpcBlockchain, ",\"nonce\":\"0x5\""));
+
+        ulong sent = forwardToSequencer ? sequencer.ReceivedNonces.Single() : sentToPool!.Nonce;
+        Assert.That(sent, Is.EqualTo(5UL), "a nonce given in the request must be sent as it is");
+    }
+
+    [TestCase(0, 5UL, new ulong[] { 5, 1 }, TestName = "Forwarding_node_does_not_fill_past_an_explicit_nonce_after_a_gap")]
+    [TestCase(0, 1UL, new ulong[] { 1, 2 }, TestName = "Forwarding_node_fills_past_an_explicit_nonce_without_a_gap")]
+    // Nonces 1 and 2 are with the sequencer, which accepts a replacement of 1.
+    [TestCase(2, 1UL, new ulong[] { 1, 2, 1, 3 }, TestName = "Forwarding_node_does_not_go_back_after_replacing_a_nonce_below_the_next")]
+    public async Task Forwarding_node_counts_an_explicit_nonce_without_a_gap(int filledBefore, ulong explicitNonce, ulong[] sent)
+    {
+        RecordingSequencer sequencer = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        for (int i = 0; i < filledBefore; i++)
+            AssertSucceeded(await SendFromC(rpcBlockchain));
+        AssertSucceeded(await SendFromC(rpcBlockchain, $",\"nonce\":\"0x{explicitNonce:x}\""));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(sent));
+    }
+
+    public enum NotSignedByNode { SignedByAnotherAccount, Frame }
+
+    [TestCase(NotSignedByNode.SignedByAnotherAccount, TestName = "Forwarding_node_does_not_count_a_transaction_signed_by_another_account")]
+    [TestCase(NotSignedByNode.Frame, TestName = "Forwarding_node_does_not_count_a_frame_transaction_it_leaves_unsigned")]
+    public async Task Forwarding_node_does_not_count_a_transaction_it_did_not_sign(NotSignedByNode kind)
+    {
+        RecordingSequencer sequencer = new();
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+        SignableTransactionForRpc request = kind switch
+        {
+            // Signed by A and sent with C as its from: the node forwards the signature it was given, so C has sent nothing.
+            NotSignedByNode.SignedByAnotherAccount => new LegacyTransactionForRpc(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressB)
+                .WithGasPrice(1.GWei).WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject, default)
+            { From = TestItem.AddressC },
+            // A frame transaction has no outer signature, so the sealer leaves it unsigned and still succeeds.
+            _ => new FrameTransactionForRpc
+            {
+                From = TestItem.AddressC,
+                Gas = 50_000,
+                MaxFee = 1.GWei,
+                MaxPriorityFeePerGas = 1,
+                Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 }],
+                Signatures = [],
+            },
+        };
+
+        AssertSucceeded(await rpcBlockchain.TestEthRpc("eth_sendTransaction", request).WaitAsync(TimeSpan.FromSeconds(30)));
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 0 }), "a transaction the node did not sign must not use up a nonce of its from");
+    }
+
+    [TestCase(StateFailure.MissingTrieNode, typeof(MissingTrieNodeException))]
+    [TestCase(StateFailure.CorruptTrieNode, typeof(TrieNodeException))]
+    [TestCase(StateFailure.SnapshotNotGathered, typeof(InvalidOperationException))]
+    [TestCase(StateFailure.StoreClosed, typeof(ObjectDisposedException))]
+    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, Type error)
+    {
+        RecordingSequencer sequencer = new();
+        HeadState headState = new() { Failure = failure };
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
+
+        string withoutNonce = await SendFromC(rpcBlockchain);
+        AssertSucceeded(await SendFromC(rpcBlockchain, ",\"nonce\":\"0x5\""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(withoutNonce)["error"]?["data"]?.Value<string>(), Does.Contain(error.FullName),
+                "without the head state there is no nonce to fill, so the state error stops the send");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 5 }), "a request with its nonce needs no head state");
+        }
+    }
+
+    [Test]
+    public async Task Forwarding_node_counts_an_accepted_forward_after_the_head_state_goes()
+    {
+        HeadState headState = new();
+        // The head state goes while the first forward is at the sequencer, which accepts it.
+        RecordingSequencer sequencer = new(index =>
+        {
+            if (index == 0)
+                headState.Failure = StateFailure.MissingTrieNode;
+
+            return Task.FromResult<string?>(AcceptedByTheSequencer);
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer, headState: headState);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        string accepted = await SendFromC(rpcBlockchain);
+        headState.Failure = null;
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(accepted)["error"], Is.Null, "a forward the sequencer accepted must be answered as accepted");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 1, 2 }), "the accepted forward must use up its nonce");
+        }
+    }
+
+    [Test]
+    public async Task Sequencer_node_fills_the_nonce_after_a_transaction_waiting_in_the_pool()
+    {
+        Transaction? sent = null;
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer: null, txSender);
+        Assert.That(rpcBlockchain.TxPool.SubmitTx(SignedByC(rpcBlockchain, 0), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+            "the first transaction must wait in the pool");
+
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        Assert.That(sent!.Nonce, Is.EqualTo(1UL), "the nonce must follow the account's transaction in the pool, not the head");
+    }
+
+    [Test]
+    public async Task Concurrent_sends_from_one_account_get_consecutive_nonces([Values] bool forwardToSequencer)
+    {
+        TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecond = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<ulong> sentToPool = [];
+        TestRpcBlockchain? rpcBlockchain = null;
+
+        // Each send is held at the sequencer, or before it reaches the pool, until the test releases it.
+        async Task Hold(int index)
+        {
+            if (index > 0)
+            {
+                secondArrived.TrySetResult();
+                await releaseSecond.Task;
+                return;
+            }
+
+            firstArrived.SetResult();
+            await releaseFirst.Task;
+        }
+
+        async Task<(Hash256 Hash, AcceptTxResult? AddTxResult)> AddToPool(Transaction tx)
+        {
+            int index;
+            lock (sentToPool)
+            {
+                index = sentToPool.Count;
+                sentToPool.Add(tx.Nonce);
+            }
+
+            await Hold(index);
+            return (TestItem.KeccakA, rpcBlockchain!.TxPool.SubmitTx(SignedByC(rpcBlockchain, tx.Nonce), TxHandlingOptions.None));
+        }
+
+        RecordingSequencer sequencer = new(async index =>
+        {
+            await Hold(index);
+            return AcceptedByTheSequencer;
+        });
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+            new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(AddToPool(call.Arg<Transaction>())));
+
+        rpcBlockchain = await BuildSendRpc(forwardToSequencer ? sequencer : null, txSender);
+        await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
+
+        Task<string> first = SendFromC(rpcBlockchain);
+        await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<string> second = SendFromC(rpcBlockchain);
+        // Unless the sends are serialised, the second one is filled and sent while the first is still on its way.
+        (bool secondWaited, bool secondHeldTheLock) = await ReleaseTwoSendsInTurn(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker,
+            TestItem.AddressC, releaseFirst, first, secondArrived.Task, releaseSecond);
+        AssertSucceeded(await first);
+        AssertSucceeded(await second);
+
+        ulong[] sent;
+        lock (sentToPool)
+            sent = forwardToSequencer ? sequencer.ReceivedNonces : sentToPool.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondWaited, Is.True, "the second send must wait for the first");
+            Assert.That(secondHeldTheLock, Is.True, "the second send must hold the lock when it is sent");
+            Assert.That(sent, Is.EqualTo(new ulong[] { 1, 2 }), "concurrent sends must not share a nonce");
+        }
+    }
+
+    public enum SecondSend { ExplicitNonce, OwnSignatureWithoutNonce }
+
+    // A send that already has its nonce or its signature still waits: the nonce it is compared with, or the one filled for
+    // it, must follow the send before it.
+    [TestCase(SecondSend.ExplicitNonce, new ulong[] { 0, 1, 2 }, TestName = "Forwarding_node_holds_a_send_with_an_explicit_nonce_until_the_previous_one_is_done")]
+    // Signed by C for nonce 1, with the nonce left out of the request. A signature the request brings is not counted, so
+    // the next filled send repeats its nonce.
+    [TestCase(SecondSend.OwnSignatureWithoutNonce, new ulong[] { 0, 1, 1 }, TestName = "Forwarding_node_holds_a_send_with_its_own_signature_until_the_previous_one_is_done")]
+    public async Task Forwarding_node_holds_a_send_until_the_previous_one_is_done(SecondSend kind, ulong[] sent)
+    {
+        TaskCompletionSource firstArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseSecond = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The first two forwards are held at the sequencer until the test releases them.
+        RecordingSequencer sequencer = new(async index =>
+        {
+            if (index == 0)
+            {
+                firstArrived.SetResult();
+                await releaseFirst.Task;
+            }
+            else if (index == 1)
+            {
+                secondArrived.SetResult();
+                await releaseSecond.Task;
+            }
+
+            return AcceptedByTheSequencer;
+        });
+        TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer);
+
+        Transaction signedByC = Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressB).WithGasPrice(1.GWei)
+            .WithChainId(rpcBlockchain.SpecProvider.ChainId).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+        Task<string> first = SendFromC(rpcBlockchain);
+        await firstArrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<string> second = kind == SecondSend.ExplicitNonce
+            ? SendFromC(rpcBlockchain, ",\"nonce\":\"0x1\"")
+            : rpcBlockchain.TestEthRpc("eth_sendTransaction", new LegacyTransactionForRpc(signedByC, default) { From = TestItem.AddressC, Nonce = null })
+                .WaitAsync(TimeSpan.FromSeconds(30));
+        (bool secondWaited, bool secondHeldTheLock) = await ReleaseTwoSendsInTurn(((OptimismEthRpcModule)rpcBlockchain.EthRpcModule).NonceTracker,
+            TestItem.AddressC, releaseFirst, first, secondArrived.Task, releaseSecond);
+        AssertSucceeded(await first);
+        AssertSucceeded(await second);
+        AssertSucceeded(await SendFromC(rpcBlockchain));
+
+        EthereumEcdsa ecdsa = new(rpcBlockchain.SpecProvider.ChainId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondWaited, Is.True, "the second send must wait for the first");
+            Assert.That(secondHeldTheLock, Is.True, "the second send must hold the lock when it is sent");
+            Assert.That(sequencer.ReceivedNonces, Is.EqualTo(sent));
+            Assert.That(sequencer.Received.Select(tx => ecdsa.RecoverAddress(tx)), Is.All.EqualTo(TestItem.AddressC),
+                "every forward must carry a signature of C over what is sent");
         }
     }
 
@@ -851,7 +1364,8 @@ internal static class TestRpcBlockchainExt
         IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
-        IOptimismSpecHelper opSpecHelper) =>
+        IOptimismSpecHelper opSpecHelper,
+        IStateReader? nonceStateReader = null) =>
         @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
             blockchain.RpcConfig,
             blockchain.Bridge,
@@ -859,7 +1373,8 @@ internal static class TestRpcBlockchainExt
             blockchain.BlockTree,
             blockchain.ReceiptFinder,
             blockchain.StateReader,
-            blockchain.TxPool,
+            // As OptimismPlugin wires it: a node that forwards to the sequencer has no pool.
+            sequencerRpcClient is null ? blockchain.TxPool : NullTxPool.Instance,
             blockchain.TxSender,
             blockchain.TestWallet,
             LimboLogs.Instance,
@@ -881,6 +1396,7 @@ internal static class TestRpcBlockchainExt
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
-            new BlockForRpcFactory()
+            new BlockForRpcFactory(),
+            new ForwardedNonceTracker(blockchain.BlockFinder, nonceStateReader ?? blockchain.StateReader)
         ));
 }

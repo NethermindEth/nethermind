@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
@@ -531,7 +530,6 @@ public class Eth72MessageSerializerTests
     }
 
     [Test, NonParallelizable]
-    [ReleaseOnly("Debug builds box each decoded size and hash in the decoder's generic null check, so the per-hash allocation ceiling does not apply.")]
     public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
     {
         long baseline = MeasureAnnouncementAllocations(1);
@@ -578,6 +576,11 @@ public class Eth72MessageSerializerTests
         {
             buffer.SetReaderIndex(0);
             using NewPooledTransactionHashesMessage72 message = serializer.Deserialize(buffer);
+            if (buffer.ReadableBytes != 0 || message.Types.Count != count || message.Sizes.Count != count || message.Hashes.Count != count)
+            {
+                throw new InvalidOperationException("Announcement shape changed during decoding.");
+            }
+
             for (int i = 0; i < count; i++)
             {
                 if (message.Hashes[i] != hashes[i]) throw new InvalidOperationException("Hash changed during decoding.");
