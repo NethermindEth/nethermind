@@ -29,17 +29,30 @@ public class GuestReceiptEncodingTests
         for (int i = 0; i < 40; i++)
         {
             TxReceipt receipt = CreateReceipt(random, type);
-            Assert.That(Decoder.EncodeNew(receipt, trie), Is.EqualTo(EncodeGeneric(receipt, trie)));
+            Assert.That(Decoder.EncodeNew(receipt, trie), Is.EqualTo(EncodeReference(receipt, eip7668)));
         }
     }
 
-    private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
-    {
-        byte[] buffer = new byte[Decoder.GetLength(receipt, behaviors)];
-        RlpWriter writer = RlpWriter.ContentWriter(buffer);
-        Decoder.Encode(ref writer, receipt, behaviors);
-        return buffer;
-    }
+    /// <summary>Encodes the receipt field by field, as the generic encoder does.</summary>
+    /// <remarks>
+    /// The decoder takes the one-pass path for every receipt here, both to measure and to write, so the expected bytes
+    /// must not come from it.
+    /// </remarks>
+    private static byte[] EncodeReference(TxReceipt receipt, bool eip7668) =>
+        RlpCodec.Write((receipt, eip7668), static (ref RlpWriter writer, (TxReceipt Receipt, bool Eip7668) ctx) =>
+        {
+            if (ctx.Receipt.TxType != TxType.Legacy) writer.WriteByte((byte)ctx.Receipt.TxType);
+            writer.WriteSequence(ctx, static (ref RlpWriter fields, (TxReceipt Receipt, bool Eip7668) ctx) =>
+            {
+                fields.Encode(ctx.Receipt.StatusCode);
+                fields.Encode(ctx.Receipt.GasUsedTotal);
+                fields.Encode(ctx.Eip7668 ? Bloom.ZeroLength : ctx.Receipt.Bloom);
+                fields.WriteSequence(ctx.Receipt.Logs!, static (ref RlpWriter logs, LogEntry[] entries) =>
+                {
+                    foreach (LogEntry log in entries) LogEntryDecoder.Instance.Encode(ref logs, log);
+                });
+            });
+        });
 
     private static TxReceipt CreateReceipt(Random random, TxType type)
     {
