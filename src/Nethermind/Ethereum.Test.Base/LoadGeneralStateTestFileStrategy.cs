@@ -41,9 +41,9 @@ namespace Ethereum.Test.Base
         /// <summary>Restates a file-level load failure as a <see cref="GeneralStateTest"/>.</summary>
         /// <remarks>
         /// <see cref="FileTestsSource"/> reports an unreadable file as a <see cref="FailedToLoadTest"/>,
-        /// which does not derive from <see cref="GeneralStateTest"/>, so the <c>OfType</c> filter in
-        /// <see cref="TestsSourceLoader.LoadTests{TTestType}"/> discards it and the caller sees a file
-        /// that failed to parse as no tests at all rather than as a failure.
+        /// which does not derive from <see cref="GeneralStateTest"/>. Direct callers of <see cref="Load"/>
+        /// get the typed failure from here, and <see cref="TestsSourceLoader.LoadTests{TTestType}"/> passes
+        /// it through unchanged.
         /// </remarks>
         private static IEnumerable<EthereumTest> WithTypedLoadFailures(IEnumerable<EthereumTest> tests)
         {

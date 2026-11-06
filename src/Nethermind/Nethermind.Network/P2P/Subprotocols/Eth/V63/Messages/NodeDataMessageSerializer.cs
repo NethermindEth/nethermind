@@ -20,13 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
-        public NodeDataMessage Deserialize(ReadOnlySpan<byte> data)
-        {
-            IMemoryOwner<byte> copy = MemoryPool<byte>.Shared.Rent(data.Length);
-            Memory<byte> memory = copy.Memory[..data.Length];
-            data.CopyTo(memory.Span);
-            return Deserialize(copy, memory);
-        }
+        public NodeDataMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
 
         public NodeDataMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
         {
