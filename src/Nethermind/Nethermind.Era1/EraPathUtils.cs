@@ -57,4 +57,39 @@ public static class EraPathUtils
         Bytes.FromHexString(token, result.BytesAsSpan);
         return result;
     }
+
+    /// <summary>
+    /// Parses the lines of an accumulator or checksum manifest into the hash of each epoch.
+    /// </summary>
+    /// <remarks>
+    /// A line that names a file is keyed by the epoch in that name, which older exports also wrote correctly when the
+    /// rest of the name was a placeholder. A line with only a hash, as geth writes checksums.txt, is keyed by its
+    /// position: line i belongs to epoch <paramref name="firstEpoch"/> + i.
+    /// </remarks>
+    /// <exception cref="EraException">A listed file name has no epoch.</exception>
+    internal static Dictionary<long, ValueHash256> ParseManifest(string[] lines, long firstEpoch)
+    {
+        Dictionary<long, ValueHash256> entries = new(lines.Length);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i];
+            int separatorIndex = line.IndexOf(' ');
+            string fileName = separatorIndex == -1 ? "" : line[(separatorIndex + 1)..].Trim();
+
+            long epoch = firstEpoch + i;
+            if (fileName.Length > 0 && !TryGetEpoch(fileName, out epoch))
+                throw new EraException($"Invalid manifest entry: {line}");
+
+            entries[epoch] = ExtractHashFromAccumulatorAndCheckSumEntry(line);
+        }
+
+        return entries;
+    }
+
+    internal static bool TryGetEpoch(string fileName, out long epoch)
+    {
+        string[] parts = Path.GetFileName(fileName).Split(separator);
+        epoch = 0;
+        return parts.Length == 3 && long.TryParse(parts[1], out epoch);
+    }
 }
