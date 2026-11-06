@@ -23,7 +23,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             ByteCodesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, codes].
-            SerializerTester.TestZero(serializer, message, expectedData);
+            SerializerTester.Test(serializer, message, expectedData);
         }
 
         [Test]
@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] data = { 202, 136, 23, 106, 21, 106, 229, 131, 72, 176, 192 };
             ByteCodesMessageSerializer serializer = new();
             using ByteCodesMessage decode = serializer.Deserialize(data);
-            byte[] messageEncode = serializer.Serialize(decode);
+            byte[] messageEncode = serializer.SerializeToArray(decode);
             Assert.That(messageEncode, Is.EqualTo(data));
         }
 

@@ -48,7 +48,7 @@ public class SnapFlatStateServerTests
         WriteStateTrieRoot(rootRlp);
 
         _flatDbManager = Substitute.For<IFlatDbManager>();
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
         _stateRootIndex = Substitute.For<IFlatStateRootIndex>();
@@ -122,7 +122,7 @@ public class SnapFlatStateServerTests
     [Test]
     public void GetStorageRanges_ReturnsEmpty_WhenIndexedStateIsConcurrentlyRemoved()
     {
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => throw new StateNotRetainedException($"State {_stateId} no longer exists; concurrently removed."));
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
@@ -159,7 +159,7 @@ public class SnapFlatStateServerTests
             : [0xc4, 0x80, 0x80, 0xa0];
         byte[] stateRootRlp = BuildSingleAccountStateRoot(accountPath, accountRlp, out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
         WriteStateTrieRoot(stateRootRlp);
         RlpException expected = Assert.Throws<RlpException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
@@ -174,6 +174,54 @@ public class SnapFlatStateServerTests
             Assert.That(() => _server.GetStorageRanges(_rootHash, accounts, null, null, 4000, CancellationToken.None),
                 Throws.TypeOf<RlpException>().With.Message.EqualTo(expected.Message), "malformed range payloads retain the account decoder error");
         }
+    }
+
+    [Test]
+    public void RangeRequests_ReadTrieNodesAheadFromFullScanBundle([Values] bool storageRanges)
+    {
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
+        Hash256 storageRoot = BuildAndPersistStorageRoot(addressHash, slotCount: 1, out byte[] storageRootRlp);
+        Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageRoot).TestObject;
+        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.EncodeAsBytes(account), out _rootHash);
+        _stateId = new StateId(0, _rootHash.ValueHash256);
+        WriteState(stateRootRlp, addressHash, storageRootRlp);
+
+        using IPersistence.IPersistenceReader inner = _persistence.CreateReader();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => inner.TryLoadStorageRlp((Hash256)ci[0], (TreePath)ci[1], (ReadFlags)ci[2]));
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
+
+        if (storageRanges)
+        {
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+                _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account)], null, null, 4000, CancellationToken.None);
+            using (proofs)
+            {
+                Assert.That(slots, Has.Count.EqualTo(1));
+            }
+
+            slots.DisposeRecursive();
+
+            reader.Received().TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
+        }
+        else
+        {
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+                _server.GetAccountRanges(_rootHash, ValueKeccak.Zero, null, 4000, CancellationToken.None);
+            using (accounts)
+            using (proofs)
+            {
+                Assert.That(accounts, Has.Count.EqualTo(1));
+            }
+
+            reader.Received().TryLoadStateRlp(Arg.Any<TreePath>(), ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss);
+        }
+
+        _flatDbManager.Received(1).GatherReadOnlySnapshotBundle(_stateId, ReaderFlags.FullScan);
     }
 
     /// <summary>
@@ -193,7 +241,7 @@ public class SnapFlatStateServerTests
         byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, AccountDecoder.Instance.EncodeAsBytes(account), out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);
 
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
 
         WriteState(stateRootRlp, addressHash, storageRootRlp);

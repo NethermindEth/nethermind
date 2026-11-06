@@ -679,23 +679,33 @@ public class EthereumRunnerTests
     public async Task Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
-        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        using CancellationTokenSource cancellation = new();
+        OperationCanceledException expectedCancellation = new(cancellation.Token);
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         FileStream? lockedFile = null;
         try
         {
-            await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            // Inject before node initialization so cleanup does not depend on startup speed.
+            OperationCanceledException? actualCancellation = await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
-                configureContainer: CancelWhenRpcStarts(cancellation, () =>
+                configureContainer: _ =>
                 {
                     string directory = Directory.GetDirectories(Path.Combine(dataDirectory.Path, "startup-warmup"))[0];
                     lockedFile = new FileStream(Path.Combine(directory, "locked"), FileMode.Create, FileAccess.Write, FileShare.None);
-                })));
-            logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Could not delete startup warmup directory")));
+                    cancellation.Cancel();
+                    throw expectedCancellation;
+                }).WaitAsync(RunnerTimeout));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lockedFile, Is.Not.Null, "the locked file must make cleanup fail");
+                Assert.That(actualCancellation, Is.SameAs(expectedCancellation), "cleanup must preserve the original cancellation");
+                logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Could not delete startup warmup directory")));
+            }
         }
         finally
         {
+            cancellation.Cancel();
             lockedFile?.Dispose();
         }
     }

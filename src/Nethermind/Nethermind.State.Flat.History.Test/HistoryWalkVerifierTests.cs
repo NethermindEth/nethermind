@@ -18,6 +18,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -215,6 +216,128 @@ public class HistoryWalkVerifierTests
             Assert.That(split.BlocksCompared, Is.EqualTo(3UL));
             Assert.That(whole.Verified, Is.True, "the same range under the normal budget must verify identically");
         }
+    }
+
+    private static readonly ulong[][] InterleavedWrites = [[0, 1, 3, 5, 7, 9], [0, 1, 4, 5, 8], [0, 2, 3, 10]];
+
+    [Test]
+    public void VerifyRange_WithInterleavedAccountStreamsAndDeltas_VerifiesEveryBlock()
+    {
+        Address[] addresses = AddressesSharingTheirFirstPathByte(3);
+        Array.Sort(addresses, static (left, right) => left.ToAccountPath.CompareTo(right.ToAccountPath));
+        Account[] accounts = new Account[addresses.Length];
+        FakeHeaders headers = new();
+        for (ulong block = 0; block <= 10; block++)
+        {
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                if (!InterleavedWrites[i].Contains(block)) continue;
+
+                accounts[i] = new Account(block + 1, (UInt256)(100 + i));
+                HistoryColumnsWriter.RecordAccount(_historyColumns, addresses[i], block, accounts[i]);
+            }
+
+            headers.Roots[block] = StateRootOf(addresses.Select((address, i) => (address, accounts[i])).ToArray());
+        }
+
+        HistoryRowScanner scanner = CreateRowScanner(out ISortedKeyValueStore storageHistory);
+        using AccountPartitionRows rows = new();
+        StorageRootMoveCheck moves = new(
+            new StoragePresenceProbe(storageHistory, LimboLogs.Instance.GetClassLogger<HistoryWalkVerifierTests>(), CancellationToken.None),
+            new MismatchSink());
+        TreePath prefix = new(addresses[0].ToAccountPath, 2);
+        ScanOutcome outcome;
+        do
+        {
+            outcome = scanner.ScanAccounts(prefix, 0, 10, 4, rows, moves, CancellationToken.None);
+        }
+        while (outcome == ScanOutcome.SinglePathOverflow);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outcome, Is.EqualTo(ScanOutcome.Fits), "precondition: all three accounts share one replay partition");
+            Assert.That(rows.StreamedPaths.Count, Is.EqualTo(2), "precondition: the first two accounts stream while the last account stays buffered");
+        }
+
+        MarkAll(headers);
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 4).VerifyRange(0, 10, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "delta-only block 2, shared block 3 and buffered block 10 after both streams end must retain their exact roots");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(11UL));
+            Assert.That(verdict.Verified, Is.True);
+        }
+    }
+
+    [Test]
+    public void VerifyRange_WithInterleavedStorageStreamsDeltasAndClear_VerifiesEveryBlock()
+    {
+        UInt256[] slots = [1, 2, 3];
+        Array.Sort(slots, static (left, right) =>
+        {
+            ValueHash256 leftPath = default;
+            ValueHash256 rightPath = default;
+            StorageTree.ComputeKeyWithLookup(left, ref leftPath);
+            StorageTree.ComputeKeyWithLookup(right, ref rightPath);
+            return leftPath.CompareTo(rightPath);
+        });
+        Dictionary<UInt256, byte[]> values = [];
+        FakeHeaders headers = new();
+        for (ulong block = 0; block <= 10; block++)
+        {
+            if (block == 6)
+            {
+                values.Clear();
+                RecordClear(AddrB, block);
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (!InterleavedWrites[i].Contains(block)) continue;
+
+                byte[] value = [(byte)(block + 1)];
+                values[slots[i]] = value;
+                HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block, value);
+            }
+
+            Account account = new(block + 1, 50, StorageRootOf(values.Select(static entry => (entry.Key, entry.Value)).ToArray()), Keccak.OfAnEmptyString);
+            HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block, account);
+            headers.Roots[block] = StateRootOf((AddrB, account));
+        }
+
+        HistoryRowScanner scanner = CreateRowScanner(out _);
+        using StoragePartitionRows rows = new();
+        byte[] prefix = AddrB.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength].ToArray();
+        List<ClearRecord> clears = scanner.ScanClears(prefix, 10);
+        ScanOutcome outcome;
+        do
+        {
+            outcome = scanner.ScanStorage(prefix, TreePath.Empty, 0, 10, 4, rows, clears, CancellationToken.None);
+        }
+        while (outcome == ScanOutcome.SinglePathOverflow);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outcome, Is.EqualTo(ScanOutcome.Fits), "precondition: all three slots share one replay partition");
+            Assert.That(rows.StreamedSlots.Count, Is.EqualTo(2), "precondition: two slots stream and the third stays buffered across the clear");
+        }
+
+        MarkAll(headers);
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 4).VerifyRange(0, 10, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "a clear-only block between streamed writes must reset storage before the later streamed and buffered values are replayed");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(11UL));
+            Assert.That(verdict.Verified, Is.True);
+        }
+    }
+
+    private HistoryRowScanner CreateRowScanner(out ISortedKeyValueStore storageHistory)
+    {
+        HistoryRowFormat rowFormat = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true }).RowFormat;
+        storageHistory = (ISortedKeyValueStore)_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
+        return new HistoryRowScanner((ISortedKeyValueStore)_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            storageHistory, (ISortedKeyValueStore)_historyColumns.GetColumnDb(FlatHistoryColumns.StorageClears), rowFormat);
     }
 
     [Test]
