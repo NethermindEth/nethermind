@@ -84,11 +84,12 @@ expect_included tx0; b0=$BLOCK
 
 build key1 0 123 "$NONCE_KEY"
 expect_error key1.corrupt.hex "$REJECT_BAD_PROOF"
+build key1early 1 125 "$NONCE_KEY"
+expect_error key1early.wrapper.hex "keyed nonce sequence not current"
 expect_included key1; b1=$BLOCK
 
 build key1n1 1 123 "$NONCE_KEY"
 expect_included key1n1; b2=$BLOCK
-[ "$b2" -gt "$b1" ] || die "keyed sequence 1 in block $b2 is not after sequence 0 in block $b1"
 
 build key1replay 0 123 "$NONCE_KEY"
 cmp -s "$OUT/key1replay.wrapper.hex" "$OUT/key1.wrapper.hex" || die "key1replay is not byte-identical to key1"
