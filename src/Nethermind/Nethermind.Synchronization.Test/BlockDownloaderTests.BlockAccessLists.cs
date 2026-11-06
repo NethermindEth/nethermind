@@ -115,6 +115,8 @@ public partial class BlockDownloaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.All.EqualTo(processing ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.LesserQuality));
+            // Only a withheld list that the block can execute without puts the peer to sleep for lists.
+            Assert.That(peerInfo.IsAsleep(AllocationContexts.BlockAccessLists), Is.EqualTo(processing));
             ctx.PeerPool.Received(breach ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
