@@ -158,7 +158,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
         builder
             .AddSingleton<Importer>()
-            .AddStep(typeof(ImportFlatDb));
+            .AddStep(typeof(ImportFlatDb))
+            .AddSingleton<FlatInTrieConverter>()
+            .AddStep(typeof(ConvertToFlatInTrie));
 
         if (flatDbConfig.ImportFromPruningTrieState)
             builder.SelectStepTarget(typeof(ImportFlatDb));
