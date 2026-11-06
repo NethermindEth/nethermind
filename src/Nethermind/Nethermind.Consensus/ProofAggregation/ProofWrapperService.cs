@@ -407,6 +407,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             is not { Count: > 0 } releases) return false;
         foreach (ValueHash256 hash in releases)
             if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+        HashSet<ValueHash256> released = [.. releases];
+        _evictionCandidates?.Candidates.RemoveAll(transaction => released.Contains(transaction.Hash!.ValueHash256));
         return leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope);
     }
 
@@ -426,25 +428,40 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (_localTransactions.Count < MaxLocalTransactions) _localTransactions.Add(hash.ValueHash256);
     }
 
+    /// <summary>The pool's dependency-bearing transactions not executable at the head, oldest first, scanned once per head and
+    /// read and replaced under the commit lock.</summary>
+    /// <remarks>Transactions removed since remain listed; the store does not count them as releasing anything.</remarks>
+    private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
+
     /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
     /// first, with those admitted locally after all others.</summary>
-    /// <remarks>Forgets local transactions no longer pending.</remarks>
     private List<Transaction> NotExecutable(IReadOnlyList<Transaction> wrapped, FeeFloors floors)
     {
-        List<Transaction> notExecutable = [], local = [];
+        if (blockFinder.Head?.Hash is not { } head) return [];
+        if (_evictionCandidates is not { } cached || cached.Head != head)
+            _evictionCandidates = cached = (head, ScanNotExecutable(floors));
         HashSet<Hash256> skipped = [];
         foreach (Transaction transaction in wrapped) skipped.Add(transaction.Hash!);
+        List<Transaction> notExecutable = [], local = [];
+        lock (_localTransactions)
+            foreach (Transaction transaction in cached.Candidates)
+                if (!skipped.Contains(transaction.Hash!))
+                    (_localTransactions.Contains(transaction.Hash!.ValueHash256) ? local : notExecutable).Add(transaction);
+        notExecutable.AddRange(local);
+        return notExecutable;
+    }
+
+    /// <summary>The pool's dependency-bearing transactions not executable at the head, oldest first.</summary>
+    /// <remarks>Forgets local transactions no longer pending.</remarks>
+    private List<Transaction> ScanNotExecutable(FeeFloors floors)
+    {
+        List<Transaction> notExecutable = [];
         List<Transaction> executable = [];
         HashSet<ValueHash256> pending = [];
-        lock (_localTransactions)
-        {
-            Collect(txPool.GetPendingTransactionsBySender());
-            Collect(txPool.GetPendingLightBlobTransactionsBySender());
-            _localTransactions.IntersectWith(pending);
-        }
+        Collect(txPool.GetPendingTransactionsBySender());
+        Collect(txPool.GetPendingLightBlobTransactionsBySender());
+        lock (_localTransactions) _localTransactions.IntersectWith(pending);
         notExecutable.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
-        local.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
-        notExecutable.AddRange(local);
         return notExecutable;
 
         void Collect(IDictionary<AddressAsKey, Transaction[]> bySender)
@@ -456,9 +473,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 foreach (Transaction transaction in transactions)
                 {
                     pending.Add(transaction.Hash!.ValueHash256);
-                    if (Eip8288Dependencies.IsDependencyBearing(transaction) && !skipped.Contains(transaction.Hash!)
-                        && !executable.Contains(transaction))
-                        (_localTransactions.Contains(transaction.Hash!.ValueHash256) ? local : notExecutable).Add(transaction);
+                    if (Eip8288Dependencies.IsDependencyBearing(transaction) && !executable.Contains(transaction))
+                        notExecutable.Add(transaction);
                 }
             }
         }

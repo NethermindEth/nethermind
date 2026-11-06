@@ -1002,8 +1002,9 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, true, 0UL, 2, TestName = "A transaction whose witness an executable one shares is kept")]
     [TestCase(64, false, false, 1UL, 0, TestName = "A non-executable wrapper evicts nothing")]
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
+    [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
-        bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false)
+        bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
@@ -1043,7 +1044,8 @@ public class ProofWrapperServiceTests
         }
         Transaction oldest = pinned[0];
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(call => store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
@@ -1059,21 +1061,24 @@ public class ProofWrapperServiceTests
         if (localVictims)
             foreach (Transaction transaction in pinned.Take(2))
                 Assert.That((await service.AcceptDetailedAsync(DirectWrapper(transaction))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
-        FrameDependency incoming = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("incoming"), default);
-        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        byte[] Incoming(string name, Address sender) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [Transaction(incoming, Address.Zero, nonce: incomingNonce)],
-            Deps = [incoming],
+            Transactions = [Transaction(new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default), sender, nonce: incomingNonce)],
+            Deps = [new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default)],
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]]
         }).Bytes;
 
-        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(encoded);
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
+        if (secondWrapper)
+            Assert.That((await service.AcceptOwnedDetailedAsync(Incoming("second", Address.SystemUser))).Status,
+                Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
+            if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
         }
     }
