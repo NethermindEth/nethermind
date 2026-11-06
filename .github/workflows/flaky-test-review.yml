@@ -55,12 +55,14 @@ jobs:
             --json number,headRefOid,isDraft,commits \
             --jq ".[] | select(.headRefOid == \"$SHA\" and (.isDraft | not)) | \"\(.number) \(.commits | length)\"") || true
           [ -n "$pr" ] || { echo "No open ready PR has $SHA as its head"; exit 0; }
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          handoff() { printf 'next=handoff\nreason=%s\n' "$1" >> "$GITHUB_OUTPUT"; }
           status=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/statuses?per_page=100" \
             --jq '[.[] | select(.context == "claude-review/reviewed")][0]')
           state=$(jq -r '.state // ""' <<< "$status")
           desc=$(jq -r '.description // ""' <<< "$status")
           if [[ "$state" != success && "$state" != failure || "$desc" == "Claude review unavailable"* ]]; then
-            echo "No review verdict for $SHA"
+            handoff "the review gave no verdict for $SHA"
             exit 0
           fi
           mkdir -p "$RUNNER_TEMP/review"
@@ -82,8 +84,6 @@ jobs:
             echo "The review passed with no open threads"
             exit 0
           fi
-          echo "pr=$pr" >> "$GITHUB_OUTPUT"
-          handoff() { printf 'next=handoff\nreason=%s\n' "$1" >> "$GITHUB_OUTPUT"; }
           if [ $((commits - 1)) -ge "$ROUNDS" ]; then
             handoff "$ROUNDS review rounds are done and the review still has findings"
             exit 0
@@ -199,6 +199,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
     env:
       PR: ${{ needs.check.outputs.pr }}
       RUNS: ${{ needs.verify.outputs.runs }}
@@ -207,7 +209,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ env.SHA }}
           persist-credentials: false
 
       - uses: ./.github/actions/download-artifact
@@ -230,9 +231,12 @@ jobs:
           permission-pull-requests: write
 
       - name: Push the change and request a review
+        id: push
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
+          git fetch --depth=1 origin "$SHA"
+          git checkout --detach "$SHA"
           git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
           if git diff --cached --no-renames --name-only -z | grep -izE "$PROTECTED"; then
             echo "::error::Protected paths changed"
@@ -243,6 +247,7 @@ jobs:
           git -c core.hooksPath=/dev/null commit -m "fix: address review findings" \
             -m "Failed runs out of $RUNS: $BEFORE before the change, $AFTER after it."
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           sha=$(git rev-parse HEAD)
           ids=$(jq -r '.[].id' "$RUNNER_TEMP/review/threads.json" | grep -xFf "$RUNNER_TEMP/fix/addressed.txt" || true)
           for id in $ids; do
@@ -277,13 +282,17 @@ jobs:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
           PR: ${{ needs.check.outputs.pr }}
           REASON: ${{ needs.check.outputs.reason }}
+          FIX: ${{ needs.fix.result }}
           CHANGED: ${{ needs.fix.outputs.changed }}
           VERIFY: ${{ needs.verify.result }}
+          PUSHED: ${{ needs.publish.outputs.pushed }}
         run: |
           if [ -z "$REASON" ]; then
-            if [ "$CHANGED" != true ]; then REASON="Claude made no change for the open findings"
+            if [ "$FIX" != success ]; then REASON="the fix job failed"
+            elif [ "$CHANGED" != true ]; then REASON="Claude made no change for the open findings"
             elif [ "$VERIFY" != success ]; then REASON="the test failed or did not run with the change"
-            else REASON="the change could not be pushed"
+            elif [ "$PUSHED" != true ]; then REASON="the change could not be pushed"
+            else REASON="the change is pushed, but the thread replies or the next review request failed"
             fi
           fi
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="The automatic review fixes stopped: $REASON. Please take over this PR. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
