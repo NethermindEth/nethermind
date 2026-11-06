@@ -191,17 +191,15 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
             : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError((options & TxValidationOptions.SkipErrorDetails) != 0
+            return (options & TxValidationOptions.SkipErrorDetails) != 0
                 ? TxErrorMessages.IntrinsicGasTooLow
-                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
+                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
-            ? IntrinsicGasError(TxErrorMessages.IntrinsicGasTooLow)
+            ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
-
-    private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
 /// <summary>Applies <paramref name="inner"/> to every transaction except frame transactions, which carry no
@@ -549,23 +547,21 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         {
             if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
             {
-                return SidecarError(TxErrorMessages.InvalidProofVersion);
+                return TxErrorMessages.InvalidProofVersion;
             }
 
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
             bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
             int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
 
-            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? SidecarError(TxErrorMessages.InvalidBlobDataSize) :
-                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? SidecarError(TxErrorMessages.InvalidBlobHashes) :
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
                 (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
                 !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }
     }
-
-    internal static ValidationResult SidecarError(string error) => new(error) { IsSidecarError = true };
 }
 
 /// <summary>
@@ -589,7 +585,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
             : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
-            txProofVersion != spec.BlobProofVersion ? MempoolBlobTxValidator.SidecarError(TxErrorMessages.InvalidProofVersion) : ValidationResult.Success;
+            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
     }
 }
 

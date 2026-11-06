@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -37,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 && spec.IsEip2780Enabled
                 && tx.IsMessageCall
                 && tx.SenderAddress is null
-                && result.IsIntrinsicGasError
+                && IsIntrinsicGasError(result.Error)
                 && CanSenderRecoveryFixIntrinsicGas(tx, spec);
             if (!result && !retryAfterSenderRecovery)
             {
@@ -84,6 +86,10 @@ namespace Nethermind.TxPool.Filters
             }
         }
 
+        // Both intrinsic gas errors, IntrinsicGasTooLow and TxIntrinsicGasExceedsCap, start with this geth-compatible text.
+        private static bool IsIntrinsicGasError(string? error) =>
+            error?.StartsWith(TxErrorMessages.IntrinsicGasTooLow, StringComparison.Ordinal) == true;
+
         private static bool CanSenderRecoveryFixIntrinsicGas(Transaction tx, IReleaseSpec spec)
         {
             IntrinsicGas<EthereumGasPolicy> selfTransferGas = EthereumGasPolicy.CalculateIntrinsicGasAsEip2780SelfTransfer(tx, spec);
@@ -100,9 +106,12 @@ namespace Nethermind.TxPool.Filters
             Metrics.PendingTransactionsMalformed++;
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
             if (logger.IsTrace) TraceMalformed(tx, result);
-            state.SidecarRejected = result.IsSidecarError;
+            state.SidecarRejected = IsSidecarError(result.Error);
             return AcceptTxResult.Invalid.WithMessage(result.ToString());
         }
+
+        private static bool IsSidecarError(string? error) =>
+            error is TxErrorMessages.InvalidBlobDataSize or TxErrorMessages.InvalidBlobHashes or TxErrorMessages.InvalidProofVersion;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceUnresolvableSender(Transaction tx) =>
