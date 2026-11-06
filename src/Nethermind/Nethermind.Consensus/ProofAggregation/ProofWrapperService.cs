@@ -400,11 +400,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
         List<ValueHash256> hashes = [];
+        HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
         {
             if (hashes.Count == MaxEvictedPerAdmission) break;
             if (IsStillNotExecutable(candidate, floors)) hashes.Add(candidate.Hash!.ValueHash256);
+            else stale.Add(candidate);
         }
+        if (stale.Count != 0) _evictionCandidates?.Candidates.RemoveAll(stale.Contains);
         if (hashes.Count == 0) return false;
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
