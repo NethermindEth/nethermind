@@ -241,7 +241,7 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     private double _failures;
     private long _failuresUpdated = clock.GetTimestamp();
 
-    /// <summary>Wrappers from this peer that recently failed verification, decaying with a half-life of
+    /// <summary>Wrappers from this peer that recently failed verification and requests it left unserved, decaying with a half-life of
     /// <see cref="WrapperTransportLimits.FailureHalfLife"/> and capped at <see cref="WrapperTransportLimits.MaxFailureScore"/>.</summary>
     /// <remarks>Never a ground for penalties or disconnection (EIP-8437): it only orders and rate-limits fetching.</remarks>
     public double FailureScore
@@ -260,8 +260,9 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <see cref="WrapperTransportLimits.MaxRequestsPerFailingPeer"/> outstanding requests.</summary>
     public bool IsDeprioritized => FailureScore >= WrapperTransportLimits.DeprioritizedFailureScore;
 
-    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation.</summary>
-    public void RecordVerificationFailure() => _failures = Math.Min(FailureScore + 1, WrapperTransportLimits.MaxFailureScore);
+    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
+    /// or answered empty.</summary>
+    public void RecordFailure() => _failures = Math.Min(FailureScore + 1, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;
 }

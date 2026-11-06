@@ -332,28 +332,54 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // Each peer's announcements hold an equal share of the pending cache, so silent announcers that filled it make room for a
+    // peer connecting later.
     [Test]
-    public void One_silent_announcer_cannot_fill_the_pending_cache_for_other_peers()
+    public void Silent_announcers_cannot_fill_the_pending_cache_for_a_new_peer()
     {
         using WrapperTestNode node = new();
-        FakeWrapperLink silent = new("silent"), honest = new("honest");
-        WrapperPeer silentPeer = node.Connect(silent), honestPeer = node.Connect(honest);
+        WrapperPeer[] silent = [.. Enumerable.Range(0, 4).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
         int announced = 0;
-        for (int message = 0; message < 6; message++)
+        for (int message = 0; message < 5; message++)
         {
-            WrapperAnnouncement[] batch = [.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
-                .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256))
-                .OrderBy(a => a.Hash)];
-            node.Transport.OnAnnounce(silentPeer, new(batch));
+            foreach (WrapperPeer peer in silent)
+                node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                    .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256)).OrderBy(static a => a.Hash)]));
             node.Tick(TimeSpan.FromSeconds(1));
         }
-        Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncementsPerPeer));
+        Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncements));
+        FakeWrapperLink honest = new("honest");
+        WrapperPeer honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
+
         node.Transport.OnAnnounce(honestPeer, new([Describe(wrapper)]));
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncementsPerPeer + 1));
+            Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncements));
             Assert.That(honest.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { Describe(wrapper).Hash }));
+        }
+    }
+
+    // A peer that leaves requests unanswered or answers them empty is fetched from as one whose wrappers fail verification.
+    [Test]
+    public void Unserved_requests_deprioritize_the_peer([Values] bool answeredEmpty)
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, 2 * WrapperTransportLimits.MaxRequestsPerPeer)
+            .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"unserved:{i}").ValueHash256)).OrderBy(static a => a.Hash)]));
+        Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(WrapperTransportLimits.MaxRequestsPerPeer));
+
+        if (answeredEmpty)
+            foreach (GetProofWrappersMessage request in link.Sent<GetProofWrappersMessage>()) node.Transport.OnProofWrappers(peer, new(request.RequestId, []));
+        else node.Tick(WrapperTransportLimits.RequestTimeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.IsDeprioritized, Is.True);
+            Assert.That(link.Penalties, Is.Empty);
         }
     }
 

@@ -36,6 +36,7 @@ public sealed partial class ProofWrapperTransport
             long now = _clock.GetTimestamp();
             // Announcements beyond the rate limit are ignored, not penalized.
             if (!peer.AnnouncementsIn.TryTake(1)) return;
+            int share = Math.Max(WrapperTransportLimits.MinPendingAnnouncementsPerPeer, WrapperTransportLimits.MaxPendingAnnouncements / _peers.Count);
             foreach (WrapperAnnouncement announcement in message.Announcements)
             {
                 WrapperMetrics.Record(WrapperEvent.AnnouncementReceived);
@@ -54,10 +55,10 @@ public sealed partial class ProofWrapperTransport
                     WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
                     continue;
                 }
-                // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
-                // never serves cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
-                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
-                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
+                // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
+                // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
+                if (peer.PendingFetches >= share
+                    || _fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && !EvictPending(peer, share)) continue;
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
                 fetch.AddSource(peer, announcement);
@@ -66,6 +67,24 @@ public sealed partial class ProofWrapperTransport
             Schedule(outbox);
         }
         outbox.Flush();
+    }
+
+    /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper announced
+    /// by a peer that is deprioritized or holds more than its share.</summary>
+    /// <returns>Whether room was made; never for an announcer that is itself deprioritized.</returns>
+    private bool EvictPending(WrapperPeer announcer, int share)
+    {
+        if (announcer.IsDeprioritized) return false;
+        foreach (WrapperFetch fetch in _fetches.Values)
+        {
+            if (fetch.Requested || fetch.Wrapper is not null || fetch.Announcer is not { } holder) continue;
+            if (holder.IsDeprioritized || holder.PendingFetches > share)
+            {
+                Remove(fetch, "evicted for another peer's announcement");
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Requests queued wrappers from their next untried source, up to four outstanding requests per peer.</summary>
@@ -200,6 +219,7 @@ public sealed partial class ProofWrapperTransport
                 outbox.Flush();
                 return;
             }
+            if (entries.Length == 0) peer.RecordFailure();
             int last = entries.Length == 0 ? -1 : matched[^1];
             int next = 0;
             for (int position = 0; position < fetches.Length; position++)
@@ -470,7 +490,7 @@ public sealed partial class ProofWrapperTransport
                 lock (_gate)
                 {
                     if (verifier is { } judgedUnder) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
-                    fetch.Server?.RecordVerificationFailure();
+                    fetch.Server?.RecordFailure();
                 }
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;

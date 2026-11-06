@@ -82,7 +82,7 @@ public static class WrapperTransportLimits
     /// <summary>Outstanding GetProofWrappers requests to a peer whose wrappers repeatedly failed verification.</summary>
     public const int MaxRequestsPerFailingPeer = 1;
 
-    /// <summary>The verification-failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
+    /// <summary>The failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
     public const double DeprioritizedFailureScore = 3;
 
     /// <summary>The cap on a peer's verification-failure score, so it recovers within a few half-lives.</summary>
@@ -103,8 +103,9 @@ public static class WrapperTransportLimits
     /// <summary>Wanted announced wrappers kept while no request slot is free, across all peers.</summary>
     public const int MaxPendingAnnouncements = 1024;
 
-    /// <summary>Wanted announced wrappers one peer's announcements may hold in the pending cache.</summary>
-    public const int MaxPendingAnnouncementsPerPeer = MaxPendingAnnouncements / 4;
+    /// <summary>The least share of the pending cache one peer's announcements may hold; the share is otherwise an equal split
+    /// across connected peers.</summary>
+    public const int MinPendingAnnouncementsPerPeer = 32;
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromSeconds(60);
 
     /// <summary>Bytes charged to one peer's outstanding responses and received wrappers awaiting validation.</summary>
