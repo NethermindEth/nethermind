@@ -7,6 +7,27 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 - Disposable: every run directory holds its own mnemonic, validator keystores and JWT secret. Nothing secret is committed. Never reuse a run's keys elsewhere.
 - Temporary home. Long-term home: AA-PQ, with pinned published images instead of local builds.
 
+## Quick start
+
+From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites](#prerequisites):
+
+1. Build both images: step 1 below.
+2. Start a throwaway single-host chain and wait for finality past the fork (about 9 minutes):
+
+   ```bash
+   cd tools/daisugi-devnet
+   export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
+   NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
+   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3 &&
+     ./up.sh run/devnet-1 $NM $LH &&
+     ./check.sh run/devnet-1
+   ```
+
+3. Send a proof-bearing transaction: step 4.
+4. Stop: `GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
+
+To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` asserts the fork versions and the fork timestamp. Check the `25 header fields` and `missed 0` lines yourself. If it still waits for finality well past the time in step 2, the chain is not finalizing.
+
 ## Pinned sources
 
 | Component | Source | Revision |
@@ -68,7 +89,7 @@ NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
 ## 2. Genesis and fork schedule
 
 ```bash
-LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
+LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3
 ```
 
 - Arguments: output directory (must not exist), genesis timestamp, Daisugi fork epoch.
@@ -94,7 +115,7 @@ LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 30 )) 3
 | Validator client | `daisugi-validator` | none | none |
 
 - Peering: discovery off on both layers, no bootnodes (`boot_enr.yaml` is `[]`). Extra nodes join through static peers, see step 5.
-- `check.sh` waits for finality past the fork epoch (about 4 minutes after genesis). Expected output:
+- `check.sh` waits for finality past the fork epoch (about 7 minutes after genesis). Expected output:
 
 ```text
 EL genesis hash 0x… matches the CL genesis state
@@ -174,12 +195,12 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 | `DEVNET_PREFIX`, `EL_RPC_PORT`, `CL_HTTP_PORT` | compose, `check.sh` | `daisugi`, `28545`, `25052` |
 | `EL_RPC` | `proof.sh send` | `http://127.0.0.1:28545` |
 | `BLOBS_SUPPORT` | compose, Nethermind `TxPoolConfig.BlobsSupport` | `StorageWithReorgs`; `Disabled` lets the node negotiate eth/73 before PeerDAS |
-| `GENESIS_DIR`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `DEVNET_USER`, `BEACON_MULTIADDR` | compose | set by the scripts |
+| `GENESIS_DIR`, `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `DEVNET_USER`, `BEACON_MULTIADDR` | compose | set by the scripts; set them by hand for a manual `docker compose` call |
 
 ## Stop and clean up
 
 ```bash
-docker compose --profile replay --profile sync down
+GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down
 rm -rf run/devnet-1
 ```
 
