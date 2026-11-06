@@ -601,6 +601,40 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A wrapper charged above its reservation, as many small transactions are, is dropped once the global budget is spent; the
+    // drop is counted rather than silent.
+    [Test]
+    public void Wrapper_beyond_the_byte_budget_is_dropped_and_counted()
+    {
+        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, Eth73Protocol.MaxAnnouncements).Select(FrameTransaction)]);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        long reserved = node.Transport.ChargedBytes;
+        // Peers that never answer reserve the rest of the global budget.
+        for (int filler = 0; WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes > Eth73Protocol.ResponseFramingBytes + 64; filler++)
+        {
+            long headroom = WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes;
+            int length = (int)Math.Min(Eth73Protocol.MaxWrapperBytes, headroom);
+            while (ProofWrapperTransport.EntryLength(length) + Eth73Protocol.ResponseFramingBytes > headroom) length--;
+            node.Transport.OnAnnounce(node.Connect(new($"filler {filler}")), new([Announcement(1, length, Keccak.Compute($"filler:{filler}").ValueHash256)]));
+        }
+        Assert.That(reserved + WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes,
+            Is.LessThan(InboundTransactionBudget.TransactionCharge * (long)Eth73Protocol.MaxAnnouncements));
+        static long Dropped() => Metrics.ProofWrapperEvents.TryGetValue("budget_dropped", out long count) ? count : 0;
+        long dropped = Dropped();
+
+        Answer(node, peer, link, wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Dropped(), Is.EqualTo(dropped + 1));
+            Assert.That(node.Verifier.Calls, Is.Zero);
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
     // EIP-8437: a validation cancelled at the fetch deadline releases its request-scoped buffer without admitting anything.
     [Test]
     public async Task Timed_out_validation_releases_its_buffer_without_admission()

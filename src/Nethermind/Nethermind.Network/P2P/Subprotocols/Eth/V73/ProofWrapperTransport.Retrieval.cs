@@ -218,7 +218,13 @@ public sealed partial class ProofWrapperTransport
                         fetch.Tried.Remove(peer);
                         continue;
                     }
-                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, item.Charge)) continue;
+                    if (fetch.Removed || fetch.Wrapper is not null) continue;
+                    if (!TryCharge(peer, item.Charge))
+                    {
+                        WrapperMetrics.Record(WrapperEvent.BudgetDropped);
+                        if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
+                        continue;
+                    }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
                     fetch.Server = peer;
