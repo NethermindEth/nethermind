@@ -3221,6 +3221,7 @@ public class TraceRpcModuleTests
 
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_call", transaction, new[] { traceType }, "latest", stateOverride);

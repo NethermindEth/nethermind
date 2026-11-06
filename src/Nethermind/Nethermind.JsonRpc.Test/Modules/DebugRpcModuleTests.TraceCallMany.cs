@@ -357,6 +357,9 @@ public partial class DebugRpcModuleTests
             yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(), error, blockOverride).SetName($"{{m}}(options_block_override_{field}_without_bundle_overrides)");
         }
 
+        yield return new TestCaseData(new Dictionary<Address, AccountOverride> { [TestItem.AddressC] = new() { State = Storage(), StateDiff = Storage() } }, Second(),
+            BlockOverride.BeaconRootNotSupported, unsupported[0].Override).SetName("{m}(options_block_override_beaconRoot_comes_before_an_options_storage_conflict)");
+
         yield return new TestCaseData(new Dictionary<Address, AccountOverride>(), Second(stateOverrides: []), null, new BlockOverride()).SetName("{m}(empty_options_block_override_runs_the_simulation)");
     }
 
