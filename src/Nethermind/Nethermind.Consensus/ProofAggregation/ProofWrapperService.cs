@@ -539,7 +539,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (i != 0 && budget is { } limit && clock.GetElapsedTime(started) >= limit) break;
                 int index = (start + i) % buckets.Count;
                 Result<byte[]> result = BuildBucket(buckets[index], verifier, false, clock, cancellationToken, out bool unchanged);
-                Advance(buckets, index);
+                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.IsSuccess)
                 {
                     any = true;
@@ -572,7 +572,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 int index = (start + i) % buckets.Count;
                 result = BuildBucket(buckets[index], verifier, returnEncoded, TimeProvider.System, cancellationToken, out _);
-                Advance(buckets, index);
+                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.Error != AwaitingOfferedProof) break;
             }
             return result;
@@ -744,6 +744,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return 0;
     }
 
+    /// <remarks>Not called for a bucket the prover was too busy for, so the next cycle retries it rather than skipping it; other
+    /// failures still advance, so a bucket that cannot be built does not stall the rotation.</remarks>
     private void Advance(List<Bucket> buckets, int built) =>
         _resumeAfter = built == buckets.Count - 1 ? null : buckets[built].Transactions[^1].Hash!.ValueHash256;
 

@@ -757,6 +757,31 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A bucket the prover was too busy for is retried first, not skipped for a whole rotation.
+    [Test]
+    public void Bucket_skipped_by_a_busy_prover_is_retried_next_cycle()
+    {
+        (ProofWrapperService reference, _) = Create(10, 128 * 1024);
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 128 * 1024);
+        bool busy = true;
+        verifier.OnProving = () =>
+        {
+            if (busy) throw new InvalidOperationException(ProductionProofCache.BackgroundBusyMessage);
+        };
+        List<MempoolWrapper> expected = [], retried = [];
+
+        Result skipped = service.RefreshWrapper(budget: TimeSpan.Zero);
+        busy = false;
+        service.RefreshWrapper(() => retried.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero);
+        reference.RefreshWrapper(() => expected.Add(Decode(reference.GetLatestWrapper().Data!)), TimeSpan.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(skipped.Error, Is.EqualTo(ProductionProofCache.BackgroundBusyMessage));
+            Assert.That(retried.Single().Transactions.Select(static tx => tx.Hash), Is.EqualTo(expected.Single().Transactions.Select(static tx => tx.Hash)));
+        }
+    }
+
     [Test]
     public void Rotation_does_not_reprove_an_unchanged_complete_selection()
     {

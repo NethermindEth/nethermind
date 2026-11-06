@@ -341,10 +341,12 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         finally { if (entered) Monitor.Exit(_provingLock); }
     }
 
+    internal const string BackgroundBusyMessage = "Proof production is busy; retry background aggregation on the next cadence.";
+
     private static InvalidOperationException BackgroundBusy()
     {
         Interlocked.Increment(ref Metrics.LeanBackgroundProofsSkipped);
-        return new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
+        return new InvalidOperationException(BackgroundBusyMessage);
     }
 
     private bool TryGet(ValueHash256 key, out byte[]? proof)
