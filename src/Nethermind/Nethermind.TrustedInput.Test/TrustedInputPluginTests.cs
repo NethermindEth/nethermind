@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -57,13 +59,45 @@ public class TrustedInputPluginTests
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
             .AddModule(new TrustedInputModule()));
 
+        TrustedInputCapturingBlockProcessor processor = (TrustedInputCapturingBlockProcessor)chain.Container.Resolve<IMainProcessingContext>().BlockProcessor;
+        int events = 0;
+        processor.TransactionsExecuted += _ => events++;
         Block block = await chain.AddBlock(Transfer(chain));
+        await processor.DisposeAsync();
 
+        Assert.That(events, Is.EqualTo(1));
         TrustedInputStore store = chain.Container.Resolve<TrustedInputStore>();
-        // Captured off the import path.
-        Assert.That(() => store.TryGet(block.Hash!, out _), Is.True.After(10_000, 50));
+        Assert.That(store.TryGet(block.Hash!, out _), Is.True);
         store.TryGet(block.Hash!, out byte[] input);
         Assert.That(Keccak.Compute(Input.BlockHeaderOf(input)), Is.EqualTo(block.Hash));
+    }
+
+    [Test]
+    public async Task Capture_has_no_backlog_and_shutdown_drains_the_running_capture()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder => builder
+            .AddSingleton<ITrustedInputConfig>(new TrustedInputConfig { Enabled = true })
+            .AddSingleton<WitnessCapturingBlockProcessingEnv>()
+            .AddModule(new TrustedInputModule()));
+        TrustedInputCapturingBlockProcessor processor = (TrustedInputCapturingBlockProcessor)chain.Container.Resolve<IMainProcessingContext>().BlockProcessor;
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Assert.That(processor.TryScheduleCapture(() => { started.SetResult(); release.Wait(); }), Is.True);
+            await started.Task;
+            Assert.That(processor.TryScheduleCapture(() => { }), Is.False);
+            ValueTask shutdown = processor.DisposeAsync();
+            Assert.That(shutdown.IsCompleted, Is.False);
+            release.Set();
+            await shutdown;
+            Assert.That(processor.TryScheduleCapture(() => { }), Is.False);
+        }
+        finally
+        {
+            release.Set();
+            await processor.DisposeAsync();
+        }
     }
 
     private static Transaction Transfer(TestRpcBlockchain chain) =>

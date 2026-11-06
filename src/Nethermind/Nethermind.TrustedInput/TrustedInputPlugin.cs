@@ -11,7 +11,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.TrustedInput;
 
-/// <summary>Captures the trusted zkVM guest input of every block the node processes and serves it over JSON-RPC.</summary>
+/// <summary>Captures trusted zkVM guest inputs while processing blocks and serves them over JSON-RPC.</summary>
 /// <remarks>The input is the format <c>Nethermind.Stateless.Execution.IO.TrustedInput</c> defines, which the guests built
 /// with <c>GuestInput=Trusted</c> validate.</remarks>
 public class TrustedInputPlugin(ITrustedInputConfig config) : INethermindPlugin

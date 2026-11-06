@@ -15,6 +15,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
@@ -25,6 +27,46 @@ namespace Nethermind.Consensus.Test.Stateless;
 [NonParallelizable]
 public class TrustedInputTests
 {
+    [Test]
+    public async Task Nonzero_post_merge_seal_fields_are_rejected([Values] bool difficulty)
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        TrustedPayload payload = TrustedInput.Read(input);
+        using Witness witness = payload.Witness;
+        Block block = payload.GetBlock();
+        if (difficulty) block.Header.Difficulty = 1;
+        else block.Header.Nonce = 1;
+        byte[] tampered = TrustedInput.Write(payload.ChainId, ProtocolFork.Current, block, payload.EncodedTransactions, witness);
+        Assert.That(Execute(tampered).IsSuccess, Is.False);
+    }
+
+    [Test]
+    public async Task Public_output_distinguishes_pinned_future_fork()
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: true);
+        StatelessValidationResult pinned = Execute(input);
+        BinaryPrimitives.WriteUInt32LittleEndian(input.AsSpan(16), (uint)ProtocolFork.Current);
+        StatelessValidationResult scheduled = Execute(input);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pinned.IsSuccess, Is.True);
+            Assert.That(scheduled.IsSuccess, Is.False);
+            Assert.That(pinned.NewPayloadRequestRoot, Is.EqualTo(scheduled.NewPayloadRequestRoot));
+            Assert.That(pinned.SchemaId, Is.Not.EqualTo(scheduled.SchemaId));
+        }
+    }
+
+    [Test]
+    public void Collector_retains_only_recovery_bytes([Values(0, 1, 127, 128, 129, 1048576)] int length)
+    {
+        StatelessExecutor.EcRecoverInputCollector collector = new();
+        byte[] input = new byte[length];
+        new Random(42).NextBytes(input);
+        collector.ReportAction(3000, default, TestItem.AddressA, ECRecoverPrecompile.Address, input, ExecutionType.CALL, true);
+        Assert.That(collector.Inputs, Has.Count.EqualTo(1));
+        Assert.That(collector.Inputs[0], Is.EqualTo(input.AsSpan(0, Math.Min(length, 128)).ToArray()));
+    }
+
     private const int SenderHintsSection = 48;
     private const int TransactionsList = 56;
     private const int WitnessHeadersList = 60;
@@ -42,7 +84,7 @@ public class TrustedInputTests
         {
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
-            Assert.That(result.SchemaId, Is.EqualTo(TrustedInput.SchemaId));
+            Assert.That(result.SchemaId, Is.EqualTo(amsterdam ? 0x9501 : 0x8001));
         }
     }
 
@@ -61,11 +103,8 @@ public class TrustedInputTests
     }
 
     /// <summary>Every item the guest uses where it lies is still bound to what the block commits to.</summary>
-    [TestCase(TransactionsList)]
-    [TestCase(WitnessHeadersList)]
-    [TestCase(StateNodesList)]
-    [TestCase(CodesList)]
-    public async Task Tampered_item_fails_the_block(int list)
+    [Test]
+    public async Task Tampered_item_fails_the_block([Values(TransactionsList, WitnessHeadersList, StateNodesList, CodesList)] int list)
     {
         (byte[] input, _) = await CreateInput(amsterdam: false);
 
@@ -174,7 +213,7 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, SenderHintsSection + 4, 72)] int corruptedOffset)
+    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 17, SenderHintsSection + 4, 72)] int corruptedOffset)
     {
         (byte[] input, _) = await CreateInput(amsterdam: false);
         input[corruptedOffset] ^= 1;

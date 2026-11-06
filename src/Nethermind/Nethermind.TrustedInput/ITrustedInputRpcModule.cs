@@ -7,9 +7,11 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.TrustedInput;
 
+/// <summary>Provides blocks and their execution witnesses in the trusted zkVM input format.</summary>
 [RpcModule(TrustedInputPlugin.ModuleType)]
 public interface ITrustedInputRpcModule : IRpcModule
 {
+    /// <summary>Returns the requested block's captured input, generating it on demand when absent from the cache.</summary>
     [JsonRpcMethod(IsImplemented = true,
         Description = "Returns the trusted zkVM guest input of a block: the block and its execution witness in the trusted-input format. A block not captured while it was processed is re-executed.",
         IsSharable = true,

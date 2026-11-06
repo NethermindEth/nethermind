@@ -10,12 +10,14 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.TrustedInput;
 
+/// <inheritdoc/>
 public sealed class TrustedInputRpcModule(
     TrustedInputStore store,
     IBlockFinder blockFinder,
     IBlockchainBridge blockchainBridge,
     ISpecProvider specProvider) : ITrustedInputRpcModule
 {
+    /// <inheritdoc/>
     public ResultWrapper<byte[]> trustedinput_getInput(BlockParameter blockParameter)
     {
         Block? block = blockFinder.FindBlock(blockParameter);

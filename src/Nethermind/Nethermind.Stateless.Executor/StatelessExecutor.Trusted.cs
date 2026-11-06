@@ -17,8 +17,8 @@ public static partial class StatelessExecutor
 {
     /// <summary>Validates the block a <see cref="TrustedInput"/> carries, as <see cref="Execute(ReadOnlySpan{byte})"/>
     /// validates a stateless input.</summary>
-    /// <returns>The encoded <see cref="StatelessValidationResult"/>, whose root is the block hash and whose schema id is
-    /// <see cref="TrustedInput.SchemaId"/>.</returns>
+    /// <returns>The encoded <see cref="StatelessValidationResult"/>, whose root is the block hash and whose schema id
+    /// identifies the format and selected fork via <see cref="TrustedInput.SchemaIdOf"/>.</returns>
     public static byte[] ExecuteTrusted(ReadOnlySpan<byte> data)
     {
         byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
@@ -40,7 +40,7 @@ public static partial class StatelessExecutor
             NewPayloadRequestRoot = payload.BlockHash,
             IsSuccess = false,
             ChainId = payload.ChainId,
-            SchemaId = TrustedInput.SchemaId
+            SchemaId = payload.SchemaId
         };
         output = StatelessValidationResult.Encode(result);
         bool success = false;
@@ -48,14 +48,13 @@ public static partial class StatelessExecutor
 
         try
         {
+            using Witness witness = payload.Witness;
             Block block = payload.GetBlock();
             ISpecProvider specProvider = payload.SpecProvider;
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             InitializeKzg(spec);
             if (TrySetTrustedSenders(block.Transactions, payload, specProvider, spec))
             {
-                using Witness witness = payload.Witness;
-
                 // The header's hash is the keccak of the RLP it was decoded from, so it needs no check; its body roots do.
                 success = Execute(block, witness, specProvider, validateHashes: true);
             }
@@ -82,9 +81,9 @@ public static partial class StatelessExecutor
         try
         {
             TrustedPayload payload = TrustedInput.Read(input);
+            using Witness witness = payload.Witness;
             Block block = payload.GetBlock();
             IReleaseSpec spec = payload.SpecProvider.GetSpec(block.Header);
-            using Witness witness = payload.Witness;
             if (TryRecoverSenders(block.Transactions, payload.EncodedTransactions, payload.SpecProvider, spec))
                 Execute(block, witness, payload.SpecProvider, validateHashes: true, collector);
         }
@@ -97,7 +96,7 @@ public static partial class StatelessExecutor
     }
 
     /// <summary>Records the input of every call to the ECRECOVER precompile.</summary>
-    private sealed class EcRecoverInputCollector : TxTracer, IBlockTracer
+    internal sealed class EcRecoverInputCollector : TxTracer, IBlockTracer
     {
         public EcRecoverInputCollector() => IsTracingActions = true;
 
@@ -106,7 +105,7 @@ public static partial class StatelessExecutor
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType, bool isPrecompileCall = false)
         {
-            if (isPrecompileCall && to == ECRecoverPrecompile.Address) Inputs.Add(input.ToArray());
+            if (isPrecompileCall && to == ECRecoverPrecompile.Address) Inputs.Add(input[..Math.Min(input.Length, 128)].ToArray());
         }
 
         public bool IsTracingRewards => false;

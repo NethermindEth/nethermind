@@ -41,7 +41,7 @@ internal static class InputConverter
                 NewPayloadRequestRoot = Keccak.Compute(TrustedInput.BlockHeaderOf(trusted)),
                 IsSuccess = true,
                 ChainId = TrustedInput.ChainIdOf(trusted),
-                SchemaId = TrustedInput.SchemaId
+                SchemaId = TrustedInput.SchemaIdOf(trusted)
             });
 
             string name = Path.ChangeExtension(Path.GetFileName(file), ".nti");

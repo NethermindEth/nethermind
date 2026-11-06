@@ -129,6 +129,14 @@ internal static unsafe class SwizzledMemory
     public static ReadOnlyMemory<byte> ToNatural(ReadOnlyMemory<byte> laidOut) =>
         laidOut.IsEmpty ? laidOut : ToArray(ref MemoryMarshal.GetReference(laidOut.Span), laidOut.Length);
 
+    /// <summary>Copies a swizzled range into memory laid out from its own aligned start.</summary>
+    public static ReadOnlyMemory<byte> Realign(ReadOnlySpan<byte> source)
+    {
+        byte[] destination = new byte[(source.Length + (int)GroupMask) & ~(int)GroupMask];
+        Copy(ref MemoryMarshal.GetArrayDataReference(destination), ref MemoryMarshal.GetReference(source), source.Length);
+        return destination.AsMemory(0, source.Length);
+    }
+
     /// <summary>Copies <paramref name="length"/> bytes of memory from <paramref name="source"/> to <paramref name="destination"/>, which may overlap.</summary>
     /// <remarks>
     /// Ranges apart and in the same place of their groups move as <see cref="Copy"/> moves them; others go through a copy

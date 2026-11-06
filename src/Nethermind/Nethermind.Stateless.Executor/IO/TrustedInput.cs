@@ -54,9 +54,10 @@ namespace Nethermind.Stateless.Execution.IO;
 /// </remarks>
 public static partial class TrustedInput
 {
-    /// <summary>The schema id a trusted input reports in its <see cref="StatelessValidationResult"/>.</summary>
-    /// <remarks>Its <see cref="StatelessValidationResult.NewPayloadRequestRoot"/> then holds the block hash.</remarks>
-    public const ushort SchemaId = 0x7401;
+    /// <summary>The trusted-input schema id for the chain's scheduled fork.</summary>
+    /// <remarks>The high bit distinguishes trusted results from SSZ results; the remaining high-byte bits identify
+    /// the selected <see cref="ProtocolFork"/>. The result root holds the block hash.</remarks>
+    public const ushort SchemaId = 0x8001;
 
     public const uint Magic = 0x4E49544E; // "NTIN"
     public const uint Version = 1;
@@ -291,6 +292,14 @@ public static partial class TrustedInput
     /// <summary>The chain id <paramref name="input"/> declares.</summary>
     public static ulong ChainIdOf(ReadOnlySpan<byte> input) => BinaryPrimitives.ReadUInt64LittleEndian(input[ChainIdOffset..]);
 
+    /// <summary>The result schema id binding the trusted format and the fork selected by <paramref name="input"/>.</summary>
+    public static ushort SchemaIdOf(ReadOnlySpan<byte> input)
+    {
+        uint fork = BinaryPrimitives.ReadUInt32LittleEndian(input[ForkOffset..]);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(fork, 0x7fu);
+        return (ushort)(SchemaId | (fork << 8));
+    }
+
     /// <summary>Reads a trusted input, using its items where they lie when the guest can.</summary>
     /// <remarks>Also installs the run's hash seed, the block hash, before anything downstream is keyed by a hash.</remarks>
     internal static TrustedPayload Read(ReadOnlySpan<byte> data)
@@ -304,6 +313,7 @@ public static partial class TrustedInput
         }
 
         ulong chainId = BinaryPrimitives.ReadUInt64LittleEndian(data[ChainIdOffset..]);
+        ushort schemaId = SchemaIdOf(data);
         ProtocolFork fork = (ProtocolFork)BinaryPrimitives.ReadUInt32LittleEndian(data[ForkOffset..]);
 
         ReadOnlySpan<byte> headerRlp = Section(data, BlockHeaderSection);
@@ -350,12 +360,17 @@ public static partial class TrustedInput
             SenderHints: senderHints.ToArray(),
             RecoveryHints: recoveryHints.ToArray(),
             ChainId: chainId,
+            SchemaId: schemaId,
             BlockHash: blockHash,
             SpecProvider: specProvider);
     }
 
     private static Block CreateBlock(BlockHeader header, byte[][] encodedTransactions, Withdrawal[]? withdrawals, byte[]? encodedBlockAccessList)
     {
+        // EIP-3675: the SSZ payload fixes these fields, but a raw header must be checked.
+        if (!header.Difficulty.IsZero || header.Nonce != 0)
+            throw new ArgumentException("A proof-of-stake header must have zero difficulty and nonce");
+
         TransactionDecodingResult decoded = TxsDecoder.DecodeTxsBorrowingBuffers(encodedTransactions, skipErrors: false);
         if (decoded.Error is not null) throw new InvalidOperationException(decoded.Error);
 
@@ -591,5 +606,6 @@ internal readonly record struct TrustedPayload(
     byte[] SenderHints,
     byte[] RecoveryHints,
     ulong ChainId,
+    ushort SchemaId,
     Hash256 BlockHash,
     ISpecProvider SpecProvider);

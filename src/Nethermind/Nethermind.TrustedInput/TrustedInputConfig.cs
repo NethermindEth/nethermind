@@ -3,9 +3,13 @@
 
 namespace Nethermind.TrustedInput;
 
+/// <inheritdoc/>
 public class TrustedInputConfig : ITrustedInputConfig
 {
+    /// <inheritdoc/>
     public bool Enabled { get; set; }
+    /// <inheritdoc/>
     public int CacheSize { get; set; } = 64;
+    /// <inheritdoc/>
     public string? OutputDirectory { get; set; }
 }

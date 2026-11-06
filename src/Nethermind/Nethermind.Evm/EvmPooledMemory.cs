@@ -678,7 +678,7 @@ public partial struct EvmPooledMemory
 
         PrepareAccessAfterGas(location.u0 + length.u0);
         ReadOnlyMemory<byte> input = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
-        return (location.u0 & GroupMask) == 0 ? input : SwizzledMemory.FromNatural(SwizzledMemory.ToNatural(input).Span);
+        return (location.u0 & GroupMask) == 0 ? input : SwizzledMemory.Realign(input.Span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -5,14 +5,18 @@ using Nethermind.Config;
 
 namespace Nethermind.TrustedInput;
 
+/// <summary>Controls trusted zkVM input capture, retention, and optional file output.</summary>
 public interface ITrustedInputConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to capture a trusted zkVM guest input for every block the node processes, and serve it over `trustedinput_getInput`.", DefaultValue = "false")]
+    /// <summary>Whether to capture inputs and register the RPC module. Defaults to false.</summary>
+    [ConfigItem(Description = "Whether to capture trusted zkVM guest inputs while processing blocks, and serve them over `trustedinput_getInput`. Capture skips blocks while busy; RPC regenerates missing inputs.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
+    /// <summary>The maximum number of completed inputs retained in memory. Defaults to 64.</summary>
     [ConfigItem(Description = "The number of most recent captured inputs kept in memory.", DefaultValue = "64")]
     int CacheSize { get; set; }
 
+    /// <summary>The output directory for captured .nti files, or null to disable file output. Defaults to null.</summary>
     [ConfigItem(Description = "The directory each captured input is also written to, as `<number>-<hash>.nti`. No files are written when unset.", DefaultValue = "null")]
     string? OutputDirectory { get; set; }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
@@ -11,6 +12,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+
+[assembly: InternalsVisibleTo("Nethermind.TrustedInput.Test")]
 
 namespace Nethermind.TrustedInput;
 
@@ -23,6 +26,7 @@ namespace Nethermind.TrustedInput;
 /// The witness processor shares the main pipeline's writable world state, so a block is imported once, not re-executed.
 /// Read-only processing, such as tracing and simulation, passes straight through. Capturing is best-effort: a block whose
 /// input fails to build still stands, and <c>trustedinput_getInput</c> rebuilds it on request.
+/// At most one capture runs in the background; blocks imported while it is busy are regenerated on demand.
 /// </remarks>
 public sealed class TrustedInputCapturingBlockProcessor(
     IBlockProcessor inner,
@@ -30,16 +34,17 @@ public sealed class TrustedInputCapturingBlockProcessor(
     TrustedInputStore store,
     IHeaderFinder headerFinder,
     ISpecProvider specProvider,
-    ILogManager logManager) : IBlockProcessor
+    ILogManager logManager) : IBlockProcessor, IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TrustedInputCapturingBlockProcessor>();
+    private readonly Lock _captureLock = new();
+    private Task _capture = Task.CompletedTask;
+    private bool _stopping;
 
-    public event Action<Block>? TransactionsExecuted
-    {
-        add => inner.TransactionsExecuted += value;
-        remove => inner.TransactionsExecuted -= value;
-    }
+    /// <inheritdoc/>
+    public event Action<Block>? TransactionsExecuted;
 
+    /// <inheritdoc/>
     public (Block Block, TxReceipt[] Receipts) ProcessOne(
         Block suggestedBlock,
         ProcessingOptions options,
@@ -50,20 +55,19 @@ public sealed class TrustedInputCapturingBlockProcessor(
         if (suggestedBlock.Hash is null || suggestedBlock.ParentHash is null || suggestedBlock.Number == 0
             || options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
         {
-            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            return Process(inner, suggestedBlock, options, blockTracer, spec, token);
         }
 
         BlockHeader parent = headerFinder.Get(suggestedBlock.ParentHash, suggestedBlock.Number - 1)
             ?? throw new ArgumentException($"Unable to find the parent of block {suggestedBlock.Number}");
 
         witness.ResetForBlock();
-        (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        (Block Block, TxReceipt[] Receipts) result = Process(witness.Processor, suggestedBlock, options, blockTracer, spec, token);
 
         try
         {
             Witness blockWitness = witness.GetWitness(parent);
-            // Writing executes the block once more, statelessly, so it runs off the import path.
-            _ = Task.Run(() => Capture(suggestedBlock, blockWitness));
+            if (!TryScheduleCapture(() => Capture(suggestedBlock, blockWitness))) blockWitness.Dispose();
         }
         catch (Exception ex)
         {
@@ -71,6 +75,41 @@ public sealed class TrustedInputCapturingBlockProcessor(
         }
 
         return result;
+    }
+
+    private (Block Block, TxReceipt[] Receipts) Process(IBlockProcessor processor, Block block, ProcessingOptions options,
+        IBlockTracer tracer, IReleaseSpec spec, CancellationToken token)
+    {
+        Action<Block>? handlers = TransactionsExecuted;
+        processor.TransactionsExecuted += handlers;
+        try
+        {
+            return processor.ProcessOne(block, options, tracer, spec, token);
+        }
+        finally
+        {
+            processor.TransactionsExecuted -= handlers;
+        }
+    }
+
+    internal bool TryScheduleCapture(Action capture)
+    {
+        lock (_captureLock)
+        {
+            if (_stopping || !_capture.IsCompleted) return false;
+            _capture = Task.Run(capture);
+            return true;
+        }
+    }
+
+    /// <summary>Stops accepting captures and waits for the running capture to release its witness.</summary>
+    public ValueTask DisposeAsync()
+    {
+        lock (_captureLock)
+        {
+            _stopping = true;
+            return new ValueTask(_capture);
+        }
     }
 
     private void Capture(Block block, Witness blockWitness)

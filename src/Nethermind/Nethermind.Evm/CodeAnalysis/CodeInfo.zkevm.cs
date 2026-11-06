@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -79,7 +80,11 @@ public sealed partial class CodeInfo
     {
         nint[]? cache = s_readOnlyHandlerCache;
         if (cache is null || cache.Length < HandlerCacheLength(codeLength))
-            s_readOnlyHandlerCache = cache = GC.AllocateArray<nint>(HandlerCacheLength(codeLength), pinned: true);
+        {
+            // The guest cannot reclaim previous arrays, so geometric growth bounds their total size too.
+            int capacity = (int)BitOperations.RoundUpToPowerOf2((uint)HandlerCacheLength(codeLength));
+            s_readOnlyHandlerCache = cache = GC.AllocateArray<nint>(capacity, pinned: true);
+        }
         return cache;
     }
 
