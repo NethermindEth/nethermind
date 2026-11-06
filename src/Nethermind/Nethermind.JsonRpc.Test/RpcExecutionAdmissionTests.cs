@@ -138,16 +138,16 @@ public class RpcExecutionAdmissionTests
     [RpcModule(ModuleType.Eth)]
     public interface IAdmissionModule : IRpcModule
     {
-        [JsonRpcMethod(IsExecutionHeavy = true)]
+        [JsonRpcMethod(Description = "Test execution-heavy method used to verify execution admission.", IsExecutionHeavy = true)]
         Task<ResultWrapper<int>> test_execute(int value);
 
-        [JsonRpcMethod]
+        [JsonRpcMethod(Description = "Test light method used to verify it bypasses execution admission.")]
         ResultWrapper<int> test_head();
 
-        [JsonRpcMethod(IsExecutionHeavy = true)]
+        [JsonRpcMethod(Description = "Test streamed execution-heavy method used to verify permit lifetime.", IsExecutionHeavy = true)]
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> test_stream();
 
-        [JsonRpcMethod(IsExecutionHeavy = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Test non-sharable execution-heavy method used to verify module rental timeouts.", IsExecutionHeavy = true, IsSharable = false)]
         ResultWrapper<int> test_exclusive();
     }
 
