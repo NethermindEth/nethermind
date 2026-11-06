@@ -157,6 +157,10 @@ CPU-heavy RPC methods can opt into bounded execution by setting `IsExecutionHeav
 
 An explicit positive execution limit replaces the processor-derived default, not the module/shared bounds. A non-positive value removes only the processor-derived bound. Waiting calls use the existing `JsonRpc.RequestQueueLimit` and `JsonRpc.Timeout`; increasing execution concurrency may also require increasing the module/shared limits. Qualify throughput and chain following together rather than increasing these limits solely to admit more work.
 
+### Gas policy at exceptional exits
+
+`EthereumGasPolicy.UnspentGasBeforeHalt` records the execution gas remaining immediately before an exceptional halt. Traced and untraced execution must preserve the same value on the frame's policy. Fixed-gas dispatch bodies use a temporary policy for their fast path; on failure they copy the recorded halt gas back before returning. Plugins consuming child-frame completion therefore observe the same halt accounting with instruction tracing enabled or disabled.
+
 ## Getting help
 
 Check out the [docs][docs] first. If the answer is not there, see:
