@@ -15,7 +15,6 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -107,13 +106,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (payload.BlockStateCalls is not null)
         {
-            Dictionary<Address, ulong> nonceCache = [];
             IBlockTracer cancellationBlockTracer = tracer.WithCancellation(cancellationToken);
 
             foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
-                nonceCache.Clear();
-
                 (BlockHeader callHeader, IReleaseSpec spec) = GetCallHeader(env.SpecProvider, blockCall, parent, payload.Validation);
                 env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
                 env.SimulateRequestState.BlockStateGasLeft = callHeader.GasLimit;
@@ -125,7 +121,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
+                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, spec);
                 Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -165,14 +161,12 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         Withdrawal[]? withdrawalOverrides,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
     {
         Transaction[] transactions = new Transaction[calls.Length];
         for (int i = 0; i < calls.Length; i++)
         {
-            transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
+            transactions[i] = CreateTransaction(calls[i]);
         }
 
         Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
@@ -209,32 +203,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return parent;
     }
 
-    private Transaction CreateTransaction(
-        TransactionWithSourceDetails transactionDetails,
-        IWorldState stateProvider,
-        Dictionary<Address, ulong> nonceCache)
+    private static Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails)
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-
-        if (!transactionDetails.HadNonceInRequest)
-        {
-            ref ulong cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
-            if (!exist)
-            {
-                if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
-                {
-                    cachedNonce = test.Nonce;
-                }
-                // else // Todo think if we shall create account here
-            }
-            else
-            {
-                cachedNonce++;
-            }
-
-            transaction.Nonce = cachedNonce;
-        }
 
         if (transaction.SupportsBlobs && transaction.BlobVersionedHashes is null) transaction.BlobVersionedHashes = [];
         if (transaction.AccessList is not null && transaction.AccessList.IsEmpty) transaction.AccessList = null;
