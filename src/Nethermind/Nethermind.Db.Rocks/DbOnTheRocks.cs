@@ -1744,8 +1744,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // Track the live value of every blob-GC option this applies, and - while a blob-GC compaction is running -
         // withhold those keys from the live database so a concurrent Tune cannot flip blob files off under the
         // running reclaim pass and weaken it. The intended value is still tracked, so the compaction's epilogue
-        // restore re-derives the correct final state. Always called with _tuneLock held (by Tune and by the blob-GC
-        // compaction prologue/epilogue), so the map and the flag are read without taking the lock again.
+        // restore re-derives the correct final state. Tune and the blob-GC compaction prologue/epilogue call this
+        // with _tuneLock held; SetWriteBuffer calls it without. That is safe because the tracked key set is fixed at
+        // construction (only values of existing keys are ever updated, never added or removed), so the lock-free
+        // path performs nothing but ContainsKey reads with no structural change to tear, and SetWriteBuffer's keys
+        // are not blob-GC keys, so it neither writes the map nor reads _blobCompactionInProgress.
         Dictionary<string, string>? withheldOptions = null;
         foreach ((string key, string value) in options)
         {
