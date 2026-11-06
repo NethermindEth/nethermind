@@ -1,14 +1,15 @@
 # GCP runner scripts
 
-The composite action sets up .NET 10.0.402 before running `create.cs` or `destroy.cs`.
+The composite action sets up .NET 10.0.403 before running `create.cs` or `destroy.cs`.
 Both programs preserve the action's environment inputs and GitHub output names.
 Runner names include the run attempt so retries can register a new JIT runner.
 
 Teardown runs in a separate job and still requires SDK installation and compilation.
 The pinned SDK supports `#:include`; an arbitrary preinstalled SDK may not. Restore
-uses only the local action directory and disables NuGet auditing because these scripts
-have no package dependencies. An SDK download failure or cancellation before
-`destroy.cs` starts can leave the VM until GCE's `max_run_duration` deletion backstop.
+uses only the local action directory and disables NuGet auditing and the file-based
+`PublishAot` default, whose implicit ILCompiler and runtime-pack references would need
+a feed, because these scripts have no package dependencies. An SDK download failure or
+cancellation before `destroy.cs` starts can leave the VM until GCE's `max_run_duration` deletion backstop.
 Choose that lifetime to cover boot and the job without an excessive cleanup delay.
 
 `startup-script.sh` is deliberately retained as the fresh-VM bootstrap exception.

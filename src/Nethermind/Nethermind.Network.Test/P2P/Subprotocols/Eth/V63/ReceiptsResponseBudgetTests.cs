@@ -73,17 +73,17 @@ public class ReceiptsResponseBudgetTests
         yield return new Envelope("eth/63", null, static blocks =>
         {
             using ReceiptsMessage message = new(blocks);
-            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message));
+            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).SerializeToArray(message));
         });
         yield return new Envelope("eth/66", 1, static blocks =>
         {
             using ReceiptsMessage66 message = new(RequestId, new ReceiptsMessage(blocks));
-            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer66(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)).Serialize(message));
+            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer66(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)).SerializeToArray(message));
         });
         yield return new Envelope("eth/70", 2, static blocks =>
         {
             using ReceiptsMessage70 message = new(RequestId, blocks, true);
-            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer70(MainnetSpecProvider.Instance).Serialize(message));
+            return Unpooled.WrappedBuffer(new ReceiptsMessageSerializer70(MainnetSpecProvider.Instance).SerializeToArray(message));
         });
     }
 

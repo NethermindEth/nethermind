@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,8 +40,11 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.History;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
@@ -72,7 +77,12 @@ public class DebugModuleTests
         new BlocksConfig(),
         _blockFinder,
         new BlockForRpcFactory(),
-        _codeInfoRepository);
+        _codeInfoRepository,
+        new ReceiptConfig(),
+        Substitute.For<ISyncPointers>(),
+        Substitute.For<ISyncProgressResolver>(),
+        new SyncConfig(),
+        Substitute.For<IHistoryPruner>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -524,6 +534,58 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlockByHash_missing_block_precedes_replay_state(
+        [Values] bool headerRetained, [Values] bool parentStateAvailable, [Values] bool streaming)
+    {
+        Block parent = Build.A.Block.WithNumber(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(parent);
+        if (headerRetained) _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(parentStateAvailable);
+
+        JToken response = JToken.Parse(await SerializedRequest("debug_traceBlockByHash", block.Hash!, new { tracer = "noopTracer", streamMode = streaming }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
+            Assert.That((string?)response["error"]?["message"], Is.EqualTo($"block {block.Hash} not found"));
+            Assert.That(response["result"], Is.Null);
+            _blockchainBridge.DidNotReceiveWithAnyArgs().HasStateForBlock(default!);
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_with_cache_only_body_reaches_replay([Values] bool streaming)
+    {
+        Block parent = Build.A.Block.WithNumber(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(parent);
+        _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number).Returns(block);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>()).Returns(Array.Empty<GethLikeTxTrace>());
+        Assert.That(_blockFinder.HasBlock(block.Number, block.Hash!), Is.False);
+
+        JToken response = JToken.Parse(await SerializedRequest("debug_traceBlockByHash", block.Hash!, new { tracer = "noopTracer", streamMode = streaming }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Null, response.ToString());
+            Assert.That(response["result"], Is.EqualTo(new JArray()).Using(JToken.EqualityComparer));
+            _blockFinder.Received(streaming ? 2 : 1).FindBlock(block.Hash!,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number);
+            _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(parameter => parameter.BlockHash == block.Hash),
+                Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+    }
+
+    [Test]
     public void Debug_traceBlockByNumber_streaming_missing_body_for_tag_reports_hash()
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
@@ -578,11 +640,26 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
 
-        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(number));
+        AssertMissingTraceBlock(new BlockParameter(number), $"block #{number} not found", isTemporary);
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_missing_tag_preserves_temporary_status(
+        [Values("safe", "finalized")] string tag, [Values] bool isTemporary)
+    {
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
+
+        AssertMissingTraceBlock(tag == "safe" ? BlockParameter.Safe : BlockParameter.Finalized, $"{tag} block not found", isTemporary);
+    }
+
+    private void AssertMissingTraceBlock(BlockParameter selector, string message, bool isTemporary)
+    {
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(selector);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(response.Result.Error, Is.EqualTo($"block #{number} not found"));
+            Assert.That(response.Result.Error, Is.EqualTo(message));
             Assert.That(response.IsTemporary, Is.EqualTo(isTemporary));
         }
     }
@@ -746,6 +823,7 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(block);
         _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
+        _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
         _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number).Returns(block);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
@@ -801,6 +879,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
         _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
+        _blockFinder.FindBlock(header.Hash!, header.Number).Returns(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
         _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number).Returns(block);
         _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);

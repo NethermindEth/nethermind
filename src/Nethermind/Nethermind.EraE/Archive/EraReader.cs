@@ -97,6 +97,9 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                 {
                     (Block block, TxReceipt[] receipts) = await ReadBlockAndReceipts(blockNumber, cancellation);
 
+                    if (block.Header.Number != blockNumber)
+                        throw new EraVerificationException($"Mismatched header number {block.Header.Number}. Block {blockNumber}.");
+
                     if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
                         throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
 

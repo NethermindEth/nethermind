@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -25,6 +26,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using NSubstitute;
@@ -307,6 +309,46 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpcModule, $"engine_getBlobsV{version}", (object)Array.Empty<byte[]>());
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    private static IEnumerable<(SyncMode SyncMode, bool IsSyncing, bool Serves)> GetBlobsSyncStates()
+    {
+        yield return (SyncMode.StateNodes | SyncMode.FastHeaders, true, false);
+        yield return (SyncMode.Full, true, false);
+        yield return (SyncMode.WaitingForBlock | SyncMode.FastBodies | SyncMode.FastReceipts, true, true);
+        yield return (SyncMode.WaitingForBlock, false, true);
+    }
+
+    [Test]
+    public async Task GetBlobs_should_return_null_only_while_behind_head(
+        [Values(2, 3)] int version,
+        [ValueSource(nameof(GetBlobsSyncStates))] (SyncMode SyncMode, bool IsSyncing, bool Serves) state)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.SyncMode.Returns(state.SyncMode);
+        syncingInfo.IsSyncing().Returns(state.IsSyncing);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, configurer: builder => builder.AddSingleton(syncingInfo));
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+        byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = version == 2
+            ? await rpcModule.engine_getBlobsV2(blobVersionedHashes)
+            : await rpcModule.engine_getBlobsV3(blobVersionedHashes);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data?.Select(static b => b!.Blob), state.Serves ? Is.EqualTo(wrapper.Blobs) : Is.Null);
+        }
     }
 
     [Test]

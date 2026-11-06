@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -25,9 +25,10 @@ public class ChangesetCollectorTests
         byte[] value = [0x01];
         int packed = Collect(collector, accounts, slot, value);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++) packed += Collect(collector, accounts, slot, value);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            for (int i = 0; i < 100; i++) packed += Collect(collector, accounts, slot, value);
+        });
         collector.Release();
 
         using (Assert.EnterMultipleScope())
