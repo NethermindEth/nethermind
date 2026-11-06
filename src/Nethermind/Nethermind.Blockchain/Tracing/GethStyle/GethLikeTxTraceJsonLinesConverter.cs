@@ -53,14 +53,14 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WritePropertyName("gasCost");
         HexWriter.WriteUlongHexStringValue(writer, value.GasCost);
 
-        writer.WritePropertyName("memSize");
-        writer.WriteNumberValue(value.MemorySize ?? 0UL);
-
         if (value.Memory is { Length: > 0 } mem)
         {
             writer.WritePropertyName("memory");
             WriteMemoryBlob(writer, mem);
         }
+
+        writer.WritePropertyName("memSize");
+        writer.WriteNumberValue(value.MemorySize ?? 0UL);
 
         writer.WritePropertyName("stack");
         if (value.Stack is ReadOnlyMemory<byte> stack)
@@ -96,10 +96,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteStringValue(value.Opcode);
 
         if (value.Error is not null)
-        {
-            writer.WritePropertyName("error");
-            writer.WriteStringValue(value.Error);
-        }
+            WriteError(writer, value.Error);
 
         writer.WriteEndObject();
 
@@ -114,6 +111,16 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteRawValue("\n", true);
         writer.Flush();
         writer.Reset();
+    }
+
+    /// <summary>Writes an <c>error</c> property with the escaping of Geth's JSON encoder.</summary>
+    /// <remarks>Go's <c>json.Encoder</c> escapes <c>&lt;</c> and <c>&gt;</c> with lowercase hex digits, as in Geth's
+    /// <c>stack underflow (1 \u003c=\u003e 2)</c>.</remarks>
+    internal static void WriteError(Utf8JsonWriter writer, string error)
+    {
+        string escaped = JsonEncodedText.Encode(error).ToString().Replace("\\u003C", "\\u003c").Replace("\\u003E", "\\u003e");
+        writer.WritePropertyName("error");
+        writer.WriteRawValue($"\"{escaped}\"", skipInputValidation: true);
     }
 
     // The file format renders memory as a single contiguous 0x-prefixed hex blob, not a per-word array.
