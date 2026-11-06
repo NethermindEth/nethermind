@@ -415,12 +415,43 @@ public class RlpDerivedTest
         }
     }
 
-    private static GeneratorDriverRunResult RunGenerator(string source, out Compilation output)
+    [Test]
+    public void GeneratorPreservesImportScopes([Values(
+        "namespace Probe { using Models; BODY }",
+        "namespace Probe; using Models; BODY",
+        "using Probe.Models; namespace Probe; BODY",
+        "namespace Probe { using Probe.Models; BODY }",
+        "namespace Probe { using Models; namespace Nested { BODY } }",
+        "using Alias = System.Int32; namespace Probe { using Alias = Models.Word; using Models; BODY }",
+        "namespace Probe { using static Models.Extensions; BODY }")] string scope)
+    {
+        string source = "using Nethermind.Serialization.FluentRlp; " + scope.Replace("BODY",
+            "[RlpSerializable] public record Item(global::Probe.Models.Word Value);");
+        string models = """
+            using Nethermind.Serialization.FluentRlp;
+            namespace Probe.Models;
+            public record Word(int Value);
+            public static class Extensions
+            {
+                public static Word ReadWord(this ref RlpReader reader) => new(reader.ReadInteger<int>());
+                public static void Write(this ref RlpWriter writer, Word value) => writer.Write(value.Value);
+            }
+            """;
+
+        GeneratorDriverRunResult result = RunGenerator(source, out Compilation compilation, models);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Diagnostics, Is.Empty);
+            Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        }
+    }
+
+    private static GeneratorDriverRunResult RunGenerator(string source, out Compilation output, params string[] additionalSources)
     {
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         CSharpCompilation compilation = CSharpCompilation.Create(
             "RlpGeneratorDiagnostics",
-            [CSharpSyntaxTree.ParseText(source, parseOptions)],
+            [CSharpSyntaxTree.ParseText(source, parseOptions), .. additionalSources.Select(s => CSharpSyntaxTree.ParseText(s, parseOptions))],
             MetadataReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
