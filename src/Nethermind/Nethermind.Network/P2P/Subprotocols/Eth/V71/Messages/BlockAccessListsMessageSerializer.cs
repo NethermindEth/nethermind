@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.FluentRlp;
@@ -18,43 +17,16 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
+    protected override void SerializeInternal(ref RlpWriter writer, BlockAccessListsMessage message)
     {
         IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
-        int contentLength = GetBlockAccessListsContentLength(blockAccessLists);
-        int length = Rlp.LengthOfSequence(contentLength);
-        RlpWriter writer = byteBuffer.StartRlpWrite(length);
-        RlpSequence sequence = writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
             WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
         }
 
         writer.EndSequence(sequence);
-        byteBuffer.CompleteRlpWrite(in writer, length);
-    }
-
-    public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
-    {
-        RlpReader reader = new(byteBuffer.AsSpan());
-        ArrayPoolList<byte[]?>? blockAccessLists = null;
-
-        try
-        {
-            RlpReader ctx = reader.EnterSequence(out int itemLength);
-            long requestId = ctx.DecodeLong();
-
-            blockAccessLists = DecodeBlockAccessLists(ref ctx);
-            reader.ExitSequence(ctx, itemLength);
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + reader.BytesRead);
-            return new BlockAccessListsMessage(requestId, blockAccessLists);
-        }
-        catch
-        {
-            blockAccessLists?.Dispose();
-            throw;
-        }
     }
 
     protected override int GetLengthInternal(BlockAccessListsMessage message) =>

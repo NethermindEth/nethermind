@@ -1,39 +1,40 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class NewBlockMessageSerializer(BlockDecoder blockDecoder = null) : IZeroInnerMessageSerializer<NewBlockMessage>
+    public class NewBlockMessageSerializer(BlockDecoder blockDecoder = null) : IMessageSerializer<NewBlockMessage>
     {
         private readonly BlockDecoder _blockDecoder = blockDecoder ?? new();
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
+        public int Serialize(Span<byte> destination, NewBlockMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            RlpWriter writer = byteBuffer.StartRlpWrite(length);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            RlpSequence sequence = writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             _blockDecoder.Encode(ref writer, message.Block);
             writer.Encode(message.TotalDifficulty);
-
             writer.EndSequence(sequence);
-            byteBuffer.CompleteRlpWrite(in writer, length);
+            return writer.Length;
         }
 
-        public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        public int GetLength(NewBlockMessage message, out int contentLength)
+        public NewBlockMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
-                            Rlp.LengthOf(message.TotalDifficulty);
-
-            return Rlp.LengthOfSequence(contentLength);
+            RlpReader ctx = new(data);
+            NewBlockMessage message = Deserialize(ref ctx);
+            ctx.CheckEnd();
+            return message;
         }
+
+        public int GetLength(NewBlockMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private int GetContentLength(NewBlockMessage message) =>
+            _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
+            Rlp.LengthOf(message.TotalDifficulty);
 
         private NewBlockMessage Deserialize(ref RlpReader reader)
         {

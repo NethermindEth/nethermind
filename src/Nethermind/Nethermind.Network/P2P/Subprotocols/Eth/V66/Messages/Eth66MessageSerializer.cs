@@ -4,66 +4,67 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroInnerMessageSerializer<TEth66Message>
+    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IMessageSerializer<TEth66Message>
         where TEth66Message : Eth66Message<TEthMessage>, new()
         where TEthMessage : P2PMessage
     {
-        private readonly IZeroInnerMessageSerializer<TEthMessage> _ethMessageSerializer;
+        private readonly IMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
+        protected Eth66MessageSerializer(IMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
 
-        public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
+        public int Serialize(Span<byte> destination, TEth66Message message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            // The inner message writes to the buffer itself, so only the prefix and the request id go through this writer.
-            int headerLength = length - contentLength + Rlp.LengthOf(message.RequestId);
-            RlpWriter writer = byteBuffer.StartRlpWrite(headerLength);
-            Span<byte> prefix = stackalloc byte[Rlp.LengthOfSequence(0) + sizeof(int)];
-            writer.WriteEncoded(prefix[..Rlp.StartSequence(prefix, 0, contentLength)]);
+            // The wrapped message writes itself, so only the prefix and the request id go through this writer.
+            int position = Rlp.StartSequence(destination, 0, Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+            RlpWriter writer = RlpWriter.ContentWriter(destination[position..]);
             writer.Encode(message.RequestId);
-            byteBuffer.CompleteRlpWrite(in writer, headerLength);
-            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
+            position += writer.Length;
+            return position + _ethMessageSerializer.Serialize(destination[position..], message.EthMessage);
         }
 
-        public TEth66Message Deserialize(IByteBuffer byteBuffer)
+        public TEth66Message Deserialize(ReadOnlySpan<byte> data)
         {
-            int startReaderIndex = byteBuffer.ReaderIndex;
-            RlpReader reader = new(byteBuffer.AsSpan());
-            RlpReader ctx = reader.EnterSequence(out int itemLength);
-            TEth66Message eth66Message = new();
-            eth66Message.RequestId = ctx.DecodeLong();
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + itemLength - ctx.Remaining);
-            eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
-
-            if (byteBuffer.ReaderIndex - startReaderIndex != itemLength)
+            long requestId = Eth66MessageEnvelope.ReadRequestId(data, out int ethMessageStart);
+            return new TEth66Message
             {
-                eth66Message.Dispose();
-                ThrowUnexpectedTrailingData();
+                RequestId = requestId,
+                EthMessage = _ethMessageSerializer.Deserialize(data[ethMessageStart..])
+            };
+        }
+
+        public int GetLength(TEth66Message message) =>
+            Rlp.LengthOfSequence(Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.GetLength(message.EthMessage));
+    }
+
+    internal static class Eth66MessageEnvelope
+    {
+        /// <summary>
+        /// Reads the request id of a message that is exactly the list in <paramref name="data"/>.
+        /// </summary>
+        /// <param name="ethMessageStart">The position of the wrapped message, which takes the rest of the list.</param>
+        /// <exception cref="RlpReaderException">The list does not take all of <paramref name="data"/>.</exception>
+        public static long ReadRequestId(ReadOnlySpan<byte> data, out int ethMessageStart)
+        {
+            RlpReader reader = new(data);
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
+            if (itemLength != data.Length)
+            {
+                ThrowListLengthMismatch();
             }
 
-            return eth66Message;
-        }
-
-        public int GetLength(TEth66Message message, out int contentLength)
-        {
-            int innerMessageLength = _ethMessageSerializer.GetLength(message.EthMessage, out _);
-            contentLength =
-                Rlp.LengthOf(message.RequestId) +
-                innerMessageLength;
-
-            return Rlp.LengthOfSequence(contentLength);
+            long requestId = ctx.DecodeLong();
+            ethMessageStart = data.Length - ctx.Remaining;
+            return requestId;
         }
 
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowUnexpectedTrailingData() =>
-            throw new RlpReaderException("Unexpected trailing data in eth66 message");
+        private static void ThrowListLengthMismatch() =>
+            throw new RlpReaderException("The eth66 message list does not end where its data does");
     }
 }

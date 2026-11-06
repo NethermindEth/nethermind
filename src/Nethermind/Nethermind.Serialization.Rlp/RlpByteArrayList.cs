@@ -24,14 +24,21 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 
     public void Write(ref RlpWriter writer) => _inner.Write(ref writer);
 
-    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
+    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null) =>
+        DecodeList(ref ctx, memoryOwner, memoryOwner.Memory, limit);
+
+    /// <summary>
+    /// Decodes a list whose items stay in <paramref name="memory"/>, which <paramref name="ctx"/> reads.
+    /// </summary>
+    /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
+    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory, RlpLimit? limit = null)
     {
         // An omitted limit must not mean no limit, so CountItems falls back to the default cap. It stops at the
         // limit, so that a malicious input with millions of items is not scanned to its end.
         RlpReader items = ctx.EnterSequence(out _);
         int count = items.CountItems(limit);
 
-        Memory<byte> rlpRegion = memoryOwner.Memory.SliceOf(ctx.ReadEncodedItem());
+        Memory<byte> rlpRegion = memory.SliceOf(ctx.ReadEncodedItem());
         return new(new RlpItemList(memoryOwner, rlpRegion, knownCount: count));
     }
 

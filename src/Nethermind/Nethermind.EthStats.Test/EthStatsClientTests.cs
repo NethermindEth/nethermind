@@ -10,6 +10,7 @@ using Nethermind.EthStats.Clients;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using Websocket.Client;
 
 namespace Nethermind.EthStats.Test
 {
@@ -36,15 +37,16 @@ namespace Nethermind.EthStats.Test
 
         [Test]
         [CancelAfter(30_000)]
-        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup(CancellationToken cancellationToken)
+        public async Task Init_keeps_retrying_when_server_is_unavailable_at_startup([Values("ws://127.0.0.1:{0}/api", "ws://127.0.0.1:{0}/api/", "ws://127.0.0.1:{0}", "http://127.0.0.1:{0}")] string configUrl, CancellationToken cancellationToken)
         {
             TcpListener listener = new(IPAddress.Loopback, 0);
             listener.Start();
             int port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
 
-            using EthStatsClient ethClient = new($"ws://127.0.0.1:{port}/api", 100, Substitute.For<IMessageSender>(), LimboLogs.Instance);
-            await ethClient.InitAsync();
+            using EthStatsClient ethClient = new(string.Format(configUrl, port), 100, Substitute.For<IMessageSender>(), LimboLogs.Instance);
+            IWebsocketClient client = await ethClient.InitAsync();
+            Assert.That(client.Url.AbsoluteUri.TrimEnd('/'), Is.EqualTo($"ws://127.0.0.1:{port}/api"));
 
             listener = new(IPAddress.Loopback, port);
             listener.Start();

@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -14,38 +13,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
     public class GetPooledTransactionsMessageSerializer : GetPooledTransactionsMessageSerializer<GetPooledTransactionsMessage>;
 
-    public class GetPooledTransactionsMessageSerializer<T> : IZeroInnerMessageSerializer<T>
+    public class GetPooledTransactionsMessageSerializer<T> : IMessageSerializer<T>
         where T : GetPooledTransactionsMessage, INew<IOwnedReadOnlyList<ValueHash256>, T>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<T>(NethermindSyncLimits.MaxHashesFetch, nameof(GetPooledTransactionsMessage.Hashes));
 
-        public void Serialize(IByteBuffer byteBuffer, T message)
+        public int Serialize(Span<byte> destination, T message)
         {
-            int length = GetLength(message, out int contentLength);
-            RlpWriter writer = byteBuffer.StartRlpWrite(length);
-            RlpSequence sequence = writer.StartSequence(contentLength);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
             writer.EndSequence(sequence);
-            byteBuffer.CompleteRlpWrite(in writer, length);
+            return writer.Length;
         }
 
-        public int GetLength(T message, out int contentLength)
-        {
-            contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        public int GetLength(T message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        public T Deserialize(IByteBuffer byteBuffer)
+        private static int GetContentLength(T message) => checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
+
+        public T Deserialize(ReadOnlySpan<byte> data)
         {
-            RlpReader reader = new(byteBuffer.AsSpan());
-            try
-            {
-                return T.New(reader.DecodeNonNullArrayPoolList(static (ref RlpReader r) => r.DecodeValueKeccakNonNull(), limit: RlpLimit));
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + reader.BytesRead);
-            }
+            RlpReader reader = new(data);
+            return reader.CheckEnd(T.New(reader.DecodeNonNullArrayPoolList(static (ref RlpReader r) => r.DecodeValueKeccakNonNull(), limit: RlpLimit)));
         }
     }
 }

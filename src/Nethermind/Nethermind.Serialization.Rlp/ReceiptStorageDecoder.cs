@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
     // TxType.FrameTx receipts carry the extension, so pre-fork data round-trips unchanged.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
     {
         private const byte MarkTxHashByte = 255;
         private static readonly KeccakDecoder HashDecoder = KeccakDecoder.Instance;
@@ -459,6 +459,40 @@ namespace Nethermind.Serialization.Rlp
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
         public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => HashDecoder.DecodeNonNullArray(ref reader, rlpBehaviors);
+
+        /// <inheritdoc/>
+        /// <remarks>Checks the topic count as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> does.</remarks>
+        public RlpReader StartDecodingTopics(scoped ref RlpReader reader)
+        {
+            RlpReader topics = reader.EnterSequence(out _);
+            topics.CountItems((RlpLimit?)null);
+            reader.SkipItem();
+            return topics;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Rejects the topic as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> rejects a null or malformed element.</remarks>
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic)
+        {
+            if (reader.IsNextItemEmptyList())
+            {
+                ThrowNullTopicElement(index);
+            }
+
+            if (reader.TryReadEmptyBytes())
+            {
+                ThrowNullTopic();
+            }
+
+            reader.ReadBytes(Hash256.Size).CopyTo(topic);
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullTopicElement(int index) =>
+            throw new RlpReaderException($"Unexpected null array element at index {index}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullTopic() => throw new RlpReaderException($"{nameof(Hash256)} decoding returned null");
 
         public bool CanDecodeBloom => true;
     }

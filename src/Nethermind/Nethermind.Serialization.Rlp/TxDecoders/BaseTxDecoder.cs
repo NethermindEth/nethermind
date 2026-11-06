@@ -121,8 +121,10 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         return source.IsEmpty ? data.ToArray() : source.SliceOf(data);
     }
 
+    /// <summary>Decodes a nonce, reporting one wider than 64 bits as <c>NonceTooWide</c> rather than as a generic
+    /// integer-width error.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong DecodeNonce<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    private protected static ulong DecodeNonce<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
         if (bytes.Length > sizeof(ulong)) ThrowNonceTooWide();

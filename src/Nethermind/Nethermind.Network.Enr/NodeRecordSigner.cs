@@ -40,8 +40,19 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
     /// </summary>
     /// <param name="reader">The RLP reader to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
+    /// <exception cref="RlpReaderException">The record is malformed.</exception>
     public NodeRecord Deserialize(ref RlpReader reader)
-        => DeserializeCore(ref reader) ?? throw new RlpReaderException("Invalid ENR list structure.");
+    {
+        try
+        {
+            return DeserializeCore(ref reader) ?? throw new RlpReaderException("Invalid ENR list structure.");
+        }
+        catch (Exception e) when (e is not RlpReaderException && IsMalformedRecordException(e))
+        {
+            // The value types reject a malformed value with their own exceptions; report it as malformed RLP.
+            throw new RlpReaderException($"Invalid ENR: {e.Message}", e);
+        }
+    }
 
     /// <summary>
     /// Deserializes a record, returning false for malformed input. Does not verify its signature.
@@ -53,12 +64,15 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             nodeRecord = DeserializeCore(ref reader);
             return nodeRecord is not null;
         }
-        catch (Exception e) when (e is RlpReaderException or ArgumentException or InvalidOperationException or FormatException)
+        catch (Exception e) when (IsMalformedRecordException(e))
         {
             nodeRecord = null;
             return false;
         }
     }
+
+    private static bool IsMalformedRecordException(Exception exception)
+        => exception is RlpReaderException or ArgumentException or InvalidOperationException or FormatException;
 
     private static NodeRecord? DeserializeCore(ref RlpReader reader)
     {

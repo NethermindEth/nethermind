@@ -26,8 +26,12 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, IBlocksConfig blocksConfig, ILogManager logManager, ISyncConfig? syncConfig = null) : IBlockPreprocessorStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListRecoveryStep>();
-    private readonly bool _hasConsumer = (!ZkEvmFlag.IsActive && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead
-        || syncConfig?.ReconstructFinalizedStateFromBlockAccessLists == true;
+    private readonly bool _hasConsumer = ExecutionUsesAccessLists(blocksConfig) || syncConfig?.ReconstructFinalizedStateFromBlockAccessLists == true;
+
+    /// <summary>Whether block execution reads a block's access list, for parallel execution or read warming.</summary>
+    /// <remarks>The zkEVM build does not execute in parallel, so there only read warming reads the list.</remarks>
+    public static bool ExecutionUsesAccessLists(IBlocksConfig blocksConfig) =>
+        (!ZkEvmFlag.IsActive && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead;
 
     /// <inheritdoc/>
     /// <remarks>Only queued processing re-attaches the stored list; tracing and one-time processing run sequentially.</remarks>

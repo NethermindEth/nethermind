@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,7 +15,7 @@ using TransactionDecoder = Nethermind.Serialization.Rlp.TxDecoder;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+    public class TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null) : IMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
@@ -29,23 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// </remarks>
         private const long ShortFormMaxItemMeasure = 56;
 
-        private readonly long _maxTxSize;
-
-        // Cached once per instance to avoid allocating a new delegate on every Deserialize call.
-        private readonly RefRlpReaderFunc<TransactionsMessage> _deserializeTransactionsMessage;
+        private readonly long _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxItemMeasure);
 
         [ThreadStatic]
         private static IKnownTransactionFilter? t_knownTransactionFilter;
-
-        public TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null)
-        {
-            _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxItemMeasure);
-            _deserializeTransactionsMessage = (ref RlpReader ctx) =>
-            {
-                IOwnedReadOnlyList<Transaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, t_knownTransactionFilter, out int skippedCount);
-                return new TransactionsMessage(transactions) { SkippedCount = skippedCount };
-            };
-        }
 
         /// <summary>
         /// Lets <paramref name="filter"/> settle already-known transactions by hash, so they are skipped undecoded,
@@ -68,27 +54,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             public void Dispose() => t_knownTransactionFilter = null;
         }
 
-        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
+        public int Serialize(Span<byte> destination, TransactionsMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            RlpWriter writer = byteBuffer.StartRlpWrite(length);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            RlpSequence sequence = writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             foreach (Transaction tx in message.Transactions.AsSpan())
             {
                 TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
             }
 
             writer.EndSequence(sequence);
-            byteBuffer.CompleteRlpWrite(in writer, length);
+            return writer.Length;
         }
 
-        public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
-
-        public int GetLength(TransactionsMessage message, out int contentLength)
+        public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = 0;
+            RlpReader ctx = new(data);
+            IOwnedReadOnlyList<Transaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, t_knownTransactionFilter, out int skippedCount);
+            return new TransactionsMessage(transactions) { SkippedCount = skippedCount };
+        }
+
+        public int GetLength(TransactionsMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(TransactionsMessage message)
+        {
+            int contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
                 Transaction tx = message.Transactions[i];
@@ -99,15 +90,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 contentLength += txLength;
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
+        /// <summary>Decodes a transaction list that takes all of <paramref name="ctx"/>.</summary>
+        internal static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);
 
         internal static int ReadTransactionCount(ref RlpReader ctx) => ctx.EnterSequence(out _).CountItems(RlpLimit);
 
-        /// <summary>Decodes the wire-form transaction list, skipping any item whose pre-decode size exceeds <paramref name="maxTxSize"/>.</summary>
+        /// <summary>Decodes the wire-form transaction list that takes all of <paramref name="reader"/>, skipping any item whose pre-decode size exceeds <paramref name="maxTxSize"/>.</summary>
         /// <remarks>Avoids the RLP-decode cost of an attacker-sized item - see <see cref="IsOverSizeLimit"/> for the measure.</remarks>
         /// <param name="maxTxSize">The size cap, or <see cref="long.MaxValue"/> to decode every item without measuring it.</param>
         /// <param name="knownFilter">Settles already-known items, which are then skipped; <see langword="null"/> decodes every item.</param>
@@ -149,6 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers));
                 }
                 reader.ExitSequence(ctx, itemLength);
+                reader.CheckEnd();
                 skippedCount = skipped;
                 return result;
             }

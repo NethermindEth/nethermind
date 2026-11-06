@@ -28,10 +28,9 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            RlpSequence sequence = writer.StartSequence(contentLength);
-            writer.Encode(item.HasBlockOnMainChain);
             int infoLength = GetBlockInfoLength(item.BlockInfos);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(item, infoLength));
+            writer.Encode(item.HasBlockOnMainChain);
             RlpSequence infos = writer.StartSequence(infoLength);
             BlockInfoDecoder blockInfoDecoder = BlockInfoDecoder.Instance;
             foreach (BlockInfo? blockInfo in item.BlockInfos)
@@ -90,17 +89,8 @@ namespace Nethermind.Serialization.Rlp
             return count;
         }
 
-        private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList.Length;
-            }
-            int contentLength = 0;
-            contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
-            contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
-            return contentLength;
-        }
+        private static int GetContentLength(ChainLevelInfo item, int infoLength)
+            => Rlp.LengthOf(item.HasBlockOnMainChain) + Rlp.LengthOfSequence(infoLength);
 
         public override int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
         {
@@ -109,8 +99,7 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList.Length;
             }
 
-            int contLength = GetContentLength(item, rlpBehaviors);
-            return Rlp.LengthOfSequence(contLength);
+            return Rlp.LengthOfSequence(GetContentLength(item, GetBlockInfoLength(item.BlockInfos)));
         }
 
         private static int GetBlockInfoLength(BlockInfo[] item)

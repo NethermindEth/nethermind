@@ -427,6 +427,37 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Rejects_a_trailing_byte_after_a_message(
+            [Values(Eth62MessageCode.Status, Eth62MessageCode.NewBlockHashes, Eth62MessageCode.NewBlock)] int messageCode,
+            [Values] bool trailingByte)
+        {
+            if (messageCode != Eth62MessageCode.Status)
+                HandleIncomingStatusMessage();
+
+            Block block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            using DisposableByteBuffer packet = messageCode switch
+            {
+                Eth62MessageCode.Status => Serialize(new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash, ForkId = new ForkId(0xfc64ec04, 1150000) }),
+                Eth62MessageCode.NewBlockHashes => Serialize(new NewBlockHashesMessage((Keccak.Zero, 1UL))),
+                _ => Serialize(new NewBlockMessage { Block = block, TotalDifficulty = _genesisBlock.Difficulty + block.Difficulty })
+            };
+            if (trailingByte)
+                packet.WriteByte(0);
+
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpReaderException>() : Throws.Nothing);
+
+            DisposableByteBuffer Serialize<T>(T message) where T : P2PMessage
+            {
+                using (message)
+                {
+                    DisposableByteBuffer serialized = _svc.ZeroSerialize(message).AsDisposable();
+                    serialized.ReadByte();
+                    return serialized;
+                }
+            }
+        }
+
+        [Test]
         public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
         {
             using NewBlockHashesMessage msg = new((Keccak.Zero, 1UL), (Keccak.Zero, 2UL));
@@ -686,19 +717,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
-        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        private sealed class WitnessingTransactionsMessageSerializer : IMessageSerializer<TransactionsMessage>
         {
             private readonly TransactionsMessageSerializer _serializer = new();
 
             public List<RecycledTransactionWitness> Witnesses { get; } = [];
 
-            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+            public int Serialize(Span<byte> destination, TransactionsMessage message) => _serializer.Serialize(destination, message);
 
-            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+            public int GetLength(TransactionsMessage message) => _serializer.GetLength(message);
 
-            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            public TransactionsMessage Deserialize(ReadOnlySpan<byte> data)
             {
-                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                TransactionsMessage message = _serializer.Deserialize(data);
                 IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
                 for (int i = 0; i < transactions.Count; i++)
                 {

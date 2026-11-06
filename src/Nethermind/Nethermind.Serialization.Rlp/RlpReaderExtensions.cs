@@ -433,6 +433,16 @@ public static class RlpReaderExtensions
     public static Hash256 DecodeZeroPrefixKeccakNonNull(this scoped ref RlpReader reader)
         => reader.DecodeZeroPrefixKeccak() ?? ThrowNullDecodedValue<Hash256>();
 
+    /// <summary>Reads a hash that is stored without its leading zero bytes into <paramref name="keccak"/>, right-aligned.</summary>
+    /// <param name="keccak">Receives the hash; must be <see cref="Hash256.Size"/> bytes.</param>
+    /// <exception cref="RlpReaderException">The item is <c>0x80</c>.</exception>
+    public static void DecodeZeroPrefixKeccakNonNull(this scoped ref RlpReader reader, scoped Span<byte> keccak)
+    {
+        if (reader.TryReadEmptyBytes()) ThrowNullDecodedValue<Hash256>();
+
+        reader.DecodeZeroPrefixKeccakBytes(keccak);
+    }
+
     /// <summary>Reads the topic 0 of a log, stored without its leading zero bytes, and shares the instance with <see cref="LogTopicCache"/>.</summary>
     /// <exception cref="RlpReaderException">The item is <c>0x80</c>.</exception>
     public static Hash256 DecodeZeroPrefixLogTopic0(this scoped ref RlpReader reader)

@@ -386,6 +386,60 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceTransaction_opcode_logger_limit_counts_steps_and_preserves_named_output(
+        [Values] bool streamMode, [Values(null, NativeCallTracer.CallTracer)] string? tracer)
+    {
+        using Context context = await Context.Create();
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA)).WithCode(code).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await context.Blockchain.AddBlock(transaction);
+        Dictionary<string, object> options = new() { ["streamMode"] = streamMode };
+        if (tracer is not null) options["tracer"] = tracer;
+        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+        options["limit"] = 0;
+        string zero = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+        options["limit"] = 2;
+        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+        JToken expected = JToken.Parse(unlimited);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected["error"], Is.Null, unlimited);
+            Assert.That(expected["result"], Is.TypeOf<JObject>(), unlimited);
+            Assert.That(JToken.DeepEquals(JToken.Parse(zero), expected), Is.True, zero);
+        }
+        if (expected["result"] is not JObject result) return;
+        if (tracer is null)
+        {
+            JToken? logs = result["structLogs"];
+            Assert.That(logs, Is.TypeOf<JArray>(), unlimited);
+            if (logs is not JArray entries) return;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries, Has.Count.GreaterThan(2), unlimited);
+                Assert.That((bool?)result["failed"], Is.False, unlimited);
+                Assert.That((string?)result["returnValue"], Is.Not.Null.And.Not.Empty.And.Not.EqualTo("0x"), unlimited);
+            }
+            if (entries.Count <= 2) return;
+            for (int i = 0; i < 2; i++)
+            {
+                Assert.That(entries[i], Is.TypeOf<JObject>(), unlimited);
+                if (entries[i] is not JObject entry) return;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entry["op"], Is.Not.Null.And.Not.Empty, unlimited);
+                    Assert.That((long?)entry["gasCost"], Is.GreaterThan(0), unlimited);
+                }
+            }
+            while (entries.Count > 2)
+                entries.RemoveAt(entries.Count - 1);
+        }
+        Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
+    }
+
+    [Test]
     public async Task Debug_traceTransaction_with_block_override_does_not_mutate_cached_header()
     {
         using Context context = await Context.Create();

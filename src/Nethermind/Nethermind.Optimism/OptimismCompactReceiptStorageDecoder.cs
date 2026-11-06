@@ -15,7 +15,7 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 
@@ -146,6 +146,10 @@ public class OptimismCompactReceiptStorageDecoder :
         out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
     public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => CompactLogEntryDecoder.DecodeTopics(reader, rlpBehaviors);
+
+    public RlpReader StartDecodingTopics(scoped ref RlpReader reader) => CompactLogEntryDecoder.StartDecodingTopics(ref reader);
+
+    public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;

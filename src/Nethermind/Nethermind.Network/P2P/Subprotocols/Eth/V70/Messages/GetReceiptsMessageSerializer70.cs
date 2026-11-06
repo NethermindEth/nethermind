@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -16,12 +15,10 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
     private static readonly RlpLimit RlpLimit =
         RlpLimit.For<GetReceiptsMessage70>(NethermindSyncLimits.MaxHashesFetch, nameof(GetReceiptsMessage70.Hashes));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
+    protected override void SerializeInternal(ref RlpWriter writer, GetReceiptsMessage70 message)
     {
-        int hashesContentLength = GetHashesContentLength(message.Hashes);
-        int length = Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(hashesContentLength);
-        RlpWriter writer = byteBuffer.StartRlpWrite(length);
         writer.Encode(message.FirstBlockReceiptIndex);
+        int hashesContentLength = GetHashesContentLength(message.Hashes);
         RlpSequence sequence = writer.StartSequence(hashesContentLength);
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
@@ -30,7 +27,6 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
         }
 
         writer.EndSequence(sequence);
-        byteBuffer.CompleteRlpWrite(in writer, length);
     }
 
     protected override GetReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)

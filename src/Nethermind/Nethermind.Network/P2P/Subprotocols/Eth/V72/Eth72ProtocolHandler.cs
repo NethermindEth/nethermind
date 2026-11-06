@@ -267,11 +267,6 @@ public class Eth72ProtocolHandler(
                         RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
                     }
-                    catch (IncompleteDeserializationException)
-                    {
-                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
-                        throw;
-                    }
 
                     ReportIn(cellsMessage, size);
                     ClaimedCellsResponse response = new(cellsMessage, sentRequest);
@@ -601,7 +596,7 @@ public class Eth72ProtocolHandler(
 
         // Admission requires whole proof material, so an incomplete sidecar here means the pool lost it
         // between announcement and request; the hash is dropped and the peer sees an unanswered request.
-        if (Logger.IsTrace) Logger.Trace($"{Node:c} dropping frame tx {hash} from a pooled transactions response: its sidecar is no longer complete.");
+        if (Logger.IsTrace) Logger.Trace($"{Node?.ToString("c"):hide} dropping frame tx {hash} from a pooled transactions response: its sidecar is no longer complete.");
         return false;
     }
 
@@ -623,7 +618,7 @@ public class Eth72ProtocolHandler(
         BlobCellMask requestedMask = BlobCellMask.FromBytes(message.CellMask);
         if (Logger.IsDebug)
         {
-            Logger.Debug($"{Node:c} requested blob cells for {message.Hashes.Length} txs with mask {requestedMask}.");
+            Logger.Debug($"{Node?.ToString("c"):hide} requested blob cells for {message.Hashes.Length} txs with mask {requestedMask}.");
         }
 
         int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
@@ -684,7 +679,7 @@ public class Eth72ProtocolHandler(
 
         if (Logger.IsDebug)
         {
-            Logger.Debug($"{Node:c} responding with blob cells for {responseHashes.Count} txs with mask {requestedMask}.");
+            Logger.Debug($"{Node?.ToString("c"):hide} responding with blob cells for {responseHashes.Count} txs with mask {requestedMask}.");
         }
 
         return Task.FromResult(new CellsMessage72(message.RequestId, responseHashes.ToArray(), cellsByTx.ToArray(), requestedMask.ToBytes()));
@@ -763,7 +758,7 @@ public class Eth72ProtocolHandler(
         BlobCellMask responseMask = BlobCellMask.FromBytes(message.CellMask);
         if (Logger.IsDebug)
         {
-            Logger.Debug($"{Node:c} received blob cells for {message.Hashes.Length} txs with mask {responseMask}.");
+            Logger.Debug($"{Node?.ToString("c"):hide} received blob cells for {message.Hashes.Length} txs with mask {responseMask}.");
         }
 
         if (responseMask.IsEmpty)
@@ -1165,7 +1160,7 @@ public class Eth72ProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceRequestingBlobCells(Hash256 transactionHash, BlobCellMask cellMask) =>
-            Logger.Trace($"{Node:c} requesting blob cells for {transactionHash} with mask {cellMask}.");
+            Logger.Trace($"{Node?.ToString("c"):hide} requesting blob cells for {transactionHash} with mask {cellMask}.");
     }
 
     bool ISparseBlobPoolPeer.IsClosing => Session.IsClosing;
@@ -1767,7 +1762,7 @@ public class Eth72ProtocolHandler(
             ReportReceivedTransaction(accepted.Value);
             if (isTrace)
             {
-                Logger.Trace($"{Node:c} sent sparse blob tx {tx.Hash} and it was {accepted.Value} (chain ID = {tx.Signature?.ChainId})");
+                Logger.Trace($"{Node?.ToString("c"):hide} sent sparse blob tx {tx.Hash} and it was {accepted.Value} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

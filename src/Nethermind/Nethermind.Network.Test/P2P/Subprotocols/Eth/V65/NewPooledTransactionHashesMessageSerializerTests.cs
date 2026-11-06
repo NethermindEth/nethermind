@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             using NewPooledTransactionHashesMessage message = new(keys.ToPooledList());
             NewPooledTransactionHashesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, expected);
+            SerializerTester.Test(serializer, message, expected);
         }
 
         [Test]

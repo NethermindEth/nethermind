@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -10,35 +9,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
+    public abstract class HashesMessageSerializer<T> : IMessageSerializer<T> where T : HashesMessage
     {
-        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(static (ref RlpReader ctx) => DeserializeHashes(ref ctx));
-
-        protected static Hash256[] DeserializeHashes(ref RlpReader ctx, RlpLimit? limit = null) =>
-            ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
-
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
-        {
-            RlpReader ctx = new(byteBuffer.AsSpan());
-            try
-            {
-                return DeserializeHashesArrayPool(ref ctx, limit);
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.BytesRead);
-            }
-        }
-
         protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
-        public void Serialize(IByteBuffer byteBuffer, T message)
+        public int Serialize(Span<byte> destination, T message)
         {
-            int length = GetLength(message, out int contentLength);
-            RlpWriter writer = byteBuffer.StartRlpWrite(length);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            RlpSequence sequence = writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
@@ -46,20 +25,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             writer.EndSequence(sequence);
-            byteBuffer.CompleteRlpWrite(in writer, length);
+            return writer.Length;
         }
 
-        public abstract T Deserialize(IByteBuffer byteBuffer);
-        public int GetLength(T message, out int contentLength)
+        public abstract T Deserialize(ReadOnlySpan<byte> data);
+
+        public int GetLength(T message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(T message)
         {
-            contentLength = 0;
+            int contentLength = 0;
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
                 contentLength += Rlp.LengthOf(hashes[i]);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
     }
 }

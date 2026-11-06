@@ -263,6 +263,28 @@ public class MetricsTests
     }
 
     [Test]
+    public async Task Stable_string_label_returns_one_instance_per_value([Values] bool summaryMetric)
+    {
+        Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
+        string metricName = CreateTestMetricName("stable_string");
+        IMetricObserver observer = CreateObserver(registry, summaryMetric, metricName, ["state"]);
+        StableStringLabel first = StableStringLabel.Get(new string("stable_string_value".AsSpan()));
+        StableStringLabel second = StableStringLabel.Get(new string("stable_string_value".AsSpan()));
+
+        observer.Observe(2, first);
+        observer.Observe(5, second);
+
+        string scrape = await CollectAsync(registry);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.SameAs(first));
+            Assert.That(StableStringLabel.Get("stable_string_other"), Is.Not.SameAs(first));
+            AssertContainsMetricLine(scrape, $"{metricName}_count{{state=\"stable_string_value\"}} 2");
+            AssertContainsMetricLine(scrape, $"{metricName}_sum{{state=\"stable_string_value\"}} 7");
+        }
+    }
+
+    [Test]
     public async Task Dynamic_labels_and_unlabelled_observations_keep_existing_behavior([Values] bool summaryMetric)
     {
         Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
@@ -308,6 +330,26 @@ public class MetricsTests
         {
             Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
             Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        }
+    }
+
+    [Test]
+    public void UpdateAllMetrics_updates_gauges_only_when_metrics_enabled([Values] bool metricsEnabled)
+    {
+        MetricsController metricsController = new(new MetricsConfig { Enabled = metricsEnabled });
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        bool callbackRan = false;
+        metricsController.AddMetricsUpdateAction(() => callbackRan = true);
+        Prometheus.Gauge gauge = ((MetricsController.GaugeMetricUpdater)metricsController._individualUpdater[$"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}"]).Gauge;
+        double before = gauge.Value;
+        TestMetrics.OneTwoThree = (long)before + 1;
+
+        metricsController.UpdateAllMetrics();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callbackRan, Is.True);
+            Assert.That(gauge.Value, Is.EqualTo(metricsEnabled ? before + 1 : before));
         }
     }
 

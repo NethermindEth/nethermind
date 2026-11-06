@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,15 +11,18 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSerializer<NewPooledTransactionHashesMessage72>
+public class NewPooledTransactionHashesMessageSerializer72 : IMessageSerializer<NewPooledTransactionHashesMessage72>
 {
     private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Types));
     private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Sizes));
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Hashes));
     private static readonly RlpLimit CellMaskRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(BlobCellMask.FixedByteLength, nameof(NewPooledTransactionHashesMessage72.CellMask));
 
-    public NewPooledTransactionHashesMessage72 Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public NewPooledTransactionHashesMessage72 Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        return ctx.CheckEnd(Deserialize(ref ctx));
+    }
 
     private static NewPooledTransactionHashesMessage72 Deserialize(ref RlpReader reader)
     {
@@ -85,23 +87,13 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
+    public int Serialize(Span<byte> destination, NewPooledTransactionHashesMessage72 message)
     {
-        int sizesLength = 0;
-        foreach (int size in message.Sizes.AsSpan())
-        {
-            sizesLength += Rlp.LengthOf(size);
-        }
+        int sizesLength = GetSizesLength(message);
+        int hashesLength = GetHashesLength(message);
 
-        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-
-        int contentLength = Rlp.LengthOf(message.Types.AsSpan())
-                            + Rlp.LengthOfSequence(sizesLength)
-                            + Rlp.LengthOfSequence(hashesLength)
-                            + Rlp.LengthOf(message.CellMask);
-
-        RlpWriter writer = byteBuffer.StartRlpWrite(Rlp.LengthOfSequence(contentLength));
-        RlpSequence sequence = writer.StartSequence(contentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message, sizesLength, hashesLength));
         writer.Encode(message.Types.AsSpan());
 
         RlpSequence sizes = writer.StartSequence(sizesLength);
@@ -119,8 +111,29 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
         writer.EndSequence(hashes);
         writer.Encode(message.CellMask);
-
         writer.EndSequence(sequence);
-        byteBuffer.CompleteRlpWrite(in writer, Rlp.LengthOfSequence(contentLength));
+        return writer.Length;
     }
+
+    public int GetLength(NewPooledTransactionHashesMessage72 message) =>
+        Rlp.LengthOfSequence(GetContentLength(message, GetSizesLength(message), GetHashesLength(message)));
+
+    private static int GetContentLength(NewPooledTransactionHashesMessage72 message, int sizesLength, int hashesLength) =>
+        Rlp.LengthOf(message.Types.AsSpan())
+        + Rlp.LengthOfSequence(sizesLength)
+        + Rlp.LengthOfSequence(hashesLength)
+        + Rlp.LengthOf(message.CellMask);
+
+    private static int GetSizesLength(NewPooledTransactionHashesMessage72 message)
+    {
+        int sizesLength = 0;
+        foreach (int size in message.Sizes.AsSpan())
+        {
+            sizesLength += Rlp.LengthOf(size);
+        }
+
+        return sizesLength;
+    }
+
+    private static int GetHashesLength(NewPooledTransactionHashesMessage72 message) => checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
 }

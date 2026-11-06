@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -11,35 +10,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     /// <summary>
     /// Shared serializer for eth request/response messages that prefix their payload with a request id.
     /// </summary>
-    public abstract class Eth66SerializerBase<TMessage> : IZeroInnerMessageSerializer<TMessage>
+    public abstract class Eth66SerializerBase<TMessage> : IMessageSerializer<TMessage>
         where TMessage : Eth66MessageBase
     {
-        public void Serialize(IByteBuffer byteBuffer, TMessage message)
+        public int Serialize(Span<byte> destination, TMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-
-            // The inner message writes to the buffer itself, so only the prefix and the request id go through this writer.
-            int headerLength = totalLength - contentLength + Rlp.LengthOf(message.RequestId);
-            RlpWriter writer = byteBuffer.StartRlpWrite(headerLength);
-            Span<byte> prefix = stackalloc byte[Rlp.LengthOfSequence(0) + sizeof(int)];
-            writer.WriteEncoded(prefix[..Rlp.StartSequence(prefix, 0, contentLength)]);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             writer.Encode(message.RequestId);
-            byteBuffer.CompleteRlpWrite(in writer, headerLength);
-            SerializeInternal(byteBuffer, message);
+            SerializeInternal(ref writer, message);
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
-        public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-        private TMessage Deserialize(ref RlpReader reader)
+        public TMessage Deserialize(ReadOnlySpan<byte> data)
         {
+            RlpReader reader = new(data);
             RlpReader ctx = reader.EnterSequence(out int itemLength);
             long requestId = ctx.DecodeLong();
 
             TMessage message = DeserializeInternal(ref ctx, requestId);
             try
             {
-                reader.ExitSequence(ctx, itemLength);
+                reader.ExitSequence(in ctx, itemLength);
+                reader.CheckEnd();
                 return message;
             }
             catch
@@ -49,13 +43,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        public int GetLength(TMessage message, out int contentLength)
-        {
-            contentLength = Rlp.LengthOf(message.RequestId) + GetLengthInternal(message);
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        public int GetLength(TMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message);
+        private int GetContentLength(TMessage message) => Rlp.LengthOf(message.RequestId) + GetLengthInternal(message);
+
+        protected abstract void SerializeInternal(ref RlpWriter writer, TMessage message);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
         protected abstract int GetLengthInternal(TMessage message);
     }

@@ -62,7 +62,7 @@ public class ProxyServer
         // Initialize consensus client HttpClient if endpoint is configured
         if (!string.IsNullOrWhiteSpace(_config.ConsensusClientEndpoint))
         {
-            _logger.Info($"Configuring consensus client with endpoint: {_config.ConsensusClientEndpoint}");
+            _logger.Info($"Configuring consensus client with endpoint: {LogEndpoint.Url(_config.ConsensusClientEndpoint)}");
 
             _consensusClient = new HttpClient(CreateSocketsHttpHandler())
             {
@@ -176,7 +176,7 @@ public class ProxyServer
             }
             catch (Exception ex)
             {
-                _logger.Error($"Background message processing faulted: {ex.Message}", ex);
+                _logger.Error($"Background message processing faulted: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             }
         }
 
@@ -224,7 +224,7 @@ public class ProxyServer
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error processing message {message.Request.Method}: {ex.Message}", ex);
+                _logger.Error($"Error processing message {message.Request.Method}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
                 message.CompletionTask.TrySetException(ex);
             }
         }
@@ -250,7 +250,7 @@ public class ProxyServer
         {
             method = "unknown";
         }
-        _logger.Info($"CL -> PR|{method}|(Source IP: {sourceIp}, Headers Host: {sourceHost}): {requestBody}");
+        _logger.Info($"CL -> PR|{method}|(Source IP: {LogEndpoint.Address(sourceIp)}, Headers Host: {LogEndpoint.Address(sourceHost)}): {requestBody}");
 
         JsonRpcRequest? request;
         try
@@ -269,7 +269,7 @@ public class ProxyServer
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error deserializing request: {ex.Message}", ex);
+            _logger.Error($"Error deserializing request: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             await SendErrorResponse(context, 400, "Failed to parse JSON-RPC request");
             return;
         }
@@ -305,14 +305,14 @@ public class ProxyServer
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error processing request: {ex.Message}", ex);
+            _logger.Error($"Error processing request: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             response = JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Engine API Proxy error: {ex.Message}");
         }
 
         context.Response.ContentType = "application/json";
         string destinationIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         string destinationHost = context.Request.Headers.TryGetValue("Host", out StringValues val) ? val.ToString() : "unknown";
-        _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {destinationIp}, Headers Host: {destinationHost}): {JsonSerializer.Serialize(response)}");
+        _logger.Info($"PR -> CL|{request.Method}|(Destination IP: {LogEndpoint.Address(destinationIp)}, Headers Host: {LogEndpoint.Address(destinationHost)}): {JsonSerializer.Serialize(response)}");
         await context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }
 
@@ -343,7 +343,7 @@ public class ProxyServer
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error routing request: {ex.Message}", ex);
+            _logger.Error($"Error routing request: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Routing request: {ex.Message}");
         }
     }

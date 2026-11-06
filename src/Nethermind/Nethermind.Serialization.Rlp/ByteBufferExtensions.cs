@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.FluentRlp;
 
@@ -85,32 +84,6 @@ namespace Nethermind.Serialization.Rlp
             RlpWriter writer = buffer.StartRlpWrite(length);
             decoder.Encode(ref writer, item, rlpBehaviors);
             buffer.CompleteRlpWrite(in writer, length);
-        }
-
-        // Decodes with the default RlpLimit item cap; preserved for existing callers.
-        public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer) =>
-            DecodeRlpByteArrayList(byteBuffer, null);
-
-        /// <param name="limit">Caps the decoded item count. See <see cref="RlpByteArrayList.DecodeList"/>.</param>
-        public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer, RlpLimit? limit)
-        {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            RlpByteArrayList? list = null;
-
-            try
-            {
-                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, limit);
-                memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.BytesRead);
-                return list;
-            }
-            catch
-            {
-                list?.Dispose();
-                memoryOwner?.Dispose();
-                throw;
-            }
         }
 
         /// <summary>Reads RLP at the reader index of <paramref name="buffer"/>, and moves the reader index past the bytes that were read.</summary>

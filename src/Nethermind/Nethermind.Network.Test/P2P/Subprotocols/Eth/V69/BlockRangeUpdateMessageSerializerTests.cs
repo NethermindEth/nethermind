@@ -41,7 +41,7 @@ public class BlockRangeUpdateMessageSerializerTests
     {
         BlockRangeUpdateMessageSerializer serializer = new();
 
-        SerializerTester.TestZero(
+        SerializerTester.Test(
             serializer,
             message,
             expected

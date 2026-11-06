@@ -436,21 +436,28 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_NullAccountWithNonEmptyStorageDoesNotThrow()
+    public void Test_NullAccountWithNonEmptyStorageStaysDeleted([Values] bool accountInPreState)
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
-        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
+        BlockHeader baseBlock = accountInPreState ? HeaderAt(CommitBaseState(ctx), 1) : null;
+        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(baseBlock);
 
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
         // then deleted (set to null) during state commit. The write batch Dispose should
-        // skip the storage root update for the deleted account instead of throwing.
-        using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
-        using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+        // skip the storage root update for the deleted account instead of throwing, and must
+        // not restore a pre-state account from the scope.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
-            storageSet.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
+            {
+                storageSet.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
+            }
+
+            writeBatch.Set(TestItem.AddressA, null);
         }
 
-        writeBatch.Set(TestItem.AddressA, null);
+        scope.Commit(accountInPreState ? 2UL : 1UL);
+        Assert.That(scope.Get(TestItem.AddressA), Is.Null);
     }
 
     [Test]

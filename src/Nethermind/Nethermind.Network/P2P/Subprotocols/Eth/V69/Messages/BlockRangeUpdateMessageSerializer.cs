@@ -1,31 +1,34 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 public class BlockRangeUpdateMessageSerializer :
-    IZeroInnerMessageSerializer<BlockRangeUpdateMessage>
+    IMessageSerializer<BlockRangeUpdateMessage>
 {
-    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
+    public int Serialize(Span<byte> destination, BlockRangeUpdateMessage message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
-        RlpSequence sequence = writer.StartSequence(contentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
         writer.Encode(message.EarliestBlock);
         writer.Encode(message.LatestBlock);
         writer.Encode(message.LatestBlockHash);
-
         writer.EndSequence(sequence);
-        byteBuffer.CompleteRlpWrite(in writer, totalLength);
+        return writer.Length;
     }
 
-    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public BlockRangeUpdateMessage Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        BlockRangeUpdateMessage message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
+    }
 
     private static BlockRangeUpdateMessage Deserialize(ref RlpReader reader)
     {
@@ -41,13 +44,10 @@ public class BlockRangeUpdateMessageSerializer :
         return message;
     }
 
-    public int GetLength(BlockRangeUpdateMessage message, out int contentLength)
-    {
-        contentLength =
-            Rlp.LengthOf(message.EarliestBlock) +
-            Rlp.LengthOf(message.LatestBlock) +
-            Rlp.LengthOf(message.LatestBlockHash);
+    public int GetLength(BlockRangeUpdateMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    private static int GetContentLength(BlockRangeUpdateMessage message) =>
+        Rlp.LengthOf(message.EarliestBlock) +
+        Rlp.LengthOf(message.LatestBlock) +
+        Rlp.LengthOf(message.LatestBlockHash);
 }

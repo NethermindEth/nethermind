@@ -118,6 +118,44 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(ErrorCode(response), Is.Null, response);
     }
 
+    private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
+    private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
+
+    [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]
+    [TestCase("{" + ConflictingStorage + "," + Calls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides")]
+    [TestCase("{" + ConflictingStorage + "," + MixedFeeCalls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides before the calls of their block")]
+    [TestCase("{" + MixedFeeCalls + "},{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, RpcTransactionErrors.GasPriceInEip1559, TestName = "Simulate rejects the calls of an earlier block before conflicting storage overrides")]
+    [TestCase("{" + ConflictingStorage + "},{\"blockOverrides\":{\"number\":\"0x0\"}}", ErrorCodes.InvalidInputBlocksOutOfOrder, SimulateErrorMessages.BlockNumberNotIncreasing, TestName = "Simulate orders its blocks before rejecting conflicting storage overrides")]
+    public async Task Simulate_rejects_conflicting_storage_overrides(string blockStateCalls, int expectedCode, string? expectedMessage)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = ParseJson($"{{\"validation\":true,\"blockStateCalls\":[{blockStateCalls}]}}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expectedCode), response);
+            Assert.That(error.GetProperty("message").GetString(),
+                Is.EqualTo(expectedMessage ?? $"account {new Address("0xc100000000000000000000000000000000000000").ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+        }
+    }
+
+    [Test]
+    public async Task Simulate_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        // PUSH1 0 SLOAD PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        JsonElement payload = SimulatePayloadJson("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x60005460005260206000f3\",\"" + field + "\":{\"" + Hash256.Zero + "\":\"" + Keccak.OfAnEmptyString + "\"}}}," + Calls + "}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(Keccak.OfAnEmptyString.ToString()), response);
+    }
+
     private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
 
     private static JsonElement ParseJson(string json)

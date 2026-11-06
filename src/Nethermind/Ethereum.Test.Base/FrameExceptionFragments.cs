@@ -111,16 +111,31 @@ public static class FrameExceptionFragments
     ];
 
     /// <summary>
-    /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
-    /// also name as format failures. Reported before any rule runs, so they name no rule.
+    /// Decode-time rejections of a frame transaction's encoding — a field too wide or too long for its type, a field
+    /// not encoded canonically, or a list whose header does not match its elements — which the fixtures also name as
+    /// format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
     public static readonly string[] Decode =
     [
         "RLP integer is too large",
+        // A nonce or nonce_seq wider than 64 bits, as BaseTxDecoder.DecodeNonce reports it. EIP-8250's
+        // seq_beyond_width labels it TYPE_6_INVALID_FRAME_FORMAT only; a plain nonce also matches NONCE_OVERFLOW.
+        "NonceTooWide",
         // A field of the wrong width, such as a bad address.
         "RLP byte string has another length than expected",
         "RLP does not correspond to a sequence",
         "RLP is truncated",
+        // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
+        // not need, a one-byte field (mode, flags) under a list prefix, and a long-form length on a string
+        // shorter than 56 bytes.
+        "RLP integer has leading zero bytes",
+        "RLP single byte below 0x80 must not have a prefix",
+        "RLP does not correspond to a byte string",
+        "RLP length below 56 must use the short form",
+        // A list header that does not match the bytes its elements take up.
+        "RLP has trailing bytes",
+        // A fees list without both max_fee and max_priority_fee_per_gas.
+        "fees must hold two items",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

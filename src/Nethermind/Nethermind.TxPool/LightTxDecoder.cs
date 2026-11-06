@@ -51,7 +51,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
 
     /// <summary>Content length of the trailing group, or zero for a record that is not a frame transaction's.</summary>
     /// <remarks>The paymaster is passed in rather than re-derived, so the length pass and the write pass cannot
-    /// disagree and over- or under-fill the buffer. Every slot is written, so the group always ends in <c>max_fee</c>.
+    /// disagree and over- or under-fill the buffer. Every slot is written, so the group always ends in the key-set flag.
     /// </remarks>
     private static int TrailingContentLength(Transaction tx, Address? paymaster) =>
         !tx.SupportsFrames
@@ -60,7 +60,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
               + Rlp.LengthOf(tx.PayerAddress)
               + Rlp.LengthOf(tx.PayerExposure ?? default)
               + Rlp.LengthOf(paymaster)
-              + Rlp.LengthOf(tx.MaxFee);
+              + Rlp.LengthOf(tx.MaxFee)
+              + Rlp.LengthOf(tx.NonceKeys is not null);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -109,6 +110,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             writer.Encode(tx.PayerExposure ?? default);
             writer.Encode(paymaster);
             writer.Encode(tx.MaxFee);
+            // The keys list writes an empty set as it writes none, yet EIP-8250 accepts the one and refuses the other.
+            writer.Encode(tx.NonceKeys is not null);
             writer.EndSequence(trailing);
         }
 
@@ -116,7 +119,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return bytes;
     }
 
-    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c> as the record means it.</summary>
+    /// <summary>Reads a <c>nonce_keys</c> list, mapping the empty one to <c>null</c>; the caller restores an empty set when the record's key-set flag is set.</summary>
     private static UInt256[]? DecodeKeysOrNull(ref RlpReader ctx)
     {
         UInt256[] keys = FrameTxNonceCalldata.DecodeKeys<OffFlag>(ref ctx);
@@ -181,6 +184,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
 
                 if (trailing.HasNext) paymaster = trailing.DecodeAddressOrNull();
                 if (trailing.HasNext) maxFee = trailing.DecodeUInt256<OffFlag>();
+                // A record from before the flag reads an empty keys list as no set.
+                if (trailing.HasNext && trailing.DecodeBool()) nonceKeys ??= [];
             }
 
             // Anything a later build appended is skipped, so a new slot costs this one that field rather than

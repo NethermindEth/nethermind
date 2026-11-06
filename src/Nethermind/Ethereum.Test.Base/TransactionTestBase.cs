@@ -194,6 +194,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_DATA_SIZE"] = ["RLP length has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_GASLIMIT"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_GASPRICE"] = ["RLP integer has leading zero bytes"],
+        ["TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_R"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["RLP integer has leading zero bytes"],

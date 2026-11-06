@@ -16,6 +16,10 @@ namespace Nethermind.Optimism.Test;
 public class ReceiptDecoderTests
 {
     [Test]
+    public void Topics_decoded_one_at_a_time_match_DecodeTopics([ValueSource(typeof(LogEntryDecoderTests), nameof(LogEntryDecoderTests.TopicsRlpCases))] string topicsRlp) =>
+        LogEntryDecoderTests.AssertTopicsDecodedOneAtATimeMatchDecodeTopics(new OptimismCompactReceiptStorageDecoder(), Bytes.FromHexString(topicsRlp));
+
+    [Test]
     public void Null_receipt_roundtrips()
     {
         OptimismReceiptMessageDecoder decoder = new();

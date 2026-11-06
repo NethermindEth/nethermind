@@ -1,31 +1,55 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
+using System.Buffers;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : IOwningMessageSerializer<NodeDataMessage>
     {
         internal static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
 
-        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
+        public int Serialize(Span<byte> destination, NodeDataMessage message)
         {
-            int length = GetLength(message, out _);
-            RlpWriter writer = byteBuffer.StartRlpWrite(length);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
             writer.WriteByteArrayList(message.Data);
-            byteBuffer.CompleteRlpWrite(in writer, length);
+            return writer.Length;
         }
 
-        public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
-            new(byteBuffer.DecodeRlpByteArrayList(RlpLimit));
-
-        public int GetLength(NodeDataMessage message, out int contentLength)
+        /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
+        public NodeDataMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = 0;
+            IMemoryOwner<byte> copy = MemoryPool<byte>.Shared.Rent(data.Length);
+            Memory<byte> memory = copy.Memory[..data.Length];
+            data.CopyTo(memory.Span);
+            return Deserialize(copy, memory);
+        }
+
+        public NodeDataMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
+        {
+            RlpByteArrayList? list = null;
+            try
+            {
+                RlpReader ctx = new(data.Span);
+                list = RlpByteArrayList.DecodeList(ref ctx, owner, data, RlpLimit);
+                ctx.CheckEnd();
+                return new NodeDataMessage(list);
+            }
+            catch
+            {
+                if (list is null) owner.Dispose();
+                else list.Dispose();
+                throw;
+            }
+        }
+
+        public int GetLength(NodeDataMessage message)
+        {
+            int contentLength = 0;
             for (int i = 0; i < message.Data.Count; i++)
             {
                 contentLength += Rlp.LengthOf(message.Data[i]);

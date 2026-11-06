@@ -22,7 +22,7 @@ public class GetBlockHeadersMessageSerializerTests
         message.Reverse = 1;
         message.StartBlockHash = Keccak.OfAnEmptyString;
         GetBlockHeadersMessageSerializer serializer = new();
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
         byte[] expectedBytes = Bytes.FromHexString("e4a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470010201");
 
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
@@ -36,7 +36,7 @@ public class GetBlockHeadersMessageSerializerTests
             Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
         }
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.Test(serializer, message);
     }
 
     [TestCase(0UL, "c480010201", TestName = "Roundtrip_number_zero")]
@@ -51,7 +51,7 @@ public class GetBlockHeadersMessageSerializerTests
         message.Reverse = 1;
         message.StartBlockNumber = blockNumber;
         GetBlockHeadersMessageSerializer serializer = new();
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
         byte[] expectedBytes = Bytes.FromHexString(expectedHex);
 
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
@@ -65,7 +65,7 @@ public class GetBlockHeadersMessageSerializerTests
             Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
         }
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.Test(serializer, message);
     }
 
     [Test]
@@ -78,7 +78,7 @@ public class GetBlockHeadersMessageSerializerTests
         message.StartBlockNumber = 100;
         GetBlockHeadersMessageSerializer serializer = new();
 
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = serializer.SerializeToArray(message);
         byte[] expectedBytes = Bytes.FromHexString("c464010280");
 
         Assert.That(bytes, Is.EqualTo(expectedBytes), "bytes");
@@ -92,7 +92,7 @@ public class GetBlockHeadersMessageSerializerTests
             Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
         }
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.Test(serializer, message);
     }
 
     [Test]

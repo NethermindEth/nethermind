@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -11,16 +10,15 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsMessage72>
+public class GetCellsMessageSerializer72 : IMessageSerializer<GetCellsMessage72>
 {
     // The wire limit remains permissive, but only the locally supported prefix is materialized.
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
 
-    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
+    public int Serialize(Span<byte> destination, GetCellsMessage72 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        RlpWriter writer = byteBuffer.StartRlpWrite(totalLength);
-        RlpSequence sequence = writer.StartSequence(contentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
         writer.Encode(message.RequestId);
 
         int hashesLength = GetHashesContentLength(message.Hashes);
@@ -33,12 +31,17 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
 
         writer.EndSequence(hashes);
         writer.Encode(message.CellMask);
-
         writer.EndSequence(sequence);
-        byteBuffer.CompleteRlpWrite(in writer, totalLength);
+        return writer.Length;
     }
 
-    public GetCellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+    public GetCellsMessage72 Deserialize(ReadOnlySpan<byte> data)
+    {
+        RlpReader ctx = new(data);
+        GetCellsMessage72 message = Deserialize(ref ctx);
+        ctx.CheckEnd();
+        return message;
+    }
 
     private static GetCellsMessage72 Deserialize(ref RlpReader reader)
     {
@@ -66,13 +69,12 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 
-    public int GetLength(GetCellsMessage72 message, out int contentLength)
-    {
-        contentLength = Rlp.LengthOf(message.RequestId)
-            + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
-            + Rlp.LengthOf(message.CellMask);
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    public int GetLength(GetCellsMessage72 message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+    private static int GetContentLength(GetCellsMessage72 message) =>
+        Rlp.LengthOf(message.RequestId)
+        + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
+        + Rlp.LengthOf(message.CellMask);
 
     private static int GetHashesContentLength(ValueHash256[] hashes)
         => checked(hashes.Length * Rlp.LengthOfKeccakRlp);

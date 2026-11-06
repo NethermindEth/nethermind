@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
 
@@ -61,10 +62,11 @@ public static class ExecutableCodeMemory
     /// <param name="destination">Memory that never moves, with room for the code and <see cref="CodeInfo.ExecutionPadding"/>
     /// bytes; it may overlap <paramref name="code"/>.</param>
     /// <param name="code">The code.</param>
-    internal static unsafe ReadOnlyMemory<byte> Place(Span<byte> destination, ReadOnlySpan<byte> code)
+    /// <param name="codeHash">Receives the Keccak-256 hash of the code, computed as it is copied.</param>
+    internal static unsafe ReadOnlyMemory<byte> Place(Span<byte> destination, ReadOnlySpan<byte> code, out ValueHash256 codeHash)
     {
         destination = destination[..(code.Length + CodeInfo.ExecutionPadding)];
-        code.CopyTo(destination);
+        codeHash = KeccakHash.CopyAndComputeHash256(code, destination);
         destination[code.Length..].Clear();
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)), code.Length, padded: true).Memory;
     }
