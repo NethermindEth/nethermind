@@ -444,10 +444,10 @@ fn decode_stark(
     }
     let mut r = Reader { bytes: witness };
     let code = r.blob()?;
+    let program = stark_program(code)?;
     if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
         return Err(());
     }
-    let program = stark_program(code)?;
     let mut preflight = Preflight::new(r.bytes);
     preflight.cpu()?;
     preflight.end()?;
