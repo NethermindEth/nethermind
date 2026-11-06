@@ -230,3 +230,14 @@ internal sealed class StallingMetadataProtocol : ISessionProtocol
         await downChannel;
     }
 }
+
+internal sealed class UnansweredIdentifyProtocol(bool unsupported, IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
+{
+    internal TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public new string Id => unsupported ? "/test/not-identify/1.0.0" : base.Id;
+    public new async Task ListenAsync(IChannel downChannel, ISessionContext context)
+    {
+        Requested.TrySetResult();
+        await downChannel;
+    }
+}

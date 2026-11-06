@@ -497,8 +497,10 @@ public class ConsensusTests
             case InvalidUpdate.BitfieldLength: update.SyncAggregate!.SyncCommitteeBits = new BitArray(511); break;
         }
 
-        if (invalid is InvalidUpdate.FutureSignature or InvalidUpdate.UnknownNextPeriod)
-            Assert.That(() => store.Process(update, invalid == InvalidUpdate.UnknownNextPeriod ? 8192UL : 4UL), Throws.TypeOf<LightClientLocalStateException>());
+        if (invalid == InvalidUpdate.FutureSignature)
+            Assert.That(() => store.Process(update, 4), Throws.TypeOf<LightClientFutureUpdateException>());
+        else if (invalid == InvalidUpdate.UnknownNextPeriod)
+            Assert.That(() => store.Process(update, 8192), Throws.TypeOf<LightClientLocalStateException>());
         else
             Assert.That(() => store.Process(update, 4), Throws.TypeOf<InvalidDataException>());
         using IDisposable scope = Assert.EnterMultipleScope();
@@ -577,6 +579,51 @@ public class ConsensusTests
         Assert.That(store.Period, Is.EqualTo(tamper ? 0 : 2));
         Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(tamper ? 8190 : 16384));
         Assert.That(publications, Is.EqualTo(tamper ? 1 : 3));
+    }
+
+    [Test]
+    public async Task Catch_up_timeout_returns_to_forced_recovery_without_hiding_caller_cancellation([Values] bool cancel)
+    {
+        LightClientStore store = Store(Bootstrap(8190, 1));
+        store.Process(Update(8190, 8190, 8191, 1, nextKey: 2), 8191);
+        LightClientUpdate candidate = Update(8190, 8192, 8193, 2);
+        store.Process(new LightClientOptimisticUpdate
+        {
+            AttestedHeader = candidate.AttestedHeader,
+            SyncAggregate = candidate.SyncAggregate,
+            SignatureSlot = candidate.SignatureSlot,
+        }, 8193);
+        RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + 16384 * Spec.SecondsPerSlot)));
+        using CancellationTokenSource stop = new();
+        int attempts = 0;
+        Task catchUp = ConsensusSync.CatchUpAsync(store, Spec, async (_, _, token) =>
+        {
+            attempts++;
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw new AssertionException("The silent supplier must be canceled.");
+        }, () => 16384, static (_, _) => throw new AssertionException("No update should be processed."), stop.Token, clock);
+        await clock.WaitForTimersAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+
+        if (cancel)
+        {
+            await stop.CancelAsync();
+            Assert.That(async () => await catchUp, Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            clock.Advance(TimeSpan.FromSeconds(14.999));
+            Assert.That(catchUp.IsCompleted, Is.False);
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+            await catchUp.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.That(store.ForceUpdate(16384), Is.True);
+            Assert.That(store.Period, Is.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(1));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8190));
+            Assert.That(clock.ActiveTimers, Is.Zero);
+        }
     }
 
     [Test]
@@ -1858,7 +1905,7 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Future_signature_periods_allow_only_one_slot_of_boundary_clock_skew(
+    public void Future_signature_periods_authenticate_clock_skew_before_classifying_it(
         [Values(8191UL, 8192UL)] ulong currentSlot, [Values(1UL, 2UL)] ulong ahead, [Values] bool valid)
     {
         LightClientStore store = Store(Bootstrap(8190, 1));
@@ -1866,14 +1913,14 @@ public class ConsensusTests
         LightClientUpdate update = Update(8190, currentSlot, currentSlot + ahead, 2);
         if (!valid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
 
-        if (!valid || currentSlot == 8191 && ahead == 2)
+        if (!valid)
             Assert.That(() => store.Process(update, currentSlot), Throws.TypeOf<InvalidDataException>());
         else if (ahead == 1)
         {
             LightClientFutureSlotException exception = Assert.Throws<LightClientFutureSlotException>(() => store.Process(update, currentSlot))!;
             Assert.That(exception.SignatureSlot, Is.EqualTo(currentSlot + 1));
         }
-        else Assert.That(() => store.Process(update, currentSlot), Throws.TypeOf<LightClientLocalStateException>());
+        else Assert.That(() => store.Process(update, currentSlot), Throws.TypeOf<LightClientFutureUpdateException>());
 
         using (Assert.EnterMultipleScope())
         {
@@ -1899,7 +1946,7 @@ public class ConsensusTests
             LightClientFutureSlotException exception = Assert.Throws<LightClientFutureSlotException>(() => store.Process(update, 10))!;
             Assert.That(exception.SignatureSlot, Is.EqualTo(11));
         }
-        else Assert.That(() => store.Process(update, 10), Throws.TypeOf<LightClientLocalStateException>());
+        else Assert.That(() => store.Process(update, 10), Throws.TypeOf<LightClientFutureUpdateException>());
 
         using (Assert.EnterMultipleScope())
         {

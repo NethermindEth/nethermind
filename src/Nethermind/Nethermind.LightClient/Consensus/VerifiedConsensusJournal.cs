@@ -78,8 +78,8 @@ internal sealed class VerifiedConsensusJournal
         byte[] bootstrapBytes = ReadRecord(payload, ref offset);
         LightClientBootstrap bootstrap = LightClientWireCodec.DecodeBootstrap(bootstrapBytes, _spec);
         ulong bootstrapSlot = bootstrap.Header?.Beacon?.Slot ?? throw new InvalidDataException("Saved bootstrap has no slot.");
-        if (bootstrapSlot > currentSlot) throw new InvalidDataException("Saved checkpoint is in the future.");
         LightClientStore store = new(_spec, _checkpoint, bootstrap, bootstrapSlot);
+        if (bootstrapSlot > currentSlot) throw new LightClientClockException("Authenticated saved checkpoint is ahead of the local clock; verify the system clock.");
         int count = ReadInt32(payload, ref offset);
         if (count is < 0 or > MaxUpdates) throw new InvalidDataException("Saved committee chain has too many updates.");
         List<(byte Kind, byte[] Data)> updates = new(count);
@@ -125,7 +125,8 @@ internal sealed class VerifiedConsensusJournal
             ProcessRecord(store, kind, encoded, currentSlot);
             return (kind, encoded, head.AsSpan(head.Length - DigestBytes).ToArray());
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
+        catch (Exception exception) when (exception is not LightClientLocalStateException &&
+            exception is InvalidDataException or IOException or OverflowException or ArgumentException)
         {
             _logger.LogWarning(exception, "Discarding saved light-client head {Path}; retaining authenticated replay state", path);
             return null;
@@ -169,7 +170,8 @@ internal sealed class VerifiedConsensusJournal
             }
             _bestGeneration = generation;
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
+        catch (Exception exception) when (exception is not LightClientLocalStateException &&
+            exception is InvalidDataException or IOException or OverflowException or ArgumentException)
         {
             _logger.LogWarning(exception, "Discarding saved light-client recovery candidate {Path}; retaining authenticated heads", _bestPath);
         }

@@ -33,6 +33,50 @@ public class HostTests
     private const string FirefoxOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
 
     [Test]
+    public void Data_directory_is_writable_without_changing_existing_files([Values] bool exists)
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"light-client-directory-{Guid.NewGuid():N}");
+        string directory = Path.Combine(root, "data");
+        Directory.CreateDirectory(root);
+        if (exists)
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "existing"), "preserve");
+        }
+        try
+        {
+            bool prepared = LightClientHost.TryPrepareDataDirectory(directory, out string? error);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(prepared, Is.True, error);
+                Assert.That(Directory.Exists(directory), Is.True);
+                Assert.That(Directory.GetFiles(directory).Select(Path.GetFileName), Is.EquivalentTo(exists ? new[] { "existing" } : []));
+                if (exists) Assert.That(File.ReadAllText(Path.Combine(directory, "existing")), Is.EqualTo("preserve"));
+            }
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Test]
+    public void Data_directory_reports_file_collision_with_permissions_guidance()
+    {
+        string file = Path.GetTempFileName();
+        try
+        {
+            bool prepared = LightClientHost.TryPrepareDataDirectory(file, out string? error);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(prepared, Is.False);
+                Assert.That(error, Does.Contain(file).And.Contain(Environment.UserName).And.Contain("permissions").And.Contain("1654"));
+                Assert.That(File.Exists(file), Is.True);
+            }
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Test]
     public void Json_scratch_reservations_do_not_increase_the_committed_response_limit([Values(16, 256, 1024)] int limit)
     {
         using BoundedJsonBuffer buffer = new(limit, 6 * limit);
@@ -477,6 +521,65 @@ public class HostTests
                 else Assert.That(response[i].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
             }
         }
+    }
+
+    [Test]
+    public async Task Large_scalar_batches_have_bounded_response_and_logging_work()
+    {
+        ILogger logger = Substitute.For<ILogger>();
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(Enumerable.Repeat(0, 32_000));
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(payload, (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>("0x1");
+        }, logger);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(calls, Is.Zero);
+            Assert.That(response.GetArrayLength(), Is.LessThanOrEqualTo(129));
+            Assert.That(response[response.GetArrayLength() - 1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogger.Log)), Is.LessThanOrEqualTo(33));
+        }
+    }
+
+    [Test]
+    public async Task Large_notification_batches_remain_response_free([Values] bool trailingRequest)
+    {
+        object[] requests = [.. Enumerable.Repeat<object>(new { jsonrpc = "2.0", method = "eth_chainId" }, 200)];
+        if (trailingRequest) requests[^1] = new { jsonrpc = "2.0", id = 999, method = "eth_chainId" };
+        int calls = 0;
+
+        (int status, JsonElement response) = await InvokeHttpAsync(JsonSerializer.SerializeToUtf8Bytes(requests), (_, _, _) =>
+        {
+            calls++;
+            return Task.FromResult<object>("0x1");
+        });
+
+        Assert.That(calls, Is.EqualTo(32));
+        Assert.That(status, Is.EqualTo(trailingRequest ? StatusCodes.Status200OK : StatusCodes.Status204NoContent));
+        if (trailingRequest)
+        {
+            Assert.That(response.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+        }
+    }
+
+    [Test]
+    public async Task Disposed_rpc_dependencies_are_logged_as_server_faults()
+    {
+        ILogger logger = Substitute.For<ILogger>();
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = 1, method = "eth_getBalance" });
+
+        (_, JsonElement response) = await InvokeHttpAsync(payload,
+            static (_, _, _) => Task.FromException<object>(new ObjectDisposedException("execution")), logger);
+
+        Assert.That(response.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32000));
+        Assert.That(logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogger.Log)
+            && (LogLevel)call.GetArguments()[0]! == LogLevel.Warning), Is.True);
     }
 
     private static async Task<(int, JsonElement)> InvokeHttpAsync(byte[] request,
@@ -1139,6 +1242,69 @@ public class LightClientMetricsTests
             AssertRpc(scrape, "eth_chainId", "error", 1);
             AssertRpc(scrape, "other", "error", 2);
             Assert.That(scrape, Does.Not.Contain("private_unknown_method"));
+        }
+    }
+
+    [Test]
+    public async Task Http_envelope_failures_have_their_own_metrics(
+        [Values("parse_error", "invalid_batch", "too_large")] string outcome)
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        byte[] body = outcome switch
+        {
+            "parse_error" => Encoding.UTF8.GetBytes("{"),
+            "invalid_batch" => Encoding.UTF8.GetBytes("[]"),
+            _ => new byte[RpcEndpoint.MaxRequestBodySize + 1],
+        };
+        DefaultHttpContext context = new();
+        using MemoryStream input = new(body);
+        using MemoryStream output = new();
+        context.Request.Body = input;
+        context.Response.Body = output;
+
+        await RpcEndpoint.HandleAsync(context, (_, _, _) => throw new AssertionException("Envelope failure must not dispatch an item."),
+            NullLogger.Instance, metrics: metrics);
+
+        string scrape = await ScrapeAsync(metrics);
+        Assert.That(Value(scrape, Prefix + "http_requests_total", ("outcome", outcome)), Is.EqualTo(1));
+        Assert.That(Value(scrape, Prefix + "http_requests_total", ("outcome", "completed")), Is.Zero);
+        AssertRpc(scrape, "other", "error", 0);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Http_overload_is_counted_without_inventing_dispatched_rpc_items()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>[] active = Enumerable.Range(0, 64).Select(_ => SendAsync()).ToArray();
+        try
+        {
+            Assert.That(await SendAsync(), Is.EqualTo(StatusCodes.Status429TooManyRequests));
+            string held = await ScrapeAsync(metrics);
+            Assert.That(Value(held, Prefix + "http_requests_total", ("outcome", "overloaded")), Is.EqualTo(1));
+            AssertRpc(held, "eth_chainId", "ok", 0);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(active);
+        }
+        string scrape = await ScrapeAsync(metrics);
+        Assert.That(Value(scrape, Prefix + "http_requests_total", ("outcome", "completed")), Is.EqualTo(64));
+        AssertRpc(scrape, "eth_chainId", "ok", 64);
+
+        async Task<int> SendAsync()
+        {
+            DefaultHttpContext context = new();
+            using MemoryStream input = new(Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}"""));
+            using MemoryStream output = new();
+            context.Request.Body = input;
+            context.Response.Body = output;
+            await RpcEndpoint.HandleAsync(context, async (_, _, _) => { await release.Task; return "0x1"; }, NullLogger.Instance, metrics: metrics);
+            return context.Response.StatusCode;
         }
     }
 

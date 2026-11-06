@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
@@ -19,11 +22,13 @@ public class IdentifyTimeoutTests
         UnansweredIdentifyProtocol? unanswered = null;
         await using PlainPeer peer = await PlainPeer.StartAsync(settings => unanswered = new UnansweredIdentifyProtocol(false, settings), token);
         await using BeaconP2P node = Create().P2P;
+        ManualTimeProvider readClock = ControlIdentifyReadDeadline(node);
         await node.StartAsync(token);
 
         using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = node.DialPeerAsync(peer.Address, attempt.Token);
         await unanswered!.Requested.Task.WaitAsync(token);
+        await readClock.TimerCreated.WaitAsync(token);
         // The library removes a closed session under this lock, so holding it keeps the failed session listed while the dial fails:
         // the window in which the dial could hand that session back. The dial's own lookup takes the lock too, so it waits here.
         Task heldListing = Task.Run(() =>
@@ -55,6 +60,7 @@ public class IdentifyTimeoutTests
     public async Task A_session_from_a_peer_that_never_answers_identify_is_closed_within_the_identify_bound(CancellationToken token)
     {
         await using BeaconP2P node = Create().P2P;
+        ManualTimeProvider readClock = ControlIdentifyReadDeadline(node);
         await node.StartAsync(token);
         int established = 0;
         node.SessionEstablished += (_, _) => Interlocked.Increment(ref established);
@@ -65,6 +71,7 @@ public class IdentifyTimeoutTests
         try
         {
             await unanswered!.Requested.Task.WaitAsync(token);
+            await readClock.TimerCreated.WaitAsync(token);
             await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
         }
         finally
@@ -157,19 +164,30 @@ public class IdentifyTimeoutTests
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");
     }
 
+    private static ManualTimeProvider ControlIdentifyReadDeadline(BeaconP2P node)
+    {
+        IServiceProvider services = (IServiceProvider)typeof(BeaconP2P)
+            .GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(node)!;
+        services.GetRequiredService<IPeerFactory>();
+        IProtocolStackSettings settings = services.GetRequiredService<IProtocolStackSettings>();
+        Dictionary<ProtocolRef, ProtocolRef[]> protocols = settings.Protocols!;
+        ProtocolRef original = protocols.Keys.Single(static protocol => protocol.Protocol.GetType() == typeof(IdentifyProtocol));
+        ManualTimeProvider clock = new();
+        // The library's five-second read timer must not race the host's five-second identify deadline.
+        IdentifyProtocol identify = new(settings, services.GetRequiredService<IdentifyProtocolSettings>(),
+            loggerFactory: services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>(), timeProvider: clock);
+        ProtocolRef replacement = new(identify, original.IsExposed, original.InboundLimit) { AcceptInbound = original.AcceptInbound };
+        ProtocolRef[] next = protocols[original];
+        protocols.Remove(original);
+        protocols.Add(replacement, next);
+        foreach (ProtocolRef[] choices in protocols.Values)
+            for (int i = 0; i < choices.Length; i++)
+                if (ReferenceEquals(choices[i], original)) choices[i] = replacement;
+        return clock;
+    }
+
     private sealed class ClosingIdentifyProtocol(IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
     {
         public new Task ListenAsync(IChannel downChannel, ISessionContext context) => context.DisconnectAsync();
-    }
-
-    private sealed class UnansweredIdentifyProtocol(bool unsupported, IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
-    {
-        internal TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public new string Id => unsupported ? "/test/not-identify/1.0.0" : base.Id;
-        public new async Task ListenAsync(IChannel downChannel, ISessionContext context)
-        {
-            Requested.TrySetResult();
-            await downChannel;
-        }
     }
 }

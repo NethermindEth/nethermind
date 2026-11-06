@@ -496,6 +496,165 @@ public class VerifiedConsensusJournalTests
     }
 
     [Test]
+    public async Task Authenticated_future_records_survive_a_clock_correction(
+        [Values("head", "optimistic", "best")] string record)
+    {
+        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = record == "best"
+            ? await JournalWithWeakCandidateAsync()
+            : await JournalWithOptionalFinalizedHeadAsync();
+        ulong currentSlot = 5, correctedSlot = 6;
+        if (record == "optimistic")
+        {
+            LightClientOptimisticUpdate update = AsOptimistic(ConsensusTests.Update(4, 8, 9, 1));
+            store.Process(update, 9);
+            await journal.AppendAsync(update, store, CancellationToken.None);
+            currentSlot = 8;
+            correctedSlot = 9;
+        }
+        else if (record == "best")
+        {
+            LightClientUpdate update = ConsensusTests.Update(2, 49, 200, 1, participants: 100, nextKey: 2);
+            store.Process(update, 200);
+            await journal.AppendAsync(update, store, CancellationToken.None);
+            Assert.That(store.BestUpdate!.SignatureSlot, Is.EqualTo(200));
+            currentSlot = 150;
+            correctedSlot = 200;
+        }
+        Dictionary<string, byte[]> files = Directory.GetFiles(_directory).ToDictionary(static path => path, File.ReadAllBytes);
+        VerifiedConsensusJournal replay = Journal(ConsensusTests.Spec, checkpoint);
+
+        Assert.That(async () => await replay.LoadAsync(currentSlot, CancellationToken.None), Throws.InstanceOf<LightClientFutureUpdateException>());
+        foreach ((string path, byte[] data) in files)
+            Assert.That(await File.ReadAllBytesAsync(path), Is.EqualTo(data), path);
+        Assert.That(_logger.Entries, Is.Empty);
+
+        LightClientStore resumed = (await replay.LoadAsync(correctedSlot, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+            Assert.That(resumed.BestUpdate?.SignatureSlot, Is.EqualTo(store.BestUpdate?.SignatureSlot));
+            Assert.That(_logger.Entries, Is.Empty);
+            Assert.That(Directory.GetFiles(_directory), Is.EquivalentTo(files.Keys));
+        }
+    }
+
+    [Test]
+    public async Task An_authenticated_saved_checkpoint_in_the_future_is_a_clock_error()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(2, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 2);
+        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+
+        Assert.That(async () => await journal.LoadAsync(1, CancellationToken.None), Throws.TypeOf<LightClientClockException>());
+        LightClientStore resumed = (await journal.LoadAsync(2, CancellationToken.None))!;
+        Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+    }
+
+    [Test]
+    public async Task Live_processor_owns_the_recency_guard_for_updates_and_forced_recovery(
+        [Values("full", "finality", "optimistic", "forced")] string route, [Values] bool stale)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
+        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        LightClientUpdate candidate = ConsensusTests.Update(2, 3, 4, 1, participants: 1, nextKey: 2);
+        store.Process(candidate, 4);
+        await journal.AppendAsync(candidate, store, CancellationToken.None);
+        ulong slot = stale ? 8196UL : 8195UL;
+        ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(ConsensusTests.Spec.GenesisTime + slot * ConsensusTests.Spec.SecondsPerSlot)));
+        using SemaphoreSlim gate = new(1, 1);
+        int stopped = 0, published = 0;
+        ConsensusSync.Processor processor = new(store, journal, ConsensusTests.Spec, clock, gate,
+            () => published++, () => stopped++, _logger, CancellationToken.None);
+        LightClientUpdate update = ConsensusTests.Update(4, 5, 6, 1);
+        Task Process() => route switch
+        {
+            "full" => processor.ProcessAsync(update, CancellationToken.None),
+            "finality" => processor.ProcessAsync(AsFinality(update), CancellationToken.None),
+            "optimistic" => processor.ProcessAsync(AsOptimistic(update), CancellationToken.None),
+            _ => processor.ForceUpdateAsync(CancellationToken.None),
+        };
+
+        if (stale)
+            Assert.That(async () => await Process(), Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
+        else
+            await Process();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.EqualTo(stale ? 1 : 0));
+            Assert.That(published, Is.EqualTo(stale ? 0 : 1));
+            Assert.That(gate.CurrentCount, Is.EqualTo(1));
+        }
+        if (stale)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
+                Assert.That(store.BestUpdate!.SignatureSlot, Is.EqualTo(4));
+                Assert.That(store.NextSyncCommitteeKnown, Is.False);
+            }
+        }
+        else
+        {
+            LightClientStore resumed = (await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(slot, CancellationToken.None))!;
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Live_finality_processing_reports_only_actual_finalized_progress([Values] bool advances)
+    {
+        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(ConsensusTests.Spec.GenesisTime + 8 * ConsensusTests.Spec.SecondsPerSlot)));
+        using SemaphoreSlim gate = new(1, 1);
+        int published = 0;
+        ConsensusSync.Processor processor = new(store, journal, ConsensusTests.Spec, clock, gate,
+            () => published++, static () => Assert.Fail("Valid progress must not stop the client."), _logger, CancellationToken.None);
+        LightClientFinalityUpdate update = AsFinality(ConsensusTests.Update(advances ? 5UL : 4UL, 7, 8, 1));
+
+        bool advanced = await processor.ProcessAsync(update, CancellationToken.None);
+
+        LightClientStore resumed = (await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(8, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(advanced, Is.EqualTo(advances));
+            Assert.That(published, Is.EqualTo(1));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(advances ? 5UL : 4UL));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(7));
+            Assert.That(resumed.HasSameAuthenticatedState(store), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task A_live_persistence_failure_stops_processing_before_publication()
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
+        ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(ConsensusTests.Spec.GenesisTime + 4 * ConsensusTests.Spec.SecondsPerSlot)));
+        using SemaphoreSlim gate = new(1, 1);
+        int stopped = 0, published = 0;
+        ConsensusSync.Processor processor = new(store, Journal(ConsensusTests.Spec, checkpoint), ConsensusTests.Spec, clock, gate,
+            () => published++, () => stopped++, _logger, CancellationToken.None);
+
+        Assert.That(async () => await processor.ProcessAsync(ConsensusTests.Update(2, 3, 4, 1), CancellationToken.None),
+            Throws.TypeOf<IOException>().With.InnerException.TypeOf<InvalidOperationException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stopped, Is.EqualTo(1));
+            Assert.That(published, Is.Zero);
+            Assert.That(gate.CurrentCount, Is.EqualTo(1));
+            Assert.That(_logger.Entries.Count(static entry => entry.Level == LogLevel.Critical), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task Corrupt_optimistic_head_preserves_the_latest_authenticated_finalized_head()
     {
         (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();

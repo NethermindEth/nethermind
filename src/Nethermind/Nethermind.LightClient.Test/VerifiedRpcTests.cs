@@ -129,7 +129,7 @@ public class VerifiedRpcTests
 
     [Test]
     public async Task Exhausted_data_admission_rejects_before_header_work(
-        [Values("eth_getBlockByNumber", "eth_getLogs", "eth_feeHistory", "eth_getProof")] string method)
+        [Values("eth_getBlockByNumber", "eth_getLogs", "logs-blockHash", "eth_feeHistory", "eth_getProof")] string method)
     {
         using Provider provider = new(new Account(7, 123));
         provider.HistoricalHeader = Provider.CreateHeader(9, Keccak.Compute("historical admission block"), provider.Head.StateRoot);
@@ -144,12 +144,14 @@ public class VerifiedRpcTests
             JsonElement parameters = method switch
             {
                 "eth_getLogs" => Parameters(new { fromBlock = "0xa", toBlock = "0xa" }),
+                "logs-blockHash" => Parameters(new { blockHash = provider.LatestHead!.BlockHash.ToString() }),
                 "eth_feeHistory" => Parameters("0x1", "latest", Array.Empty<int>()),
                 "eth_getProof" => Parameters(AccountAddress.ToString(), Array.Empty<string>(), "0x9"),
                 _ => Parameters("latest", false),
             };
 
-            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None));
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync(
+                method == "logs-blockHash" ? "eth_getLogs" : method, parameters, CancellationToken.None));
 
             Assert.That(error!.Code, Is.EqualTo(-32005));
             Assert.That(provider.Requests.Count + provider.HeaderByHashFetches + provider.CanonicalHeaderFetches, Is.EqualTo(before));
@@ -159,6 +161,64 @@ public class VerifiedRpcTests
             release.TrySetResult();
             await Task.WhenAll(requests);
         }
+    }
+
+    [Test]
+    public async Task Malformed_selectors_are_rejected_before_admission_or_freshness_waits(
+        [Values("eth_getBlockByNumber", "eth_getBlockByHash", "eth_getBlockReceipts", "logs-from", "logs-to", "eth_feeHistory", "eth_getProof")] string method,
+        [Values] bool saturated)
+    {
+        using Provider provider = new(new Account(7, 123));
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.BlockGate = release;
+        Task<object>[] active = saturated ? Enumerable.Range(0, 4).Select(_ => provider.Rpc.InvokeAsync("eth_getBlockByNumber",
+            Parameters("finalized", false), CancellationToken.None)).ToArray() : [];
+        using VerifiedRpc rpc = provider.CreateRpc(waitForLatestHead: _ => throw new AssertionException("Malformed selector must not wait for a head."));
+        provider.CurrentSlot = 111;
+        int before = provider.Requests.Count + provider.HeaderByHashFetches + provider.CanonicalHeaderFetches;
+        JsonElement parameters = method switch
+        {
+            "logs-from" => Parameters(new { fromBlock = "invalid", toBlock = "latest" }),
+            "logs-to" => Parameters(new { fromBlock = "latest", toBlock = "invalid" }),
+            "eth_feeHistory" => Parameters("0x1", "invalid", Array.Empty<int>()),
+            "eth_getProof" => Parameters(AccountAddress.ToString(), Array.Empty<string>(), new { blockNumber = "invalid" }),
+            "eth_getBlockReceipts" => Parameters(new { blockHash = "0xbroken", requireCanonical = true }),
+            _ => Parameters("invalid", false),
+        };
+        try
+        {
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(
+                method.StartsWith("logs-", StringComparison.Ordinal) ? "eth_getLogs" : method, parameters, CancellationToken.None));
+            Assert.That(error!.Code, Is.EqualTo(-32602));
+            Assert.That(provider.Requests.Count + provider.HeaderByHashFetches + provider.CanonicalHeaderFetches, Is.EqualTo(before));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(active);
+        }
+    }
+
+    [Test]
+    public async Task An_explicit_wide_block_number_keeps_its_numeric_meaning(
+        [Values("eth_getBalance", "eth_getBlockReceipts")] string method)
+    {
+        using Provider provider = new(new Account(7, 123));
+        object selector = new { blockNumber = "0x" + new string('f', 64) };
+        JsonElement parameters = method == "eth_getBalance" ? Parameters(AccountAddress.ToString(), selector) : Parameters(selector);
+
+        if (method == "eth_getBalance")
+        {
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+                await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None));
+            Assert.That(error!.Code, Is.EqualTo(-32001));
+        }
+        else
+        {
+            JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None);
+            Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Null));
+        }
+        Assert.That(provider.HeaderByHashFetches, Is.Zero);
     }
 
     [Test]

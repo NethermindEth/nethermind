@@ -307,7 +307,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             int fanOut = providers?.FanOut<T>(_concurrency) ?? _concurrency;
             bool sawInapplicable = false;
             int offset = preferred >= 0 ? -1 : 0;
-            int attempted = 0, unavailableCount = 0, failedCount = 0, inapplicableCount = 0, accepted = 0;
+            int attempted = 0, unavailableCount = 0, failedCount = 0, inapplicableCount = 0, accepted = 0, validated = 0;
             List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = new(fanOut);
             using CancellationTokenSource owner = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
@@ -375,6 +375,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     {
                         bool advanced = await validate(response, token);
                         token.ThrowIfCancellationRequested();
+                        validated++;
                         _localRejections.Remove(peer);
                         providers?.RecordValidated(peer, response);
                         if (!advanced)
@@ -392,7 +393,14 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                         inapplicableCount++;
                         continue;
                     }
-                    catch (LightClientLocalStateException exception)
+                    catch (LightClientFutureUpdateException exception)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} is not yet applicable: {exception.Message}");
+                        sawInapplicable = true;
+                        inapplicableCount++;
+                        continue;
+                    }
+                    catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Beacon {typeof(T).Name} from {peer.Id} cannot yet be applied: {exception.Message}");
                         sawInapplicable = true;
@@ -425,10 +433,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             {
                 await owner.CancelAsync();
                 await Task.WhenAll(pending);
-                if (attempted > 0 && !token.IsCancellationRequested && (accepted == 0 && _logger.IsInfo || _logger.IsDebug))
+                if (attempted > 0 && !token.IsCancellationRequested && (validated == 0 && _logger.IsInfo || _logger.IsDebug))
                 {
-                    string summary = $"Beacon {typeof(T).Name} round: asked {attempted}, accepted {accepted}, unavailable {unavailableCount}, failed {failedCount - unavailableCount}, inapplicable {inapplicableCount}, unused {pending.Count}";
-                    if (accepted == 0 && _logger.IsInfo) _logger.Info(summary);
+                    string summary = $"Beacon {typeof(T).Name} round: asked {attempted}, validated {validated}, accepted {accepted}, unavailable {unavailableCount}, failed {failedCount - unavailableCount}, inapplicable {inapplicableCount}, unused {pending.Count}";
+                    if (validated == 0 && _logger.IsInfo) _logger.Info(summary);
                     else if (_logger.IsDebug) _logger.Debug(summary);
                 }
             }
@@ -450,6 +458,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private const int TargetPeers = 16;
         private const int MinFreshSuppliers = 4;
         private const ulong MaxSupplierLag = 10;
+        private const ulong MaxHealthyGossipLag = 2;
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
@@ -685,6 +694,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     foreach (Supplier supplier in _sessions.Values)
                     {
                         if (!admitted.Contains(Identity(supplier.Peer.Id)) || time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
+                        if (IsFresh(supplier.GossipSlot, MaxHealthyGossipLag)) continue;
                         bool unavailable = needsOptimistic && supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) == true ||
                             needsFinality && supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) == true ||
                             needsCommittee && supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) == true;
@@ -744,10 +754,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         private bool IsCandidate(Supplier supplier) => supplier.CandidateAt is { } candidate && time.GetElapsedTime(candidate) <= Retention;
 
-        private bool IsFresh(ulong? slot)
+        private bool IsFresh(ulong? slot, ulong maximumLag = MaxSupplierLag)
         {
             ulong current = spec.GetSlotAtTime((ulong)Math.Max(0, time.GetUtcNow().ToUnixTimeSeconds()));
-            return slot is { } attested && attested <= current && current - attested <= MaxSupplierLag;
+            return slot is { } attested && attested <= current && current - attested <= maximumLag;
         }
 
         private void Remember(IBeaconSyncPeer peer)

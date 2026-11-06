@@ -14,6 +14,7 @@ WORKDIR /nethermind
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY Directory.Build.targets global.json nuget.config ./
+COPY tools/LightClient/trim-publish.sh tools/LightClient/
 
 # The source-only build context has no Git repository for Source Link to query.
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
@@ -21,7 +22,8 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet publish src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj \
     -c "$BUILD_CONFIG" -a "$arch" -o /publish --no-restore --no-self-contained \
     -p:SaveDiskSpace=true -p:SourceRevisionId="$COMMIT_HASH" \
-    -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -warnaserror
+    -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -warnaserror && \
+  sh tools/LightClient/trim-publish.sh /publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-resolute@sha256:86ddb370c95d79ec988f94e7d66193b20d02a1df859aa3f5e56451141528f053
 
@@ -58,8 +60,7 @@ ENV AllowedHosts="localhost;127.0.0.1;[::1];light-client" \
 COPY --from=build /publish .
 COPY tools/LightClient/docker-entrypoint.sh .
 
-# The execution stack resolves its keystore relative to the application binary.
-RUN chmod +x docker-entrypoint.sh && ln -s /data keystore
+RUN chmod +x docker-entrypoint.sh
 
 USER $APP_UID
 

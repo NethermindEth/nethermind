@@ -60,6 +60,26 @@ public class ChannelTransportTests
         AssertMultistreamSelectors(services);
     }
 
+    [Test]
+    public async Task Beacon_host_offers_yamux_then_mplex([Values] bool quic)
+    {
+        await using BeaconP2P host = PeerSessionNodes.Create(quicPort: quic ? 9061 : 0).P2P;
+        ServiceProvider services = (ServiceProvider)typeof(BeaconP2P)
+            .GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        services.GetRequiredService<IPeerFactory>();
+        MultiplexerSettings multiplexers = services.GetRequiredService<MultiplexerSettings>();
+        string[] expected = ["/yamux/1.0.0", "/mplex/6.7.0"];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(multiplexers.Multiplexers.Select(static protocol => protocol.Id), Is.EqualTo(expected));
+            IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
+            Assert.That(stack.Protocols!.Values.Any(protocols => protocols.Select(static protocol => protocol.Protocol.Id)
+                .SequenceEqual(expected)), Is.True);
+        }
+        AssertMultistreamSelectors(services);
+    }
+
     public enum ApplicationTransport
     {
         Yamux,

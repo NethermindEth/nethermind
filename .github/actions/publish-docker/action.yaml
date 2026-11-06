@@ -14,9 +14,9 @@ inputs:
     required: true
     default: "Dockerfile"
   version-file:
-    description: "Project or props file declaring the OCI image version"
+    description: "Project or props file declaring the OCI image version (derived from Dockerfile when empty)"
     required: false
-    default: "src/Nethermind/Directory.Build.props"
+    default: ""
   build-config:
     description: "Build configuration (release or debug)"
     required: true
@@ -87,6 +87,34 @@ runs:
           tag=$(echo "$TAG" | sed 's/\//-/g') # replace '/' with '-'
         fi
 
+        # LC and EL share a registry repository but have independent release versions.
+        light_client_dockerfile=$(realpath -m -- tools/LightClient/Dockerfile)
+        light_client_project=$(realpath -m -- src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj)
+        is_light_client=false
+        if [ "$(realpath -m -- "$DOCKERFILE")" = "$light_client_dockerfile" ]; then
+          is_light_client=true
+          VERSION_FILE=${VERSION_FILE:-$light_client_project}
+          if [ "$(realpath -m -- "$VERSION_FILE")" != "$light_client_project" ]; then
+            echo "::error::The light-client Dockerfile requires its own project version file"
+            exit 1
+          fi
+        else
+          VERSION_FILE=${VERSION_FILE:-src/Nethermind/Directory.Build.props}
+          if [[ "$tag" == light-client-* ]] || [ "$(realpath -m -- "$VERSION_FILE")" = "$light_client_project" ]; then
+            echo "::error::Light-client tags and its project version are reserved for tools/LightClient/Dockerfile"
+            exit 1
+          fi
+        fi
+
+        if ! version=$(scripts/version.sh "$VERSION_FILE"); then
+          echo "::error::Could not determine the version for the image labels"
+          exit 1
+        fi
+        if [ "$is_light_client" = "true" ] && [ "$tag" != "light-client-${version}" ]; then
+          echo "::error::The light-client image requires tag light-client-${version}"
+          exit 1
+        fi
+
         # Benchmarks and nightly consumers treat these tags as master builds, so other refs must not overwrite them
         if [[ "$GITHUB_REF" != "refs/heads/master" && "$tag" =~ ^(master|master-.*|nightly)$ ]]; then
           echo "::error::Tag '${tag}' is reserved for builds from master"
@@ -103,18 +131,10 @@ runs:
         build_cmd="docker buildx build . --platform=${PLATFORMS} -f ${DOCKERFILE} -t ${image_label}"
 
         # Add master tag if on master branch and enabled
-        if [ "$branch" = "master" ] && [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$ADD_MASTER_TAG" = "true" ]; then
+        if [ "$is_light_client" = "false" ] && [ "$branch" = "master" ] && [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$ADD_MASTER_TAG" = "true" ]; then
           master_tag="${full_image_name}:master-${GITHUB_SHA:0:7}"
           build_cmd="${build_cmd} -t ${master_tag}"
           echo "Also tagging as: $master_tag"
-        fi
-
-        # The OCI version label. release.yml reads the same properties with xmlstarlet, which is
-        # not on the runner image and has to be installed first; version.sh needs no dependencies
-        # and validates what it read, so an unusable version fails here instead of being published.
-        if ! version=$(scripts/version.sh "$VERSION_FILE"); then
-          echo "::error::Could not determine the version for the image labels"
-          exit 1
         fi
 
         # The OCI created label must be RFC 3339 and must come from the same commit timestamp as

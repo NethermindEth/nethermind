@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.LightClient;
 
@@ -12,6 +13,7 @@ internal static class RpcEndpoint
     internal const int MaxRequestBodySize = 4 * 1024 * 1024 + StandardRequestBodySize;
     internal const int BatchResponseLimit = 16 * 1024 * 1024;
     internal const int MaxBatchCount = 32;
+    internal const int MaxBatchEnvelopes = 128;
     private const int MaxActiveRequests = 64;
     private static readonly TimeSpan RequestDeadline = TimeSpan.FromSeconds(90);
     private static readonly SemaphoreSlim ActiveRequests = new(MaxActiveRequests);
@@ -24,26 +26,38 @@ internal static class RpcEndpoint
         if (!ActiveRequests.Wait(0))
         {
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            metrics?.RecordHttp("overloaded");
             logger.LogWarning("RPC request rejected because {Limit} requests are already active", MaxActiveRequests);
             return;
         }
 
+        string outcome = "failed";
         try
         {
             using CancellationTokenSource timeout = new(RequestDeadline, clock ?? TimeProvider.System);
             using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, context.RequestAborted, stoppingToken);
-            try { await HandleCoreAsync(context, invoke, logger, cancellation.Token, metrics); }
+            try { outcome = await HandleCoreAsync(context, invoke, logger, cancellation.Token, metrics); }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested && !context.RequestAborted.IsCancellationRequested)
             {
                 if (context.Response.HasStarted) context.Abort();
                 else context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+                outcome = "timed_out";
                 logger.LogWarning("RPC request exceeded the {DeadlineSeconds}-second deadline", RequestDeadline.TotalSeconds);
             }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                outcome = "cancelled";
+                throw;
+            }
         }
-        finally { ActiveRequests.Release(); }
+        finally
+        {
+            ActiveRequests.Release();
+            metrics?.RecordHttp(outcome);
+        }
     }
 
-    private static async Task HandleCoreAsync(HttpContext context,
+    private static async Task<string> HandleCoreAsync(HttpContext context,
         Func<string, JsonElement, CancellationToken, Task<object>> invoke, ILogger logger, CancellationToken cancellationToken,
         LightClientMetrics? metrics)
     {
@@ -67,7 +81,7 @@ internal static class RpcEndpoint
                         {
                             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                             logger.LogWarning("RPC body rejected because four large requests are already active");
-                            return;
+                            return "overloaded";
                         }
                         large = true;
                     }
@@ -78,7 +92,7 @@ internal static class RpcEndpoint
             {
                 context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                 logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return;
+                return "too_large";
             }
             JsonDocument document;
             try { document = JsonDocument.Parse(input.ToArray()); }
@@ -86,7 +100,7 @@ internal static class RpcEndpoint
             {
                 logger.LogInformation("RPC request -> parse error in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 await context.Response.WriteAsJsonAsync(Error(null, -32700, "Parse error"), cancellationToken);
-                return;
+                return "parse_error";
             }
             using (document)
             {
@@ -95,7 +109,7 @@ internal static class RpcEndpoint
                 {
                     context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
                     logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                    return;
+                    return "too_large";
                 }
                 if (request.ValueKind == JsonValueKind.Array)
                 {
@@ -104,7 +118,7 @@ internal static class RpcEndpoint
                     {
                         logger.LogInformation("RPC batch -> invalid size in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                         await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain at least one request"), cancellationToken);
-                        return;
+                        return "invalid_batch";
                     }
                     await WriteBatchAsync(context, request, invoke, logger, cancellationToken, metrics);
                 }
@@ -118,6 +132,7 @@ internal static class RpcEndpoint
             }
         }
         finally { if (large) LargeRequests.Release(); }
+        return "completed";
     }
 
     internal static async Task WriteBatchAsync(HttpContext context, JsonElement requests,
@@ -153,21 +168,44 @@ internal static class RpcEndpoint
         output.Advance(1);
         int responses = 0;
         int admitted = 0;
+        int examined = 0;
         bool exhausted = false;
         string limitMessage = limit == BatchResponseLimit ? BatchLimitMessage
             : "WebSocket batch exceeds the 256 KiB response limit; submit remaining requests separately.";
         byte[] finalError = JsonSerializer.SerializeToUtf8Bytes(Error(null, -32005, limitMessage));
-        foreach (JsonElement item in requests.EnumerateArray())
+        using JsonElement.ArrayEnumerator items = requests.EnumerateArray();
+        while (items.MoveNext())
         {
+            JsonElement item = items.Current;
             cancellationToken.ThrowIfCancellationRequested();
+            if (examined++ == MaxBatchEnvelopes)
+            {
+                do
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    JsonElement remaining = items.Current;
+                    bool notification = remaining.ValueKind == JsonValueKind.Object
+                        && remaining.TryGetProperty("jsonrpc", out JsonElement version) && version.ValueKind == JsonValueKind.String && version.ValueEquals("2.0")
+                        && remaining.TryGetProperty("method", out JsonElement method) && method.ValueKind == JsonValueKind.String
+                        && !remaining.TryGetProperty("id", out _);
+                    if (!notification)
+                    {
+                        Copy(JsonSerializer.SerializeToUtf8Bytes(Error(null, -32005,
+                            "Batch exceeds 128 envelopes; submit remaining requests separately.")));
+                        break;
+                    }
+                } while (items.MoveNext());
+                break;
+            }
             // Leave a final limit response when a large error tail cannot fit, before executing another item.
             if ((long)output.WrittenMemory.Length + ErrorSizeBound(item) + finalError.Length + 3 > limit)
             {
                 Copy(finalError);
                 break;
             }
-            await InvokeAsync(item, exhausted ? Reject : admitted++ >= MaxBatchCount ? RejectExcessBatchItem : invoke,
-                logger, cancellationToken, Append, metrics);
+            bool excess = admitted++ >= MaxBatchCount;
+            await InvokeAsync(item, exhausted ? Reject : excess ? RejectExcessBatchItem : invoke,
+                excess ? NullLogger.Instance : logger, cancellationToken, Append, excess ? null : metrics);
 
             bool Append(object response, bool success)
             {
@@ -194,6 +232,9 @@ internal static class RpcEndpoint
                 return unchanged;
             }
         }
+        if (requests.GetArrayLength() > MaxBatchCount)
+            logger.LogInformation("RPC batch limited to {ExecutedLimit} executions and {EnvelopeLimit} envelopes; received {Count} items",
+                MaxBatchCount, MaxBatchEnvelopes, requests.GetArrayLength());
         cancellationToken.ThrowIfCancellationRequested();
         output.GetSpan(1)[0] = (byte)']';
         output.Advance(1);
@@ -270,7 +311,7 @@ internal static class RpcEndpoint
                 logger.LogDebug("Authenticated RPC data is unavailable: {Reason}", exception.Message);
                 return hasId ? Respond(Error(responseId, -32001, "Requested authenticated data is unavailable."), false) : null;
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
             {
                 outcome = "error -32602";
                 return hasId ? Respond(Error(responseId, -32602, "Invalid parameters."), false) : null;
@@ -282,7 +323,7 @@ internal static class RpcEndpoint
                 return hasId ? Respond(Error(responseId, -32000, "Unable to verify peer data"), false) : null;
             }
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
         {
             outcome = "error -32600";
             return Respond(Error(null, -32600, "Invalid Request"), false);

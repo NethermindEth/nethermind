@@ -58,7 +58,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         if (!_heads.Writer.TryWrite((sequence, head)) && !_stopping.IsCancellationRequested)
         {
             Volatile.Write(ref _overflow, new(sequence, head));
-            CloseClients("Authenticated head queue overflowed; reconnect and resubscribe.");
+            CloseClients((WebSocketCloseStatus)1013, "Authenticated head queue overflowed; reconnect and resubscribe.");
         }
     }
 
@@ -90,7 +90,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 stopping = _disposing;
                 if (!stopping) _clients.Add(client);
             }
-            if (stopping) client.Terminate();
+            if (stopping) client.Close(WebSocketCloseStatus.EndpointUnavailable, "Light client is stopping.");
             await client.RunAsync();
         }
         finally
@@ -125,12 +125,19 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         if (!first) { await _disposed.Task; return; }
         try
         {
-            await _stopping.CancelAsync();
             _heads.Writer.TryComplete();
-            CloseClients("Light client is stopping.");
-            foreach (HttpContext context in contexts) context.Abort();
+            CloseClients(WebSocketCloseStatus.EndpointUnavailable, "Light client is stopping.");
+            await _stopping.CancelAsync();
             await _publisher;
-            await Task.WhenAll(completions);
+            Task connections = Task.WhenAll(completions);
+            try { await connections.WaitAsync(TimeSpan.FromSeconds(3), _clock); }
+            catch (TimeoutException)
+            {
+                _logger.LogDebug("Aborting subscription requests that did not finish during shutdown");
+                for (int i = 0; i < contexts.Length; i++)
+                    if (!completions[i].IsCompleted) contexts[i].Abort();
+                await connections;
+            }
             _stopping.Dispose();
         }
         finally { _disposed.TrySetResult(); }
@@ -146,11 +153,15 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         }
     }
 
-    private void CloseClients(string reason)
+    private void CloseClients(WebSocketCloseStatus status, string reason)
     {
         Client[] clients = Clients();
-        if (clients.Length != 0) _logger.LogWarning("Closing verified subscriptions: {Reason}", reason);
-        foreach (Client client in clients) client.Terminate();
+        if (clients.Length != 0)
+        {
+            if (status == WebSocketCloseStatus.EndpointUnavailable) _logger.LogInformation("Closing verified subscriptions: {Reason}", reason);
+            else _logger.LogWarning("Closing verified subscriptions: {Reason}", reason);
+        }
+        foreach (Client client in clients) client.Close(status, reason);
     }
 
     private async Task PublishLoopAsync()
@@ -190,7 +201,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 catch (Exception exception) when (!_stopping.IsCancellationRequested)
                 {
                     _logger.LogWarning(exception, "Unable to maintain an authenticated subscription stream");
-                    CloseClients("Verified history or execution data is unavailable; reconnect and resubscribe.");
+                    CloseClients((WebSocketCloseStatus)1013, "Verified history or execution data is unavailable; reconnect and resubscribe.");
                     _history.Clear();
                     _history.Add(new(head, sequence, default, null));
                 }
@@ -245,9 +256,10 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         if (common + 1 < _history.Count) _history.RemoveRange(common + 1, _history.Count - common - 1);
         _history.AddRange(added);
         if (_history.Count > MaxHistory) _history.RemoveRange(0, _history.Count - MaxHistory);
-        Task[] deliveries = new Task[clients.Length];
-        for (int i = 0; i < clients.Length; i++) deliveries[i] = clients[i].DeliverAsync(removed, added, tip, cancellationToken);
-        await Task.WhenAll(deliveries);
+        HashSet<Hash256> canonical = [];
+        foreach (Snapshot snapshot in _history) canonical.Add(snapshot.Head.BlockHash);
+        Delivery delivery = new(sequence, removed, added, tip, canonical);
+        foreach (Client client in clients) client.Enqueue(delivery);
     }
 
     private static void ValidateHeader(BlockHeader header, Hash256 hash, ulong number)
@@ -276,6 +288,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private sealed record Snapshot(VerifiedHead Head, long Sequence, JsonElement Header, BlockHeader? ExecutionHeader);
     private sealed record RetainedLogs(Snapshot Snapshot, LogData[] Logs, int Bytes);
     private sealed record Publication(long Sequence, VerifiedHead Head);
+    private sealed record Delivery(long Sequence, IReadOnlyList<Snapshot> Removed, IReadOnlyList<Snapshot> Added,
+        Snapshot? Tip, IReadOnlySet<Hash256> Canonical);
     private readonly record struct LogData(JsonElement Json, Address Address, Hash256[] Topics);
     private static bool Matches(Address address, Hash256[] topics, Subscription subscription)
     {
@@ -303,13 +317,18 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         private int _retainedFilterGeneration;
         private readonly Channel<byte[]> _outgoing = Channel.CreateBounded<byte[]>(
             new BoundedChannelOptions(128) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+        private readonly Channel<Delivery> _deliveries = Channel.CreateBounded<Delivery>(
+            new BoundedChannelOptions(8) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
         private readonly CancellationTokenSource _cancellation;
         private readonly CancellationToken _token;
-        private readonly TaskCompletionSource _terminated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly CancellationTokenSource _workCancellation;
+        private readonly TaskCompletionSource _closeRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private CancellationTokenSource? _closeDeadline;
         private TaskCompletionSource? _space;
         private int _closing;
         private int _finished;
         private string? _closeReason;
+        private WebSocketCloseStatus _closeStatus;
         private int _queuedBytes;
 
         internal Client(VerifiedSubscriptions owner, WebSocket socket, CancellationToken requestAborted)
@@ -318,38 +337,92 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             _socket = socket;
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
             _token = _cancellation.Token;
+            _workCancellation = CancellationTokenSource.CreateLinkedTokenSource(_token);
         }
 
         internal void Terminate() => Finish(abort: true);
 
         private void Finish(bool abort)
         {
-            if (Interlocked.Exchange(ref _finished, 1) != 0) return;
-            Interlocked.Exchange(ref _closing, 1);
-            try
+            lock (_lock)
             {
+                if (Interlocked.Exchange(ref _finished, 1) != 0) return;
+                Interlocked.Exchange(ref _closing, 1);
                 if (abort) _socket.Abort();
                 _cancellation.Cancel();
             }
-            finally { _terminated.TrySetResult(); }
+        }
+
+        internal void Close(WebSocketCloseStatus status, string reason)
+        {
+            lock (_lock)
+            {
+                if (Volatile.Read(ref _closing) != 0) return;
+                _closeStatus = status;
+                _closeReason = reason;
+                _closeDeadline = new(TimeSpan.FromSeconds(2), _owner._clock);
+                Volatile.Write(ref _closing, 1);
+                _outgoing.Writer.TryComplete();
+                _deliveries.Writer.TryComplete();
+                _workCancellation.Cancel();
+                _closeRequested.TrySetResult();
+            }
+        }
+
+        internal void Enqueue(Delivery delivery)
+        {
+            if (Volatile.Read(ref _closing) != 0 || _deliveries.Writer.TryWrite(delivery)) return;
+            _owner._logger.LogWarning("Closing this connection because its authenticated head queue overflowed");
+            Close((WebSocketCloseStatus)1013, "Authenticated head queue overflowed; reconnect and resubscribe.");
         }
 
         internal async Task RunAsync()
         {
             Task sender = SendAsync();
-            try { await ReceiveAsync(); }
+            Task delivery = DeliverLoopAsync();
+            Task receiver = ReceiveAsync();
+            Task workers = Task.WhenAll(sender, delivery, receiver);
+            try
+            {
+                await Task.WhenAny(receiver, _closeRequested.Task);
+                if (Volatile.Read(ref _closing) == 0) Terminate();
+                if (Volatile.Read(ref _finished) == 0)
+                {
+                    try { await workers.WaitAsync(_closeDeadline!.Token); }
+                    catch (OperationCanceledException) when (_closeDeadline!.IsCancellationRequested)
+                    {
+                        _owner._logger.LogDebug("Aborting subscription transport after its close handshake timed out");
+                        Terminate();
+                    }
+                    if (Volatile.Read(ref _finished) == 0) Finish(abort: false);
+                }
+            }
             catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
             {
-                if (Volatile.Read(ref _closing) == 0 && !_cancellation.IsCancellationRequested)
+                if (!_cancellation.IsCancellationRequested)
                     _owner._logger.LogDebug(exception, "Subscription connection closed");
+                Terminate();
             }
             finally
             {
-                if (Volatile.Read(ref _closing) == 0) Terminate();
+                if (Volatile.Read(ref _finished) == 0) Terminate();
                 _outgoing.Writer.TryComplete();
-                await _terminated.Task;
-                await sender;
-                _cancellation.Dispose();
+                _deliveries.Writer.TryComplete();
+                try { await workers; }
+                catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
+                {
+                    if (!_cancellation.IsCancellationRequested)
+                        _owner._logger.LogDebug(exception, "Subscription connection closed");
+                }
+                finally
+                {
+                    lock (_lock)
+                    {
+                        _workCancellation.Dispose();
+                        _closeDeadline?.Dispose();
+                        _cancellation.Dispose();
+                    }
+                }
             }
         }
 
@@ -359,6 +432,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             {
                 await foreach (byte[] message in _outgoing.Reader.ReadAllAsync(_token))
                 {
+                    _token.ThrowIfCancellationRequested();
+                    if (Volatile.Read(ref _closing) != 0) break;
                     TaskCompletionSource? space;
                     lock (_lock)
                     {
@@ -369,11 +444,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     space?.TrySetResult();
                     await _socket.SendAsync(message, WebSocketMessageType.Text, true, _token);
                 }
-                if (_closeReason is { } reason)
-                {
-                    await _socket.CloseOutputAsync((WebSocketCloseStatus)1013, reason, _token);
-                    Finish(abort: false);
-                }
+                if (Volatile.Read(ref _finished) == 0 && _closeReason is { } reason)
+                    await _socket.CloseOutputAsync(_closeStatus, reason, _token);
             }
             catch (Exception exception) when (exception is OperationCanceledException or WebSocketException)
             {
@@ -400,6 +472,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 {
                     received = await _socket.ReceiveAsync(buffer, _token);
                     if (received.MessageType == WebSocketMessageType.Close) return;
+                    if (Volatile.Read(ref _closing) != 0) continue;
                     if (received.MessageType != WebSocketMessageType.Text || input.Length + received.Count > RpcEndpoint.StandardRequestBodySize)
                     {
                         _owner._logger.LogWarning("Closing subscription connection after a non-text or oversized request");
@@ -407,46 +480,53 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     }
                     input.Write(buffer, 0, received.Count);
                 } while (!received.EndOfMessage);
+                if (Volatile.Read(ref _closing) != 0) continue;
                 JsonDocument document;
                 try { document = JsonDocument.Parse(input.ToArray()); }
                 catch (JsonException)
                 {
-                    if (!await EnqueueResponseAsync(JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = (object?)null, error = new { code = -32700, message = "Parse error" } }))) return;
+                    if (!await EnqueueResponseAsync(JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = (object?)null, error = new { code = -32700, message = "Parse error" } }))
+                        && Volatile.Read(ref _closing) == 0) return;
                     continue;
                 }
-                using (document)
-                using (CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock))
-                using (CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token))
+                try
                 {
-                    JsonElement request = document.RootElement;
-                    byte[]? response;
-                    if (request.ValueKind == JsonValueKind.Array)
+                    using (document)
+                    using (CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock))
+                    using (CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token))
                     {
-                        int count = request.GetArrayLength();
-                        if (count == 0)
-                            response = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32600, "Batch must contain at least one request"));
+                        JsonElement request = document.RootElement;
+                        byte[]? response;
+                        if (request.ValueKind == JsonValueKind.Array)
+                        {
+                            int count = request.GetArrayLength();
+                            if (count == 0)
+                                response = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32600, "Batch must contain at least one request"));
+                            else
+                            {
+                                using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
+                                bool hasResponses = await RpcEndpoint.WriteBatchAsync(batch, MaxMessageBytes, request,
+                                    InvokeAsync, _owner._logger, cancellation.Token, _owner._metrics);
+                                response = hasResponses ? batch.WrittenMemory.ToArray() : null;
+                            }
+                        }
                         else
                         {
-                            using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
-                            bool hasResponses = await RpcEndpoint.WriteBatchAsync(batch, MaxMessageBytes, request,
-                                InvokeAsync, _owner._logger, cancellation.Token, _owner._metrics);
-                            response = hasResponses ? batch.WrittenMemory.ToArray() : null;
+                            response = null;
+                            await RpcEndpoint.InvokeAsync(request, InvokeAsync, _owner._logger, cancellation.Token, (result, _) =>
+                            {
+                                response = EncodeResponse(request, result, out bool unchanged);
+                                if (!unchanged) DiscardPending();
+                                return unchanged;
+                            }, _owner._metrics);
                         }
+                        _token.ThrowIfCancellationRequested();
+                        if (Volatile.Read(ref _closing) != 0) continue;
+                        if (response is not null && !await EnqueueResponseAsync(response) && Volatile.Read(ref _closing) == 0) return;
+                        if (response is null) lock (_lock) ActivatePending();
                     }
-                    else
-                    {
-                        response = null;
-                        await RpcEndpoint.InvokeAsync(request, InvokeAsync, _owner._logger, cancellation.Token, (result, _) =>
-                        {
-                            response = EncodeResponse(request, result, out bool unchanged);
-                            if (!unchanged) DiscardPending();
-                            return unchanged;
-                        }, _owner._metrics);
-                    }
-                    _token.ThrowIfCancellationRequested();
-                    if (response is not null && !await EnqueueResponseAsync(response)) return;
-                    if (response is null) lock (_lock) ActivatePending();
                 }
+                catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested && !_token.IsCancellationRequested) { }
             }
         }
 
@@ -533,35 +613,30 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             }
         }
 
-        private async Task CloseAsync(string reason)
+        private async Task DeliverLoopAsync()
         {
-            if (Interlocked.Exchange(ref _closing, 1) != 0) return;
-            _closeReason = reason;
-            _outgoing.Writer.TryComplete();
-            try { await _terminated.Task.WaitAsync(TimeSpan.FromSeconds(2), _owner._clock, _owner._stopping.Token); }
-            catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+            try
             {
-                _owner._logger.LogDebug("Closing stalled log subscription transport: {Reason}", reason);
-                Terminate();
+                await foreach (Delivery delivery in _deliveries.Reader.ReadAllAsync(_workCancellation.Token))
+                    await DeliverAsync(delivery);
             }
+            catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested) { }
         }
 
-        internal async Task DeliverAsync(IReadOnlyList<Snapshot> removed, IReadOnlyList<Snapshot> added,
-            Snapshot? tip, CancellationToken cancellationToken)
+        private async Task DeliverAsync(Delivery delivery)
         {
             if (Volatile.Read(ref _closing) != 0) return;
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock);
-            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token, cancellationToken);
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token);
             try
             {
                 List<Subscription> filters = [];
-                long sequence = added.Count != 0 ? added[^1].Sequence : tip?.Sequence ?? 0;
-                int generation = CollectLogFilters(sequence, filters);
-                foreach (Snapshot snapshot in removed)
+                int generation = CollectLogFilters(delivery.Sequence, filters);
+                foreach (Snapshot snapshot in delivery.Removed)
                     if (_logHistory.TryGetValue(snapshot.Head.BlockHash, out RetainedLogs? previous))
                         await LogsAsync(previous.Snapshot, previous.Logs, removed: true, cancellation.Token);
-                PruneLogs(filters, generation);
-                foreach (Snapshot snapshot in added)
+                PruneLogs(filters, generation, delivery.Canonical);
+                foreach (Snapshot snapshot in delivery.Added)
                 {
                     if (filters.Count == 0 || snapshot.ExecutionHeader is null) continue;
                     JsonElement rendered = await _owner._rpc.GetSubscriptionLogsAsync(snapshot.ExecutionHeader, MatchesAnyLog, cancellation.Token);
@@ -573,7 +648,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     _historyBytes += bytes;
                     await LogsAsync(snapshot, logs, removed: false, cancellation.Token);
                 }
-                if (tip is not null && tip.Header.ValueKind != JsonValueKind.Undefined)
+                if (delivery.Tip is { } tip && tip.Header.ValueKind != JsonValueKind.Undefined)
                     await NotifyAsync(tip.Sequence, tip.Header, null, removed: false, cancellation.Token);
 
                 bool MatchesAnyLog(Address address, Hash256[] topics)
@@ -583,18 +658,19 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     return false;
                 }
             }
-            catch (OperationCanceledException) when (_token.IsCancellationRequested || _owner._stopping.IsCancellationRequested) { Terminate(); }
+            catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested)
+            {
+                if (Volatile.Read(ref _closing) == 0) Terminate();
+            }
             catch (Exception exception)
             {
                 _owner._logger.LogWarning(exception, "Closing this connection because its authenticated log stream is unavailable");
-                await CloseAsync("Authenticated log data is unavailable or this connection exceeded its history budget.");
+                Close((WebSocketCloseStatus)1013, "Authenticated log data is unavailable or this connection exceeded its history budget.");
             }
         }
 
-        private void PruneLogs(List<Subscription> filters, int generation)
+        private void PruneLogs(List<Subscription> filters, int generation, IReadOnlySet<Hash256> canonical)
         {
-            HashSet<Hash256> canonical = [];
-            foreach (Snapshot snapshot in _owner._history) canonical.Add(snapshot.Head.BlockHash);
             foreach ((Hash256 hash, RetainedLogs previous) in _logHistory)
             {
                 if (!canonical.Contains(hash) || filters.Count == 0)
@@ -645,16 +721,34 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
                 using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token, cancellationToken);
                 try { if (!await EnqueueAsync(message, subscription.Id, cancellation.Token)) return; }
-                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { Terminate(); return; }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    if (_token.IsCancellationRequested || cancellationToken.IsCancellationRequested) throw;
+                    _owner._logger.LogWarning("Closing subscription connection after its notification queue exceeded the admission deadline");
+                    Close((WebSocketCloseStatus)1013, "Notification queue exceeded its admission deadline; reconnect and resubscribe.");
+                    return;
+                }
             }
         }
 
         private async Task<bool> EnqueueResponseAsync(byte[] message)
         {
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
-            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token);
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token);
             try { return await EnqueueAsync(message, null, cancellation.Token); }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { Terminate(); return false; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                if (_workCancellation.IsCancellationRequested)
+                {
+                    if (Volatile.Read(ref _closing) == 0) Terminate();
+                }
+                else
+                {
+                    _owner._logger.LogWarning("Closing subscription connection after its response queue exceeded the admission deadline");
+                    Close((WebSocketCloseStatus)1013, "Response queue exceeded its admission deadline; reconnect and resubscribe.");
+                }
+                return false;
+            }
         }
 
         private async Task<bool> EnqueueAsync(byte[] message, string? subscriptionId, CancellationToken cancellationToken)

@@ -27,6 +27,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -170,7 +171,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         };
         SyncConfig sync = new() { SnapSync = true, FastSync = false, SnapServingEnabled = false };
         DiscoveryConfig discovery = new() { DiscoveryVersion = DiscoveryVersion.V5 };
-        ConfigProvider config = new(init, net, sync, discovery, new FlatDbConfig { Enabled = false });
+        KeyStoreConfig keyStore = new() { KeyStoreDirectory = Path.GetFullPath(dataDirectory ?? init.DataDir) };
+        ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
@@ -449,6 +451,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     {
         PathWithAccount accountPath = new(ValueKeccak.Compute(address.Bytes), account);
         HashSet<PeerInfo> suppliers = [];
+        bool completeAttribution = true;
         ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
         try
         {
@@ -456,7 +459,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         catch (InvalidDataException exception)
         {
-            if (suppliers.Count == 1)
+            if (completeAttribution && suppliers.Count == 1)
             {
                 foreach (PeerInfo supplier in suppliers)
                     RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
@@ -505,7 +508,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _));
                 if (pinned is null)
                 {
-                    suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous));
+                    if (suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous)) != 0
+                        || supplier is null) completeAttribution = false;
                     if (supplier is not null) suppliers.Add(supplier);
                 }
                 return page;

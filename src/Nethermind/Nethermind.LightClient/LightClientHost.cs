@@ -11,6 +11,26 @@ namespace Nethermind.LightClient;
 
 internal static class LightClientHost
 {
+    internal static bool TryPrepareDataDirectory(string directory, out string? error)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            using FileStream probe = new(Path.Combine(directory, $".light-client-write-{Guid.NewGuid():N}"),
+                FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 1, FileOptions.DeleteOnClose);
+            probe.WriteByte(0);
+            probe.Flush();
+            error = null;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            error = $"Cannot write light-client data directory '{directory}' as user '{Environment.UserName}': {exception.Message} " +
+                "Check directory ownership and write permissions. Docker volumes must be writable by UID 1654.";
+            return false;
+        }
+    }
+
     internal static void ConfigureNetworkBuffers()
     {
         NettyMemoryEstimator.SetPageSize();

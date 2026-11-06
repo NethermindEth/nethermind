@@ -157,6 +157,13 @@ Periodic beacon supplier maintenance counts optimistic, finality and required
 committee suppliers separately. It preserves newly admitted peers for 30 seconds
 and replenishes a pool below 16 admitted peers before recycling a connection.
 
+Execution networking stores its private node identity in
+`<data-dir>/node.key.plain`. Reuse that data directory to retain the identity;
+separate data directories have independent execution identities. Before upgrading
+an older native installation, stop it and deliberately move its binary-adjacent
+`keystore/node.key.plain` into the intended data directory, retaining private file
+permissions. Startup does not automatically migrate a potentially shared key.
+
 Native beacon networking keeps its private P2P identity and monotonically
 increasing signed ENR sequence in `<data-dir>/cl/<chain-id>/network`, using
 Nethermind's RocksDB storage with synchronous WAL writes before advertisement.

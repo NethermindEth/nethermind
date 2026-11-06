@@ -259,10 +259,27 @@ public class BeaconPeerTransportTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sink.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Info)), Is.EqualTo(advances ? 0 : 3));
+            Assert.That(sink.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Info)), Is.Zero);
             Assert.That(sink.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Debug)
-                && call.GetArguments()[0] is string message && message.Contains(" round:")), Is.EqualTo(advances ? 3 : 0));
+                && call.GetArguments()[0] is string message && message.Contains(" round:")), Is.EqualTo(3));
         }
+    }
+
+    [Test]
+    public async Task Poll_rounds_without_valid_data_remain_visible([Values] bool unavailable)
+    {
+        InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+        sink.IsInfo.Returns(true);
+        sink.IsDebug.Returns(true);
+        BootstrapPeer peer = new(ConsensusTests.Bootstrap(1, 1));
+        Exception failure = unavailable ? BootstrapUnavailable() : new EndOfStreamException("Request failed.");
+        BeaconPeerTransport.PeerRequests requests = new(logger: new Nethermind.Logging.ILogger(sink));
+
+        await requests.RequestAsync<string>([peer], (_, _) => Task.FromException<string>(failure),
+            static (_, _) => Task.FromResult(true), CancellationToken.None);
+
+        Assert.That(sink.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Info)
+            && call.GetArguments()[0] is string message && message.Contains(" round:")), Is.EqualTo(1));
     }
 
     [Test]
@@ -305,21 +322,114 @@ public class BeaconPeerTransportTests
     }
 
     [Test]
-    public async Task Repeated_inapplicable_updates_are_penalized_after_allowing_transient_clock_skew([Values] bool knownCommittee)
+    public async Task Repeated_updates_from_an_unknown_committee_are_penalized()
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
         BootstrapPeer peer = new(bootstrap);
-        LightClientUpdate update = ConsensusTests.Update(1, 2, knownCommittee ? 12UL : 8193UL, 1);
-        if (!knownCommittee) update.SyncAggregate!.SyncCommitteeSignature = default;
-        ulong currentSlot = knownCommittee ? 11UL : 8192UL;
+        LightClientUpdate update = ConsensusTests.Update(1, 2, 8193, 1);
+        update.SyncAggregate!.SyncCommitteeSignature = default;
         BeaconPeerTransport.PeerRequests requests = new();
 
         for (int i = 0; i < 2; i++)
-            await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, currentSlot)), CancellationToken.None);
+            await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, 8192)), CancellationToken.None);
         Assert.That(peer.Failures, Is.Empty);
-        await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, currentSlot)), CancellationToken.None);
+        await requests.RequestAsync([peer], (_, _) => Task.FromResult(update), Validate<LightClientUpdate>(value => store.Process(value, 8192)), CancellationToken.None);
         Assert.That(peer.Failures, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+    }
+
+    [Test]
+    public async Task Local_clock_and_authenticated_future_updates_do_not_penalize_honest_peers([Values] bool beforeValidation)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
+        if (beforeValidation) store.Process(ConsensusTests.Update(1, 10, 11, 1), 11);
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(11);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
+        BootstrapPeer[] peers = ProviderPeers(3);
+        LightClientUpdate update = ConsensusTests.Update(1, 10, 12, 1);
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+
+        foreach (BootstrapPeer peer in peers)
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                Task Request() => requests.RequestAsync([peer], (_, _) => Task.FromResult(update),
+                    Validate<LightClientUpdate>(value =>
+                    {
+                        ConsensusSync.RequireLiveState(store, beforeValidation ? 9UL : 11UL, static () => Assert.Fail("Clock skew must not stop the application."));
+                        store.Process(value, 11);
+                    }), CancellationToken.None);
+                if (beforeValidation)
+                    Assert.That(async () => await Request(), Throws.TypeOf<LightClientClockException>());
+                else
+                    await Request();
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (BootstrapPeer peer in peers)
+            {
+                Assert.That(peer.Failures, Is.Empty);
+                Assert.That(providers.CanRequest<LightClientUpdate>(peer), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Replayed_valid_signatures_with_future_slot_metadata_do_not_block_other_suppliers(
+        [Values(12UL, 31UL)] ulong signatureSlot)
+    {
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
+        BootstrapPeer[] peers = ProviderPeers(2);
+        LightClientUpdate replayed = ConsensusTests.Update(2, 3, 4, 1);
+        replayed.SignatureSlot = signatureSlot;
+        LightClientUpdate current = ConsensusTests.Update(2, 10, 11, 1);
+        List<IBeaconSyncPeer> attempted = [];
+
+        (LightClientUpdate? accepted, _) = await new BeaconPeerTransport.PeerRequests().RequestAsync(peers, (peer, _) =>
+        {
+            attempted.Add(peer);
+            return Task.FromResult(ReferenceEquals(peer, peers[0]) ? replayed : current);
+        }, Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.SameAs(current));
+            Assert.That(attempted, Is.EqualTo(peers));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(10));
+            Assert.That(peers[0].Failures, Is.Empty);
+            Assert.That(peers[1].Failures, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task A_local_clock_failure_cancels_and_joins_other_inflight_suppliers()
+    {
+        BootstrapPeer[] peers = ProviderPeers(2);
+        TaskCompletionSource joined = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<string> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<(string? Response, bool SawInapplicable)> round = new BeaconPeerTransport.PeerRequests(concurrency: 2)
+            .RequestAsync(peers, async (peer, token) =>
+            {
+                if (ReferenceEquals(peer, peers[0])) return await response.Task;
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                finally { joined.SetResult(); }
+                return peer.Id;
+            }, static (_, _) => throw new LightClientClockException(), CancellationToken.None);
+        response.SetResult(peers[0].Id);
+
+        Assert.That(async () => await round, Throws.TypeOf<LightClientClockException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined.Task.IsCompletedSuccessfully, Is.True);
+            Assert.That(peers[0].Failures, Is.Empty);
+            Assert.That(peers[1].Failures, Is.Empty);
+        }
     }
 
     [TestCase(11UL, 8193UL)]
@@ -348,9 +458,9 @@ public class BeaconPeerTransportTests
         LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1);
         BootstrapPeer peer = new(bootstrap);
         BeaconPeerTransport.PeerRequests requests = new();
-        LightClientUpdate future = ConsensusTests.Update(1, 2, 12, 1);
+        LightClientUpdate future = ConsensusTests.Update(1, 2, 8193, 1);
         Task Request(LightClientUpdate update) => requests.RequestAsync([peer], (_, _) => Task.FromResult(update),
-            Validate<LightClientUpdate>(value => store.Process(value, 11)), CancellationToken.None);
+            Validate<LightClientUpdate>(value => store.Process(value, 8192)), CancellationToken.None);
         await Request(future);
         await Request(future);
         await Request(ConsensusTests.Update(1, 3, 4, 1));
@@ -414,6 +524,40 @@ public class BeaconPeerTransportTests
         {
             Assert.That(providers.Maintain(Connected(peers)).Recycle, Is.Null);
             clock.Advance(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    [Test]
+    public void Healthy_gossip_suppliers_are_retained_when_request_suppliers_are_sparse([Values(2UL, 3UL)] ulong gossipLag)
+    {
+        ManualDeadlineClock clock = new();
+        clock.SetSlot(1);
+        BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
+        BootstrapPeer[] peers = Enumerable.Range(0, 16).Select(static _ => HintPeer()).ToArray();
+        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        clock.SetSlot(14);
+
+        for (int tick = 0; tick < 4; tick++)
+        {
+            ulong current = ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+            foreach (BootstrapPeer peer in peers.Take(2))
+            {
+                providers.RecordValidated(peer, Optimistic(current - 1));
+                LightClientUpdate signed = ConsensusTests.Update(1, current - 1, current, 1);
+                providers.RecordValidated(peer, new LightClientFinalityUpdate
+                {
+                    AttestedHeader = signed.AttestedHeader,
+                    FinalizedHeader = signed.FinalizedHeader,
+                    FinalityBranch = signed.FinalityBranch,
+                    SyncAggregate = signed.SyncAggregate,
+                    SignatureSlot = signed.SignatureSlot,
+                });
+            }
+            foreach (BootstrapPeer peer in peers.Skip(2))
+                providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peer.Id)), current - gossipLag);
+
+            Assert.That(providers.Maintain(Connected(peers)).Recycle, gossipLag == 2 ? Is.Null : Is.SameAs(peers[2]));
+            clock.Advance(TimeSpan.FromSeconds(15));
         }
     }
 
@@ -1304,7 +1448,8 @@ public class BeaconPeerTransportTests
     }
 
     [Test]
-    public async Task Failed_protocols_back_off_without_blocking_another_protocol_or_retrying_early([Values] bool unavailable)
+    public async Task Failed_protocols_back_off_without_blocking_another_protocol_or_retrying_early(
+        [Values("unavailable", "refused", "timeout")] string failureKind)
     {
         ManualDeadlineClock clock = new();
         clock.SetSlot(14);
@@ -1315,12 +1460,15 @@ public class BeaconPeerTransportTests
         providers.RecordValidated(peer, bootstrap);
         BeaconPeerTransport.PeerRequests requests = new(clock, providers: providers);
         int attempts = 0;
-        Exception failure = unavailable ? BootstrapUnavailable() : new EndOfStreamException("Channel refused the request.");
-        await requests.RequestAsync<LightClientOptimisticUpdate>([peer], (_, _) =>
+        Exception failure = failureKind == "unavailable" ? BootstrapUnavailable() : new EndOfStreamException("Channel refused the request.");
+        Task<(LightClientOptimisticUpdate? Response, bool SawInapplicable)> failing = requests.RequestAsync<LightClientOptimisticUpdate>([peer], async (_, token) =>
         {
             attempts++;
-            return Task.FromException<LightClientOptimisticUpdate>(failure);
+            if (failureKind == "timeout") await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw failure;
         }, (_, _) => Task.FromResult(true), CancellationToken.None);
+        if (failureKind == "timeout") clock.Expire();
+        await failing;
         LightClientOptimisticUpdate expected = Optimistic(13);
 
         Assert.That(await RequestAsync(), Is.Null);
@@ -1336,7 +1484,7 @@ public class BeaconPeerTransportTests
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(attempts, Is.EqualTo(2));
         Assert.That(providers.CanRequest<LightClientOptimisticUpdate>(peer), Is.True);
-        Assert.That(peer.Failures, Is.EqualTo(unavailable ? Array.Empty<PeerFailureReason>() : [PeerFailureReason.RequestFailed]));
+        Assert.That(peer.Failures, Is.EqualTo(failureKind == "unavailable" ? Array.Empty<PeerFailureReason>() : [PeerFailureReason.RequestFailed]));
 
         async Task<LightClientOptimisticUpdate?> RequestAsync()
         {

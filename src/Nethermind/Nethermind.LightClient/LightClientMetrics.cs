@@ -36,6 +36,7 @@ internal sealed class LightClientMetrics
     private readonly Gauge.Child _executionPeers;
     private readonly Gauge.Child _snapPeers;
     private readonly Dictionary<string, (Counter.Child[] Requests, Histogram.Child[] Duration)> _rpc = new(StringComparer.Ordinal);
+    private readonly Counter _http;
 
     internal CollectorRegistry Registry { get; } = PrometheusMetrics.NewCustomRegistry();
 
@@ -45,6 +46,9 @@ internal sealed class LightClientMetrics
         _readStatus = readStatus;
         Registry.SetStaticLabels(new Dictionary<string, string> { ["network"] = network });
         MetricFactory factory = PrometheusMetrics.WithCustomRegistry(Registry);
+        _http = factory.CreateCounter(Prefix + "http_requests_total", "HTTP RPC requests including admission, body and envelope failures.", ["outcome"]);
+        foreach (string outcome in new[] { "completed", "overloaded", "too_large", "parse_error", "invalid_batch", "timed_out", "cancelled", "failed" })
+            _http.WithLabels(outcome);
         _ready = factory.CreateGauge(Prefix + "ready", "One when the running client has a fresh authenticated optimistic head.");
         _initialized = factory.CreateGauge(Prefix + "initialized", "One when RPC initialization completed and the client is running.");
         _stage = factory.CreateGauge(Prefix + "startup_stage", "One for the current startup or lifecycle stage.", ["stage"]);
@@ -101,6 +105,8 @@ internal sealed class LightClientMetrics
         series.Requests[index].Inc();
         series.Duration[index].Observe(seconds);
     }
+
+    internal void RecordHttp(string outcome) => _http.WithLabels(outcome).Inc();
 
     private void UpdateSnapshot()
     {

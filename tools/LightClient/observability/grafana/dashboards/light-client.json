@@ -1111,6 +1111,63 @@
           "editorMode": "code"
         }
       ]
+    },
+    {
+      "id": 19,
+      "title": "HTTP admission overloads",
+      "type": "timeseries",
+      "description": "Requests rejected with HTTP 429 before JSON-RPC item dispatch. These are separate from dispatched RPC item outcomes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(nethermind_light_client_http_requests_total{job=\"nethermind-light-client\",network=\"$network\",outcome=\"overloaded\"}[$__rate_interval]))",
+          "legendFormat": "HTTP 429",
+          "range": true,
+          "editorMode": "code"
+        }
+      ]
     }
   ],
   "refresh": "15s",

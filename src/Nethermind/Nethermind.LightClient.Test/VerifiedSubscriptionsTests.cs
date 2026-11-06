@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -191,7 +192,7 @@ public class VerifiedSubscriptionsTests
             else if (termination == "shutdown") await harness.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
             else await load.ReleaseAsync();
 
-            await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await socket.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
         }
 
@@ -253,6 +254,58 @@ public class VerifiedSubscriptionsTests
     }
 
     [Test]
+    public async Task Rewinding_keeps_canonical_logs_for_a_later_reorganization([Values] bool heads)
+    {
+        await using Harness harness = new();
+        Block root = harness.Source.Current;
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "logs");
+        if (heads) await socket.Request("eth_subscribe", "newHeads");
+        Block first = harness.Source.Add(11, root, 1);
+        harness.Publish(first);
+        AssertLog(await socket.Next(), first.Hash!, false, "0x010b");
+        if (heads) await socket.Next();
+        Block second = harness.Source.Add(12, first, 2);
+        harness.Publish(second);
+        AssertLog(await socket.Next(), second.Hash!, false, "0x020c");
+        if (heads) await socket.Next();
+
+        harness.Publish(first);
+        AssertLog(await socket.Next(), second.Hash!, true, "0x020c");
+        if (heads) await socket.Next();
+        Block sibling = harness.Source.Add(11, root, 3);
+        harness.Publish(sibling);
+
+        AssertLog(await socket.Next(), first.Hash!, true, "0x010b");
+        AssertLog(await socket.Next(), sibling.Hash!, false, "0x030b");
+        if (heads) await socket.Next();
+        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+        Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
+    }
+
+    [Test]
+    public async Task Returning_to_a_replaced_branch_prunes_its_previous_log_history()
+    {
+        await using Harness harness = new();
+        Block root = harness.Source.Current;
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "logs");
+        Block first = harness.Source.Add(11, root, 1);
+        Block second = harness.Source.Add(11, root, 2);
+        harness.Publish(first);
+        AssertLog(await socket.Next(), first.Hash!, false, "0x010b");
+        harness.Publish(second);
+        AssertLog(await socket.Next(), first.Hash!, true, "0x010b");
+        AssertLog(await socket.Next(), second.Hash!, false, "0x020b");
+
+        harness.Publish(first);
+
+        AssertLog(await socket.Next(), second.Hash!, true, "0x020b");
+        AssertLog(await socket.Next(), first.Hash!, false, "0x010b");
+        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
     public async Task Forged_headers_or_receipts_close_the_stream_before_publishing_invalid_data([Values] bool receipts)
     {
         await using Harness harness = new();
@@ -263,7 +316,7 @@ public class VerifiedSubscriptionsTests
         else harness.Source.TamperHeader = true;
         harness.Publish(next);
 
-        await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await socket.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
     }
 
@@ -277,7 +330,7 @@ public class VerifiedSubscriptionsTests
         for (ulong number = 11; number <= 43; number++) next = harness.Source.Add(number, next, 1);
         harness.Publish(next);
 
-        await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await socket.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
     }
 
@@ -311,6 +364,58 @@ public class VerifiedSubscriptionsTests
 
         for (int i = 0; i < 250; i++) AssertLog(await socket.Next(), next.Hash!, false);
         Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+    }
+
+    [Test]
+    public async Task A_slow_log_reader_cannot_delay_other_clients_heads_or_overflow_their_queues()
+    {
+        WriteClock clock = new() { ObserveClose = true };
+        await using Harness harness = new(clock);
+        FakeSocket logs = harness.Connect();
+        await logs.Request("eth_subscribe", "logs");
+        logs.StallAfter = 1;
+        FakeSocket heads = harness.Connect();
+        await heads.Request("eth_subscribe", "newHeads");
+        try
+        {
+            Block busy = harness.Source.Add(11, harness.Source.Current, 1, logCount: 250);
+            harness.Publish(busy);
+            await logs.Stalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            AssertHead(await heads.Next(), busy);
+            Block parent = busy;
+            for (ulong number = 12; number <= 20; number++)
+            {
+                Block next = harness.Source.Add(number, parent, 2);
+                harness.Publish(next);
+                AssertHead(await heads.Next(), next);
+                if (number < 20)
+                {
+                    logs.ResumeSend();
+                    AssertLog(await logs.Next(), busy.Hash!, false);
+                }
+                parent = next;
+            }
+
+            await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            logs.ResumeSend();
+            await logs.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await harness.Tasks[0].WaitAsync(TimeSpan.FromSeconds(5));
+            Block last = harness.Source.Add(21, parent, 3);
+            harness.Publish(last);
+            AssertHead(await heads.Next(), last);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logs.CloseStatus, Is.EqualTo((WebSocketCloseStatus)1013));
+                Assert.That(logs.Aborted.Task.IsCompleted, Is.False);
+                Assert.That(logs.Disposed, Is.True);
+                Assert.That(heads.State, Is.EqualTo(WebSocketState.Open));
+            }
+        }
+        finally
+        {
+            logs.StallAfter = int.MaxValue;
+            logs.ResumeSend();
+        }
     }
 
     [Test]
@@ -538,6 +643,7 @@ public class VerifiedSubscriptionsTests
         await using Harness harness = new();
         FakeSocket logs = harness.Connect();
         await logs.Request("eth_subscribe", "logs", new { address = Address.Zero.ToString() });
+        await logs.Request("eth_subscribe", "newHeads");
         FakeSocket heads = harness.Connect();
         await heads.Request("eth_subscribe", "newHeads");
         Block parent = harness.Source.Current;
@@ -545,6 +651,7 @@ public class VerifiedSubscriptionsTests
         {
             Block next = harness.Source.Add(number, parent, 1, logCount: 1_500);
             harness.Publish(next);
+            AssertHead(await logs.Next(), next);
             Assert.That((await heads.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
             parent = next;
         }
@@ -569,7 +676,7 @@ public class VerifiedSubscriptionsTests
 
         harness.Publish(next);
 
-        await logs.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await logs.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That((await heads.Next()).GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(next.Hash!.ToString()));
         Assert.That(heads.State, Is.EqualTo(WebSocketState.Open));
     }
@@ -620,7 +727,7 @@ public class VerifiedSubscriptionsTests
     [Test]
     public async Task A_slow_consumer_is_disconnected_when_its_full_queue_cannot_drain_before_the_deadline()
     {
-        WriteClock clock = new();
+        WriteClock clock = new() { ObserveClose = true };
         await using Harness harness = new(clock);
         FakeSocket socket = harness.Connect();
         await socket.Request("eth_chainId");
@@ -631,29 +738,65 @@ public class VerifiedSubscriptionsTests
 
         await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
         clock.Expire();
+        await clock.CloseCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Expire();
         await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(socket.Sends, Is.EqualTo(2), "one successful reply and one stalled reply, followed by a full queue that misses its deadline");
     }
 
     [Test]
-    public async Task Shutdown_joins_connections_and_disposes_their_sockets()
+    public async Task Shutdown_joins_connections_and_disposes_their_sockets(
+        [Values("idle", "send", "receipts", "close")] string blocked)
     {
-        Harness harness = new();
+        WriteClock clock = new() { ObserveClose = blocked == "close" };
+        Harness harness = new(clock);
         FakeSocket socket = harness.Connect();
-        await socket.Request("eth_subscribe", "newHeads");
+        await socket.Request("eth_subscribe", "logs");
+        FakeSocket heads = harness.Connect();
+        await heads.Request("eth_subscribe", "newHeads");
+        if (blocked is "send" or "receipts")
+        {
+            if (blocked == "send") socket.StallAfter = 1;
+            else harness.Source.BlockGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Block next = harness.Source.Add(11, harness.Source.Current, 1, logCount: 250);
+            harness.Publish(next);
+            if (blocked == "send") await socket.Stalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            else await harness.Source.FirstBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            AssertHead(await heads.Next(), next);
+        }
+        socket.StallClose = blocked == "close";
 
-        await harness.DisposeAsync();
+        Task stopped = harness.DisposeAsync().AsTask();
+        if (blocked == "send") socket.ResumeSend();
+        await socket.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await heads.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (blocked == "close")
+        {
+            await harness.Tasks[1].WaitAsync(TimeSpan.FromSeconds(5));
+            await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Expire();
+        }
+        await stopped.WaitAsync(TimeSpan.FromSeconds(5));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(socket.CloseStatus, Is.EqualTo(WebSocketCloseStatus.EndpointUnavailable));
+            Assert.That(heads.CloseStatus, Is.EqualTo(WebSocketCloseStatus.EndpointUnavailable));
+            Assert.That(socket.Aborted.Task.IsCompleted, Is.EqualTo(blocked == "close"));
+            Assert.That(heads.Aborted.Task.IsCompleted, Is.False);
             Assert.That(socket.Disposed, Is.True);
+            Assert.That(heads.Disposed, Is.True);
+            Assert.That(harness.Source.ActiveBlockReads, Is.Zero);
             Assert.That(harness.Tasks, Has.All.Property(nameof(Task.IsCompleted)).True);
         }
     }
 
     private static object Request(string method, params object[] parameters) => new { jsonrpc = "2.0", id = 1, method, @params = parameters };
 
-    private static void AssertLog(JsonElement notification, Hash256 hash, bool removed)
+    private static void AssertHead(JsonElement notification, Block block) =>
+        Assert.That(notification.GetProperty("params").GetProperty("result").GetProperty("hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+
+    private static void AssertLog(JsonElement notification, Hash256 hash, bool removed, string? expectedData = null)
     {
         JsonElement log = notification.GetProperty("params").GetProperty("result");
         using (Assert.EnterMultipleScope())
@@ -662,6 +805,7 @@ public class VerifiedSubscriptionsTests
             Assert.That(log.GetProperty("removed").GetBoolean(), Is.EqualTo(removed));
             Assert.That(log.GetProperty("address").GetString(), Is.EqualTo(Address.ToString()));
             Assert.That(log.GetProperty("topics")[0].GetString(), Is.EqualTo(Topic.ToString()));
+            if (expectedData is not null) Assert.That(log.GetProperty("data").GetString(), Is.EqualTo(expectedData));
         }
     }
 
@@ -749,21 +893,31 @@ public class VerifiedSubscriptionsTests
     {
         internal bool ObserveWrites { get; set; }
         internal bool ObservePublication { get; set; }
+        internal bool ObserveClose { get; set; }
         internal TaskCompletionSource Created { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private Timer? _timer;
+        internal TaskCompletionSource CloseCreated { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Lock _lock = new();
+        private readonly List<Timer> _timers = [];
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             Timer timer = new(callback, state);
-            if (ObserveWrites && dueTime == TimeSpan.FromSeconds(10) || ObservePublication && dueTime == TimeSpan.FromSeconds(90))
+            if (ObserveWrites && dueTime == TimeSpan.FromSeconds(10) || ObservePublication && dueTime == TimeSpan.FromSeconds(90)
+                || ObserveClose && dueTime == TimeSpan.FromSeconds(2))
             {
-                _timer = timer;
+                lock (_lock) _timers.Add(timer);
                 Created.TrySetResult();
+                if (dueTime == TimeSpan.FromSeconds(2)) CloseCreated.TrySetResult();
             }
             return timer;
         }
 
-        internal void Expire() => _timer!.Expire();
+        internal void Expire()
+        {
+            Timer[] timers;
+            lock (_lock) timers = [.. _timers];
+            foreach (Timer timer in timers) timer.Expire();
+        }
 
         private sealed class Timer(TimerCallback callback, object? state) : ITimer
         {
@@ -791,7 +945,8 @@ public class VerifiedSubscriptionsTests
         internal Channel<byte[]> Output { get; } = Channel.CreateUnbounded<byte[]>();
         internal TaskCompletionSource Aborted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource CloseFrame { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Stalled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Channel<bool> _resume = Channel.CreateUnbounded<bool>();
         private byte[]? _pending;
         private int _offset;
         private WebSocketState _state = WebSocketState.Open;
@@ -800,6 +955,7 @@ public class VerifiedSubscriptionsTests
         internal bool Accepted { get; set; }
         internal bool Disposed { get; private set; }
         internal int StallAfter { get; set; } = int.MaxValue;
+        internal bool StallClose { get; set; }
         internal int Sends { get; private set; }
         internal WebSocketMessageType MessageType { get; set; } = WebSocketMessageType.Text;
         public override WebSocketCloseStatus? CloseStatus => _closeStatus;
@@ -808,6 +964,7 @@ public class VerifiedSubscriptionsTests
         public override string? SubProtocol => null;
 
         internal void Push(object request) => _input.Writer.TryWrite(JsonSerializer.SerializeToUtf8Bytes(request));
+        internal void ResumeSend() => _resume.Writer.TryWrite(true);
         internal async Task<JsonElement> Request(string method, params object[] parameters)
         {
             Push(VerifiedSubscriptionsTests.Request(method, parameters));
@@ -825,20 +982,35 @@ public class VerifiedSubscriptionsTests
             _input.Writer.TryComplete();
             Aborted.TrySetResult();
         }
-        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) { Abort(); return Task.CompletedTask; }
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
         public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _closeStatus = closeStatus;
             _closeDescription = statusDescription;
             _state = WebSocketState.CloseSent;
             CloseFrame.TrySetResult();
+            if (!StallClose) _input.Writer.TryWrite([]);
             return Task.CompletedTask;
         }
-        public override void Dispose() { Disposed = true; Abort(); }
+        public override void Dispose()
+        {
+            Disposed = true;
+            if (_state != WebSocketState.Aborted) _state = WebSocketState.Closed;
+            _input.Writer.TryComplete();
+        }
         public override async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {
             try { _pending ??= await _input.Reader.ReadAsync(cancellationToken); }
+            catch (OperationCanceledException) { Abort(); throw; }
             catch (ChannelClosedException) { throw new WebSocketException("Closed test socket"); }
+            if (_pending.Length == 0 && _closeStatus is not null)
+            {
+                _pending = null;
+                _state = WebSocketState.Closed;
+                return new(0, WebSocketMessageType.Close, true);
+            }
             int count = Math.Min(buffer.Count, _pending.Length - _offset);
             _pending.AsSpan(_offset, count).CopyTo(buffer.AsSpan());
             _offset += count;
@@ -848,15 +1020,23 @@ public class VerifiedSubscriptionsTests
         }
         public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
         {
-            if (++Sends > StallAfter) await _resume.Task.WaitAsync(cancellationToken);
-            await Output.Writer.WriteAsync(buffer.ToArray(), cancellationToken);
+            try
+            {
+                if (++Sends > StallAfter)
+                {
+                    Stalled.TrySetResult();
+                    await _resume.Reader.ReadAsync(cancellationToken);
+                }
+                await Output.Writer.WriteAsync(buffer.ToArray(), cancellationToken);
+            }
+            catch (OperationCanceledException) { Abort(); throw; }
         }
     }
 
     private sealed class Source : IExecutionStateSource, IDisposable
     {
         private readonly PrivateKey _key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
-        private readonly Dictionary<Hash256, (Block Block, TxReceipt[] Receipts)> _blocks = [];
+        private readonly ConcurrentDictionary<Hash256, (Block Block, TxReceipt[] Receipts)> _blocks = [];
         internal Block Current { get; set; }
         internal bool TamperHeader { get; set; }
         internal bool TamperReceipts { get; set; }
@@ -871,11 +1051,13 @@ public class VerifiedSubscriptionsTests
         internal int HeaderReads => Volatile.Read(ref _headerReads);
         internal int BlockReads => Volatile.Read(ref _blockReads);
         internal int ReceiptReads => Volatile.Read(ref _receiptReads);
+        internal int ActiveBlockReads => Volatile.Read(ref _activeBlockReads);
         private int _codeCalls;
         private int _headerReads;
         private int _blockReads;
         private int _receiptReads;
         private int _blockedBlockReads;
+        private int _activeBlockReads;
 
         internal Source() => Current = Add(10, null, 0);
 
@@ -915,7 +1097,7 @@ public class VerifiedSubscriptionsTests
             header.ReceiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
             header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
             Block block = new(header, new BlockBody([transaction], [], []));
-            _blocks.Add(header.Hash, (block, [receipt]));
+            Assert.That(_blocks.TryAdd(header.Hash, (block, [receipt])), Is.True);
             return block;
         }
 
@@ -939,16 +1121,21 @@ public class VerifiedSubscriptionsTests
         public async Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _blockReads);
-            if (RejectBlocks) throw new InvalidOperationException("A header subscription must not request a block body.");
-            if (BlockGate is { } gate)
+            Interlocked.Increment(ref _activeBlockReads);
+            try
             {
-                FirstBodyStarted.TrySetResult();
-                if (Interlocked.Increment(ref _blockedBlockReads) == 4) BlocksStarted.TrySetResult();
-                await gate.Task.WaitAsync(cancellationToken);
+                if (RejectBlocks) throw new InvalidOperationException("A header subscription must not request a block body.");
+                if (BlockGate is { } gate)
+                {
+                    FirstBodyStarted.TrySetResult();
+                    if (Interlocked.Increment(ref _blockedBlockReads) == 4) BlocksStarted.TrySetResult();
+                    await gate.Task.WaitAsync(cancellationToken);
+                }
+                Block block = _blocks[header.Hash!].Block;
+                ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
+                return block;
             }
-            Block block = _blocks[header.Hash!].Block;
-            ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
-            return block;
+            finally { Interlocked.Decrement(ref _activeBlockReads); }
         }
         public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
         {

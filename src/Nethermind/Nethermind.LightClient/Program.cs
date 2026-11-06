@@ -107,6 +107,12 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     string? checkpointValue = builder.Configuration["checkpoint"];
     string? checkpointCheckUrl = builder.Configuration["checkpoint-check-url"];
     string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
+    if (!LightClientHost.TryPrepareDataDirectory(dataDirectory, out string? dataDirectoryError))
+    {
+        Console.Error.WriteLine(dataDirectoryError);
+        Environment.ExitCode = 1;
+        return;
+    }
     TimeProvider clock = TimeProvider.System;
     ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
     bool IsHeadFresh(VerifiedHead? snapshot, ulong maximumAgeSeconds) =>
@@ -269,10 +275,12 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
                 () => optimisticRequests.Writer.TryWrite(true), token));
         VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
+        ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
+            PublishPersistedHeaders, app.Lifetime.StopApplication, logger, app.Lifetime.ApplicationStopping);
         bool rpcInitialized = false;
         try
         {
-            beacon.StartGossip(ProcessFinalityAsync, ProcessOptimisticAsync, app.Lifetime.ApplicationStopping);
+            beacon.StartGossip(consensus.ProcessAsync, consensus.ProcessAsync, app.Lifetime.ApplicationStopping);
             InitializeRpc();
             await SyncAsync(app.Lifetime.ApplicationStopping);
         }
@@ -293,50 +301,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             rpcInitialized = true;
         }
 
-        Task ProcessUpdateAsync(LightClientUpdate update, CancellationToken token) =>
-            ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.FinalizedHeader.Beacon!.Slot,
-                stopping => journal.AppendAsync(update, store, stopping), token);
-
-        Task<bool> ProcessFinalityAsync(LightClientFinalityUpdate update, CancellationToken token) =>
-            ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.FinalizedHeader.Beacon!.Slot,
-                stopping => journal.AppendAsync(update, store, stopping), token);
-
-        Task<bool> ProcessOptimisticAsync(LightClientOptimisticUpdate update, CancellationToken token) =>
-            ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.OptimisticHeader.Beacon!.Slot,
-                stopping => journal.AppendAsync(update, store, stopping), token);
-
-        Task<bool> ProcessConsensusAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token) =>
-            ConsensusSync.ProcessWithTimeRetryAsync(spec, clock, () => ProcessConsensusOnceAsync(process, slot, persist, token), token);
-
-        async Task<bool> ProcessConsensusOnceAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token)
-        {
-            await consensusGate.WaitAsync(token);
-            try
-            {
-                token.ThrowIfCancellationRequested();
-                ConsensusSync.RequireLiveState(store, CurrentSlot(), app.Lifetime.StopApplication);
-                ulong before = slot();
-                if (logger.IsEnabled(LogLevel.Debug))
-                {
-                    (ulong period, bool knowsNext) = store.SyncProgress;
-                    logger.LogDebug("Consensus validation starting at sync period {Period}, next committee known {KnowsNext}, finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
-                        period, knowsNext, store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
-                }
-                process();
-                if (logger.IsEnabled(LogLevel.Debug))
-                    logger.LogDebug("Validated consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
-                        store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
-                // Once authenticated, an update is durably recorded before another mutation, independently of a peer's request deadline.
-                await PersistAsync(persist(app.Lifetime.ApplicationStopping), app.Lifetime.ApplicationStopping);
-                PublishPersistedHeaders();
-                if (logger.IsEnabled(LogLevel.Debug))
-                    logger.LogDebug("Persisted consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
-                        store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
-                return slot() > before;
-            }
-            finally { consensusGate.Release(); }
-        }
-
         void PublishPersistedHeaders()
         {
             LightClientHeader finalized = store.FinalizedHeader;
@@ -345,17 +309,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             Volatile.Write(ref persistedOptimistic, optimistic);
             beacon.PublishVerifiedHeads(finalized, optimistic, checkpoint);
             beacon.NeedsCommitteeSupplier = !store.NextSyncCommitteeKnown;
-        }
-
-        async Task PersistAsync(Task write, CancellationToken token)
-        {
-            try { await write; }
-            catch (Exception exception) when (!token.IsCancellationRequested)
-            {
-                logger.LogCritical(exception, "Verified consensus state could not be persisted; stopping the client");
-                app.Lifetime.StopApplication();
-                throw new IOException("Verified consensus persistence failed.", exception);
-            }
         }
 
         async Task SyncAsync(CancellationToken cancellationToken)
@@ -380,7 +333,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
 
             void ReportFailure(bool finalized, Exception exception)
             {
-                if (finalized)
+                if (exception is ExecutionDataUnavailableException)
+                    logger.LogDebug("Waiting for {Head} execution data: {Reason}", finalized ? "finalized" : "optimistic", exception.Message);
+                else if (finalized)
                     logger.LogWarning(exception, "Waiting for an execution header authenticated by finalized consensus");
                 else
                     logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
@@ -437,22 +392,9 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             try
             {
                 await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
-                    ProcessUpdateAsync, cancellationToken);
-                await consensusGate.WaitAsync(cancellationToken);
-                try
-                {
-                    LightClientUpdate? bestUpdate = store.BestUpdate;
-                    ulong slot = CurrentSlot();
-                    ConsensusSync.RequireLiveState(store, slot, app.Lifetime.StopApplication);
-                    if (bestUpdate is not null && store.ForceUpdate(slot))
-                    {
-                        await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, app.Lifetime.ApplicationStopping),
-                            app.Lifetime.ApplicationStopping);
-                        PublishPersistedHeaders();
-                        logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
-                    }
-                }
-                finally { consensusGate.Release(); }
+                    consensus.ProcessAsync, cancellationToken, clock);
+                if (await consensus.ForceUpdateAsync(cancellationToken))
+                    logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -462,7 +404,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollFinalityAsync(ProcessFinalityAsync, attempt.Token);
+                await beacon.PollFinalityAsync(consensus.ProcessAsync, attempt.Token);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -476,7 +418,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                await beacon.PollOptimisticAsync(ProcessOptimisticAsync, attempt.Token);
+                await beacon.PollOptimisticAsync(consensus.ProcessAsync, attempt.Token);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {

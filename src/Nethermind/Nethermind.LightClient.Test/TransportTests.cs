@@ -34,6 +34,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -1487,10 +1488,12 @@ public class TransportTests
         static WeakReference<PeerInfo> TrackRetiredPeer(ExecutionPeers peers) => new(peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!);
     }
 
-    [Test]
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
     [CancelAfter(30_000)]
     public async Task A_failed_mixed_snapshot_is_retried_without_cooling_honest_contributors(
-        [Values] bool firstPinnedTimesOut, CancellationToken token)
+        bool firstPinnedTimesOut, bool faultySupplierDeparts, CancellationToken token)
     {
         await using ExecutionPeers peers = new(2, snap1: true);
         HostedPages pages = new(peers, commonPrefix: true);
@@ -1534,6 +1537,7 @@ public class TransportTests
         {
             calls[1]++;
             if (firstPinnedTimesOut && pinned.Task.IsCompleted) return Task.FromResult(pages.Complete());
+            if (faultySupplierDeparts) peers.Pool.RemovePeer(peers.Ordered[1].SyncPeer);
             return Task.FromResult(pages.Response(2, omit: true, start: pages.Paths[0].IncrementPath()));
         });
         MethodInfo method = typeof(ExecutionPeerTransport).GetMethod("DownloadStorageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -2234,6 +2238,37 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task An_ancestor_supplier_changing_branches_between_pages_is_unavailable(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, chainLength: 257);
+        BlockHeader[] sibling = HistoryChain(256, 1);
+        ExecutionPeer changing = peers.Ordered[0];
+        int pages = 0;
+        changing.SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                int first = checked((int)call.ArgAt<ulong>(0));
+                int count = call.ArgAt<int>(1);
+                pages++;
+                BlockHeader[] chain = first == 0 ? peers.Chain : sibling;
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new TrackedResponse<BlockHeader>(
+                    chain.AsSpan(first, count).ToArray(), () => Interlocked.Increment(ref changing.ResponsesDisposed)));
+            });
+
+        Hash256[] hashes = await peers.Transport.GetAncestorHashesAsync(peers.Head, 0, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashes, Is.EqualTo(peers.Chain.Select(header => header.Hash)));
+            Assert.That(pages, Is.EqualTo(2));
+            Assert.That(changing.ResponsesDisposed, Is.EqualTo(2));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+        changing.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task Ancestor_pages_distinguish_empty_data_from_excess_headers([Values] bool excess, CancellationToken token)
     {
         await using ExecutionPeers peers = new(2);
@@ -2350,19 +2385,33 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_repeatedly_silent_preferred_peer_is_demoted_without_penalizing_one_healthy_hedge(CancellationToken token)
+    public async Task A_repeatedly_silent_preferred_peer_is_demoted_without_penalizing_one_healthy_hedge(
+        [Values("proof", "ancestors", "history")] string route, CancellationToken token)
     {
         await using ExecutionPeers peers = new(2, snap1: true);
-        await peers.RequestSnap(0, token);
-        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
+        AllocationContexts context = route == "proof" ? AllocationContexts.Snap : AllocationContexts.Headers;
+        if (route == "proof") await peers.RequestSnap(0, token);
+        else await peers.Request(context, token);
+        Assert.That(PreferredHistoryPeers(peers)[context].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
         peers.Ordered[0].BeforeResponse = static (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
-        for (int i = 0; i < 4; i++) await peers.RequestSnap(3, token);
+        for (int i = 0; i < 4; i++)
+        {
+            if (route == "proof") await peers.RequestSnap(3, token);
+            else if (route == "ancestors") await peers.RequestDirect(context, token);
+            else
+            {
+                Task<BlockHeader[]> request = (Task<BlockHeader[]>)typeof(ExecutionPeerTransport)
+                    .GetMethod("FetchLogHeaderPageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(peers.Transport, [peers.Header, peers.Chain.Length - 1, token])!;
+                Assert.That((await request).Select(header => header.Hash), Is.EqualTo(peers.Chain.SkipLast(1).Select(header => header.Hash)));
+            }
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peers.Counts(AllocationContexts.Snap)[0], Is.EqualTo(5));
+            Assert.That(peers.Counts(context)[0], Is.EqualTo(5));
             Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
-            Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
+            Assert.That(PreferredHistoryPeers(peers)[context].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
         }
     }
 
@@ -2456,20 +2505,125 @@ public class TransportTests
         [Values(8, 32)] int snapPeers, CancellationToken token)
     {
         await using ExecutionPeers peers = new(32, snap1: true);
-        peers.Ordered[0].BeforeResponse = (_, stopping) => Task.Delay(TimeSpan.FromSeconds(9.5), peers.Clock, stopping);
-        foreach (ExecutionPeer partner in peers.Ordered.Skip(1))
-            partner.BeforeResponse = (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
-        for (int i = 0; i < samples; i++)
-        {
-            Task request = peers.Request(AllocationContexts.Snap, token);
-            peers.Clock.Advance(TimeSpan.FromSeconds(9.5));
-            await request;
-        }
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, samples, 9500, token);
+        Assert.That(PreferredHistoryPeers(peers).ContainsKey(AllocationContexts.Snap), Is.EqualTo(samples < 3),
+            "a slow supplier must lose preference and cannot immediately promote itself again");
         for (int i = snapPeers; i < peers.Ordered.Length; i++) peers.Ordered[i].SyncPeer.IsPriority = true;
 
         await RunSnapCapacityTickAsync(peers, snapPeers, token);
 
         AssertSnapCapacityVictim(peers, samples == 3 && snapPeers == 8 ? 0 : -1);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_fast_verified_reply_resets_the_suppliers_slow_sample_count(
+        [Values(AllocationContexts.Headers, AllocationContexts.Snap)] AllocationContexts context, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: context == AllocationContexts.Snap);
+        await ObserveRepliesAsync(peers, context, 2, 9500, token);
+        peers.Ordered[0].BeforeResponse = null;
+        await peers.Request(context, token);
+
+        await ObserveRepliesAsync(peers, context, 1, 9500, token);
+
+        Assert.That(PreferredHistoryPeers(peers)[context].SyncPeer, Is.SameAs(peers.Ordered[0].SyncPeer));
+        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Slow_sample_accumulation_restarts_after_a_minute(
+        [Values(40_999, 41_000, 41_001)] int pauseMilliseconds, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 2, 9500, token);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(pauseMilliseconds));
+
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 1, 9500, token);
+
+        Assert.That(PreferredHistoryPeers(peers).ContainsKey(AllocationContexts.Snap), Is.EqualTo(pauseMilliseconds >= 41_000));
+        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Slow_suppliers_remain_capacity_candidates_only_with_recent_samples(
+        [Values(59_999, 60_000, 60_001)] int sampleAgeMilliseconds, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(32, snap1: true);
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 3, 9500, token);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(sampleAgeMilliseconds - 29_000));
+        for (int i = 8; i < peers.Ordered.Length; i++) peers.Ordered[i].SyncPeer.IsPriority = true;
+
+        await RunSnapCapacityTickAsync(peers, 8, token);
+
+        AssertSnapCapacityVictim(peers, sampleAgeMilliseconds < 60_000 ? 0 : -1);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Verified_supplier_promotion_keeps_the_faster_eligible_peer([Values] bool challengerIsFaster, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        await ObserveRepliesAsync(peers, AllocationContexts.Headers, 1, challengerIsFaster ? 5 : 2, token);
+        peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new ConcurrencyLimitReachedException("Temporarily busy."));
+        peers.Ordered[1].BeforeResponse = (_, stopping) => Task.Delay(TimeSpan.FromMilliseconds(challengerIsFaster ? 2 : 5), peers.Clock, stopping);
+
+        Task request = peers.Request(AllocationContexts.Headers, token);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(challengerIsFaster ? 2 : 5));
+        await request;
+
+        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Headers].SyncPeer,
+            Is.SameAs(peers.Ordered[challengerIsFaster ? 1 : 0].SyncPeer));
+        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_slow_preferred_supplier_cannot_block_an_eligible_replacement(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2, snap1: true);
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 3, 9500, token);
+        PreferredHistoryPeers(peers)[AllocationContexts.Snap] = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
+        peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new ConcurrencyLimitReachedException("Temporarily busy."));
+        peers.Ordered[1].BeforeResponse = (_, stopping) => Task.Delay(TimeSpan.FromMilliseconds(9800), peers.Clock, stopping);
+
+        Task request = peers.Request(AllocationContexts.Snap, token);
+        peers.Clock.Advance(TimeSpan.FromMilliseconds(9800));
+        await request;
+
+        Assert.That(PreferredHistoryPeers(peers)[AllocationContexts.Snap].SyncPeer, Is.SameAs(peers.Ordered[1].SyncPeer));
+        Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Snap_capacity_evicts_the_slower_of_its_unhealthy_candidates(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(32, snap1: true);
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 3, 8000, token);
+        PreferredHistoryPeers(peers)[AllocationContexts.Snap] = peers.Pool.GetPeer(peers.Ordered[1].SyncPeer.Node)!;
+        await ObserveRepliesAsync(peers, AllocationContexts.Snap, 3, 9500, token, supplier: 1);
+        for (int i = 8; i < peers.Ordered.Length; i++) peers.Ordered[i].SyncPeer.IsPriority = true;
+
+        await RunSnapCapacityTickAsync(peers, 8, token);
+
+        AssertSnapCapacityVictim(peers, 1);
+    }
+
+    private static async Task ObserveRepliesAsync(ExecutionPeers peers, AllocationContexts context, int count,
+        int milliseconds, CancellationToken token, int supplier = 0)
+    {
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.BeforeResponse = static (_, stopping) => Task.Delay(Timeout.Infinite, stopping);
+        peers.Ordered[supplier].BeforeResponse = (_, stopping) => Task.Delay(TimeSpan.FromMilliseconds(milliseconds), peers.Clock, stopping);
+        for (int i = 0; i < count; i++)
+        {
+            Task request = peers.Request(context, token);
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(milliseconds));
+            await request;
+        }
     }
 
     [Test]
@@ -3998,6 +4152,8 @@ public class TransportTests
             Assert.That(configuration.DataDir, Is.EqualTo(dataDirectory is null
                 ? "src/Nethermind/artifacts/lightclient-execution" : expected));
             Assert.That(configuration.BaseDbPath, Is.EqualTo(dataDirectory is null ? "db" : Path.Combine(expected, "db")));
+            Assert.That(services.Resolve<IKeyStoreConfig>().KeyStoreDirectory,
+                Is.EqualTo(Path.GetFullPath(dataDirectory ?? "src/Nethermind/artifacts/lightclient-execution")));
             Assert.That(configuration.DiagnosticMode, Is.EqualTo(DiagnosticMode.MemDb));
             Assert.That(services.ResolveKeyed<IDb>(DbNames.Headers), Is.TypeOf<MemDb>());
         }

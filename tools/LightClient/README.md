@@ -89,6 +89,17 @@ list of individual request times. Methods without traffic have no latency
 estimate. For exact per-item handler timings, follow
 `docker compose logs -f light-client`.
 
+**HTTP admission overloads** counts HTTP 429 responses rejected before item
+dispatch. `nethermind_light_client_http_requests_total{network,outcome}` records
+one outcome per HTTP RPC request: `completed`, `overloaded`, `too_large`,
+`parse_error`, `invalid_batch`, `timed_out`, `cancelled`, or `failed`.
+These HTTP outcomes are separate from the per-item RPC counters, so a rejected
+request does not inflate dispatched RPC traffic. HTTP and WebSocket batches
+process at most 128 envelopes individually and execute at most 32 items.
+Responses retain the IDs of those processed items; a remaining request tail
+receives one null-ID `-32005` limit error. A lightweight scan keeps
+notification-only tails response-free without executing them.
+
 For example, paste this query into Grafana Explore to inspect p95 balance
 duration in seconds over the last five minutes:
 
@@ -174,11 +185,40 @@ configuration. Existing RPC/EVM caches and hosted account state remain in RAM.
 Do not share one LC data volume between running processes.
 
 The LC runs as the non-root `app` user (UID/GID 1654). The image creates `/data`
-with that ownership for Docker's initial named-volume setup. If you replace the
-named volume with a host directory, create it with UID/GID 1654 and mode 0700
-before starting the container.
-The execution stack's application-relative `keystore` links into `/data`, so its
-node identity is retained even with the container root filesystem read-only.
+with that ownership for Docker's initial named-volume setup. Existing volumes
+created by a root process retain their old ownership. Startup verifies that the
+data directory is writable and reports its path, current user and permissions
+guidance if it is not.
+
+The default Compose LC volume is
+`nethermind-light-client_light-client-data`; `-p NAME` changes it to
+`NAME_light-client-data`. Stop every client using the volume before repairing
+ownership. For an existing root-owned default volume:
+
+```sh
+docker compose stop light-client
+docker volume inspect nethermind-light-client_light-client-data
+docker run --rm --user 0 --entrypoint /bin/sh \
+  -v nethermind-light-client_light-client-data:/data \
+  nethermindeth/nethermind:light-client-1.0.0 \
+  -c 'chown -R 1654:1654 /data && chmod 700 /data'
+docker compose start light-client
+```
+
+Use your actual volume name when you selected a custom Compose project. For a
+new bind mount, first create its dedicated host directory with
+`sudo install -d -o 1654 -g 1654 -m 0700 /srv/nethermind-lc`. To repair an
+existing bind mount, use the same stopped-client ownership command with
+`--mount type=bind,source=/srv/nethermind-lc,target=/data` in place of `-v`.
+Limit ownership changes to that client's data directory.
+
+The execution identity is `/data/node.key.plain`, preserving the file used by
+earlier Docker images. Native deployments store it at
+`<data-dir>/node.key.plain`. Older native deployments used the application's
+`keystore/node.key.plain`; before upgrading, stop the client and deliberately
+move that key into the intended data directory, retaining its private file
+permissions. Select the correct identity if several data directories previously
+shared one binary. Startup does not automatically read or migrate old keys.
 
 ```sh
 docker compose ps
@@ -233,6 +273,11 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ```
 
 The runtime includes Microsoft's Linux `libmsquic` package for beacon QUIC.
+The image removes JavaScript tracer scripts, native V8 and its ICU payload, and
+the RPC source-generator build executable. Verified calls and gas estimation
+use Nethermind's EVM and native tracers. Managed ClearScript assemblies remain
+for transitive type references; PDB symbols remain for stack locations and
+profiling diagnostics.
 The client listens on all container interfaces while Compose restricts the host
 RPC mapping to loopback. The image's execution port is explicitly 30303; native
 CLI runs otherwise default to 30307. Additional CLI arguments are appended to the
@@ -243,10 +288,18 @@ docker run --rm --name nethermind-lc \
   -p 127.0.0.1:8545:8545 \
   -p 30303:30303/tcp -p 30303:30303/udp \
   -p 9050:9050/tcp -p 9050:9050/udp -p 9051:9051/udp \
-  -v nethermind-lc-data:/data \
+  -v nethermind-light-client_light-client-data:/data \
   nethermindeth/nethermind:light-client-1.0.0 \
   --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
+
+This command reuses the default Compose LC volume; stop its Compose client
+before switching. Earlier standalone instructions used `nethermind-lc-data`.
+Keep that name in `docker run` to retain that deployment's checkpoint, journal
+and identities. To use it from Compose, explicitly add an override file with
+`volumes: {light-client-data: {name: nethermind-lc-data}}`. Existing custom
+Compose project volumes likewise need their actual name. The Compose defaults
+continue to use the same project-scoped volumes.
 
 The repository's [Publish Docker image workflow](../../.github/workflows/publish-docker.yml)
 publishes the release using these inputs:
@@ -260,7 +313,11 @@ gh workflow run publish-docker.yml --ref YOUR_RELEASE_REF \
 
 The selected ref must contain the deployment and independent LC version. The
 workflow publishes `nethermindeth/nethermind:light-client-1.0.0` using the repository's
-configured registry credentials.
+configured registry credentials. The action couples this Dockerfile to its
+independent project version and requires `light-client-<version>`; omitting the
+version-file input derives the LC project automatically. It rejects EL version
+files and execution-client tags for LC builds, and reserves the LC tag prefix
+for this Dockerfile.
 
 ## Check the deployment
 
@@ -273,9 +330,12 @@ python3 tools/LightClient/tests/test_deployment.py
 
 After starting the stack, export `GRAFANA_ADMIN_PASSWORD` with the same password
 configured in `.env`. This smoke check waits for a fresh authenticated head,
-performs a chain-ID and balance request, validates dashboard queries through
-Grafana's authenticated datasource proxy, and checks that Grafana rejects
-unauthenticated dashboard access:
+performs a chain-ID and balance request, verifies the authenticated dashboard's
+panels and queries, validates query metric names and labels against the real
+scrape, and requires ready, head, peer and process data through Grafana's
+authenticated datasource proxy. Rate and quantile panels may be empty or NaN
+before traffic or a second scrape. Grafana must also reject unauthenticated
+dashboard access:
 
 ```sh
 python3 tools/LightClient/tests/smoke.py --network mainnet
@@ -284,5 +344,8 @@ python3 tools/LightClient/tests/smoke.py --network mainnet
 The script accepts `--rpc-url` and `--grafana-url` for alternate local ports.
 `--prometheus-url` bypasses the Grafana proxy for isolated testing with a
 separately exposed Prometheus endpoint; the production stack does not publish
-that port. The script uses the already running stack and does not change its
+that port. It still needs `GRAFANA_ADMIN_PASSWORD` to verify the provisioned
+dashboard. Startup connection failures are retried until `--wait-seconds`
+expires, with the last status or connection error retained in diagnostics.
+The script uses the already running stack and does not change its
 lifecycle or data volumes.

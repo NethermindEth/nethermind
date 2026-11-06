@@ -141,6 +141,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         Address address = new(text);
         UInt256[] keys = new UInt256[parameters[1].GetArrayLength()];
         for (int i = 0; i < keys.Length; i++) keys[i] = ParseQuantity(parameters[1][i], allowLeadingZeros: true);
+        if (count == 3) _ = ParseBlockSelector(parameters[2], false, out _, out _);
         VerifiedHead? latest = await LatestForSelectorAsync(count == 2 ? default : parameters[2], cancellationToken);
         if (!await _proofRequests.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken))
             throw new RpcException(-32005, "Too many concurrent account proof requests.");
@@ -189,6 +190,8 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         double[]? percentiles;
         int blocks;
         JsonElement selector = default;
+        bool requireCanonical = false;
+        bool byHash = false;
         if (method == "eth_feeHistory")
         {
             if (count != 3) throw InvalidParameters();
@@ -197,7 +200,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             blocks = (int)UInt256.Min(requested, 16);
             double[] parsedPercentiles = ParsePercentiles(parameters[2]);
             percentiles = parsedPercentiles.Length == 0 ? null : parsedPercentiles;
-            selector = parameters[1];
+            selector = ParseBlockSelector(parameters[1], false, out requireCanonical, out byHash);
         }
         else
         {
@@ -208,7 +211,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         VerifiedHead? latest = await LatestForSelectorAsync(selector, cancellationToken);
         using DataRequest admission = new(cancellationToken);
         BlockHeader newest = method == "eth_feeHistory"
-            ? await ResolveDataHeaderAsync(selector, false, cancellationToken, pinnedLatest: latest)
+            ? await ResolveDataHeaderAsync(selector, byHash, cancellationToken, pinnedLatest: latest, requireCanonical: requireCanonical)
                 ?? throw new RpcException(-32001, "Requested authenticated fee history is unavailable.")
             : await execution.GetHeaderAsync(latest!, cancellationToken);
         blocks = checked((int)Math.Min((ulong)blocks, newest.Number + 1));
@@ -338,9 +341,11 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
                 }
                 else index = ParseQuantity(parameters[1]);
             }
-            VerifiedHead? latest = await LatestForSelectorAsync(parameters[0], cancellationToken);
+            JsonElement selector = ParseBlockSelector(parameters[0], blockByHash, out bool requireCanonical, out bool byHash);
+            VerifiedHead? latest = await LatestForSelectorAsync(selector, cancellationToken);
             using DataRequest admission = new(cancellationToken);
-            BlockHeader? header = await ResolveDataHeaderAsync(parameters[0], blockByHash, cancellationToken, pinnedLatest: latest);
+            BlockHeader? header = await ResolveDataHeaderAsync(selector, byHash, cancellationToken, pinnedLatest: latest,
+                requireCanonical: requireCanonical);
             if (header is null) return JsonSerializer.SerializeToElement<object?>(null);
             if (block) return await _data.GetBlockAsync(header, fullTransactions, cancellationToken);
             if (method is "eth_getBlockTransactionCountByHash" or "eth_getBlockTransactionCountByNumber")
@@ -365,10 +370,10 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
     }
 
-    private async Task<BlockHeader?> ResolveDataHeaderAsync(JsonElement selector, bool hashOnly,
-        CancellationToken cancellationToken, VerifiedHead? pinnedFinalized = null, bool stateHistory = false,
-        VerifiedHead? pinnedLatest = null, bool requireCanonical = false)
+    private static JsonElement ParseBlockSelector(JsonElement selector, bool hashOnly, out bool requireCanonical, out bool byHash)
     {
+        requireCanonical = false;
+        bool byNumber = false;
         if (selector.ValueKind == JsonValueKind.Object && !hashOnly)
         {
             bool hasHash = selector.TryGetProperty("blockHash", out JsonElement hash);
@@ -379,15 +384,31 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             if (selector.TryGetProperty("requireCanonical", out JsonElement requiredCanonical)
                 && (!hasHash || requiredCanonical.ValueKind is not (JsonValueKind.True or JsonValueKind.False))) throw InvalidParameters();
             if (hasNumber) _ = ParseQuantity(number);
-            return await ResolveDataHeaderAsync(hasHash ? hash : number, hasHash, cancellationToken, pinnedFinalized, stateHistory,
-                pinnedLatest, requiredCanonical.ValueKind == JsonValueKind.True);
+            requireCanonical = requiredCanonical.ValueKind == JsonValueKind.True;
+            selector = hasHash ? hash : number;
+            hashOnly = hasHash;
+            byNumber = hasNumber;
         }
         if (selector.ValueKind != JsonValueKind.String) throw InvalidParameters();
         string value = selector.GetString()!;
-        RejectUnavailableTag(value);
+        byHash = hashOnly || !byNumber && value.Length == 66;
+        if (byHash) _ = ReadParameterData(selector, 32);
+        else if (value is not ("latest" or "finalized"))
+        {
+            RejectUnavailableTag(value);
+            _ = ParseQuantity(selector);
+        }
+        return selector;
+    }
+
+    private async Task<BlockHeader?> ResolveDataHeaderAsync(JsonElement selector, bool hashOnly,
+        CancellationToken cancellationToken, VerifiedHead? pinnedFinalized = null, bool stateHistory = false,
+        VerifiedHead? pinnedLatest = null, bool requireCanonical = false)
+    {
+        string value = selector.GetString()!;
         if (!hashOnly && value == "latest") return await execution.GetHeaderAsync(pinnedLatest ?? await LatestHeadAsync(cancellationToken), cancellationToken);
         VerifiedHead? latest = pinnedLatest ?? getLatestHead?.Invoke();
-        if (hashOnly || value.Length == 66)
+        if (hashOnly)
         {
             Hash256 requested = new(ReadParameterData(selector, 32));
             if (latest is not null && requested == latest.BlockHash)
@@ -438,6 +459,8 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
         if (blockHash.ValueKind != JsonValueKind.Undefined &&
             (from.ValueKind != JsonValueKind.Undefined || to.ValueKind != JsonValueKind.Undefined)) throw InvalidParameters();
+        ValidateLogSelector(from);
+        ValidateLogSelector(to);
         if (blockHash.ValueKind != JsonValueKind.Undefined)
         {
             Hash256 requested = new(ReadParameterData(blockHash, 32));
@@ -562,6 +585,18 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         return (ulong)number;
     }
 
+    private static void ValidateLogSelector(JsonElement selector)
+    {
+        if (selector.ValueKind == JsonValueKind.Undefined) return;
+        if (selector.ValueKind == JsonValueKind.String)
+        {
+            string value = selector.GetString()!;
+            if (value is "latest" or "finalized") return;
+            RejectUnavailableTag(value);
+        }
+        if (ParseQuantity(selector) > ulong.MaxValue) throw InvalidParameters();
+    }
+
     internal static HashSet<Address>? ParseAddresses(JsonElement value)
     {
         HashSet<Address> result = [];
@@ -624,64 +659,27 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
 
     private async Task<(VerifiedHead Head, bool Historical)> ResolveStateHeadAsync(JsonElement block, CancellationToken cancellationToken, VerifiedHead? pinnedLatest = null)
     {
-        if (block.ValueKind == JsonValueKind.String)
+        block = ParseBlockSelector(block, false, out bool requireCanonical, out bool byHash);
+        string selector = block.GetString()!;
+        if (selector == "latest") return (pinnedLatest ?? await LatestHeadAsync(cancellationToken), false);
+        if (byHash)
         {
-            string selector = block.GetString()!;
-            RejectUnavailableTag(selector);
-            if (selector == "latest") return (pinnedLatest ?? await LatestHeadAsync(cancellationToken), false);
-            if (selector.Length == 66)
-            {
-                Hash256 requested = new(ReadParameterData(block, 32));
-                VerifiedHead? optimistic = getLatestHead?.Invoke();
-                if (optimistic is not null && requested == optimistic.BlockHash)
-                    return (optimistic, false);
-                VerifiedHead hashAnchor = getHead();
-                if (requested == hashAnchor.BlockHash) return (hashAnchor, false);
-                return await HistoricalStateHashAsync(hashAnchor, optimistic, block, cancellationToken);
-            }
-            if (selector == "finalized") return (FinalizedHead(), false);
-            UInt256 number = ParseQuantity(block);
-            VerifiedHead? latest = getLatestHead?.Invoke();
-            if (latest is not null && number == (UInt256)latest.Number)
-                return (latest, false);
-            VerifiedHead finalized = getHead();
-            if (number == (UInt256)finalized.Number) return (finalized, false);
-            return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, number, HistoricalStateDepth), number, cancellationToken);
+            Hash256 requested = new(ReadParameterData(block, 32));
+            VerifiedHead? optimistic = getLatestHead?.Invoke();
+            if (optimistic is not null && requested == optimistic.BlockHash)
+                return (optimistic, false);
+            VerifiedHead hashAnchor = getHead();
+            if (requested == hashAnchor.BlockHash) return (hashAnchor, false);
+            return await HistoricalStateHashAsync(hashAnchor, optimistic, block, cancellationToken, requireCanonical);
         }
-        else if (block.ValueKind == JsonValueKind.Object)
-        {
-            bool hasHash = block.TryGetProperty("blockHash", out JsonElement hash);
-            bool hasNumber = block.TryGetProperty("blockNumber", out JsonElement number);
-            if (hasHash == hasNumber) throw InvalidParameters();
-            foreach (JsonProperty property in block.EnumerateObject())
-            {
-                if (property.Name is not ("blockHash" or "blockNumber" or "requireCanonical")) throw InvalidParameters();
-            }
-            if (block.TryGetProperty("requireCanonical", out JsonElement canonical)
-                && (!hasHash || canonical.ValueKind is not (JsonValueKind.True or JsonValueKind.False))) throw InvalidParameters();
-            if (hasHash)
-            {
-                if (hash.ValueKind != JsonValueKind.String) throw InvalidParameters();
-                Hash256 requested = new(ReadParameterData(hash, 32));
-                VerifiedHead? latest = getLatestHead?.Invoke();
-                if (latest is not null && requested == latest.BlockHash)
-                    return (latest, false);
-                VerifiedHead finalized = getHead();
-                if (requested == finalized.BlockHash) return (finalized, false);
-                return await HistoricalStateHashAsync(finalized, latest, hash, cancellationToken, canonical.ValueKind == JsonValueKind.True);
-            }
-            else
-            {
-                UInt256 parsed = ParseQuantity(number);
-                VerifiedHead? latest = getLatestHead?.Invoke();
-                if (latest is not null && parsed == (UInt256)latest.Number)
-                    return (latest, false);
-                VerifiedHead finalized = getHead();
-                if (parsed == (UInt256)finalized.Number) return (finalized, false);
-                return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, parsed, HistoricalStateDepth), parsed, cancellationToken);
-            }
-        }
-        else throw InvalidParameters();
+        if (selector == "finalized") return (FinalizedHead(), false);
+        UInt256 number = ParseQuantity(block);
+        VerifiedHead? latest = getLatestHead?.Invoke();
+        if (latest is not null && number == (UInt256)latest.Number)
+            return (latest, false);
+        VerifiedHead finalized = getHead();
+        if (number == (UInt256)finalized.Number) return (finalized, false);
+        return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, number, HistoricalStateDepth), number, cancellationToken);
     }
 
     private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHashAsync(VerifiedHead finalized, VerifiedHead? latest, JsonElement hash,
