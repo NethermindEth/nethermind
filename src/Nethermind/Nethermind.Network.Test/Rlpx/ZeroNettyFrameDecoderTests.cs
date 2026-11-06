@@ -241,8 +241,11 @@ public class ZeroNettyFrameDecoderTests
         TestContext.Out.WriteLine(resultBytes.ToHexString());
         string expected = expectedOutput;
         TestContext.Out.WriteLine(resultBytes.ToHexString());
-        Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
-        Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
+        }
     }
 
     private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)

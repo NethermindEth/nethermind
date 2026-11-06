@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -16,6 +17,8 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
@@ -32,7 +35,8 @@ public class FrameTransactionForRpcTests
         SenderAddress = TestItem.AddressA,
         GasLimit = 1_000_000,
         GasPrice = 1,
-        DecodedMaxFeePerGas = 100,
+        MaxFee = 1_000,
+        DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(1_000, 1_000_000),
         Frames =
         [
             SelfVerify(PrefixFrameGas),
@@ -105,8 +109,8 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    [TestCase("0x12", typeof(ArgumentException))]
-    [TestCase("0xzz", typeof(FormatException))]
+    [TestCase("0x12", typeof(SafePublicMessageFormatException))]
+    [TestCase("0xzz", typeof(SafePublicMessageFormatException))]
     public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
     {
         string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
@@ -135,7 +139,7 @@ public class FrameTransactionForRpcTests
 
     [Test]
     public void Frame_RejectsEmptyTarget() =>
-        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
+        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.TypeOf<SafePublicMessageFormatException>());
 
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
@@ -215,65 +219,110 @@ public class FrameTransactionForRpcTests
         }
     }
 
+    // The signed payload carries max_fee in place of per-gas caps, so neither maxFeePerGas nor maxFeePerBlobGas is reported.
     [Test]
-    public void FrameTransactionForRpc_SerializesBlobFields_ForBlobCarryingFrameTx()
+    public void FrameTransactionForRpc_ReportsTheFeeFields([Values] bool blobs)
     {
         Transaction tx = BuildMinimalFrameTx();
-        tx.MaxFeePerBlobGas = 123;
-        tx.BlobVersionedHashes = [new byte[32]];
+        if (blobs) tx.BlobVersionedHashes = [new byte[32]];
 
-        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
-
-        using JsonDocument doc = SerializeToJson(rpc);
+        using JsonDocument doc = SerializeToJson(TransactionForRpc.FromTransaction(tx));
+        JsonElement root = doc.RootElement;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x7b"));
-            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(root.GetProperty("maxFee").GetString(), Is.EqualTo("0x3e8"));
+            Assert.That(root.GetProperty("maxPriorityFeePerGas").GetString(), Is.EqualTo("0x1"));
+            Assert.That(root.GetProperty("maxFeePerGas").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(root.TryGetProperty("maxFeePerBlobGas", out _), Is.False);
+            Assert.That(root.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(blobs ? 1 : 0));
         }
     }
 
     [Test]
-    public void FrameTransactionForRpc_ReportsBlobFields_ForBloblessFrameTx()
-    {
-        Transaction tx = BuildMinimalFrameTx();
-        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
-
-        using JsonDocument doc = SerializeToJson(rpc);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x0"));
-            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(0));
-        }
-    }
-
-    // Must be 0 for a blobless tx, but the value still has to reach TXPARAM 0x05 in a simulation.
-    [Test]
-    public void FrameTransactionForRpc_ToTransaction_KeepsMaxFeePerBlobGas_WithoutBlobHashes()
-    {
-        FrameTransactionForRpc rpc = new() { MaxFeePerBlobGas = 123 };
-
-        Transaction tx = rpc.ToTransaction().Data!;
-
-        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256)123));
-    }
-
-    [Test]
-    public void FrameTransactionForRpc_ToTransaction_RoundTripsBlobFields()
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsTheFeeFields([Values] bool blobs)
     {
         Transaction original = BuildMinimalFrameTx();
-        original.MaxFeePerBlobGas = 456;
-        original.BlobVersionedHashes = [new byte[32]];
-        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+        if (blobs) original.BlobVersionedHashes = [new byte[32]];
 
-        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+        Transaction roundTripped = ((FrameTransactionForRpc)TransactionForRpc.FromTransaction(original)).ToTransaction().Data!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
-            Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.MaxFee, Is.EqualTo((UInt256)1_000));
+            Assert.That(roundTripped.MaxFeePerBlobGas, Is.Null);
+            Assert.That(roundTripped.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
+            Assert.That(roundTripped.DecodedMaxFeePerGas, Is.EqualTo(FrameTxValidation.ImpliedMaxFeePerGas(1_000, roundTripped.GasLimit)));
+            Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(blobs ? 1 : 0));
         }
+    }
+
+    private static readonly OverridableReleaseSpec FramesSpec = new(Bogota.Instance) { IsEip8141Enabled = true };
+
+    // A call priced per gas buys what that price would. Without a fork to price max_gas by, the frame gas sum stands in.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCall([Values] bool withSpec, [Values] bool blobs, [Values] bool asGasPrice)
+    {
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMinimalFrameTx());
+        rpc.MaxFee = null;
+        if (asGasPrice) (rpc.MaxFeePerGas, rpc.MaxPriorityFeePerGas, rpc.GasPrice) = (null, null, 3);
+        else (rpc.MaxFeePerGas, rpc.GasPrice) = (3, null);
+        if (blobs)
+        {
+            rpc.MaxFeePerBlobGas = 5;
+            rpc.BlobVersionedHashes = [new byte[32]];
+        }
+
+        Transaction tx = rpc.ToTransaction(spec: withSpec ? FramesSpec : null).Data!;
+
+        // Priced over max_gas, which includes intrinsic gas, as the processor checks it.
+#pragma warning disable NUnit2045 // Gas calculation must succeed and its output remains in scope for subsequent checks.
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, FramesSpec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(maxGas, Is.GreaterThan(tx.GasLimit));
+        UInt256 expected = (UInt256)(3 * (withSpec ? maxGas : tx.GasLimit)) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.MaxFee, Is.EqualTo(expected));
+            Assert.That(tx.MaxFeePerBlobGas, Is.Null);
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_RejectsMaxFeeWithPerGasCaps([Values] bool perBlob)
+    {
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMinimalFrameTx());
+        if (perBlob) rpc.MaxFeePerBlobGas = 1;
+        else rpc.MaxFeePerGas = 1;
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.MaxFeeWithPerGasFees));
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_FillDefaults_WithMaxFee_FillsOnlyThePriorityFee()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFee = 1_000 };
+
+        Result result = rpc.FillDefaults(new TxFillContext { GasPrice = 9, MaxPriorityFeePerGas = 2, BaseFee = 7, BlobBaseFee = 1, Spec = FramesSpec });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+            Assert.That(rpc.MaxFee, Is.EqualTo((UInt256)1_000));
+            Assert.That(rpc.MaxPriorityFeePerGas, Is.EqualTo((UInt256)2));
+            Assert.That(rpc.MaxFeePerGas, Is.Null);
+            Assert.That(rpc.MaxFeePerBlobGas, Is.Null);
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_MaxFeeAlone_SetsTheBaseFee()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFee = 1 };
+
+        Assert.That(rpc.ShouldSetBaseFee(), Is.True);
     }
 
     /// <remarks>
@@ -456,9 +505,12 @@ public class FrameTransactionForRpcTests
             Signatures = Secp256k1Signatures(1),
         };
 
-        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
-        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
-        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+            // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+            Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        }
     }
 
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)

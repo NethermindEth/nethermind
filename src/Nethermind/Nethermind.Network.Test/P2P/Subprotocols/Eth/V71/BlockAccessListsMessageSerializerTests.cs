@@ -34,8 +34,11 @@ public class BlockAccessListsMessageSerializerTests
         serializer.Serialize(buffer2, deserialized);
         buffer.SetReaderIndex(0);
         string allHex = buffer.ReadAllHex();
-        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-        Assert.That(allHex, Is.EqualTo(expectedData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+            Assert.That(allHex, Is.EqualTo(expectedData));
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRejectionCases))]
@@ -94,7 +97,7 @@ public class BlockAccessListsMessageSerializerTests
         byte[]?[] blockAccessLists = new byte[]?[GethSyncLimits.MaxBodyFetch + 1];
 
         using BlockAccessListsMessage msg = BuildMessage(45, blockAccessLists);
-        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
+        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg));
         serializer.Serialize(payload, msg);
         return payload;
     }
@@ -129,7 +132,7 @@ public class GetBlockAccessListsMessageSerializerTests
     {
         GetBlockAccessListsMessageSerializer serializer = new();
         using GetBlockAccessListsMessage msg = buildMessage();
-        SerializerTester.TestZero(serializer, msg, expectedData);
+        SerializerTester.Test(serializer, msg, expectedData);
     }
 
     [Test]

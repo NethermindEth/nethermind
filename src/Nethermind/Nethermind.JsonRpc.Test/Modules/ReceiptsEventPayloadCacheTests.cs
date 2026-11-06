@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -19,6 +20,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using LogsFilter = Nethermind.JsonRpc.Modules.Eth.Filter;
@@ -118,8 +120,11 @@ public class ReceiptsEventPayloadCacheTests
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
         fixture.Monitor.Raise(e);
-        Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
-        Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+            Assert.That(anyTopic.Received.Wait(DeliveryTimeout), Is.True);
+        }
 
         using ReceiptsEventPayloadCache<LogsFilter>.Membership unfiltered = fixture.LogPayloads.Join(null);
         EventPayloads payloads = unfiltered.ForEvent(e);
@@ -143,8 +148,52 @@ public class ReceiptsEventPayloadCacheTests
         for (int i = 0; i < filters.Length; i++)
         {
             (CollectingClient client, Subscription subscription) = subscribers[i];
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(client.Received.Wait(DeliveryTimeout), Is.True, "every log the filter accepts is published");
+#pragma warning restore NUnit2045
             Assert.That(client.Messages, Is.EqualTo(ExpectedLogMessages(e, subscription.Id, filters[i])), "byte for byte what a subscriber serializing its own logs sends");
+        }
+    }
+
+    [Test]
+    public void Logs_subscriber_publishes_each_accepted_log_from_the_first_one_found_while_queuing([Values] bool removed, [Values] bool logIndexPerReceipt)
+    {
+        ReceiptsEventArgs e = CreateScanEvent(removed, logIndexPerReceipt);
+        using Fixture fixture = new();
+        (CollectingClient client, Subscription subscription) = fixture.SubscribeToLogs(TestItem.AddressC, 3);
+
+        fixture.Monitor.Raise(e);
+
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
+        Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(client.Messages, Is.EqualTo(ExpectedLogMessages(e, subscription.Id, TestItem.AddressC)));
+            Assert.That(client.Messages.Select(static m => JsonDocument.Parse(m).RootElement.GetProperty("params").GetProperty("result").GetProperty("logIndex").GetString()),
+                Is.EqualTo(logIndexPerReceipt ? new[] { "0x1", "0x3", "0x1" } : ["0x4", "0x6", "0x8"]));
+        }
+    }
+
+    [Test]
+    public void Logs_subscribers_sharing_payloads_with_different_first_logs_each_publish_their_own([Values] bool removed, [Values] bool logIndexPerReceipt)
+    {
+        ReceiptsEventArgs e = CreateScanEvent(removed, logIndexPerReceipt);
+        using Fixture fixture = new();
+        // The unfiltered subscribers start at position 0 and the address C ones at position 4, sharing the payloads of 4, 6 and 8.
+        Address?[] filters = [TestItem.AddressC, null, TestItem.AddressC, null, TestItem.AddressB];
+        (CollectingClient Client, Subscription Subscription)[] subscribers = [.. filters.Select(address =>
+            fixture.SubscribeToLogs(address, ExpectedLogs(e, address).Count))];
+
+        fixture.Monitor.Raise(e);
+
+        for (int i = 0; i < filters.Length; i++)
+        {
+            (CollectingClient client, Subscription subscription) = subscribers[i];
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
+            Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+#pragma warning restore NUnit2045
+            Assert.That(client.Messages, Is.EqualTo(ExpectedLogMessages(e, subscription.Id, filters[i])));
         }
     }
 
@@ -157,7 +206,7 @@ public class ReceiptsEventPayloadCacheTests
         // Two unfiltered subscribers share every receipt; the filtered ones overlap them.
         Hash256[]?[] filters = [null, null, [TestItem.KeccakD], [TestItem.KeccakD, TestItem.KeccakC], []];
         (CollectingClient Client, Subscription Subscription)[] subscribers = [.. filters.Select(hashes =>
-            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count))];
+            fixture.SubscribeToReceipts(hashes, ExpectedReceipts(e, hashes).Count > 0 ? 1 : 0))];
 
         fixture.Monitor.Raise(e);
 
@@ -179,8 +228,8 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        // Address A and C's logs are at positions 0, 2 and 3; transactions C and D are both receipts.
-        int expected = logs ? 3 : 2;
+        // Address A and C's logs are at positions 0, 2 and 3; the receipts of transactions C and D are one notification.
+        int expected = logs ? 3 : 1;
         (CollectingClient client, _) = logs
             ? fixture.SubscribeToLogs([TestItem.AddressA, TestItem.AddressC], expected)
             : fixture.SubscribeToReceipts([TestItem.KeccakC, TestItem.KeccakD], expected);
@@ -288,16 +337,44 @@ public class ReceiptsEventPayloadCacheTests
     private static List<FilterLog> ExpectedLogs(ReceiptsEventArgs e, Address? address)
     {
         List<FilterLog> logs = [];
-        for (int position = 0; position < e.TxReceipts.Length * LogsPerReceipt; position++)
+        int position = 0;
+        foreach (TxReceipt receipt in e.TxReceipts)
         {
-            TxReceipt receipt = e.TxReceipts[position / LogsPerReceipt];
-            int inReceipt = position % LogsPerReceipt;
-            if (address is not null && receipt.Logs![inReceipt].Address != address) continue;
+            for (int inReceipt = 0; inReceipt < receipt.Logs!.Length; inReceipt++, position++)
+            {
+                if (address is not null && receipt.Logs[inReceipt].Address != address) continue;
 
-            logs.Add(new FilterLog(e.LogIndexPerReceipt ? inReceipt : position, receipt, receipt.Logs![inReceipt], e.BlockHeader.Timestamp, e.WasRemoved));
+                logs.Add(new FilterLog(e.LogIndexPerReceipt ? inReceipt : position, receipt, receipt.Logs[inReceipt], e.BlockHeader.Timestamp, e.WasRemoved));
+            }
         }
 
         return logs;
+    }
+
+    /// <summary>
+    /// Receipts of 2, 1, 4, 0 and 2 logs: address C's logs are at positions 4, 6 and 8 (the second log of the third
+    /// receipt first), and the second receipt's bloom matches C although its only log is from A.
+    /// </summary>
+    private static ReceiptsEventArgs CreateScanEvent(bool removed, bool logIndexPerReceipt)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(8).TestObject;
+        LogEntry fromA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+        LogEntry fromB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
+        LogEntry fromC = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithData(TestItem.RandomDataC).TestObject;
+        LogEntry otherC = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem.KeccakC).TestObject;
+        TxReceipt[] receipts =
+        [
+            Receipt(header, 0, fromB, fromA),
+            Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithIndex(1).WithLogs(fromA).WithBloom(new Bloom(new[] { fromA, fromC })).TestObject,
+            Receipt(header, 2, fromA, fromC, fromB, otherC),
+            Receipt(header, 3),
+            Receipt(header, 4, fromB, fromC),
+        ];
+        header.Bloom = new Bloom(new[] { fromA, fromB, fromC, otherC });
+        return new ReceiptsEventArgs(header, receipts, removed, logIndexPerReceipt);
+
+        static TxReceipt Receipt(BlockHeader header, int index, params LogEntry[] logs) =>
+            Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithIndex(index).WithLogs(logs).TestObject;
     }
 
     private static List<ReceiptForRpc> ExpectedReceipts(ReceiptsEventArgs e, Hash256[]? hashes) =>
@@ -309,8 +386,11 @@ public class ReceiptsEventPayloadCacheTests
     private static IEnumerable<string> ExpectedLogMessages(ReceiptsEventArgs e, string subscriptionId, Address? address) =>
         ExpectedLogs(e, address).Select(log => Message(log, subscriptionId));
 
-    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes) =>
-        ExpectedReceipts(e, hashes).Select(receipt => Message(receipt, subscriptionId));
+    private static IEnumerable<string> ExpectedReceiptMessages(ReceiptsEventArgs e, string subscriptionId, Hash256[]? hashes)
+    {
+        ReceiptForRpc[] receipts = [.. ExpectedReceipts(e, hashes)];
+        return receipts.Length == 0 ? [] : [Message(receipts, subscriptionId)];
+    }
 
     private static string Message<T>(T result, string subscriptionId) => RpcTest.SerializeResponse(new JsonRpcSubscriptionResponse<T>
     {
@@ -347,7 +427,7 @@ public class ReceiptsEventPayloadCacheTests
         {
             CollectingClient client = new(expectedMessages);
             TransactionHashesFilter? filter = hashes is null ? null : new() { TransactionHashes = [.. hashes.Select(static h => h.ValueHash256)] };
-            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, NullLogManager.Instance, ReceiptPayloads, filter));
+            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance, ReceiptPayloads, filter));
         }
 
         private (CollectingClient, Subscription) Track(CollectingClient client, Subscription subscription)

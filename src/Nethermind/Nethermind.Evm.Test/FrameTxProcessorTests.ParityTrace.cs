@@ -308,7 +308,9 @@ public partial class FrameTxProcessorTests
     /// <summary>The gas the processor reserves for <paramref name="tx"/>: its frame limits plus the intrinsic gas.</summary>
     private ulong FrameGasBudget(Transaction tx)
     {
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit), "the budget exceeds the frame limits");
         return maxGas;
     }

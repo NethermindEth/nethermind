@@ -212,8 +212,11 @@ public class BackgroundTaskSchedulerTests
             }, TimeSpan.FromMilliseconds(1));
         }
 
-        Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
-        Assert.That(cancelledCount, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
+            Assert.That(cancelledCount, Is.EqualTo(5));
+        }
 
         RaiseBranchProcessingCompleted(branchProcessing);
 
@@ -230,8 +233,11 @@ public class BackgroundTaskSchedulerTests
             });
         }
 
-        Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
-        Assert.That(postBlockCount, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
+            Assert.That(postBlockCount, Is.EqualTo(3));
+        }
     }
 
     [Test]

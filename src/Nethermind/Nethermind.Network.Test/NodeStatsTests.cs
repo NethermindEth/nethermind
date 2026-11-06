@@ -65,8 +65,11 @@ public class NodeStatsTests
 
         _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);
         isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
-        Assert.That(isConnDelayed.Result, Is.True, "just after disconnect");
-        Assert.That(isConnDelayed.DelayReason, Is.EqualTo(NodeStatsEventType.Disconnect));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isConnDelayed.Result, Is.True, "just after disconnect");
+            Assert.That(isConnDelayed.DelayReason, Is.EqualTo(NodeStatsEventType.Disconnect));
+        }
         await Task.Delay(125);
         isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
         Assert.That(isConnDelayed.Result, Is.False, "125ms after disconnect");
@@ -126,13 +129,19 @@ public class NodeStatsTests
     public async Task TestRequestLimit()
     {
         _nodeStats = new NodeStatsLight(_node);
-        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(4));
-        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.BlockAccessLists), Is.EqualTo(GethSyncLimits.MaxBodyFetch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(4));
+            Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.BlockAccessLists), Is.EqualTo(GethSyncLimits.MaxBodyFetch));
+        }
 
         int[] result = await _nodeStats.RunSizeAndLatencyRequestSizer<int[], int, int>(RequestType.Bodies, [1, 2, 3, 4, 5],
             (mapped) => Task.FromResult<(int[], long)>((mapped.ToArray(), 1)));
 
-        Assert.That(result, Is.EqualTo([1, 2, 3, 4]));
-        Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(6));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo([1, 2, 3, 4]));
+            Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(6));
+        }
     }
 }

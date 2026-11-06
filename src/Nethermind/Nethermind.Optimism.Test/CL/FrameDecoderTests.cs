@@ -29,8 +29,11 @@ public class FrameDecoderTests
         Assert.That(written, Is.EqualTo(frame.Size));
 
         int read = Frame.FromBytes(buffer, out Frame decoded);
-        Assert.That(read, Is.EqualTo(written));
-        Assert.That(decoded, Is.EqualTo(frame));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read, Is.EqualTo(written));
+            Assert.That(decoded, Is.EqualTo(frame));
+        }
     }
 
     [Test]
@@ -69,7 +72,10 @@ public class FrameDecoderTests
         List<Frame> decoded = FrameDecoder.DecodeFrames(buffer).ToList();
 
         Assert.That(decoded.Count, Is.EqualTo(2));
-        Assert.That(decoded[0], Is.EqualTo(frame1));
-        Assert.That(decoded[1], Is.EqualTo(frame2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0], Is.EqualTo(frame1));
+            Assert.That(decoded[1], Is.EqualTo(frame2));
+        }
     }
 }

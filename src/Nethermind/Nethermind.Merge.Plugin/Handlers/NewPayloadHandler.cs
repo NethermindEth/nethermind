@@ -71,10 +71,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>The copies this handler handed to the processing queue that have not left it yet.</summary>
     /// <remarks>
-    /// Replaced whole and only by the request in progress: the engine API runs one newPayload at a time, so a
-    /// request finds here what the requests before it left behind and nothing changes it meanwhile.
+    /// The engine API runs one newPayload at a time, so a request finds here what the requests before it left
+    /// behind. The lock is uncontended then; it keeps the list whole on a node that serves newPayload through two
+    /// engine modules, each with its own request lock.
     /// </remarks>
-    private QueuedCopy[] _queuedCopies = [];
+    private readonly List<QueuedCopy> _queuedCopies = [];
+    private readonly Lock _queuedCopiesLock = new();
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -134,6 +136,45 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _ => "  "
     };
 
+    private void LogReceived(string requestStr, Block block)
+    {
+        _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+        _lastBlockNumber = block.Number;
+        _lastBlockGasLimit = block.Header.GasLimit;
+    }
+
+    /// <summary>A payload's <c>Received</c> line held back until its block is handed to the processing queue, or until the request first has to wait.</summary>
+    /// <remarks>Written at most once: by <see cref="Write"/> at the first of those, or on dispose by a request that ends before either.</remarks>
+    private sealed class ReceivedLine(NewPayloadHandler handler, string requestStr, Block block) : IDisposable
+    {
+        private bool _written;
+
+        public void Write()
+        {
+            if (_written) return;
+            _written = true;
+            handler.LogReceived(requestStr, block);
+        }
+
+        public void Dispose() => Write();
+    }
+
+    /// <summary>
+    /// Hands <paramref name="wait"/> back to be awaited, writing <paramref name="receivedLine"/> first when the wait has
+    /// not completed yet: a wait on our side before the hand-off must not make the payload look late in the log.
+    /// </summary>
+    private static ValueTask<T> WriteReceivedIfWaiting<T>(ReceivedLine? receivedLine, ValueTask<T> wait)
+    {
+        if (!wait.IsCompleted) receivedLine?.Write();
+        return wait;
+    }
+
+    private static Task<T> WriteReceivedIfWaiting<T>(ReceivedLine? receivedLine, Task<T> wait)
+    {
+        if (!wait.IsCompleted) receivedLine?.Write();
+        return wait;
+    }
+
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>
     /// and the hash of the last valid block.
@@ -164,12 +205,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
-            _lastBlockNumber = block.Number;
-            _lastBlockGasLimit = block.Header.GasLimit;
-        }
+        // Written once the block is handed to the processing queue, off the path to the hash check, or as soon as the
+        // request has to wait before that; disposing writes it on every path that returns or throws before either.
+        using ReceivedLine? receivedLine = _logger.IsInfo ? new ReceivedLine(this, requestStr, block) : null;
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
@@ -193,7 +231,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Let an ancestor already answered VALID finish committing within this request's budget.
             if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
             {
-                bool hasExecutedCopy = await _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider);
+                bool hasExecutedCopy = await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider));
                 if (!hasExecutedCopy || !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
                     return NewPayloadV1Result.Syncing;
             }
@@ -261,7 +299,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // A re-executed block is already marked processed, so it can become head before its restored state
                 // commits; wait for that commit before reading the state again.
                 if (IsVerdictServiceable(block)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && IsVerdictServiceable(block)))
+                    || (await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider)) && IsVerdictServiceable(block)))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return NewPayloadV1Result.Valid(block.Hash);
@@ -281,7 +319,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
                 // The re-execution restoring this state may still be committing, so wait for it before judging.
                 if (_stateReader.HasStateForBlock(block.Header)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && _stateReader.HasStateForBlock(block.Header)))
+                    || (await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider)) && _stateReader.HasStateForBlock(block.Header)))
                 {
                     if (EvaluateInclusionListFromState(block) is { } fromState)
                     {
@@ -299,9 +337,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
-        if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+        Hash256 parentHash = parentHeader.GetOrCalculateHash();
+        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        if (parentBlockInfo is { WasProcessed: false })
+        {
+            if (!await WriteReceivedIfWaiting(receivedLine, WaitForParentCommitAsync(parentHeader, parentHash, deadline))) return NewPayloadV1Result.Syncing;
+            parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHash).Info;
+        }
 
-        if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
+        if (!ShouldProcessBlock(block, parentHeader, parentBlockInfo, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             // Inserting a canonical block as a beacon block would arm the beacon pivot behind the head, and
             // validating it first could record a failure that marks every descendant, the head included, INVALID.
@@ -369,7 +413,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, receivedLine);
 
         switch (result)
         {
@@ -608,6 +652,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="block">Block</param>
     /// <param name="parent">Parent header</param>
+    /// <param name="parentBlockInfo">The parent's info, read again after any wait for the parent's commit.</param>
     /// <param name="processingOptions">Options that should be used for processing</param>
     /// <returns>Options which should be used for block processing. Null if we shouldn't process the block.</returns>
     /// <remarks>
@@ -622,11 +667,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     ///
     /// Scenario 2 proved to be quite common on testnets which produced multiple transition blocks.
     /// </remarks>
-    private bool ShouldProcessBlock(Block block, BlockHeader parent, out ProcessingOptions processingOptions)
+    private bool ShouldProcessBlock(Block block, BlockHeader parent, BlockInfo? parentBlockInfo, out ProcessingOptions processingOptions)
     {
         processingOptions = _defaultProcessingOptions;
 
-        BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
         bool parentProcessed = parentBlockInfo is { WasProcessed: true } && _stateReader.HasStateForBlock(parent);
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
@@ -687,11 +731,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
     /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
     /// </summary>
-    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, long deadline)
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent, Hash256 parentHash, long deadline)
     {
-        Hash256 parentHash = parent.GetOrCalculateHash();
-        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
-
         bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
@@ -708,7 +749,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers, ReceivedLine? receivedLine)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -761,7 +802,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             AddBlockResult addResult;
             try
             {
-                addResult = await suggest.TimeoutOn(timeoutTask);
+                addResult = await WriteReceivedIfWaiting(receivedLine, suggest.TimeoutOn(timeoutTask));
             }
             catch (TimeoutException)
             {
@@ -778,7 +819,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (addResult == AddBlockResult.AlreadyKnown)
             {
                 Task removed = WaitForEarlierCopiesAsync(block.Hash!, ilDigest);
-                if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+                if (await WriteReceivedIfWaiting(receivedLine, Task.WhenAny(removed, timeoutTask)) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
                 // copy's failure, and stands: the CL's next retry re-processes.
@@ -828,6 +869,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
+                // The block is on its way to the queue, so the line costs the verdict nothing from here.
+                receivedLine?.Write();
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -893,11 +936,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         bool tracked = false;
         List<Task>? anotherList = null;
-        foreach (QueuedCopy copy in _queuedCopies)
+        lock (_queuedCopiesLock)
         {
-            if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
-            tracked = true;
-            if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            foreach (QueuedCopy copy in _queuedCopies)
+            {
+                if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
+                tracked = true;
+                if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+            }
         }
 
         bool carriesSameList = anotherList is null && (tracked || ilDigest == default);
@@ -909,8 +955,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
     {
-        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
-        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
+        lock (_queuedCopiesLock)
+        {
+            _queuedCopies.RemoveAll(static copy => copy.Left.IsCompleted);
+            _queuedCopies.Add(new QueuedCopy(blockHash, inclusionListDigest, left));
+        }
     }
 
     private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)

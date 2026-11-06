@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
+    public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>
     {
         private static readonly RlpLimit StartBlockRlpLimit = RlpLimit.For<GetBlockHeadersMessage>(Hash256.Size, nameof(GetBlockHeadersMessage.StartBlockHash));
 
@@ -33,13 +32,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return message;
         }
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+        public int Serialize(Span<byte> destination, GetBlockHeadersMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(destination);
 
-            writer.StartSequence(contentLength);
+            writer.StartSequence(GetContentLength(message));
             if (message.StartBlockHash is null)
             {
                 writer.Encode(message.StartBlockNumber);
@@ -52,21 +49,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             writer.Encode(message.MaxHeaders);
             writer.Encode(message.Skip);
             writer.Encode(message.Reverse);
+            return writer.Position;
         }
 
-        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
-
-        public int GetLength(GetBlockHeadersMessage message, out int contentLength)
+        public GetBlockHeadersMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            contentLength = message.StartBlockHash is null
+            RlpReader ctx = new(data);
+            GetBlockHeadersMessage message = Deserialize(ref ctx);
+            ctx.CheckEnd();
+            return message;
+        }
+
+        public int GetLength(GetBlockHeadersMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(GetBlockHeadersMessage message)
+        {
+            int contentLength = message.StartBlockHash is null
                 ? Rlp.LengthOf(message.StartBlockNumber)
                 : Rlp.LengthOf(message.StartBlockHash);
             contentLength += Rlp.LengthOf(message.MaxHeaders);
             contentLength += Rlp.LengthOf(message.Skip);
             contentLength += Rlp.LengthOf(message.Reverse);
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
     }
 }

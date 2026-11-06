@@ -89,7 +89,9 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
         Transaction tx = Build.A.Transaction.WithTo(null).WithGasLimit(gasLimit).TestObject;
         EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec).Standard;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, spec, out EthereumGasPolicy gas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
         EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.SSetState, stateGasFloor: 0);

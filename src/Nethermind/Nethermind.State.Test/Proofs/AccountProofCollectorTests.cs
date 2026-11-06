@@ -296,10 +296,13 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(a);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That(proof.Proof, Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.Proof, Has.Length.EqualTo(1));
 
-            // and because the account does not exist, the balance should be 0
-            Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
+                // and because the account does not exist, the balance should be 0
+                Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
+            }
         }
 
         [Test]
@@ -424,8 +427,11 @@ namespace Nethermind.Store.Test.Proofs
         {
             (StateTree tree, _) = CreateTreeWithUInt256Storage();
             AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
-            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
-            Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[1]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
+                Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[1]));
+            }
         }
 
         [Test]
@@ -433,8 +439,11 @@ namespace Nethermind.Store.Test.Proofs
         {
             (StateTree tree, _) = CreateTreeWithUInt256Storage();
             AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
-            Assert.That(proof.StorageProofs[0].Key!, Is.EqualTo(new byte[] { 0 }));
-            Assert.That(proof.StorageProofs[1].Key!, Is.EqualTo(new byte[] { 1 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.StorageProofs[0].Key!, Is.EqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[1].Key!, Is.EqualTo(new byte[] { 1 }));
+            }
         }
 
         private static readonly byte[] StorageKeyA = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
@@ -500,14 +509,17 @@ namespace Nethermind.Store.Test.Proofs
 
             byte[][] queryKeys = [StorageKeyA, StorageKeyB, c, d, e];
             AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
-            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[0]));
-            Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
-            Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[2]));
-            Assert.That(proof.StorageProofs[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
-            Assert.That(proof.StorageProofs[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[4]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[0]));
+                Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
+                Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[2]));
+                Assert.That(proof.StorageProofs[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
+                Assert.That(proof.StorageProofs[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[4]));
 
-            Assert.That(proof.StorageProofs[1].Proof, Has.Length.EqualTo(2));
-            Assert.That(proof.StorageProofs[3].Proof, Has.Length.EqualTo(1));
+                Assert.That(proof.StorageProofs[1].Proof, Has.Length.EqualTo(2));
+                Assert.That(proof.StorageProofs[3].Proof, Has.Length.EqualTo(1));
+            }
         }
 
         [Test]
@@ -527,10 +539,13 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
-            Assert.That(proof.Nonce, Is.EqualTo(0UL));
-            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
+                Assert.That(proof.Nonce, Is.EqualTo(0UL));
+                Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+                Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
+            }
         }
 
         [Test]
@@ -544,13 +559,13 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
                 Assert.That(proof.Nonce, Is.EqualTo(0UL));
                 Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
                 Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
-            });
+            }
         }
 
         [Test]
@@ -566,9 +581,12 @@ namespace Nethermind.Store.Test.Proofs
 
             byte[][] queryKeys = [StorageKeyA, c, e];
             AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
-            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
-            Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[2]));
-            Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[4]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
+                Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[2]));
+                Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[4]));
+            }
         }
 
 
@@ -711,10 +729,13 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             tree.Accept(collector, tree.RootHash);
 
             AccountProof accountProof = collector.BuildResult();
-            Assert.That(accountProof.Address, Is.EqualTo(address));
-            Assert.That(accountProof.Balance, Is.EqualTo((UInt256)accountIndex));
-            Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
-            Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountProof.Address, Is.EqualTo(address));
+                Assert.That(accountProof.Balance, Is.EqualTo((UInt256)accountIndex));
+                Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
+                Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            }
             if (accountIndex != 0) Assert.That(accountProof.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(accountProof.StorageProofs.Length, Is.EqualTo(accountIndex));
 
@@ -759,8 +780,11 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 keys[j].ToBigEndian(indexBytes);
                 TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                 node.ResolveNode(null, TreePath.Empty);
-                Assert.That(node.IsBranch, Is.True);
-                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value, Is.SequenceEqualTo(new byte[] { 1 }));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(node.IsBranch, Is.True);
+                    Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value, Is.SequenceEqualTo(new byte[] { 1 }));
+                }
             }
         }
 
@@ -837,10 +861,13 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 tree.Accept(collector, tree.RootHash);
 
                 AccountProof accountProof = collector.BuildResult();
-                Assert.That(accountProof.Address, Is.EqualTo(addressesWithStorage[i].Address));
-                Assert.That(accountProof.Balance, Is.EqualTo((UInt256)i));
-                Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
-                Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(accountProof.Address, Is.EqualTo(addressesWithStorage[i].Address));
+                    Assert.That(accountProof.Balance, Is.EqualTo((UInt256)i));
+                    Assert.That(accountProof.Nonce, Is.EqualTo(0UL));
+                    Assert.That(accountProof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+                }
                 if (i != 0) Assert.That(accountProof.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
                 Assert.That(accountProof.StorageProofs.Length, Is.EqualTo(i));
 

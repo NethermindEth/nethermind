@@ -72,8 +72,11 @@ internal class BlackListedAddressFilterTests
         AcceptTxResult result = Accept(filter, tx);
 
         Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedSender));
-        Assert.That(result.ToString(), Does.Contain(expectedRole));
-        Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid), "Invalid makes TxFloodController disconnect the relaying peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ToString(), Does.Contain(expectedRole));
+            Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid), "Invalid makes TxFloodController disconnect the relaying peer");
+        }
     }
 
     [Test]
