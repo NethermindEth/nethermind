@@ -2858,7 +2858,7 @@ namespace Nethermind.TxPool
                     bool invalidTransactionForm = validation.Error == TxErrorMessages.InvalidTransactionForm;
                     _invalidTransactions[transaction.Hash!] = new ForkValidationResult(
                         validation,
-                        validation.Error == TxErrorMessages.InvalidProofVersion,
+                        TxErrorMessages.IsBlobSidecarError(validation.Error),
                         !invalidTransactionForm);
                 }
             }
