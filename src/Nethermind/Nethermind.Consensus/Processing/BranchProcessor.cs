@@ -160,10 +160,10 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                // EIP-8288 prefix simulation needs mutable state before post-transaction system calls.
+                // EIP-8288 prefix simulation needs mutable state before post-transaction system calls, but only an omitted
+                // frame entry is ever simulated.
                 bool simulateFrameInclusionList = checkInclusionList && spec.IsEip8288Enabled
-                    && suggestedBlock.InclusionListTransactions is { } inclusionList
-                    && Array.Exists(inclusionList, static tx => tx.SupportsFrames && !tx.SupportsBlobs);
+                    && InclusionListValidator.OmitsFrameEntry(suggestedBlock);
                 useBalForInclusionList = !simulateFrameInclusionList && checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
                     && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
                 ProcessingOptions blockOptions = !simulateFrameInclusionList && blockTracer == NullBlockTracer.Instance

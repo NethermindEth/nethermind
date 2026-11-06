@@ -58,6 +58,30 @@ public static class InclusionListValidator
         }
     }
 
+    /// <summary>Whether <paramref name="block"/> leaves out an EIP-8141 frame entry of its inclusion list that
+    /// <see cref="IsSatisfied(Block, Transaction[], IReadOnlyStateProvider, IReleaseSpec, ITxValidator, IReadOnlyList{CommitteeInclusionList}, Func{Transaction, bool})"/>
+    /// may have to judge by prefix simulation.</summary>
+    /// <remarks>Decided from transaction hashes alone, before execution, and conservatively: an entry is left out unless the block
+    /// carries a transaction of its hash, whether or not it is eligible. When none is, the simulation is never asked for.</remarks>
+    public static bool OmitsFrameEntry(Block block)
+    {
+        if (block.InclusionListTransactions is not { } il) return false;
+        HashSet<Hash256>? included = null;
+        foreach (Transaction tx in il)
+        {
+            if (!tx.SupportsFrames || tx.SupportsBlobs || tx.CarriesBlobs) continue;
+            if (tx.Hash is null) return true;
+            if (included is null)
+            {
+                included = new(block.Transactions.Length);
+                foreach (Transaction blockTx in block.Transactions)
+                    if (blockTx.Hash is { } hash) included.Add(hash);
+            }
+            if (!included.Contains(tx.Hash)) return true;
+        }
+        return false;
+    }
+
     public static bool IsBlockFull(Block block, IReleaseSpec spec)
     {
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;

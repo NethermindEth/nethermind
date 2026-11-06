@@ -150,10 +150,13 @@ public class BranchProcessorVerdictTests
     }
 
     [Test]
-    public void Inclusion_list_preserves_parallel_execution_except_for_frame_simulation([Values] bool nonemptyList, [Values] bool frame)
+    public void Inclusion_list_preserves_parallel_execution_except_for_frame_simulation([Values] bool nonemptyList, [Values] bool frame,
+        [Values] bool included)
     {
         Transaction tx = Build.A.Transaction.WithType(frame ? TxType.FrameTx : TxType.Legacy).TestObject;
-        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [tx] : []).TestObject;
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithNumber(0).WithTransactions(included ? [tx] : [])
+            .WithInclusionListTransactions(nonemptyList ? [tx] : []).TestObject;
         IBlockProcessor processor = Substitute.For<IBlockProcessor>();
         ProcessingOptions actualOptions = ProcessingOptions.None;
         processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
@@ -170,7 +173,7 @@ public class BranchProcessorVerdictTests
 
         container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList && frame));
+        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList && frame && !included));
     }
 
     [Test]
