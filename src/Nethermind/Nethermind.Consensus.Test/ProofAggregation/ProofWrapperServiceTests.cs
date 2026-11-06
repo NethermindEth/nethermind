@@ -1001,8 +1001,9 @@ public class ProofWrapperServiceTests
     [TestCase(64, true, false, 0UL, 0, TestName = "Nothing is evicted when another owner keeps the witnesses pinned")]
     [TestCase(64, false, true, 0UL, 2, TestName = "A transaction whose witness an executable one shares is kept")]
     [TestCase(64, false, false, 1UL, 0, TestName = "A non-executable wrapper evicts nothing")]
+    [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
-        bool oldestSharedWithExecutable, ulong incomingNonce, int removed)
+        bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
@@ -1055,6 +1056,9 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
+        if (localVictims)
+            foreach (Transaction transaction in pinned.Take(2))
+                Assert.That((await service.AcceptDetailedAsync(DirectWrapper(transaction))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
         FrameDependency incoming = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("incoming"), default);
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
@@ -1064,13 +1068,13 @@ public class ProofWrapperServiceTests
             Proofs = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]]
         }).Bytes;
 
-        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(encoded);
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(encoded);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
-            pool.Received(removed != 0 && !oldestSharedWithExecutable ? 1 : 0).RemoveTransaction(oldest.Hash);
+            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
         }
     }
 

@@ -413,17 +413,38 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Pending transactions one admission may evict to make room for its witnesses.</summary>
     internal const int MaxEvictedPerAdmission = AdmissionChunk;
 
+    /// <summary>Hashes of transactions admitted through local wrappers, such as RPC, which capacity eviction removes last.</summary>
+    /// <remarks>Bounded by <see cref="MaxLocalTransactions"/>, beyond which local admissions are not remembered, and pruned to the
+    /// pending ones on each pool scan.</remarks>
+    private readonly HashSet<ValueHash256> _localTransactions = [];
+
+    internal const int MaxLocalTransactions = 4096;
+
+    private void MarkLocal(Hash256 hash)
+    {
+        lock (_localTransactions)
+            if (_localTransactions.Count < MaxLocalTransactions) _localTransactions.Add(hash.ValueHash256);
+    }
+
     /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
-    /// first.</summary>
+    /// first, with those admitted locally after all others.</summary>
+    /// <remarks>Forgets local transactions no longer pending.</remarks>
     private List<Transaction> NotExecutable(IReadOnlyList<Transaction> wrapped, FeeFloors floors)
     {
-        List<Transaction> notExecutable = [];
+        List<Transaction> notExecutable = [], local = [];
         HashSet<Hash256> skipped = [];
         foreach (Transaction transaction in wrapped) skipped.Add(transaction.Hash!);
         List<Transaction> executable = [];
-        Collect(txPool.GetPendingTransactionsBySender());
-        Collect(txPool.GetPendingLightBlobTransactionsBySender());
+        HashSet<ValueHash256> pending = [];
+        lock (_localTransactions)
+        {
+            Collect(txPool.GetPendingTransactionsBySender());
+            Collect(txPool.GetPendingLightBlobTransactionsBySender());
+            _localTransactions.IntersectWith(pending);
+        }
         notExecutable.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
+        local.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
+        notExecutable.AddRange(local);
         return notExecutable;
 
         void Collect(IDictionary<AddressAsKey, Transaction[]> bySender)
@@ -433,9 +454,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 executable.Clear();
                 AddExecutable(sender, transactions, floors, executable);
                 foreach (Transaction transaction in transactions)
+                {
+                    pending.Add(transaction.Hash!.ValueHash256);
                     if (Eip8288Dependencies.IsDependencyBearing(transaction) && !skipped.Contains(transaction.Hash!)
                         && !executable.Contains(transaction))
-                        notExecutable.Add(transaction);
+                        (_localTransactions.Contains(transaction.Hash!.ValueHash256) ? local : notExecutable).Add(transaction);
+                }
             }
         }
     }
@@ -558,6 +582,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 pooled++;
                 admitted++;
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+                if ((handling & TxHandlingOptions.PersistentBroadcast) != 0) MarkLocal(hash);
             }
         }
     }
