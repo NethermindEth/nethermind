@@ -17,6 +17,9 @@ internal interface IWrapperLink
 {
     string Description { get; }
 
+    /// <summary>The peer's node ID, under which its failure score outlives the connection; null when unknown.</summary>
+    PublicKey? NodeId { get; }
+
     /// <summary>Sends a wrapper message.</summary>
     void Send(P2PMessage message);
 
@@ -262,6 +265,13 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
 
     /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
     /// or withheld wrappers from, weighted by the share withheld.</summary>
+    /// <summary>Restores a failure score recorded at <paramref name="since"/>, from which it keeps decaying.</summary>
+    public void RestoreFailureScore(double score, long since)
+    {
+        _failures = score;
+        _failuresUpdated = since;
+    }
+
     public void RecordFailure(double weight = 1) => _failures = Math.Min(FailureScore + weight, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;

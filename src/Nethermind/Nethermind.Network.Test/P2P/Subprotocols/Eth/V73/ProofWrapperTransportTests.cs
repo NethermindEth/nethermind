@@ -695,6 +695,25 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A peer's failure score is kept by node ID, so reconnecting does not lift its deprioritization.
+    [Test]
+    public void Failure_score_survives_reconnection()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new() { NodeId = TestItem.PublicKeyA };
+        WrapperPeer peer = node.Connect(link);
+        peer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore + 1);
+        node.Transport.Remove(peer);
+
+        WrapperPeer reconnected = node.Connect(new FakeWrapperLink { NodeId = TestItem.PublicKeyA });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reconnected.IsDeprioritized, Is.True);
+            Assert.That(node.Connect(new FakeWrapperLink { NodeId = TestItem.PublicKeyB }).IsDeprioritized, Is.False);
+        }
+    }
+
     // EIP-8437: malformed transport encodings remain penalizable, unlike proof failures.
     [TestCase("duplicate transaction")]
     [TestCase("transaction without frames")]

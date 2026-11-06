@@ -36,6 +36,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly WrapperEncodingBudget _encodingBudget = new(WrapperTransportLimits.MaxCachedEncodingBytes);
     private readonly Dictionary<ValueHash256, WrapperFetch> _fetches = [];
     private readonly WrapperBoundedSet _tombstones = new(WrapperTransportLimits.MaxTombstones);
+    // Failure scores of disconnected peers by node ID, so reconnecting does not reset deprioritization.
+    private readonly Dictionary<PublicKey, (double Score, long At)> _departedScores = [];
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
     // target fork verifier may accept them.
     private readonly WrapperBoundedSet _invalid = new(WrapperTransportLimits.MaxTombstones);
@@ -119,6 +121,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
         {
             if (_disposed) return null;
             peer = new(link, _clock, _encodingBudget);
+            if (link.NodeId is { } nodeId && _departedScores.Remove(nodeId, out (double Score, long At) departed))
+                peer.RestoreFailureScore(departed.Score, departed.At);
             _peers.Add(peer);
             // Peers announce the wrappers they offer on connection, most recent first, within the announcement rate limit.
             // A wrapper none of whose transactions is still pending is dropped instead of being replayed to every new peer.
@@ -153,11 +157,27 @@ public sealed partial class ProofWrapperTransport : IDisposable
         if (peer.Closed) return;
         peer.Closed = true;
         _peers.Remove(peer);
+        RememberFailureScore(peer);
         foreach (WrappersRequest request in peer.Requests.Values) Abandon(peer, request);
         peer.Requests.Clear();
         peer.ToAnnounce.Clear();
         peer.Received.Close();
         foreach (WrapperFetch fetch in _fetches.Values) fetch.Sources.Remove(peer);
+    }
+
+    private void RememberFailureScore(WrapperPeer peer)
+    {
+        if (peer.Link.NodeId is not { } nodeId || peer.FailureScore <= 0) return;
+        if (_departedScores.Count >= WrapperTransportLimits.MaxDepartedScores && !_departedScores.ContainsKey(nodeId))
+        {
+            // Forget the oldest record; a scan on disconnect is cheap at this bound.
+            PublicKey? oldest = null;
+            long oldestAt = long.MaxValue;
+            foreach ((PublicKey id, (double _, long at)) in _departedScores)
+                if (at < oldestAt) (oldest, oldestAt) = (id, at);
+            _departedScores.Remove(oldest!);
+        }
+        _departedScores[nodeId] = (peer.FailureScore, _clock.GetTimestamp());
     }
 
     /// <summary>Releases an outstanding request's reservation; its wanted wrappers go back to the queue.</summary>

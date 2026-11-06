@@ -57,6 +57,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
     private readonly List<string> _penalties = [];
 
     public string Description => name;
+    public PublicKey? NodeId { get; init; }
 
     public void Send(P2PMessage message)
     {

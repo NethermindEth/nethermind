@@ -133,6 +133,9 @@ public static class WrapperTransportLimits
     public const long MaxCachedEncodingBytes = 64L * 1024 * 1024;
 
     public const int MaxTombstones = 4096;
+
+    /// <summary>Disconnected peers whose failure scores are kept for their reconnection.</summary>
+    public const int MaxDepartedScores = 1024;
     public const int MaxKnownPerPeer = 1024;
     public static readonly TimeSpan SoftTombstone = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan BusyRetry = TimeSpan.FromMilliseconds(200);
