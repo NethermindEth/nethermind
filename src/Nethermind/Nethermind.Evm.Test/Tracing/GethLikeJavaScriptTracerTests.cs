@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -1993,6 +1994,42 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             Assert.That(rendered, Is.False);
             Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+        }
+    }
+
+    [Test]
+    public void Javascript_request_cancelled_while_the_hook_check_throws_is_reported_as_cancellation([Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, step: function() {}}",
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
+        });
+        engine.Interrupt();
+        // The hook check sits inside the handlers that classify it, so a request cancellation that becomes visible only
+        // after the check has thrown is still reported as cancellation. The observer acts once, on this thread only.
+        bool cancelledAtThrow = false;
+        int owner = Environment.CurrentManagedThreadId;
+        EventHandler<FirstChanceExceptionEventArgs> cancel = (_, args) =>
+        {
+            if (Environment.CurrentManagedThreadId != owner || cancelledAtThrow || args.Exception is not ScriptInterruptedException) return;
+            cancelledAtThrow = true;
+            request.Cancel();
+        };
+        AppDomain.CurrentDomain.FirstChanceException += cancel;
+        Exception failure;
+        try { failure = Assert.Catch(() => tracer.SetOperationStack(default))!; }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= cancel; }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelledAtThrow, Is.True);
+            Assert.That(failure, Is.TypeOf<OperationCanceledException>());
+            Assert.That((failure as OperationCanceledException)?.CancellationToken, Is.EqualTo(request.Token));
         }
     }
 
