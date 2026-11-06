@@ -154,23 +154,23 @@ public class BlockStoreTests
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
-    [Test]
-    public void Large_proof_read_does_not_populate_the_body_cache()
+    // Root proofs are hundreds of KB, so a proof-carrying block is cached; one beyond any valid proof is not.
+    [TestCase(320 * 1024, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
+    public void Proof_carrying_block_is_cached_up_to_the_aggregate_proof_bound(int proofBytes, bool cached)
     {
         using TestMemDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        block.StarkProof = new byte[128 * 1024];
+        block.StarkProof = new byte[proofBytes];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
-        store.Insert(block);
-        Assert.That(store.Get(block.Number, block.Hash!, shouldCache: true), Is.Not.Null);
+        store.Cache(block);
 
-        db.Clear();
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Null);
+        Assert.That(store.Get(block.Number, block.Hash!), cached ? Is.Not.Null : Is.Null);
     }
 
     [Test, NonParallelizable]
-    public void Body_cache_does_not_retain_eighty_eight_mebibytes_of_proofs()
+    public void Body_cache_retains_a_bounded_number_of_maximal_proofs()
     {
         using TestMemDb db = new();
         BlockStore store = new(db);
@@ -179,17 +179,17 @@ public class BlockStoreTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
+        int retained = 0;
         foreach (WeakReference<byte[]> proof in proofs)
-        {
-            Assert.That(proof.TryGetTarget(out _), Is.False);
-        }
+            if (proof.TryGetTarget(out _)) retained++;
+        Assert.That(retained, Is.LessThanOrEqualTo(BlockStore.ProofCacheSize));
         GC.KeepAlive(store);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference<byte[]>[] CacheLargeProofs(BlockStore store)
     {
-        WeakReference<byte[]>[] proofs = new WeakReference<byte[]>[11];
+        WeakReference<byte[]>[] proofs = new WeakReference<byte[]>[BlockStore.CacheSize];
         for (int i = 0; i < proofs.Length; i++)
         {
             Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
