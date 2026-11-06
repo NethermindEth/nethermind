@@ -1003,8 +1003,10 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 1UL, 0, TestName = "A non-executable wrapper evicts nothing")]
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
+    [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
-        bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false)
+        bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false,
+        bool gapFilled = false)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
@@ -1048,8 +1050,10 @@ public class ProofWrapperServiceTests
             .Returns(call => store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);
+        HashSet<Address> filled = [];
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
-            Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable ? ulong.MaxValue : 0UL);
+            Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable || filled.Contains(call.Arg<Address>()) ? ulong.MaxValue : 0UL);
         pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
         {
             store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
@@ -1070,6 +1074,7 @@ public class ProofWrapperServiceTests
         }).Bytes;
 
         ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
+        if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
             Assert.That((await service.AcceptOwnedDetailedAsync(Incoming("second", Address.SystemUser))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
@@ -1079,6 +1084,7 @@ public class ProofWrapperServiceTests
             Assert.That(result.Status, Is.EqualTo(removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
+            if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
         }
     }

@@ -399,10 +399,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
-        List<Transaction> evictable = NotExecutable(decoded.Transactions, floors);
-        if (evictable.Count == 0) return false;
-        ValueHash256[] hashes = new ValueHash256[Math.Min(evictable.Count, MaxEvictedPerAdmission)];
-        for (int i = 0; i < hashes.Length; i++) hashes[i] = evictable[i].Hash!.ValueHash256;
+        List<ValueHash256> hashes = [];
+        foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
+        {
+            if (hashes.Count == MaxEvictedPerAdmission) break;
+            if (IsStillNotExecutable(candidate, floors)) hashes.Add(candidate.Hash!.ValueHash256);
+        }
+        if (hashes.Count == 0) return false;
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
         foreach (ValueHash256 hash in releases)
@@ -410,6 +413,23 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         HashSet<ValueHash256> released = [.. releases];
         _evictionCandidates?.Candidates.RemoveAll(transaction => released.Contains(transaction.Hash!.ValueHash256));
         return leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope);
+    }
+
+    /// <summary>Whether <paramref name="candidate"/>, listed as not executable when the head was scanned, is still pending and not
+    /// executable against its sender's current pending transactions, which may since have filled a nonce gap.</summary>
+    private bool IsStillNotExecutable(Transaction candidate, in FeeFloors floors)
+    {
+        Address sender = candidate.SenderAddress!;
+        IPendingTxsBySender bySender = txPool;
+        Transaction[] bucket = bySender.GetPendingTransactionsBySender(sender);
+        if (Array.FindIndex(bucket, transaction => transaction.Hash == candidate.Hash) < 0)
+        {
+            bucket = bySender.GetPendingLightBlobTransactionsBySender(sender);
+            if (Array.FindIndex(bucket, transaction => transaction.Hash == candidate.Hash) < 0) return false;
+        }
+        List<Transaction> executable = [];
+        AddExecutable(sender, bucket, floors, executable);
+        return executable.FindIndex(transaction => transaction.Hash == candidate.Hash) < 0;
     }
 
     /// <summary>Pending transactions one admission may evict to make room for its witnesses.</summary>
