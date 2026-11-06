@@ -634,7 +634,42 @@ public class HistoryPrunerTests
         blocksDb.Received(1).CompactReclaimingBlobFiles();
     }
 
-    private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb, IPrunedReceiptRetention retention = null)
+    [Test]
+    public async Task Blob_compaction_interrupted_by_process_exit_is_not_marked_done_and_is_retried()
+    {
+        const int blocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: BeaconGenesisBlockNumber);
+
+        // An interrupted native compaction returns normally rather than throwing, so the spy exits the process
+        // mid-run and still reports true.
+        ProcessExitSource processExit = new(default);
+        HistoryPruner interrupted = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb interruptedBlocksDb, processExitSource: processExit);
+        interruptedBlocksDb.CompactReclaimingBlobFiles().Returns(_ =>
+        {
+            processExit.Exit(ExitCodes.Ok);
+            return true;
+        });
+        interrupted.TryPruneHistory(CancellationToken.None);
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        using (Assert.EnterMultipleScope())
+        {
+            interruptedBlocksDb.Received(1).CompactReclaimingBlobFiles();
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone), Is.False,
+                "an aborted rewrite marked done would never be retried");
+        }
+
+        // The restart gets a live exit source, so the owed rewrite must run again.
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+        HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb restartedBlocksDb, processExitSource: new ProcessExitSource(default));
+        restartedBlocksDb.CompactReclaimingBlobFiles().Returns(true);
+        restarted.TryPruneHistory(CancellationToken.None);
+
+        restartedBlocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb, IPrunedReceiptRetention retention = null, IProcessExitSource processExitSource = null)
     {
         // Reuses the blockchain's real stores so a pass actually reclaims, but swaps the pruner's blocks DB for a
         // substitute. The pruner deletes blocks through the block tree, not this handle, so the reclaim is unaffected
@@ -656,6 +691,7 @@ public class HistoryPrunerTests
                 .AddSingleton<IHistoryConfig>(historyConfig)
                 .AddSingleton<IHistoryPruner, HistoryPruner>();
             if (retention is not null) builder.AddSingleton<IPrunedReceiptRetention>(retention);
+            if (processExitSource is not null) builder.AddSingleton<IProcessExitSource>(processExitSource);
         });
 
         // Ends with the blockchain's container at the end of the test, not here, which would dispose the pruner's own dependencies.
