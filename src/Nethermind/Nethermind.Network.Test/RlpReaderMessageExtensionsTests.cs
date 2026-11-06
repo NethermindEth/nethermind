@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 

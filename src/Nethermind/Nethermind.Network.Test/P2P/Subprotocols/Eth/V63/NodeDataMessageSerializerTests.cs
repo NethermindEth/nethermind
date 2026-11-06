@@ -10,7 +10,6 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63

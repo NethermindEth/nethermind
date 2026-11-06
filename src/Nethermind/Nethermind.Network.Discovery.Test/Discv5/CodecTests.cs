@@ -389,7 +389,7 @@ public class CodecTests
 
     private static string[] InvalidEnrKinds =>
         ["oversized", "scalar", "empty-record", "missing-sequence", "missing-value", "eth-scalar", "eth-flat", "eth-empty", "signature",
-            "truncated-sequence", "truncated-port", "truncated-fork-id"];
+            "truncated-sequence", "truncated-port", "truncated-fork-id", "truncated-long-prefix", "truncated-long-value", "truncated-large-length"];
 
     [Test]
     public void MessageCodec_Skips_Invalid_Enrs_In_Nodes([ValueSource(nameof(InvalidEnrKinds))] string invalidKind)
@@ -426,6 +426,9 @@ public class CodecTests
             {
                 "truncated-sequence" => [0x84, 0x75, 0x69],
                 "truncated-port" => [0x01, .. Rlp.Encode("udp"u8).Bytes, 0x83, 0x23, 0x28],
+                "truncated-long-prefix" => [0xb9, 0x01],
+                "truncated-long-value" => [0xb8, 0x38, 0x01],
+                "truncated-large-length" => [0xbb, 0xff, 0xff, 0xff, 0xff],
                 _ => [0x01, .. Rlp.Encode("eth"u8).Bytes, 0xc6, 0xc5, .. Rlp.Encode(new byte[] { 1, 2, 3, 4 }).Bytes]
             };
             invalidRecord = Rlp.Encode(Rlp.Encode(new byte[64]), new Rlp(tail)).Bytes;

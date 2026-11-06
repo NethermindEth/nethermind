@@ -39,6 +39,8 @@ jobs:
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
+      # GitHub's diff endpoint rejects PRs with more than 300 changed files.
+      model: ${{ github.event.pull_request.changed_files > 300 && 'openai/gemini/gemini-pro-latest' || '' }}
       extra_instructions: ${{ needs.instructions.outputs.instructions }}
       # Advisory, not a required check: no label, and LLM/gateway failures stay green.
       # A real security_concerns finding still fails the check.

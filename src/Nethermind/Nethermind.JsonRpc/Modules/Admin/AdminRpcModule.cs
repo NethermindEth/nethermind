@@ -21,7 +21,6 @@ using System.Text.Json;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 
 
 namespace Nethermind.JsonRpc.Modules.Admin;

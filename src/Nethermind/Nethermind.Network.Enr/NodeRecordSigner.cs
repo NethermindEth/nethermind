@@ -74,9 +74,30 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
     private static bool IsMalformedRecordException(Exception exception)
         => exception is RlpReaderException or ArgumentException or InvalidOperationException or FormatException;
 
+    /// <summary>Checks that the next item fits without throwing for truncated peer input.</summary>
+    private static bool NextItemFits(RlpReader reader)
+    {
+        ReadOnlySpan<byte> remaining = reader.ReadRaw(reader.Remaining);
+        if (remaining.IsEmpty) return false;
+        byte prefix = remaining[0];
+        if (prefix < 0x80) return true;
+        int length = prefix < 0xc0 ? prefix - 0x80 : prefix - 0xc0;
+        if (length <= 55) return length < remaining.Length;
+
+        int lengthOfLength = length - 55;
+        if (lengthOfLength > sizeof(int) || lengthOfLength >= remaining.Length) return false;
+        uint contentLength = 0;
+        for (int i = 1; i <= lengthOfLength; i++)
+        {
+            contentLength = (contentLength << 8) | remaining[i];
+        }
+
+        return contentLength <= (uint)(remaining.Length - lengthOfLength - 1);
+    }
+
     private static NodeRecord? DeserializeCore(ref RlpReader reader)
     {
-        if (!reader.HasNext || !reader.IsNextSequence) return null;
+        if (!NextItemFits(reader) || !reader.IsNextSequence) return null;
         ReadOnlySpan<byte> recordRlp = reader.PeekNextItem();
         RlpReader fields = reader.EnterSequence(out int recordRlpLength);
         if (!fields.HasNext) return null;
@@ -88,16 +109,18 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         NodeRecord nodeRecord = new();
         ReadOnlySpan<byte> previousKey = default;
 
+        if (!NextItemFits(fields)) return null;
         ReadOnlySpan<byte> sigBytes = fields.DecodeByteArraySpan(RlpLimit.L65);
-        if (!fields.HasNext) return null;
+        if (!NextItemFits(fields)) return null;
         Signature signature = new(sigBytes, 0);
 
         bool hasV4Id = false;
         ulong enrSequence = fields.DecodeULong();
         while (fields.HasNext)
         {
+            if (!NextItemFits(fields)) return null;
             ReadOnlySpan<byte> key = fields.DecodeByteArraySpan();
-            if (!fields.HasNext) return null;
+            if (!NextItemFits(fields)) return null;
             if (previousKey.Length != 0 && key.SequenceCompareTo(previousKey) <= 0)
             {
                 throw new RlpReaderException("ENR keys must be sorted and unique.");
@@ -134,9 +157,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     if (!fields.IsNextSequence) return null;
                     ReadOnlySpan<byte> ethRlp = fields.PeekNextItem();
                     RlpReader eth = fields.EnterSequence(out int ethLength);
-                    if (!eth.HasNext || !eth.IsNextSequence) return null;
+                    if (!NextItemFits(eth) || !eth.IsNextSequence) return null;
                     RlpReader forkId = eth.EnterSequence(out int forkIdLength);
+                    if (!NextItemFits(forkId)) return null;
                     byte[] forkHash = forkId.DecodeByteArray(size: ForkId.ForkHashLength);
+                    if (!NextItemFits(forkId)) return null;
                     ulong next = forkId.DecodeULong();
                     eth.ExitSequence(forkId, forkIdLength);
                     bool hasAdditionalEthFields = eth.HasNext;
