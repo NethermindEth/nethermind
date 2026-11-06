@@ -61,7 +61,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
     private static readonly DiagnosticDescriptor InvalidFixedLength = new(
         "RLP0007", "Invalid fixed length",
-        "RlpFixedLength of '{0}' must be at least 2, on a byte array, on a UInt256 of 32 bytes or on a type with its own converter",
+        "RlpFixedLength of '{0}' must be between 2 and 2147483642, on a byte array, on a UInt256 of 32 bytes or on a type with its own converter",
         "RLP", DiagnosticSeverity.Error, true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -227,9 +227,9 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     /// <summary>Whether a <c>RlpFixedLength</c> on <paramref name="parameter"/> or on its type is one that the generated code can keep.</summary>
     private static bool IsValidFixedLength(ITypeSymbol type, IParameterSymbol parameter)
     {
-        if (FixedLengthOf(type) is < 2) return false;
+        if (FixedLengthOf(type) is < 2 or > int.MaxValue - 5) return false;
         if (FixedLengthOf(parameter) is not { } length) return true;
-        if (length < 2) return false;
+        if (length is < 2 or > int.MaxValue - 5) return false;
         if (IsUInt256(type)) return length == 32;
         return IsByteArray(type)
             || type is INamedTypeSymbol { IsTupleType: false, IsGenericType: false, SpecialType: SpecialType.None, TypeKind: TypeKind.Class or TypeKind.Struct };
@@ -241,7 +241,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         int length = FixedLengthOf(parameter) ?? FixedLengthOf(type) ?? NewtypeLengthOf(type) ?? -1;
 
         // A single byte has two encodings, so only longer byte strings have a known length.
-        if (length < 2) return null;
+        if (length < 2 || length > int.MaxValue - 5) return null;
         return length + (length <= 55 ? 1 : 1 + (length < 0x100 ? 1 : length < 0x10000 ? 2 : length < 0x1000000 ? 3 : 4));
     }
 
@@ -391,13 +391,13 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             ? ""
             : isNewtype
                 ? $$"""
-                        public static int GetLength({{fullTypeName}} value) => {{payloadLength}};
+                        public static int GetLength({{fullTypeName}} value) => checked({{payloadLength}});
 
                     """
                 : $$"""
                         public static int GetLength({{fullTypeName}} value) => {{Library}}.Rlp.LengthOfSequence(GetPayloadLength(value));
 
-                        private static int GetPayloadLength({{fullTypeName}} value) => {{payloadLength}};
+                        private static int GetPayloadLength({{fullTypeName}} value) => checked({{payloadLength}});
 
                     """;
 
@@ -512,7 +512,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 ? $$"""if (r.BytesRead - start != {{itemLength}}) throw new {{Library}}.RlpReaderException("RLP item has another length than declared");"""
                 : "";
             string resultType = asArray ? $"{itemTypeName}[]" : $"global::System.Collections.Generic.List<{itemTypeName}>";
-            string create = asArray ? $"new {ArrayOf(itemType, count)}" : $"new({count})";
+            string create = asArray ? $"r.HasNext ? new {ArrayOf(itemType, count)} : []" : $"new({count})";
             string store = asArray ? "items[count++] = item;" : "items.Add(item);";
             Helpers.Add($$"""
                     private static {{resultType}} {{name}}(ref {{Library}}.RlpReader outer)
@@ -606,7 +606,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         private string PayloadOfItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
         {
             string count = type is IArrayTypeSymbol ? "Length" : "Count";
-            if (FixedLength(itemType, null) is { } itemLength) return $"{value}.{count} * {itemLength}";
+            if (FixedLength(itemType, null) is { } itemLength) return $"checked({value}.{count} * {itemLength})";
 
             string name = $"PayloadOfItems{_helperCount++}";
             string length = Length(itemType, null, "item");
@@ -616,7 +616,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                         int payloadLength = 0;
                         foreach ({{Name(itemType)}} item in items)
                         {
-                            payloadLength += {{length}};
+                            payloadLength = checked(payloadLength + {{length}});
                         }
 
                         return payloadLength;

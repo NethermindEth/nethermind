@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.FluentRlp;
 /// of such values without a pass over them. A write that does not match the length throws
 /// <see cref="InvalidOperationException"/>.
 /// </remarks>
-/// <param name="length">The number of bytes of the byte string, at least 2.</param>
+/// <param name="length">The number of bytes of the byte string, from 2 to <see cref="int.MaxValue"/> minus 5.</param>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Parameter, Inherited = false)]
 public sealed class RlpFixedLengthAttribute(int length) : Attribute
 {

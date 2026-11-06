@@ -36,6 +36,9 @@ public record Tree(string Value, List<Tree> Children);
 public record RawData(int Tag, byte[] Data);
 
 [RlpSerializable]
+public record DataBlocks(RawData[] Values);
+
+[RlpSerializable]
 public record Integers(short A, int B, long C, Int128 D);
 
 [RlpSerializable]
@@ -299,6 +302,24 @@ public class RlpDerivedTest
     public void LengthConverterWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
 
+    [Test]
+    public void GeneratedLengthRejectsOverflow()
+    {
+        RawData block = new(0, new byte[1 << 20]);
+        DataBlocks blocks = new(Enumerable.Repeat(block, 2048).ToArray());
+        Assert.That(() => DataBlocksRlpConverter.GetLength(blocks), Throws.TypeOf<OverflowException>());
+    }
+
+    [Test]
+    public void EmptyArraysUseSharedInstance([Values] bool generated)
+    {
+        int[] values = generated
+            ? Rlp.Read(new byte[] { 0xc2, 0x80, 0xc0 }, static (scoped ref RlpReader r) => r.ReadCodes()).Values
+            : Rlp.Read(new byte[] { 0xc0 }, static (scoped ref RlpReader r) => r.ReadArray(static (scoped ref RlpReader r) => r.ReadInt32()));
+
+        Assert.That(values, Is.SameAs(Array.Empty<int>()));
+    }
+
     // The integer converter would strip the leading zeros of a small key. Different limbs check their order.
     [Test]
     public void FixedLengthUInt256([Values] bool differentLimbs)
@@ -383,6 +404,7 @@ public class RlpDerivedTest
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop((int, Loop) Inner);", "RLP0006", TestName = "Recursive Newtype through a tuple")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record A(B Inner); [RlpSerializable(RlpRepresentation.Newtype)] public record B(A Inner);", "RLP0006", TestName = "Mutually recursive Newtypes")]
     [TestCase("public record Key([RlpFixedLength(1)] byte[] A);", "RLP0007", TestName = "Fixed length below 2")]
+    [TestCase("public record Key([RlpFixedLength(int.MaxValue)] byte[] A);", "RLP0007", TestName = "Fixed length exceeds encoded length limit")]
     [TestCase("public record Key([RlpFixedLength(8)] long A);", "RLP0007", TestName = "Fixed length on an integer")]
     [TestCase("public record Key([RlpFixedLength(20)] string A);", "RLP0007", TestName = "Fixed length on a string")]
     [TestCase("public record Key([RlpFixedLength(20)] Nethermind.Int256.UInt256 A);", "RLP0007", TestName = "Fixed length of a UInt256 other than 32")]

@@ -15,6 +15,27 @@ namespace Nethermind.Serialization.FluentRlp.Test;
 public class RlpWriterTest
 {
     [Test]
+    public void PrefixedLengthRejectsOverflow([Values(int.MaxValue - 4, int.MaxValue)] int length)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => Rlp.LengthOfString(length), Throws.TypeOf<OverflowException>());
+            Assert.That(() => Rlp.LengthOfSequence(length), Throws.TypeOf<OverflowException>());
+        }
+    }
+
+    [Test]
+    public void LengthRejectsNegativeValues()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => Rlp.LengthOf(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => Rlp.LengthOfString(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => Rlp.LengthOfSequence(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+    }
+
+    [Test]
     public void WriteShortString()
     {
         byte[] serialized = Rlp.Write(static (ref RlpWriter w) => { w.Write("dog"); });
@@ -232,6 +253,15 @@ public class RlpWriterTest
     [Test]
     public void StartSequenceWithNegativeLength()
         => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) => w.StartSequence(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void StartSequenceRejectsOverflow([Values(0, 10)] int precedingBytes)
+        => Assert.That(() =>
+        {
+            RlpWriter writer = RlpWriter.LengthWriter();
+            for (int i = 0; i < precedingBytes; i++) writer.Write(1);
+            writer.StartSequence(int.MaxValue - 4 - precedingBytes);
+        }, Throws.TypeOf<OverflowException>());
 
     [Test]
     public void WriteToTooShortDestination()
