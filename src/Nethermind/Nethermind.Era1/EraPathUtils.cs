@@ -123,7 +123,7 @@ public static class EraPathUtils
         $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch with a range that contains " +
         $"these files and starts at the same offset within an era, or keep only the file whose SHA-256 matches {EraExporter.ChecksumsFileName}.";
 
-    private static bool IsPlaceholderName(string fileName) =>
+    internal static bool IsPlaceholderName(string fileName) =>
         Path.GetFileNameWithoutExtension(fileName).EndsWith("-00000000", StringComparison.Ordinal);
 
     internal static bool TryGetEpoch(string fileName, out long epoch)

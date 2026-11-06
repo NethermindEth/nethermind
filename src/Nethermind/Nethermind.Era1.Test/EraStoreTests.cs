@@ -141,17 +141,23 @@ public class EraStoreTests
         EraStore Create() => new(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), fileSystem, EraTestModule.TestNetwork, 16, null, directory);
 
         // Without a usable name, the store takes the only finished file, else the only one whose SHA-256 is listed.
-        if (manifest is DuplicateManifest.HashOnlyIdenticalCopies or DuplicateManifest.NoEntry)
+        if (manifest is DuplicateManifest.HashOnlyIdenticalCopies)
         {
             Assert.That(() => Create(), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 2").And.Message.Contains(named).And.Message.Contains(stale));
             return;
         }
 
+        // An epoch without a checksum entry keeps the store open; only a validated read of that epoch fails.
         using EraStore eraStore = Create();
         using (Assert.EnterMultipleScope())
         {
             for (ulong block = 0; block < 64; block += 8)
-                Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
+            {
+                if (manifest == DuplicateManifest.NoEntry && block is >= 32 and < 48)
+                    Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.TypeOf<EraVerificationException>(), $"block {block}");
+                else
+                    Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
+            }
         }
     }
 

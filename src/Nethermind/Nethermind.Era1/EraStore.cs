@@ -126,11 +126,14 @@ public class EraStore : IEraStore
         _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch, checksumFiles);
 
         // A failed re-export can leave a new file beside the one the manifests name until an export of that epoch
-        // succeeds. Read the file the checksum entry of that epoch belongs to.
+        // succeeds. Read the file the checksum entry of that epoch belongs to. An epoch without an entry cannot pass a
+        // validated read anyway, so it takes its ordinal-first finished file and leaves the other epochs readable.
         foreach ((int epoch, List<string> files) in duplicates)
         {
             _epochs[epoch] = EraPathUtils.ResolveEpochFile(files, checksumFiles.GetValueOrDefault(epoch), _checksums, epoch)
-                ?? throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files));
+                ?? (_checksums.ContainsKey(epoch)
+                    ? throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files))
+                    : files.Where(static f => !EraPathUtils.IsPlaceholderName(f)).Order(StringComparer.Ordinal).First());
         }
     }
 
