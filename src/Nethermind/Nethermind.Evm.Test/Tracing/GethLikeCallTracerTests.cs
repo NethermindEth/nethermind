@@ -298,11 +298,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Static_storage_fault_keeps_dynamic_gas_error()
+    [TestCase("600160005500", "SSTORE", "out of gas: write protection", 0UL)]
+    [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)", 5000UL)]
+    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string error, ulong gasCost)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("600160005500"), CancunSpec);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), CancunSpec);
         TestState.Commit(CancunSpec);
         byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 65535).Op(Instruction.STOP).Done;
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
@@ -312,9 +313,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         GethTxTraceEntry storage = result.Entries[^2];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.Opcode, Is.EqualTo("SSTORE"));
-            Assert.That(storage.Error, Is.EqualTo("out of gas: write protection"));
-            Assert.That(storage.GasCost, Is.Zero);
+            Assert.That(storage.Opcode, Is.EqualTo(opcode));
+            Assert.That(storage.Error, Is.EqualTo(error));
+            Assert.That(storage.GasCost, Is.EqualTo(gasCost));
             Assert.That(result.Failed, Is.False);
             Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
         }

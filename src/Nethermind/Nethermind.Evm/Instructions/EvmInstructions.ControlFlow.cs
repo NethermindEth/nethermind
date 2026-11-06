@@ -372,14 +372,6 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        // SELFDESTRUCT is forbidden during static calls.
-        if (vmState.IsStatic)
-        {
-            // Geth's gas function raises write protection after the constant charge and reports it as out of gas.
-            if (TTracingInst.IsActive) vm.TraceOperationReady(SelfDestructConstantGas<TSpec>(), "out of gas: write protection");
-            goto StaticCallViolation;
-        }
-
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (TSpec.UseShanghaiDDosProtection)
         {
@@ -393,6 +385,14 @@ public static partial class EvmInstructions
         {
             if (DispatchFlags.ConstTracing && vm.IsTracingActions) vm.TraceActionErrorDetails("stack underflow (0 <=> 1)");
             goto StackUnderflow;
+        }
+
+        // SELFDESTRUCT is forbidden during static calls.
+        if (vmState.IsStatic)
+        {
+            // Geth's gas function raises write protection after the constant charge and reports it as out of gas.
+            if (TTracingInst.IsActive) vm.TraceOperationReady(SelfDestructConstantGas<TSpec>(), "out of gas: write protection");
+            goto StaticCallViolation;
         }
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
