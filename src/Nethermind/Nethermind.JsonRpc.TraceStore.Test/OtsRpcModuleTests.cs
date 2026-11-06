@@ -2040,7 +2040,7 @@ public class OtsRpcModuleTests
     {
         using IndexEnvironment env = new();
         ManualTimeProvider clock = new();
-        TaskCompletionSource caughtUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool? timerArmedWhenCaughtUp = null;
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
         await using Fixture indexed = new(env, positions: positions, logManager: new OneLoggerLogManager(new ILogger(logger)), timeProvider: clock);
@@ -2053,7 +2053,7 @@ public class OtsRpcModuleTests
         string message = positions ? $"Position sidecar caught up through {indexed.Blocks.Count - 1} "
             : $"Trace address index coverage: 1-{indexed.Blocks.Count - 1} ";
         logger.When(x => x.Info(Arg.Is<string>(line => line.StartsWith(message))))
-            .Do(call => caughtUp.TrySetResult());
+            .Do(_ => timerArmedWhenCaughtUp = clock.TimerCreated.IsCompleted);
         TraceAddressIndex index = indexed.Container.Resolve<TraceAddressIndex>();
         IDb meta = env.Database!.GetColumnDb(LogIndexColumns.Meta);
         KeyValuePair<byte[], byte[]>[] original = [];
@@ -2063,9 +2063,10 @@ public class OtsRpcModuleTests
             original = meta.GetAll().ToArray();
         }
         index.Start();
-        Task completed = await Task.WhenAny(caughtUp.Task, clock.TimerCreated).WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(completed, Is.SameAs(caughtUp.Task), "productive batches must not wait for the idle timer");
+        // The worker logs the catch-up line and arms the idle timer on its own thread, so record the order there:
+        // racing the two signals' asynchronous continuations with WhenAny can report the timer first.
         await clock.TimerCreated.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(timerArmedWhenCaughtUp, Is.False, "productive batches must not wait for the idle timer");
         if (positions) Assert.That(index.TryMatchPositions(indexed.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Not.Null);
         using ResultWrapper<OtsSearchResult> expected = scanned.Search(backwards, 0, 25);
         using ResultWrapper<OtsSearchResult> actual = indexed.Search(backwards, 0, 25);
