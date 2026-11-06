@@ -17,7 +17,7 @@ sed "s|el_image: .*|el_image: $NETHERMIND_IMAGE|" network_params.yaml > "$ARGS"
 kurtosis enclave rm -f "$ENCLAVE" >/dev/null 2>&1 || true
 trap 'kurtosis enclave rm -f "$ENCLAVE"' EXIT
 kurtosis run --enclave "$ENCLAVE" "$PACKAGE" --args-file "$ARGS"
-[[ -z ${KEEP:-} ]] || trap - EXIT
+if [[ ${KEEP:-0} == 1 ]]; then trap - EXIT; fi
 
 rm -rf "$G"
 kurtosis files download "$ENCLAVE" el_cl_genesis_data "$G" >/dev/null
