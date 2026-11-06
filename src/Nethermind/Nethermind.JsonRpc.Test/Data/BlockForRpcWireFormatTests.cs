@@ -52,6 +52,24 @@ public class BlockForRpcWireFormatTests
     public void Block_response_keeps_its_wire_format(string fixture, BlockForRpc block) =>
         JsonFixture.AssertMatches(typeof(BlockForRpcWireFormatTests).Assembly, fixture, Serialize(block));
 
+    // EIP-8288: the recursive STARK commitments are header fields; the proof is body data, given with full transactions only.
+    [Test]
+    public void Block_response_carries_the_recursive_stark_commitment_and_proof([Values] bool full)
+    {
+        Block block = Build.A.Block.WithNumber(3).TestObject;
+        block.StarkProof = [0xab, 0xcd];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(TestItem.KeccakA, TestItem.KeccakB);
+
+        string json = Serialize(new BlockForRpc(block, full, MainnetSpecProvider.Instance));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain($"\"starkProofHash\":\"{TestItem.KeccakA}\""));
+            Assert.That(json, Does.Contain($"\"blockDepsHash\":\"{TestItem.KeccakB}\""));
+            Assert.That(json.Contains("\"starkProof\":\"0xabcd\""), Is.EqualTo(full));
+        }
+    }
+
     /// <summary>Transactions of every RPC type, so each dispatch target appears in the fixtures.</summary>
     public static Transaction[] AllTypes()
     {
