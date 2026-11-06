@@ -2617,20 +2617,22 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             blockGasLimit: 1_000_000_000_000UL);
         const string tracer = """
             {
-                enters: 0, exits: 0, faults: 0, rejected: [],
-                step: function(log) {},
+                enters: 0, exits: 0, faults: 0, rejected: [], deep: 0,
+                step: function(log) {
+                    if (log.getDepth() == 1025 && log.op.toNumber() >= 0xf0 && !log.getError()) this.deep++;
+                },
                 fault: function(log) { this.faults++; },
                 enter: function(frame) { this.enters++; },
                 exit: function(frame) {
                     this.exits++;
                     if (frame.getError()) this.rejected.push([frame.getGasUsed(), frame.getError()]);
                 },
-                result: function() { return [this.enters, this.exits, this.faults, this.rejected]; }
+                result: function() { return [this.enters, this.exits, this.faults, this.rejected, this.deep]; }
             }
             """;
         string result = RunTrace(block, transaction, tracer, out GethLikeTxTrace native);
         using (native)
-            Assert.That(result, Is.EqualTo("[1025,1025,0,[[0,\"max call depth exceeded\"]]]"));
+            Assert.That(result, Is.EqualTo("[1025,1025,0,[[0,\"max call depth exceeded\"]],1]"));
     }
 
     private const string ErrorTracer = """
