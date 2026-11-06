@@ -453,7 +453,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>The pool's dependency-bearing transactions not executable at the head, oldest first, scanned once per head and
     /// read and replaced under the commit lock.</summary>
-    /// <remarks>Transactions removed since remain listed; the store does not count them as releasing anything.</remarks>
+    /// <remarks>Transactions removed or made executable since remain listed until an admission rechecks and drops them.</remarks>
     private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
 
     /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
