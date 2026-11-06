@@ -517,7 +517,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             long now = _clock.GetTimestamp();
             foreach (ValueHash256 wrapperHash in request.Hashes)
             {
-                peer.Known.Add(wrapperHash);
+                // A requested hash is not marked known: one asked for before this node held it must still be announced later.
                 // Hashes this node has not announced on this connection are unavailable.
                 if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (ResponseLength(request.RequestId, content) >= Eth73Protocol.SoftResponseLimit) break;

@@ -433,6 +433,23 @@ public class ProofWrapperTransportTests
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { announced }));
     }
 
+    // A request for a wrapper this node does not hold yet must not suppress announcing it once held, since only announced
+    // wrappers are served.
+    [Test]
+    public void Wrapper_requested_before_it_is_held_is_announced_once_held()
+    {
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnGetProofWrappers(peer, new(1, false, [Describe(wrapper).Hash]));
+
+        node.Transport.PublishWrapper(wrapper);
+
+        Assert.That(link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Select(static a => a.Hash),
+            Is.EqualTo(new[] { Describe(wrapper).Hash }));
+    }
+
     // EIP-8437: a proof failure discards the wrapper without penalizing the peer that served it.
     [Test]
     public async Task Invalid_proof_is_tombstoned_without_penalty()
