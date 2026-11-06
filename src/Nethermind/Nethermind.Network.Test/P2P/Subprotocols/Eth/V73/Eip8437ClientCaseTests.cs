@@ -37,6 +37,7 @@ public class Eip8437ClientCaseTests
         byte[] w1 = Wrapper(64, a), w2 = Wrapper(64, b), w3 = Wrapper(64, 3, a, b), w4 = Wrapper(64, 4, a, b);
         Assert.That(Describe(w4).Hash, Is.Not.EqualTo(Describe(w3).Hash));
         using WrapperTestNode node = new();
+        node.AddPending(a, b);
         FakeWrapperLink link = new(), fresh = new("fresh");
         WrapperPeer peer = node.Connect(link);
         node.Transport.OnAnnounce(peer, new([.. new[] { Describe(w1), Describe(w2) }.OrderBy(d => d.Hash)]));

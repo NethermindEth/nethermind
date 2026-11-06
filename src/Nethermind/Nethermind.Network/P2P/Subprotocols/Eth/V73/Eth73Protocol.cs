@@ -114,6 +114,9 @@ public static class WrapperTransportLimits
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
 
+    /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
+    public const int MaxConnectAnnouncements = Eth73Protocol.MaxAnnouncements;
+
     /// <summary>Bytes of encodings cached from one peer for resolving its hash references.</summary>
     public const long MaxCachedEncodingBytesPerPeer = 2L * Eth73Protocol.MaxWrapperBytes;
 

@@ -93,6 +93,7 @@ public class ProofWrapperOmissionTests
         Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
         byte[] first = Wrapper(64, a, b), second = Wrapper(64, a, c);
         using WrapperTestNode node = new();
+        node.AddPending(a, b, c);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Transport.PublishWrapper(first), Is.True);

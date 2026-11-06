@@ -873,6 +873,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return true;
     }
 
+    /// <summary>Whether any of <paramref name="transactions"/> is still pending.</summary>
+    internal bool IsAnyPending(ReadOnlySpan<ValueHash256> transactions)
+    {
+        foreach (ValueHash256 hash in transactions)
+            if (txPool.TryGetPendingTransaction(hash, out _)) return true;
+        return false;
+    }
+
     /// <summary>Whether the target fork enables dependency-proof wrappers.</summary>
     public bool IsEnabled => TargetSpec?.IsEip8288Enabled == true;
 

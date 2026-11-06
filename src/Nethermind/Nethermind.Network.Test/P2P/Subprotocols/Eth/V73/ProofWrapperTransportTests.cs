@@ -385,6 +385,7 @@ public class ProofWrapperTransportTests
         byte[] first = Wrapper(Eip8288Constants.MaxAggregateProofBytes, a), second = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 1, b),
             third = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 2, c);
         using WrapperTestNode node = Holder(first);
+        node.AddPending(a, b, c);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Transport.PublishWrapper(second), Is.True);
@@ -689,6 +690,7 @@ public class ProofWrapperTransportTests
         byte[] mode0 = DirectWrapper(direct);
         using WrapperTestNode node = new(UpgradingChain());
         node.SetHead(10, 100);
+        node.AddPending(aggregated, direct);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
@@ -856,6 +858,7 @@ public class ProofWrapperTransportTests
         FakeWrapperLink early = new("early");
         node.Connect(early);
         Transaction[] transactions = [.. Enumerable.Range(0, 6).Select(FrameTransaction)];
+        node.AddPending(transactions);
         foreach (Transaction transaction in transactions) Assert.That(node.Transport.PublishWrapper(Wrapper(64, transaction)), Is.True);
         Assert.That(early.Sent<NewProofWrapperHashesMessage>(), Has.Length.EqualTo(WrapperTransportLimits.AnnouncementsPerSecond));
         node.Tick(TimeSpan.FromSeconds(1));
@@ -870,6 +873,29 @@ public class ProofWrapperTransportTests
         NewProofWrapperHashesMessage initial = late.Sent<NewProofWrapperHashesMessage>().Single();
         Assert.That(initial.Announcements, Has.Length.EqualTo(6));
         Assert.That(initial.Announcements.Select(d => d.Hash), Is.Ordered);
+    }
+
+    // A new peer is announced at most one message of the most recent held wrappers, skipping and dropping any none of whose
+    // transactions is still pending.
+    [Test]
+    public void New_peer_is_announced_only_recent_wrappers_with_pending_transactions()
+    {
+        using WrapperTestNode node = new();
+        Transaction[] pooled = [.. Enumerable.Range(0, WrapperTransportLimits.MaxConnectAnnouncements + 1).Select(FrameTransaction)];
+        node.AddPending(pooled);
+        byte[][] wrappers = [.. pooled.Select(static t => Wrapper(64, t))];
+        byte[] stale = Wrapper(64, FrameTransaction(1_000));
+        foreach (byte[] wrapper in wrappers.Append(stale)) Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        FakeWrapperLink link = new();
+
+        node.Connect(link);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Select(static a => a.Hash),
+                Is.EquivalentTo(wrappers[1..].Select(static w => Describe(w).Hash)));
+            Assert.That(node.Transport.IsStored(Describe(stale).Hash), Is.False);
+        }
     }
 
     [Test]

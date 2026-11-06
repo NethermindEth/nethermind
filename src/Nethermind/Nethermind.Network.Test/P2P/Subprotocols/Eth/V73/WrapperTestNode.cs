@@ -129,6 +129,12 @@ internal sealed class WrapperTestNode : IDisposable
         Tree.Head.Returns(head);
     }
 
+    /// <summary>Pools <paramref name="transactions"/>, as a node offering their wrappers does.</summary>
+    public void AddPending(params Transaction[] transactions)
+    {
+        lock (Pending) Pending.AddRange(transactions);
+    }
+
     public WrapperPeer Connect(FakeWrapperLink link) =>
         Transport.Accept(link) ?? throw new InvalidOperationException("Wrapper exchange is inactive");
 
