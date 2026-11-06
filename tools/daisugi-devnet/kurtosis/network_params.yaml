@@ -1,12 +1,12 @@
 participants:
   - el_type: nethermind
-    el_image: nethermind:eip8288-lean-0260e692-leanlib-v3
+    el_image: daisugi/nethermind:0260e692fc
     el_extra_params:
       - --TxPool.FrameTxMaxVerifyGas=500000
     cl_type: lighthouse
-    cl_image: daisugi-kurtosis/lighthouse:eip8288-lean-amd64-cmd
+    cl_image: daisugi-kurtosis/lighthouse:eip8288-lean
     vc_type: lighthouse
-    vc_image: daisugi-kurtosis/lighthouse:eip8288-lean-amd64-cmd
+    vc_image: daisugi-kurtosis/lighthouse:eip8288-lean
     supernode: false
     validator_count: 64
 

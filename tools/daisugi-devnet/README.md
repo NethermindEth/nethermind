@@ -170,12 +170,13 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, plus .NET SDK and Rust as for `proof.sh`.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:0260e692fc`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK and Rust as for `proof.sh`.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
-- `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image. ethereum-package starts the beacon node with `sh -c`.
+- `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c`.
+- `run.sh` writes `NETHERMIND_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
-- Env: `PACKAGE` (pinned ethereum-package commit), `LIGHTHOUSE_IMAGE`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
+- Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
 
 ### PQ transaction series
 
