@@ -129,7 +129,7 @@ public class EraStore : IEraStore
         // succeeds. Read the file the checksum entry of that epoch belongs to.
         foreach ((int epoch, List<string> files) in duplicates)
         {
-            _epochs[epoch] = EraPathUtils.ResolveEpochFile(files, checksumFiles.GetValueOrDefault(epoch), _checksums.TryGetValue(epoch, out ValueHash256 checksum) ? checksum : null)
+            _epochs[epoch] = EraPathUtils.ResolveEpochFile(files, checksumFiles.GetValueOrDefault(epoch), _checksums, epoch)
                 ?? throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files));
         }
     }

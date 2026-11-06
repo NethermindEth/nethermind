@@ -154,7 +154,7 @@ public class EraExporter(
             {
                 if (epoch >= (long)startEpoch && epoch < (long)(startEpoch + epochCount)) continue;
 
-                string? file = EraPathUtils.ResolveEpochFile(files, listed.GetValueOrDefault(epoch), checksums.TryGetValue(epoch, out ValueHash256 checksum) ? checksum : null);
+                string? file = EraPathUtils.ResolveEpochFile(files, listed.GetValueOrDefault(epoch), checksums, epoch);
                 if (file is not null)
                     kept[epoch] = Path.GetFileName(file);
                 else if (checksums.ContainsKey(epoch))

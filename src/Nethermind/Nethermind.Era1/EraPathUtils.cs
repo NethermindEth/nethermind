@@ -96,11 +96,13 @@ public static class EraPathUtils
     /// <summary>
     /// Picks the file of an epoch that its checksum manifest entry belongs to: the only file, else the file the entry
     /// names, else the only finished file (not a placeholder), else the only finished file whose SHA-256 is the listed
-    /// checksum. Only the last step reads the files.
+    /// checksum. Only the last step reads the files, and only when <paramref name="checksums"/> has an entry for the epoch.
     /// </summary>
     /// <returns>The file, or <c>null</c> when none or several qualify.</returns>
-    internal static string? ResolveEpochFile(IReadOnlyList<string> files, string? listedName, ValueHash256? checksum)
+    internal static string? ResolveEpochFile(IReadOnlyList<string> files, string? listedName, IReadOnlyDictionary<long, ValueHash256> checksums, long epoch)
     {
+        // The cast keeps a missing entry absent: ValueHash256 would otherwise turn it into a zero hash.
+        ValueHash256? checksum = checksums.TryGetValue(epoch, out ValueHash256 listed) ? listed : (ValueHash256?)null;
         if (files.Count == 1) return files[0];
         if (listedName is not null && files.FirstOrDefault(f => Path.GetFileName(f) == listedName) is { } named) return named;
 
