@@ -22,6 +22,11 @@ internal abstract class ParallelTraceResults<TTrace> : IDisposable
     /// <summary>Gives back a reservation the cursor had no transaction for.</summary>
     public virtual void Unreserve() { }
 
+    /// <summary>Called once the last transaction is taken off the cursor: no reservation can lead to a transaction any
+    /// more, so up to <paramref name="waiters"/> workers waiting in <see cref="Reserve"/> are let go, to find the cursor
+    /// spent and give their reservations back.</summary>
+    public virtual void LastTaken(int waiters) { }
+
     /// <summary>Takes the traces of transaction <paramref name="index"/>, on the worker that traced it.</summary>
     public abstract void Add(int index, IReadOnlyCollection<TTrace> traces);
 
@@ -126,7 +131,8 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResult
         _next = 0;
         _failed = false;
 
-        // Every place of the last block came back unless it failed; either way no worker of it is left waiting.
+        // Every place of the last block came back unless it failed, and more once its last transaction was taken;
+        // either way no worker of it is left waiting.
         int places = _window.CurrentCount;
         if (places < window) _window.Release(window - places);
         while (places-- > window) _window.Wait(0);
@@ -138,6 +144,12 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResult
     }
 
     public override void Unreserve() => _window.Release();
+
+    /// <remarks>The places released here are more than the window holds; <see cref="Start"/> trims them away again.</remarks>
+    public override void LastTaken(int waiters)
+    {
+        if (waiters > 0) _window.Release(waiters);
+    }
 
     public override void Add(int index, IReadOnlyCollection<TTrace> traces)
     {
@@ -242,6 +254,7 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
     private JsonWriterOptions _options;
     private long _budget;
     private long _pending;
+    private bool _lastTaken;
 
     public void Start(IParallelTraceStream<TTrace> stream, JsonWriterOptions options, SerializedTraces.Pool pool, int transactions, int window, long budgetBytes)
     {
@@ -250,6 +263,7 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
         _pool = pool;
         _budget = budgetBytes;
         _pending = 0;
+        _lastTaken = false;
         _underBudget.Set();
         Start(transactions, window);
     }
@@ -259,10 +273,11 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
 
     public override void Reserve(CancellationToken token)
     {
-        while (Volatile.Read(ref _pending) > _budget)
+        while (!Volatile.Read(ref _lastTaken) && Volatile.Read(ref _pending) > _budget)
         {
             _underBudget.Reset();
-            if (Volatile.Read(ref _pending) <= _budget)
+            // Read after the reset, as LastTaken writes the flag before it sets the event, so no wake-up is lost.
+            if (Volatile.Read(ref _lastTaken) || Volatile.Read(ref _pending) <= _budget)
             {
                 _underBudget.Set();
                 break;
@@ -272,6 +287,13 @@ internal sealed class SerializingTraceEmitter<TTrace> : OrderedTraceEmitter<TTra
         }
 
         base.Reserve(token);
+    }
+
+    public override void LastTaken(int waiters)
+    {
+        Volatile.Write(ref _lastTaken, true);
+        _underBudget.Set();
+        base.LastTaken(waiters);
     }
 
     protected override SerializedTraces Prepare(IReadOnlyCollection<TTrace> traces)

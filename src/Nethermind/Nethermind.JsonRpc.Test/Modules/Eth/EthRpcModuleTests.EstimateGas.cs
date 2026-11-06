@@ -89,11 +89,15 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task FrameGas_rejects_unsupported_overrides_before_frame_validation(
         [Values("eth_call", "eth_estimateGas")] string method,
-        [Values("beaconRoot", "withdrawals", "both", "null")] string field)
+        [Values("beaconRoot", "withdrawals", "both", "null")] string field,
+        [Values] bool conflictingStorage)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
         request.Frames![1].Mode = byte.MaxValue;
+        object? stateOverride = conflictingStorage
+            ? new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } }
+            : null;
         object blockOverride = JsonSerializer.Deserialize<object>(field switch
         {
             "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
@@ -102,10 +106,11 @@ public partial class EthRpcModuleTests
             _ => """{"beaconRoot":null,"withdrawals":null}"""
         })!;
 
-        string response = await ctx.Test.TestEthRpc(method, request, "latest", null, blockOverride);
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", stateOverride, blockOverride);
         string expectedMessage = field switch
         {
             "withdrawals" => BlockOverride.WithdrawalsNotSupported,
+            "null" when conflictingStorage => $"account {TestItem.AddressD.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'",
             "null" => FrameTxValidation.InvalidMode,
             _ => BlockOverride.BeaconRootNotSupported
         };

@@ -75,6 +75,19 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
+        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
+        Dictionary<long, string> earlierFiles = [];
+        long firstEarlierEpoch = 0;
+        foreach (string file in EraPathUtils.GetAllEraFiles(destinationPath, _networkName, fileSystem))
+        {
+            if (!EraPathUtils.TryGetEpoch(file, out long epoch)) continue;
+            if (earlierFiles.Count == 0 || epoch < firstEarlierEpoch) firstEarlierEpoch = epoch;
+            earlierFiles[epoch] = Path.GetFileName(file);
+        }
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> accumulatorEntries = ReadEarlierEntries(accumulatorPath);
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> checksumEntries = ReadEarlierEntries(checksumPath);
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
@@ -86,15 +99,36 @@ public class EraExporter(
             await WriteEpoch(epochIdx);
         });
 
-        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-        fileSystem.File.Delete(accumulatorPath);
-        await WriteFileAsync(accumulatorPath, accumulators, fileNames, cancellation);
+        for (int i = 0; i < fileNames.Count; i++)
+        {
+            long epoch = (long)startEpoch + i;
+            accumulatorEntries[epoch] = (accumulators[i], fileNames[i]);
+            checksumEntries[epoch] = (checksums[i], fileNames[i]);
+        }
 
-        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
+        fileSystem.File.Delete(accumulatorPath);
+        await WriteFileAsync(accumulatorPath, accumulatorEntries, cancellation);
+
         fileSystem.File.Delete(checksumPath);
-        await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
+        await WriteFileAsync(checksumPath, checksumEntries, cancellation);
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
+
+        // Keeps the entries of an earlier export into this directory whose epochs still have an era file,
+        // so the rewritten manifest covers every epoch in the directory.
+        SortedDictionary<long, (ValueHash256 Hash, string FileName)> ReadEarlierEntries(string path)
+        {
+            SortedDictionary<long, (ValueHash256 Hash, string FileName)> entries = [];
+            if (!fileSystem.File.Exists(path)) return entries;
+
+            foreach ((long epoch, ValueHash256 hash) in EraPathUtils.ParseManifest(fileSystem.File.ReadAllLines(path), firstEarlierEpoch))
+            {
+                if (earlierFiles.TryGetValue(epoch, out string? fileName))
+                    entries[epoch] = (hash, fileName);
+            }
+
+            return entries;
+        }
 
         async Task WriteEpoch(ulong epochIdx)
         {
@@ -158,17 +192,17 @@ public class EraExporter(
         }
     }
 
-    private async Task WriteFileAsync(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellationToken)
+    private async Task WriteFileAsync(string path, SortedDictionary<long, (ValueHash256 Hash, string FileName)> entries, CancellationToken cancellationToken)
     {
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
         await using StreamWriter writer = new(stream);
 
-        for (int i = 0; i < hashes.Count; i++)
+        foreach ((ValueHash256 hash, string fileName) in entries.Values)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await writer.WriteAsync(hashes[i].ToString());
+            await writer.WriteAsync(hash.ToString());
             await writer.WriteAsync(' ');
-            await writer.WriteLineAsync(fileNames[i]);
+            await writer.WriteLineAsync(fileName);
         }
     }
 }
