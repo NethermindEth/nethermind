@@ -18,9 +18,9 @@ From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites
    cd tools/daisugi-devnet
    export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
    NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
-   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3
-   ./up.sh run/devnet-1 $NM $LH
-   ./check.sh run/devnet-1
+   LOCAL=1 ./gen-genesis.sh run/devnet-1 $(( $(date +%s) + 120 )) 3 &&
+     ./up.sh run/devnet-1 $NM $LH &&
+     ./check.sh run/devnet-1
    ```
 
 3. Send a proof-bearing transaction: step 4.
