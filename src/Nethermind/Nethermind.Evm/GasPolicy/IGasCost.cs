@@ -43,6 +43,7 @@ public readonly struct HighGasCost : IGasCost { public static ulong GasCost => G
 public readonly struct JumpGasCost : IGasCost { public static ulong GasCost => GasCostOf.Jump; }
 public readonly struct JumpIGasCost : IGasCost { public static ulong GasCost => GasCostOf.JumpI; }
 public readonly struct JumpDestGasCost : IGasCost { public static ulong GasCost => GasCostOf.JumpDest; }
+public readonly struct PopGasCost : IGasCost { public static ulong GasCost => GasCostOf.Base; }
 public readonly struct CallSubGasCost : IGasCost { public static ulong GasCost => GasCostOf.CallSub; }
 public readonly struct ReturnSubGasCost : IGasCost { public static ulong GasCost => GasCostOf.ReturnSub; }
 public readonly struct TLoadGasCost : IGasCost { public static ulong GasCost => GasCostOf.TLoad; }

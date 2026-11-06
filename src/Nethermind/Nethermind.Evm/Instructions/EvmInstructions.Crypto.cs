@@ -32,7 +32,7 @@ public static partial class EvmInstructions
         ulong words = EvmCalculations.Div32Ceiling(in b, out bool outOfGas);
         if (TTracingInst.IsActive)
         {
-            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.Sha3)
+            if (TGasPolicy.GetRemainingGasUnits(in gas) < GasCostOf.Sha3)
                 vm.TraceOperationGasCost(GasCostOf.Sha3);
             else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.Sha3) / GasCostOf.Sha3Word)
                 vm.TraceMemoryOperationGasCost(in a, in b, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
