@@ -313,6 +313,17 @@ public class NLogConfiguratorTests
         Assert.That(DescribeConfiguration(), Is.EqualTo(afterStartup));
     }
 
+    [Test]
+    public void Critical_logger_keeps_the_configured_log_file()
+    {
+        StartUp(null, "plain", new SeqConfig { MinLevel = "Off" }, null);
+        string[] configured = DescribeConfiguration();
+
+        NLogConfigurator.GetCriticalLogger(default);
+
+        Assert.That(DescribeConfiguration(), Is.EqualTo(configured));
+    }
+
     private static string[] DescribeConfiguration()
     {
         LoggingConfiguration configuration = LogManager.Configuration!;

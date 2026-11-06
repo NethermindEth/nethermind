@@ -122,14 +122,6 @@ namespace Nethermind.Network.Test
 
             Peer lowReputationPeer = new(lowReputationNode, lowReputationStats) { IsAwaitingConnection = true };
             Peer highReputationPeer = new(highReputationNode, highReputationStats) { IsAwaitingConnection = true };
-            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
-            peers.TryAdd(lowReputationNode.Id, lowReputationPeer);
-            peers.TryAdd(highReputationNode.Id, highReputationPeer);
-
-            IPeerPool peerPool = Substitute.For<IPeerPool>();
-            peerPool.Peers.Returns(peers);
-            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
-            peerPool.StaticPeers.Returns(new[] { lowReputationPeer, highReputationPeer });
 
             ConcurrentQueue<Node> dialed = new();
             IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
@@ -140,9 +132,8 @@ namespace Nethermind.Network.Test
                 return Task.FromResult(false);
             });
 
-            NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
-            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
-                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 2,
+                peers: [lowReputationPeer, highReputationPeer], staticPeers: [lowReputationPeer, highReputationPeer]);
 
             manager.Start();
             try
@@ -160,6 +151,75 @@ namespace Nethermind.Network.Test
                 Assert.That(highReputationNode.CurrentReputation, Is.EqualTo(100));
                 Assert.That(lowReputationNode.CurrentReputation, Is.EqualTo(10));
             }
+        }
+
+        [Test]
+        public async Task Idle_static_peer_is_contacted_and_dialed_once_alongside_other_candidates([Values] bool staticPeerAcceptsDial)
+        {
+            Node staticNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
+            Peer staticPeer = new(staticNode, Substitute.For<INodeStats>());
+            Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
+
+            int staticContactChecks = 0;
+            int staticDials = 0;
+            TaskCompletionSource<(int ContactChecks, int Dials)> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(callInfo =>
+            {
+                if (callInfo.Arg<IPAddress>().Equals(staticNode.Address.Address)) Interlocked.Increment(ref staticContactChecks);
+                return true;
+            });
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                Node dialed = callInfo.Arg<Node>();
+                if (dialed == staticNode)
+                {
+                    Interlocked.Increment(ref staticDials);
+                    return Task.FromResult(staticPeerAcceptsDial);
+                }
+
+                if (dialed == otherNode) otherDialed.TrySetResult((Volatile.Read(ref staticContactChecks), Volatile.Read(ref staticDials)));
+                return Task.FromResult(true);
+            });
+
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 4,
+                peers: [staticPeer, otherPeer], staticPeers: [staticPeer]);
+
+            manager.Start();
+            (int ContactChecks, int Dials) staticBeforeOtherDial;
+            try
+            {
+                staticBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(staticBeforeOtherDial.ContactChecks, Is.EqualTo(1));
+                Assert.That(staticBeforeOtherDial.Dials, Is.EqualTo(1));
+            }
+        }
+
+        private static PeerManager CreatePeerManager(IRlpxHost rlpxHost, int maxActivePeers, Peer[] peers, Peer[] staticPeers)
+        {
+            ConcurrentDictionary<PublicKeyAsKey, Peer> pooledPeers = new();
+            foreach (Peer peer in peers)
+            {
+                pooledPeers.TryAdd(peer.Node.Id, peer);
+            }
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(pooledPeers);
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(staticPeers);
+
+            NetworkConfig config = new() { MaxActivePeers = maxActivePeers, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            return new PeerManager(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         [Test]

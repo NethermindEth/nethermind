@@ -27,11 +27,11 @@ internal sealed class BeaconApiHttpClient(HttpClient? httpClient, TimeSpan reque
         if (!response.IsSuccessStatusCode)
         {
             if ((int)response.StatusCode >= 500)
-                throw new HttpRequestException($"Beacon API returned {(int)response.StatusCode} for {uri}.");
+                throw new HttpRequestException($"Beacon API returned {(int)response.StatusCode} for {SensitiveLogMasking.SafeUrl(uri)}.");
 
             // 404 is expected for missed slots; other 4xx (401, 403, 429) indicate misconfiguration or quota issues.
             if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
-                logger.Warn($"Beacon API returned {(int)response.StatusCode} for {uri}. Beacon roots will not be included for this slot.");
+                logger.Warn($"Beacon API returned {(int)response.StatusCode} for {SensitiveLogMasking.SafeUrl(uri)}. Beacon roots will not be included for this slot.");
 
             return null;
         }
