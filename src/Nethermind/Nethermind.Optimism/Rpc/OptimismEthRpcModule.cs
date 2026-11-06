@@ -215,6 +215,31 @@ public class OptimismEthRpcModule(
         return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A node that forwards to the sequencer has no pool (<c>NullTxPool</c>), whose pending nonce is always 0. On such
+    /// a node the pending nonce is the head nonce raised past the forwards of <c>eth_sendTransaction</c> that the
+    /// sequencer accepted and the head does not include yet; a send still at the sequencer counts once answered.
+    /// </remarks>
+    public override ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter) =>
+        sequencerRpcClient is not null && blockParameter == BlockParameter.Pending
+            ? ResultWrapper<UInt256>.Success(nonceTracker.GetPendingNonce(address))
+            : base.eth_getTransactionCount(address, blockParameter);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base fill keeps an explicit nonce and takes a missing one from the pool, which a node that forwards to the
+    /// sequencer does not have. Such a node fills a missing nonce with the pending nonce of <c>from</c>, reading a
+    /// missing <c>from</c> as the zero address, as the base fill does.
+    /// </remarks>
+    public override async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (sequencerRpcClient is not null && rpcTx is LegacyTransactionForRpc { Nonce: null } legacy)
+            legacy.Nonce = nonceTracker.GetPendingNonce(legacy.From ?? Address.Zero);
+
+        return await base.eth_fillTransaction(rpcTx);
+    }
+
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
