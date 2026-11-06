@@ -447,9 +447,31 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    [Test]
+    public void FindBlockHash_empty_rocksdb_index_falls_back_to_the_obsolete_receipt([Values] bool legacyReceipt)
+    {
+        using TempPath path = TempPath.GetTempDirectory();
+        DbConfig config = new();
+        RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        using ColumnsDb<ReceiptsColumns> columns = new(path.Path, new DbSettings("Receipts", "receipts"), config, configFactory, LimboLogs.Instance, [ReceiptsColumns.Transactions]);
+        IDb index = columns.GetColumnDb(ReceiptsColumns.Transactions);
+        index.Set(TestItem.KeccakA.Bytes, Array.Empty<byte>());
+        if (legacyReceipt)
+        {
+            TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
+                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+        }
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.Get(TestItem.KeccakA), Is.EqualTo(Array.Empty<byte>()));
+            Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(legacyReceipt ? TestItem.KeccakB : null));
+        }
+    }
+
     private static IEnumerable<byte[]> MalformedIndexValues() =>
     [
-        [],
         [0],
         [0x89, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         Enumerable.Repeat((byte)0xc0, Hash256.Size + 1).ToArray()
