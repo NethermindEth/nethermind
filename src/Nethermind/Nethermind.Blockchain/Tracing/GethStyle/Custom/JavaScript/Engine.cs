@@ -176,7 +176,9 @@ public class Engine : IDisposable
     /// </summary>
     /// <remarks>
     /// V8 ignores an interrupt that arrives while no script runs, so the interrupt is sent again every
-    /// <see cref="InterruptRedeliveryPeriod"/> until the engine is disposed.
+    /// <see cref="InterruptRedeliveryPeriod"/> until the engine is disposed. V8 interrupts the whole runtime, so until an
+    /// interrupted engine is disposed any other engine on the same <c>TracerRuntime</c> would be stopped too; callers keep
+    /// one live engine per runtime at a time.
     /// </remarks>
     public void Interrupt()
     {
