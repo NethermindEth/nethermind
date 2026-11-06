@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Collections.Specialized;
 using System.Net;
 using System.Net.Sockets;
 using Autofac;
@@ -59,52 +58,57 @@ public class BeaconP2PLoopbackTests
     [CancelAfter(90_000)]
     public async Task A_host_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
     {
-        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        UnansweredIdentifyProtocol? identify = null;
+        await using PlainPeer server = await PlainPeer.StartAsync(settings => identify = new UnansweredIdentifyProtocol(false, settings), token);
         BeaconP2P client = PeerSessionNodes.Create().P2P;
-        await server.StartAsync(token);
-        await client.StartAsync(token);
-        LocalPeer serverPeer = server.LocalPeerForTest!;
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.LocalPeerForTest!.Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
-        Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        LocalPeer? clientPeer = null;
+        Task<ISession>? dial = null, remaining = null;
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<ISession> dial = client.DialPeerAsync(address, caller.Token);
-        Task<ISession> remaining = dial;
-        if (callerStopsWaiting)
+        try
         {
-            remaining = client.LocalPeerForTest!.DialAsync(address, token);
-            await caller.CancelAsync();
-        }
-
-        bool inFlight = !remaining.IsCompleted;
-        await client.DisposeAsync();
-        Assert.That(inFlight, Is.True, "fixture: disposal began before the dial finished");
-        foreach (Task<ISession> waiter in new[] { dial, remaining })
-        {
-            try
+            await client.StartAsync(token);
+            clientPeer = client.LocalPeerForTest!;
+            dial = client.DialPeerAsync(server.Address, caller.Token);
+            await identify!.Requested.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+            remaining = dial;
+            if (callerStopsWaiting)
             {
-                await waiter;
+                remaining = clientPeer.DialAsync(server.Address, token);
+                await caller.CancelAsync();
             }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            using (Assert.EnterMultipleScope())
             {
+                Assert.That(remaining.IsCompleted, Is.False, "fixture: identify keeps the dial in flight until disposal");
+                Assert.That(SessionCount(clientPeer), Is.GreaterThan(0), "fixture: the dialer created its session before disposal");
+                Assert.That(SessionCount(server.Peer), Is.GreaterThan(0), "fixture: the remote created its session before disposal");
             }
         }
-
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-
-        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
-        // a session left open was still open after 40 s.
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bounded.CancelAfter(TimeSpan.FromSeconds(45));
-        while (serverPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+        finally
         {
-            await Task.Delay(50, CancellationToken.None);
+            try { await client.DisposeAsync(); }
+            finally
+            {
+                foreach (Task<ISession>? waiter in new[] { dial, remaining })
+                {
+                    if (waiter is not null) await ((Task)waiter).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                }
+            }
+        }
+        token.ThrowIfCancellationRequested();
+
+        await PeerSessionNodes.WaitUntilAsync(() => SessionCount(clientPeer!) == 0 && SessionCount(server.Peer) == 0,
+            "disposing the dialer left a local or remote session open", token, TimeSpan.FromSeconds(45), pollDelayMilliseconds: 50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SessionCount(clientPeer!), Is.Zero, "the disposed dialer left a session open");
+            Assert.That(SessionCount(server.Peer), Is.Zero, "the remote retained the session after dialer disposal");
+            Assert.That(client.IdentifyTimeoutsForTest, Is.Zero, "disposal closes the in-flight dial before the identify timeout");
         }
 
-        Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
+        static int SessionCount(LocalPeer peer)
+        {
+            lock (peer.Sessions) return peer.Sessions.Count;
+        }
     }
 
     [Test]
@@ -153,7 +157,7 @@ public class BeaconP2PLoopbackTests
         Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
     }
 
-    /// <summary>Disposal closes the TCP listener: the library closes it only on the start token, and its peer disposal closes sessions alone.</summary>
+    /// <summary>Disposal releases the TCP listener without requiring caller cancellation.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_disposed_host_no_longer_accepts_TCP_connections(CancellationToken token)

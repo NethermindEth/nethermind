@@ -1,0 +1,255 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Threading.Channels;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.LightClient.Consensus;
+
+internal static class ConsensusSync
+{
+    private const ulong RepairHeadMaxAgeSlots = 2;
+    private static readonly TimeSpan HealthyRepairInterval = TimeSpan.FromMinutes(1);
+
+    /// <summary>Serializes live authentication, durable persistence and head publication.</summary>
+    /// <remarks>The caller owns the gate and disposes it after gossip handlers and repair workers have joined.</remarks>
+    internal sealed class Processor(LightClientStore store, VerifiedConsensusJournal journal, BeaconChainSpec spec,
+        TimeProvider clock, SemaphoreSlim gate, Action publish, Action stopApplication, ILogger logger,
+        CancellationToken stoppingToken)
+    {
+        internal Task ProcessAsync(LightClientUpdate update, CancellationToken token) =>
+            ProcessAsync(slot => store.Process(update, slot), () => store.FinalizedHeader.Beacon!.Slot,
+                stopping => journal.AppendAsync(update, store, stopping), token);
+
+        internal Task<bool> ProcessAsync(LightClientFinalityUpdate update, CancellationToken token) =>
+            ProcessAsync(slot => store.Process(update, slot), () => store.FinalizedHeader.Beacon!.Slot,
+                stopping => journal.AppendAsync(update, store, stopping), token);
+
+        internal Task<bool> ProcessAsync(LightClientOptimisticUpdate update, CancellationToken token) =>
+            ProcessAsync(slot => store.Process(update, slot), () => store.OptimisticHeader.Beacon!.Slot,
+                stopping => journal.AppendAsync(update, store, stopping), token);
+
+        private Task<bool> ProcessAsync(Action<ulong> process, Func<ulong> progress,
+            Func<CancellationToken, Task> persist, CancellationToken token) =>
+            ProcessWithTimeRetryAsync(spec, clock, async () =>
+            {
+                await gate.WaitAsync(token);
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    ulong currentSlot = CurrentSlot();
+                    RequireLiveState(store, currentSlot, stopApplication);
+                    ulong before = progress();
+                    if (logger.IsEnabled(LogLevel.Debug))
+                    {
+                        (ulong period, bool knowsNext) = store.SyncProgress;
+                        logger.LogDebug("Consensus validation starting at sync period {Period}, next committee known {KnowsNext}, finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                            period, knowsNext, store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
+                    }
+                    process(currentSlot);
+                    if (logger.IsEnabled(LogLevel.Debug))
+                        logger.LogDebug("Validated consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                            store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
+                    // Peer deadlines cannot interrupt persistence after an authenticated mutation.
+                    await PersistAsync(persist(stoppingToken));
+                    publish();
+                    if (logger.IsEnabled(LogLevel.Debug))
+                        logger.LogDebug("Persisted consensus progress: finalized slot {FinalizedSlot}, optimistic slot {OptimisticSlot}",
+                            store.FinalizedHeader.Beacon!.Slot, store.OptimisticHeader.Beacon!.Slot);
+                    return progress() > before;
+                }
+                finally { gate.Release(); }
+            }, token);
+
+        internal async Task<bool> ForceUpdateAsync(CancellationToken token)
+        {
+            await gate.WaitAsync(token);
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                ulong currentSlot = CurrentSlot();
+                RequireLiveState(store, currentSlot, stopApplication);
+                LightClientUpdate? best = store.BestUpdate;
+                if (best is null || !store.ForceUpdate(currentSlot)) return false;
+                await PersistAsync(journal.AppendForcedAsync(best, currentSlot, store, stoppingToken));
+                publish();
+                return true;
+            }
+            finally { gate.Release(); }
+        }
+
+        private ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+
+        private async Task PersistAsync(Task write)
+        {
+            try { await write; }
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+            {
+                logger.LogCritical(exception, "Verified consensus state could not be persisted; stopping the client");
+                stopApplication();
+                throw new IOException("Verified consensus persistence failed.", exception);
+            }
+        }
+    }
+
+    internal static async Task<(LightClientStore Store, bool Resumed)> BootstrapAsync(
+        BeaconChainSpec spec, Hash256 checkpoint, VerifiedConsensusJournal journal,
+        Func<Hash256, Func<LightClientBootstrap, CancellationToken, Task>, CancellationToken, Task<LightClientBootstrap>> fetchBootstrap,
+        TimeProvider clock, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
+        LightClientStore? resumed = await journal.LoadAsync(CurrentSlot(), cancellationToken);
+        if (resumed is not null) return (resumed, true);
+
+        LightClientStore? acceptedStore = null;
+        LightClientBootstrap bootstrap = await fetchBootstrap(checkpoint, (value, validationToken) =>
+        {
+            validationToken.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
+            // Unproved peer data must not cause a terminal local clock failure.
+            LightClientStore candidate;
+            try
+            {
+                candidate = new(spec, checkpoint, value, value.Header?.Beacon?.Slot ?? CurrentSlot());
+                ulong currentSlot = CurrentSlot();
+                if (candidate.FinalizedHeader.Beacon!.Slot > currentSlot)
+                    throw new LightClientLocalStateException("Checkpoint is in the future.");
+                candidate.RequireRecent(currentSlot);
+                validationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch (LightClientLocalStateException exception)
+            {
+                validationToken.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("The authenticated trusted checkpoint cannot initialize the light client; verify the system clock or supply a recent trusted checkpoint.", exception);
+            }
+            acceptedStore = candidate;
+            return Task.CompletedTask;
+        }, cancellationToken);
+        LightClientStore store = acceptedStore ?? throw new InvalidDataException("Beacon peers did not supply a valid trusted checkpoint.");
+        await journal.InitializeAsync(bootstrap, store, cancellationToken);
+        return (store, false);
+    }
+
+    internal static async Task RunRepairLoopsAsync(Func<CancellationToken, Task> repair,
+        Func<CancellationToken, Task> pollOptimistic, Func<ulong> getOptimisticSlot, Func<ulong> currentSlot,
+        TimeSpan slotDuration, TimeProvider clock, CancellationToken cancellationToken,
+        ChannelReader<bool>? optimisticRequests = null)
+    {
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task[] workers =
+        [
+            RunRepairLoopAsync(repair, getOptimisticSlot, currentSlot, slotDuration, clock, stop.Token),
+            RunOptimisticLoopAsync(pollOptimistic, slotDuration, clock, stop.Token, optimisticRequests),
+        ];
+        try { await Task.WhenAny(workers); }
+        finally
+        {
+            await stop.CancelAsync();
+            await Task.WhenAll(workers);
+        }
+    }
+
+    private static async Task RunOptimisticLoopAsync(Func<CancellationToken, Task> poll,
+        TimeSpan interval, TimeProvider clock, CancellationToken cancellationToken, ChannelReader<bool>? requests)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await poll(cancellationToken);
+            using CancellationTokenSource wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task delay = Task.Delay(interval, clock, wake.Token);
+            if (requests is null)
+            {
+                await delay;
+                continue;
+            }
+            Task requested = requests.ReadAsync(wake.Token).AsTask();
+            try { await Task.WhenAny(delay, requested); }
+            finally
+            {
+                await wake.CancelAsync();
+                await Task.WhenAll(delay, requested).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+    }
+
+    internal static async Task RunRepairLoopAsync(Func<CancellationToken, Task> repair,
+        Func<ulong> getOptimisticSlot, Func<ulong> currentSlot, TimeSpan slotDuration, TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await repair(cancellationToken);
+            long repairedAt = clock.GetTimestamp();
+            while (true)
+            {
+                TimeSpan remaining = HealthyRepairInterval - clock.GetElapsedTime(repairedAt);
+                if (remaining <= TimeSpan.Zero) break;
+                await Task.Delay(slotDuration < remaining ? slotDuration : remaining, clock, cancellationToken);
+                ulong optimisticSlot = getOptimisticSlot();
+                ulong now = currentSlot();
+                if (now < optimisticSlot || now - optimisticSlot > RepairHeadMaxAgeSlots) break;
+            }
+        }
+    }
+
+    internal static async Task CatchUpAsync(LightClientStore store, BeaconChainSpec spec,
+        Func<ulong, Func<LightClientUpdate, CancellationToken, Task>, CancellationToken, Task<LightClientUpdate>> fetchUpdate, Func<ulong> currentSlot,
+        Func<LightClientUpdate, CancellationToken, Task> processUpdate,
+        CancellationToken cancellationToken, TimeProvider? clock = null)
+    {
+        ulong currentPeriod = spec.GetEpoch(currentSlot()) / Presets.EpochsPerSyncCommitteePeriod;
+        for (int i = 0; i < 4; i++)
+        {
+            (ulong before, bool knewNext) = store.SyncProgress;
+            if (before >= currentPeriod && knewNext) break;
+            ulong requestedPeriod = before + (knewNext ? 1UL : 0UL);
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(15), clock ?? TimeProvider.System);
+            using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try
+            {
+                await fetchUpdate(requestedPeriod, async (update, token) =>
+                {
+                    await processUpdate(update, token);
+                    if (store.SyncProgress == (before, knewNext)) throw new IrrelevantLightClientUpdateException();
+                }, attempt.Token);
+            }
+            catch (IrrelevantLightClientUpdateException) { break; }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested) { break; }
+            if (store.SyncProgress == (before, knewNext)) break;
+        }
+    }
+
+    internal static void RequireLiveState(LightClientStore store, ulong currentSlot, Action stopApplication)
+    {
+        try { store.RequireRecent(currentSlot); }
+        catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
+        {
+            stopApplication();
+            throw new InvalidOperationException("Authenticated light-client state is too old to resume; restart with a recent trusted checkpoint.", exception);
+        }
+    }
+
+    internal static async Task<bool> ProcessWithTimeRetryAsync(BeaconChainSpec spec, TimeProvider clock,
+        Func<Task<bool>> process, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try { return await process(); }
+        catch (LightClientFutureSlotException exception)
+        {
+            DateTimeOffset boundary = DateTimeOffset.FromUnixTimeSeconds(
+                checked((long)(spec.GenesisTime + exception.SignatureSlot * spec.SecondsPerSlot)));
+            TimeSpan delay = boundary - clock.GetUtcNow();
+            if (delay > TimeSpan.FromSeconds(spec.SecondsPerSlot)) throw;
+            if (delay > TimeSpan.Zero) await Task.Delay(delay, clock, cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return await process();
+    }
+}

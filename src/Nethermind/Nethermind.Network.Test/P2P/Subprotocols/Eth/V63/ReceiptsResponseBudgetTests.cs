@@ -26,6 +26,23 @@ public class ReceiptsResponseBudgetTests
 {
     private const long RequestId = 1111;
 
+    [TestCaseSource(nameof(CountLimits))]
+    public void Explicit_limits_cannot_widen_known_counts_or_decoder_limits(int[] counts, int[] limits, int requestedBlocks, int[] expected) =>
+        Assert.That(ReceiptsResponseBudget.GetReceiptCountLimits(counts, limits, requestedBlocks), Is.EqualTo(expected));
+
+    private static IEnumerable<TestCaseData> CountLimits()
+    {
+        int global = BlockBodyDecoder.TransactionsCountLimit.Limit;
+        yield return new TestCaseData(new[] { 2, 5 }, new[] { 4, 3 }, 2, new[] { 2, 3 });
+        yield return new TestCaseData(new[] { -1, 2 }, new[] { -1, -8 }, 2, new[] { global, 2 });
+        yield return new TestCaseData(Array.Empty<int>(), new[] { 0 }, 1, new[] { 0 });
+        yield return new TestCaseData(Array.Empty<int>(), new[] { 3 }, 2, new[] { 3, global });
+        yield return new TestCaseData(new[] { 1 }, new[] { 2, 0 }, 1, new[] { 1 });
+        yield return new TestCaseData(new[] { int.MaxValue }, new[] { int.MaxValue }, 1, new[] { global });
+        yield return new TestCaseData(Array.Empty<int>(), Array.Empty<int>(), 1, new[] { global });
+        yield return new TestCaseData(Array.Empty<int>(), new[] { 0 }, 0, Array.Empty<int>());
+    }
+
     [Test]
     public void Response_is_checked_against_the_request(
         [ValueSource(nameof(Envelopes))] Envelope envelope,

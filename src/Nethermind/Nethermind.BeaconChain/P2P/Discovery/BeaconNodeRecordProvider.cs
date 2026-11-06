@@ -12,7 +12,7 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 
 /// <summary>Builds and re-signs the local beacon chain discv5 ENR with the <c>eth2</c> and <c>nfd</c> entries.</summary>
 /// <remarks>
-/// The TCP port advertises the libp2p host while the UDP port advertises discv5, both signed with the
+/// The TCP and optional QUIC ports advertise the libp2p host while the UDP port advertises discv5, all signed with the
 /// persisted p2p identity so the ENR's secp256k1 key matches the libp2p peer id. <see cref="Update"/>
 /// bumps the sequence number, which is how peers learn about an EIP-7892 BPO digest rotation.
 /// </remarks>
@@ -22,6 +22,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private readonly IPAddress? _externalIp;
     private readonly int _tcpPort;
     private readonly int _udpPort;
+    private readonly int _quicPort;
     private readonly ulong _custodyGroupCount;
     private readonly NodeRecordSigner _signer;
     private readonly Lock _updateLock = new();
@@ -31,12 +32,15 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
 
     /// <param name="externalIp">The advertised address, under <c>ip</c>/<c>tcp</c>/<c>udp</c> when IPv4 and <c>ip6</c>/<c>tcp6</c>/<c>udp6</c> when IPv6; <c>null</c> advertises no endpoint.</param>
     /// <param name="sequence">The sequence of the first record, above any this identity published before.</param>
-    public BeaconNodeRecordProvider(PrivateKey key, IPAddress? externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount, byte[]? nextForkDigest = null, ulong sequence = 1)
+    public BeaconNodeRecordProvider(PrivateKey key, IPAddress? externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount, byte[]? nextForkDigest = null, ulong sequence = 1, int quicPort = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(quicPort);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(quicPort, ushort.MaxValue);
         _key = key;
         _externalIp = externalIp is { IsIPv4MappedToIPv6: true } ? externalIp.MapToIPv4() : externalIp;
         _tcpPort = tcpPort;
         _udpPort = udpPort;
+        _quicPort = quicPort;
         _custodyGroupCount = custodyGroupCount;
         _signer = new NodeRecordSigner(new Ecdsa(), key);
         _forkId = forkId;
@@ -92,9 +96,10 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
                 return false;
             }
 
+            NodeRecord updated = Build(forkId, normalizedNextDigest, checked(_current.EnrSequence + 1));
             _forkId = forkId;
             _nextForkDigest = normalizedNextDigest;
-            _current = Build(forkId, normalizedNextDigest, _current.EnrSequence + 1);
+            _current = updated;
             return true;
         }
     }
@@ -108,12 +113,14 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
             record.SetEntry(new Ip6Entry(ipv6));
             record.SetEntry(new Tcp6Entry(_tcpPort));
             record.SetEntry(new Udp6Entry(_udpPort));
+            if (_quicPort > 0) record.SetEntry(new Quic6Entry(_quicPort));
         }
         else if (_externalIp is not null)
         {
             record.SetEntry(new IpEntry(_externalIp));
             record.SetEntry(new TcpEntry(_tcpPort));
             record.SetEntry(new UdpEntry(_udpPort));
+            if (_quicPort > 0) record.SetEntry(new QuicEntry(_quicPort));
         }
 
         record.SetEntry(new SecP256k1Entry(_key.CompressedPublicKey));

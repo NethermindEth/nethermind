@@ -3,15 +3,335 @@
 
 using System.Buffers;
 using System.IO;
+using System.Net.Quic;
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Multiformats.Address;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.Network.Libp2p;
 using System.Runtime.InteropServices;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
+using Nethermind.Libp2p.Protocols;
+using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
 [CancelAfter(10_000)]
 public class ChannelTransportTests
 {
+    [Test]
+    public async Task Request_stream_closure_is_classified_using_the_session_lifetime([Values] bool sessionClosed, [Values] bool wrapped)
+    {
+        await using BeaconP2P host = PeerSessionNodes.Create().P2P;
+        ISession session = Substitute.For<ISession>();
+        using CancellationTokenSource lifetime = new();
+        if (sessionClosed) lifetime.Cancel();
+        session.Closed.Returns(lifetime.Token);
+        using CancellationTokenSource budget = new();
+        Exception cause = new ChannelClosedException();
+        if (wrapped) cause = new AggregateException(cause);
+        MethodInfo name = typeof(BeaconP2P).GetMethod("NameFailure", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Exception? classified = (Exception?)name.Invoke(host, [cause, session, budget, null, TimeSpan.Zero]);
+
+        Assert.That(classified, Is.InstanceOf<IOException>());
+        Assert.That(classified, sessionClosed ? Is.TypeOf<PeerSessionClosedException>() : Is.TypeOf<EndOfStreamException>());
+        Assert.That(PeerFailureClassifier.Classify(classified!), Is.EqualTo(sessionClosed ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed));
+    }
+
+    [Test]
+    public void Production_stack_offers_mplex_only_when_opted_in([Values] bool quic, [Values] bool mplex)
+    {
+        using ServiceProvider services = new ServiceCollection().AddLibp2p(builder =>
+        {
+            if (quic) builder.WithQuic();
+            if (mplex) builder.WithMplex();
+            return builder;
+        }).BuildServiceProvider();
+        services.GetRequiredService<IPeerFactory>();
+        MultiplexerSettings multiplexers = services.GetRequiredService<MultiplexerSettings>();
+        string[] expected = mplex ? ["/yamux/1.0.0", "/mplex/6.7.0"] : ["/yamux/1.0.0"];
+        Assert.That(multiplexers.Multiplexers.Select(protocol => protocol.Id), Is.EqualTo(expected));
+        IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
+        Assert.That(stack.Protocols!.Values.Any(protocols => protocols.Select(protocol => protocol.Protocol.Id)
+            .SequenceEqual(expected)), Is.True);
+        AssertMultistreamSelectors(services);
+    }
+
+    [Test]
+    public async Task Beacon_host_offers_yamux_then_mplex([Values] bool quic)
+    {
+        await using BeaconP2P host = PeerSessionNodes.Create(quicPort: quic ? 9061 : 0).P2P;
+        ServiceProvider services = (ServiceProvider)typeof(BeaconP2P)
+            .GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
+        services.GetRequiredService<IPeerFactory>();
+        MultiplexerSettings multiplexers = services.GetRequiredService<MultiplexerSettings>();
+        string[] expected = ["/yamux/1.0.0", "/mplex/6.7.0"];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(multiplexers.Multiplexers.Select(static protocol => protocol.Id), Is.EqualTo(expected));
+            IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
+            Assert.That(stack.Protocols!.Values.Any(protocols => protocols.Select(static protocol => protocol.Protocol.Id)
+                .SequenceEqual(expected)), Is.True);
+        }
+        AssertMultistreamSelectors(services);
+    }
+
+    public enum ApplicationTransport
+    {
+        Yamux,
+        Mplex,
+        Quic,
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Peer_disposal_releases_the_listener_without_cancelling_its_start_token(
+        [Values] ApplicationTransport transport, CancellationToken token)
+    {
+        RequireSupportedTransport(transport);
+        await using ServiceProvider services = new ServiceCollection().AddLibp2p(builder => ConfigureTransport(builder, transport))
+            .BuildServiceProvider();
+        IPeerFactory factory = services.GetRequiredService<IPeerFactory>();
+        await using ILocalPeer first = factory.Create();
+        string endpoint = transport == ApplicationTransport.Quic
+            ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
+        await first.StartListenAsync([Multiaddress.Decode(endpoint)], CancellationToken.None).WaitAsync(token);
+        Multiaddress bound = Multiaddress.Decode(first.ListenAddresses.Single().ToString().Split("/p2p/")[0]);
+
+        await first.DisposeAsync();
+
+        Assert.That(first.ListenAddresses, Is.Empty);
+        await using ILocalPeer next = factory.Create();
+        await next.StartListenAsync([bound], token);
+        Assert.That(next.ListenAddresses, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Unsupported_typed_request_fails_promptly_and_preserves_the_session([Values] ApplicationTransport transport, CancellationToken token)
+    {
+        RequireSupportedTransport(transport);
+        await using ServiceProvider clientServices = new ServiceCollection().AddLibp2p(builder =>
+            ConfigureTransport(builder, transport)
+                .AddProtocol<TypedRequestProtocol>().AddProtocol<UnsupportedTypedProtocol>()).BuildServiceProvider();
+        await using ServiceProvider serverServices = new ServiceCollection().AddLibp2p(builder =>
+            ConfigureTransport(builder, transport)
+                .AddProtocol<TypedRequestProtocol>()).BuildServiceProvider();
+        await using ILocalPeer client = clientServices.GetRequiredService<IPeerFactory>().Create();
+        await using ILocalPeer server = serverServices.GetRequiredService<IPeerFactory>().Create();
+        AssertMultistreamSelectors(clientServices);
+        AssertMultistreamSelectors(serverServices);
+        if (transport == ApplicationTransport.Mplex)
+        {
+            IProtocolStackSettings stack = serverServices.GetRequiredService<IProtocolStackSettings>();
+            foreach (ProtocolRef selector in stack.Protocols!.Keys.ToArray())
+                stack.Protocols[selector] = stack.Protocols[selector].Where(protocol => protocol.Protocol is not YamuxProtocol).ToArray();
+        }
+        string address = transport == ApplicationTransport.Quic
+            ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
+        await server.StartListenAsync([Multiaddress.Decode(address)], token);
+        ISession session = await client.DialAsync(server.ListenAddresses.Single(), token);
+        using CancellationTokenSource request = CancellationTokenSource.CreateLinkedTokenSource(token);
+        request.CancelAfter(TimeSpan.FromSeconds(5));
+        Task<ulong> refused = session.DialAsync<UnsupportedTypedProtocol, ulong, ulong>(7, request.Token);
+        try
+        {
+            Assert.That(async () => await refused.WaitAsync(TimeSpan.FromSeconds(2), token), Throws.TypeOf<ChannelClosedException>());
+            Assert.That(session.Closed.IsCancellationRequested, Is.False);
+            Assert.That(request.IsCancellationRequested, Is.False, "protocol rejection must complete before the caller's deadline");
+        }
+        finally
+        {
+            request.Cancel();
+            await ((Task)refused).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        Assert.That(await session.DialAsync<TypedRequestProtocol, ulong, ulong>(42, token), Is.EqualTo(42UL));
+        await session.DialAsync<PingProtocol>(token);
+    }
+
+    private static Libp2pStackBuilder ConfigureTransport(Libp2pStackBuilder builder, ApplicationTransport transport) => transport switch
+    {
+        ApplicationTransport.Quic => builder.WithQuic(),
+        ApplicationTransport.Mplex => builder.WithMplex(),
+        _ => builder,
+    };
+
+    private static void RequireSupportedTransport(ApplicationTransport transport)
+    {
+        if (transport != ApplicationTransport.Quic) return;
+        if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            Assert.That(QuicListener.IsSupported && QuicConnection.IsSupported, Is.True, "Windows CI must exercise QUIC with the bundled MsQuic runtime.");
+        if (!QuicListener.IsSupported || !QuicConnection.IsSupported) Assert.Ignore("MsQuic is unavailable on this runner.");
+    }
+
+    private static void AssertMultistreamSelectors(ServiceProvider services)
+    {
+        IProtocolStackSettings stack = services.GetRequiredService<IProtocolStackSettings>();
+        IProtocol[] selectors = stack.Protocols!.Keys.Concat(stack.Protocols.Values.SelectMany(static protocols => protocols))
+            .Where(static protocol => protocol.Protocol.Id == "/multistream/1.0.0").Select(static protocol => protocol.Protocol).ToArray();
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(selectors, Is.Not.Empty);
+        Assert.That(selectors.Select(static selector => selector.GetType()), Is.All.EqualTo(typeof(MultistreamProtocol)));
+        Assert.That(typeof(MultistreamProtocol).Assembly.GetName().Name, Is.EqualTo("Nethermind.Libp2p.Protocols.Multistream"));
+    }
+
+    private sealed class TypedRequestProtocol : ISessionProtocol<ulong, ulong>
+    {
+        private const int PayloadLength = 40_000;
+        public string Id => "/test/multistream/typed/1";
+        public async Task<ulong> DialAsync(IChannel channel, ISessionContext context, ulong request)
+        {
+            byte first = checked((byte)request);
+            byte[] payload = new byte[PayloadLength];
+            for (int i = 0; i < payload.Length; i++) payload[i] = (byte)((first + i) & byte.MaxValue);
+            await channel.WriteAsync(new ReadOnlySequence<byte>(payload)).OrThrow();
+            byte[] response = (await channel.ReadAsync(PayloadLength).OrThrow()).ToArray();
+            Assert.That(response, Is.EqualTo(payload));
+            return response[0];
+        }
+        public async Task ListenAsync(IChannel channel, ISessionContext context)
+        {
+            ReadOnlySequence<byte> request = await channel.ReadAsync(PayloadLength).OrThrow();
+            await channel.WriteAsync(request).OrThrow();
+        }
+    }
+
+    private sealed class UnsupportedTypedProtocol : ISessionProtocol<ulong, ulong>
+    {
+        public string Id => "/test/multistream/unsupported/1";
+        public Task<ulong> DialAsync(IChannel channel, ISessionContext context, ulong request) => throw new InvalidOperationException("A rejected protocol must not dispatch its handler.");
+        public Task ListenAsync(IChannel channel, ISessionContext context) => throw new InvalidOperationException("The remote does not register this protocol.");
+    }
+
+
+    public enum NegotiationFailure
+    {
+        UnsupportedProtocol,
+        WrongHello,
+        ResetBeforeHello,
+        ResetAfterHello,
+    }
+
+    [Test]
+    public async Task Rejected_selection_completes_the_pending_request([Values] NegotiationFailure failure,
+        [Values] bool alreadyCompleted, CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        ISessionProtocol<int, int> selected = Substitute.For<ISessionProtocol<int, int>>();
+        selected.Id.Returns("/test/multistream/rejected/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (alreadyCompleted) completion.SetResult(42);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, Argument = 1, CompletionSource = completion });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(protocol.Id));
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(selected.Id));
+            if (failure != NegotiationFailure.ResetBeforeHello)
+                await remote.WriteLineAsync(failure == NegotiationFailure.WrongHello ? "/wrong/multistream" : protocol.Id);
+            if (failure == NegotiationFailure.UnsupportedProtocol) await remote.WriteLineAsync("na");
+            if (failure is NegotiationFailure.ResetBeforeHello or NegotiationFailure.ResetAfterHello) await remote.AbortAsync();
+            await negotiation.WaitAsync(token);
+
+            if (alreadyCompleted)
+            {
+                Assert.That(await completion.Task, Is.EqualTo(42), "rejection cannot overwrite an existing outcome");
+            }
+            else
+            {
+                Assert.That(completion.Task.IsFaulted, Is.True, "negotiation rejection must fail the pending request before its caller times out");
+                Assert.That(completion.Task.Exception!.InnerException, Is.TypeOf<ChannelClosedException>());
+            }
+            await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
+        }
+        finally
+        {
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    public async Task Successful_selection_does_not_fault_a_queued_completion([Values] bool typed,
+        [Values] bool asynchronous, CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        IProtocol selected = typed ? Substitute.For<ISessionProtocol<int, int>>() : Substitute.For<ISessionProtocol>();
+        selected.Id.Returns("/test/multistream/accepted/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource dispatched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource handler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, Argument = typed ? 1 : null, CompletionSource = completion });
+        context.Upgrade(channel, selected).Returns(_ =>
+        {
+            dispatched.TrySetResult();
+            return asynchronous ? handler.Task : Task.CompletedTask;
+        });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(protocol.Id));
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(selected.Id));
+            await remote.WriteLineAsync(protocol.Id);
+            await remote.WriteLineAsync(selected.Id);
+            await dispatched.Task.WaitAsync(token);
+            handler.TrySetResult();
+            await negotiation.WaitAsync(token);
+
+            Assert.That(completion.Task.IsCompleted, Is.False, "the Core success-mapping continuation may still be queued after its handler completes");
+            object? expected = typed ? 42 : null;
+            completion.SetResult(expected);
+            Assert.That(await completion.Task, Is.EqualTo(expected));
+        }
+        finally
+        {
+            handler.TrySetResult();
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    public async Task Rejection_does_not_overwrite_caller_cancellation(CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        IProtocol selected = Substitute.For<IProtocol>();
+        selected.Id.Returns("/test/multistream/canceled/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, CompletionSource = completion });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            await remote.ReadLineAsync().WaitAsync(token);
+            await remote.ReadLineAsync().WaitAsync(token);
+            completion.SetCanceled();
+            await remote.AbortAsync();
+            await negotiation.WaitAsync(token);
+
+            Assert.That(completion.Task.IsCanceled, Is.True);
+            await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
+        }
+        finally
+        {
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     // Each chunk is one yamux frame as it is handed up, given by its segment lengths: Noise frames of up to 65,535 bytes, and small frames.
     private static readonly int[][][] Chunkings =
     [

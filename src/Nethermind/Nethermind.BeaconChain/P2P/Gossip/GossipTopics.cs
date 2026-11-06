@@ -21,6 +21,10 @@ public static class GossipTopics
     public const string VoluntaryExit = "voluntary_exit";
     public const string ProposerSlashing = "proposer_slashing";
     public const string AttesterSlashing = "attester_slashing";
+    /// <summary>Signed light-client finality updates.</summary>
+    public const string LightClientFinalityUpdate = "light_client_finality_update";
+    /// <summary>Signed light-client optimistic updates.</summary>
+    public const string LightClientOptimisticUpdate = "light_client_optimistic_update";
 
     /// <summary>
     /// Gloas <c>execution_payload</c> (EIP-7732): the envelope a non-attesting follower needs.
@@ -51,7 +55,7 @@ public static class GossipTopics
     [
         BeaconBlock, BeaconAggregateAndProof, VoluntaryExit, ProposerSlashing, AttesterSlashing,
         "sync_committee_contribution_and_proof", "bls_to_execution_change",
-        "light_client_finality_update", "light_client_optimistic_update",
+        LightClientFinalityUpdate, LightClientOptimisticUpdate,
         "execution_payload_bid", ExecutionPayload, PayloadAttestationMessage, "proposer_preferences",
     ];
 

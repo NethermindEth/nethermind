@@ -918,6 +918,7 @@ namespace Nethermind.Network
                 }
 
                 if (_logger.IsTrace) TraceCannotConnectToPeer(ex.NetworkExceptionType);
+                if (_logger.IsDebug) _logger.Debug($"Dial to {candidate.Node:s} failed: {ex.NetworkExceptionType}");
                 return false;
             }
             catch (Exception ex)
@@ -1229,6 +1230,8 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
+            if (_logger.IsDebug)
+                _logger.Debug($"Session {session.SessionId} with {session.RemoteNodeId} at {session.RemoteHost}:{session.RemotePort} disconnected: {e.DisconnectType} {e.DisconnectReason}, direction {session.Direction}, best state {session.BestStateReached}");
             lock (_sessionLock)
             {
                 ToggleSessionEventListeners(session, false);
@@ -1303,6 +1306,8 @@ namespace Nethermind.Network
         private void OnHandshakeComplete(object sender, EventArgs args)
         {
             ISession session = (ISession)sender;
+            if (_logger.IsDebug)
+                _logger.Debug($"RLPx handshake completed on session {session.SessionId} with {session.RemoteNodeId} at {session.RemoteHost}:{session.RemotePort}, direction {session.Direction}");
             lock (_sessionLock)
             {
                 if (_isStopping)

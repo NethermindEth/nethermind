@@ -16,5 +16,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         /// Soft limit at which to stop returning data
         /// </summary>
         public long ResponseBytes { get; set; }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            StorageRange?.Dispose();
+        }
     }
 }

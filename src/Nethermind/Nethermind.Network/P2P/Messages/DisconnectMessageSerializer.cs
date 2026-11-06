@@ -30,11 +30,6 @@ namespace Nethermind.Network.P2P.Messages
 
         public DisconnectMessage Deserialize(IByteBuffer msgBytes)
         {
-            if (msgBytes.ReadableBytes == 1)
-            {
-                return new DisconnectMessage((EthDisconnectReason)msgBytes.GetByte(0));
-            }
-
             if (msgBytes.ReadableBytes == 0)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
@@ -42,16 +37,34 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            RlpReader reader = new(msg);
-            if (!reader.IsSequenceNext())
+            if (msg.Length == 1 && msg[0] < Rlp.EmptyByteArrayByte)
             {
-                reader = new RlpReader(reader.DecodeByteArraySpan());
+                return new DisconnectMessage(msg[0]);
             }
 
-            reader.ReadSequenceLength();
+            RlpReader reader = new(msg);
+            CheckItem(reader);
+            if (!reader.IsSequenceNext())
+            {
+                ReadOnlySpan<byte> wrapped = reader.DecodeByteArraySpan();
+                if (wrapped.IsEmpty) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+                reader = new RlpReader(wrapped);
+                CheckItem(reader);
+            }
+
+            int contentLength = reader.ReadSequenceLength();
+            if (contentLength == 0) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+            reader = new RlpReader(reader.Read(contentLength));
+            CheckItem(reader);
             int reason = reader.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
+
+            static void CheckItem(RlpReader item)
+            {
+                if (item.Length == 0 || item.PeekNextRlpLength() > item.Length)
+                    throw new RlpException("Truncated disconnect payload.");
+            }
         }
     }
 }

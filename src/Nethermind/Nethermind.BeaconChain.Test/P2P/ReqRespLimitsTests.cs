@@ -5,7 +5,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
-using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -24,7 +23,6 @@ using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Network.Libp2p;
 using NSubstitute;
 using NUnit.Framework.Constraints;
-using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -883,9 +881,7 @@ public class ReqRespLimitsTests
 
     private static ISessionContext NewPeerContext(string host = "")
     {
-        byte[] keyBytes = new byte[33];
-        Random.Shared.NextBytes(keyBytes);
-        PeerId peerId = new(new Libp2pPublicKey { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(keyBytes) });
+        PeerId peerId = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
         ISessionContext context = ReqRespTestChannel.Context();
         context.State.RemoteAddress = Multiaddress.Decode($"{host}/p2p/{peerId}");
         return context;

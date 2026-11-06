@@ -375,6 +375,19 @@ public class Eth69ProtocolHandlerTests
             && m.LatestBlockHash == _genesisBlock.Hash
             && m.EarliestBlock == 0));
 
+    [Test]
+    public void Status_range_remains_consistent_when_the_lowest_block_advances_after_the_head_snapshot()
+    {
+        _syncManager.LowestBlock.Returns(_genesisBlock.Number + 1);
+        _session.ClearReceivedCalls();
+
+        typeof(Eth69ProtocolHandler).GetMethod("NotifyOfStatus", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(_handler, [_genesisBlock.Header]);
+
+        _session.Received(1).DeliverMessage(Arg.Is<StatusMessage69>(message =>
+            message.EarliestBlock == message.LatestBlock && message.LatestBlock == _genesisBlock.Number));
+    }
+
     private void HandleIncomingStatusMessage()
     {
         using StatusMessage69 statusMsg = new() { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };

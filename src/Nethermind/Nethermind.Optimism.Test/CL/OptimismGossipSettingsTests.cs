@@ -380,6 +380,7 @@ public class OptimismGossipSettingsTests
         {
             Assert.That(settings.MaxRpcBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize).And.GreaterThan(10 * 1024 * 1024));
             Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize));
+            Assert.That(settings.MaxOutboundRpcBytesPerPeer, Is.GreaterThanOrEqualTo(settings.MaxRpcBytes + 5L));
             PeerScore score = new(settings);
             TopicScore topic = score.GetTopicScore(BlocksTopic);
             topic.MeshJoinTime = DateTime.UtcNow.AddMinutes(-1);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Specialized;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Net;
@@ -72,12 +71,7 @@ public class ShutterStaticPeerTests
         await WaitUntilAsync(() => keyper.PeerForTest.ListenAddresses.Count > 0, "the keyper never listened", token);
         LocalPeer keyperPeer = (LocalPeer)keyper.PeerForTest;
         Multiaddress keyperAddress = Multiaddress.Decode($"{keyperPeer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{keyperPeer.Identity.PeerId}");
-        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ((LocalPeer)node.PeerForTest).Sessions.CollectionChanged += (_, change) =>
-        {
-            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
-        };
+        LocalPeer nodePeer = (LocalPeer)node.PeerForTest;
         Task<ISession> dial = node.PeerForTest.DialAsync(keyperAddress, token);
 
         bool inFlight = !dial.IsCompleted;
@@ -91,18 +85,21 @@ public class ShutterStaticPeerTests
         {
         }
 
-        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
         // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using (CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token))
         {
             bounded.CancelAfter(TimeSpan.FromSeconds(45));
-            while (keyperPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+            while ((nodePeer.Sessions.Count > 0 || keyperPeer.Sessions.Count > 0) && !bounded.IsCancellationRequested)
             {
                 await Task.Delay(50, CancellationToken.None);
             }
         }
 
-        Assert.That(keyperPeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodePeer.Sessions, Is.Empty, "the disposed dialer left a session open");
+            Assert.That(keyperPeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        }
         await stop.CancelAsync();
         await keyperRun;
     }

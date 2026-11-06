@@ -65,6 +65,21 @@ public class PeerBandTests
             configurationError ? Throws.TypeOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
+    [TestCase("/ip4/1.2.3.4/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, false)]
+    [TestCase("/ip6/2001:4860:4860::8888/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, false)]
+    [TestCase("/ip4/1.2.3.4/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false, true)]
+    [TestCase("/ip4/1.2.3.4/udp/0/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, true)]
+    [TestCase("/ip4/1.2.3.4/udp/9001/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, true)]
+    public void Static_quic_peers_require_local_quic_and_a_dialable_address(string address, bool quicEnabled, bool configurationError)
+    {
+        using Node node = CreateNode();
+        node.Config.QuicPort = quicEnabled ? 9051 : 0;
+        node.Config.StaticPeers = address;
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance),
+            configurationError ? Throws.TypeOf<InvalidConfigurationException>() : Throws.Nothing);
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_dns_peer_is_retried_after_name_resolution_fails(CancellationToken token)
@@ -573,9 +588,9 @@ public class PeerBandTests
         Node first = CreateNode();
         Node second = CreateNode();
         SetMatchingStatus(local, first, second);
-        // Answers identify and status but not metadata, so its admission stays in the pool one over the ceiling for the metadata timeout.
+        StallingMetadataProtocol metadata = new();
         await using PlainPeer staticPeer = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
-            new ScriptedStatusSource(_ => local.StatusHolder.CurrentStatus));
+            new ScriptedStatusSource(_ => local.StatusHolder.CurrentStatus), additionalProtocol: metadata);
         string staticAddress = staticPeer.Address.ToString();
         if (!staticAddress.Contains("/p2p/", StringComparison.Ordinal))
         {
@@ -592,8 +607,8 @@ public class PeerBandTests
         local.Config.StaticPeers = staticAddress;
 
         Task<bool> staticAdmission = manager.TryAddPeerAsync(staticAddress, token);
-        await WaitUntilAsync(() => manager.PeerCount == 3, token, "fixture: the static peer never entered the pool");
-        // The trim alone: a full round's ping to a peer without the ping protocol waits out the request timeout, past the window.
+        await metadata.Requested.Task.WaitAsync(token);
+        Assert.That(manager.PeerCount, Is.EqualTo(3), "fixture: the static peer entered the pool before metadata finished");
         await (Task)typeof(PeerManager).GetMethod("TrimToPeerBandAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(manager, [new[] { staticAddress }, token])!;
         bool trimmedInsideTheWindow = !staticAdmission.IsCompleted;
