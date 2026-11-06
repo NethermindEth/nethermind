@@ -1263,15 +1263,18 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // Peer-served transactions must not be submitted as local, which would bypass the pool's gossip-only filters.
     [Test]
-    public async Task Full_transactions_are_admitted_and_the_wrapper_is_reported_valid()
+    public async Task Full_transactions_are_admitted_and_the_wrapper_is_reported_valid([Values] bool fromPeer)
     {
         Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
         (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.Accepted, transaction);
         List<byte[]> validated = [];
         service.WrapperValidated += (encoded, _) => validated.Add(encoded);
 
-        ProofWrapperAcceptance accepted = await service.AcceptDetailedAsync(wrapper);
+        ProofWrapperAcceptance accepted = fromPeer
+            ? await service.AcceptOwnedDetailedAsync(wrapper)
+            : await service.AcceptDetailedAsync(wrapper);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1279,7 +1282,8 @@ public class ProofWrapperServiceTests
             Assert.That(accepted.Result.Data, Is.EqualTo(new[] { transaction.Hash }));
             Assert.That(validated, Has.Count.EqualTo(1));
             Assert.That(validated[0], Is.EqualTo(wrapper));
-            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == transaction.Hash), TxHandlingOptions.PersistentBroadcast);
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == transaction.Hash),
+                fromPeer ? TxHandlingOptions.None : TxHandlingOptions.PersistentBroadcast);
         }
     }
 
@@ -1673,7 +1677,7 @@ public class ProofWrapperServiceTests
             Assert.That(store.TryReserveTransaction(blobDependencies, out IDisposable? reservation), Is.True, "the pin keeps the coverage");
             reservation?.Dispose();
             pool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == blob.Hash), Arg.Any<TxHandlingOptions>());
-            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == plain.Hash), TxHandlingOptions.PersistentBroadcast);
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == plain.Hash), TxHandlingOptions.None);
         }
         pin!.Dispose();
         pin.Dispose();

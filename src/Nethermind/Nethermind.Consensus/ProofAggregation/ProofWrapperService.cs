@@ -340,7 +340,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             }
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
-                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source);
+                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
+                            copyInput ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
@@ -446,8 +447,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Submits <paramref name="transactions"/> from <paramref name="start"/> up to <paramref name="end"/>.</summary>
+    /// <param name="handling">Local submissions persist and bypass the pool's gossip-only filters; peer-served ones do not.</param>
     private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
-        ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
+        ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source,
+        TxHandlingOptions handling)
     {
         for (int i = start; i < end; i++)
         {
@@ -465,7 +468,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // the other transactions intact.
             AcceptTxResult result = IsAwaitingAvailability(transaction)
                 ? AdmitAwaitingAvailability(transaction, source)
-                : txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+                : txPool.SubmitTx(transaction, handling);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else
             {
