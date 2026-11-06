@@ -47,12 +47,13 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 9, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 10, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
 SPHINCS witness bytes, leanSTARK claims per list, instructions, operand offset, aggregation
 input bytes, mixed guest proof bytes); startup checks these against the managed protocol
 bounds before accepting work.
-Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. Callers initialize proof output
+Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. After -1, `nlean_last_error(out, len)` on the same
+thread copies up to `len` bytes of the panic message and returns its full length. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
 using the returned pointer and length. Verification contains upstream panics and never
 accepts malformed inputs. Panic diagnostics on ABI callers and the pinned parallel worker
@@ -141,7 +142,7 @@ EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
   statement over it to the prover, a received mode-1 wrapper over it is invalid and an
   inclusion-list proof over it imposes no obligation, both without penalty or verification.
 
-Startup checks ABI 9, the pinned key and the nine bounds together. New devnets require fresh
+Startup checks ABI 10, the pinned key and the nine bounds together. New devnets require fresh
 chain and database namespaces.
 
 The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, at most 16 of them leanSTARK; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.

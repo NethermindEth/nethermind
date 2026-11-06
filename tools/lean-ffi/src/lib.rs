@@ -8,7 +8,7 @@ use lean_vm::cpu::{self, Program};
 use primitives::field::F192;
 use rec_aggregation::eip8288_mixed::{self, GenericInput, MixedProof};
 use sphincs::{SphincsPublicKey, SphincsSignature};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Barrier, Mutex, OnceLock, RwLock};
@@ -94,6 +94,7 @@ compile_error!(
 static ACTIVE_ABI_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ABI_WORKERS: OnceLock<Vec<ThreadId>> = OnceLock::new();
 thread_local! { static IN_ABI: Cell<bool> = const { Cell::new(false) }; }
+thread_local! { static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) }; }
 type Dep = [u8; 96];
 
 pub fn keccak(bytes: &[u8]) -> [u8; 32] {
@@ -673,7 +674,7 @@ unsafe fn bytes_with_limit<'a>(ptr: *const u8, len: usize, limit: usize) -> Resu
     }
 }
 /// Runs one ABI call: returns 1 for accepted, 0 for rejected input and -1 for a contained panic,
-/// so callers never read a fault as a verdict. Every `checked` export shares this contract, including
+/// so callers never read a fault as a verdict. The panic message stays readable through `nlean_last_error`. Every `checked` export shares this contract, including
 /// `nlean_aggregated_vk` and `nlean_prove_recursive`, where the C# side accepts only `== 1` as success.
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     static HOOK: OnceLock<()> = OnceLock::new();
@@ -686,6 +687,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     }
     let _guard = CallGuard(IN_ABI.with(|flag| flag.replace(true)));
     ACTIVE_ABI_CALLS.fetch_add(1, Ordering::AcqRel);
+    LAST_PANIC.with(|message| message.borrow_mut().clear());
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         HOOK.get_or_init(|| {
             let previous = std::panic::take_hook();
@@ -716,11 +718,39 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         f()
     }))
-    .map_or(-1, |verdict| verdict.unwrap_or(false) as i32)
+    .map_or_else(
+        |payload| {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|text| text.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "non-string panic payload".to_string());
+            LAST_PANIC.with(|last| *last.borrow_mut() = message);
+            -1
+        },
+        |verdict| verdict.unwrap_or(false) as i32,
+    )
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    9
+    10
+}
+/// Copies up to `len` bytes of the calling thread's last contained panic message into `out` and returns its full
+/// length; empty unless that thread's latest `checked` call returned -1.
+///
+/// # Safety
+/// `out` must reference `len` writable bytes, or be null with `len` 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nlean_last_error(out: *mut u8, len: usize) -> usize {
+    LAST_PANIC.with(|message| {
+        let message = message.borrow();
+        let copied = message.len().min(len);
+        if !out.is_null() {
+            // SAFETY: copied <= len, and the caller guarantees `out` holds len writable bytes.
+            unsafe { std::ptr::copy_nonoverlapping(message.as_ptr(), out, copied) };
+        }
+        message.len()
+    })
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -1264,7 +1294,7 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 9);
+        assert_eq!(nlean_abi_version(), 10);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(
@@ -1291,8 +1321,21 @@ mod tests {
         );
         assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
+        let last_error = || {
+            let mut message = [0u8; 64];
+            let len = unsafe { nlean_last_error(message.as_mut_ptr(), message.len()) };
+            String::from_utf8(message[..len].to_vec()).unwrap()
+        };
         assert_eq!(checked(|| panic!("contained upstream failure")), -1);
+        assert_eq!(last_error(), "contained upstream failure");
+        let pool_panic = || {
+            parallel::for_each(parallel::num_threads(), |_| panic!("pool task failed"));
+            Ok(true)
+        };
+        assert_eq!(checked(pool_panic), -1);
+        assert_eq!(last_error(), "pool task failed");
         assert_eq!(checked(|| Err(())), 0);
+        assert_eq!(last_error(), "");
     }
 
     #[test]
