@@ -64,8 +64,8 @@ public static class TxErrorMessages
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
-    public static readonly string InvalidBlobDataSize =
-        $"InvalidBlobDataSize: Blob data fields are of incorrect size.";
+    public const string InvalidBlobDataSize =
+        "InvalidBlobDataSize: Blob data fields are of incorrect size.";
 
     public const string InvalidBlobHashes =
         "InvalidBlobProof: Hashes do not match the blobs.";

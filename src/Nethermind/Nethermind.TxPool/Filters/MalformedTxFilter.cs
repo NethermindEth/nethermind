@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -101,13 +100,9 @@ namespace Nethermind.TxPool.Filters
             Metrics.PendingTransactionsMalformed++;
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
             if (logger.IsTrace) TraceMalformed(tx, result);
-            state.SidecarRejected = IsSidecarError(result.Error);
+            state.SidecarRejected = result.IsSidecarError;
             return AcceptTxResult.Invalid.WithMessage(result.ToString());
         }
-
-        private static bool IsSidecarError(string? error) =>
-            error == TxErrorMessages.InvalidBlobDataSize
-            || error is TxErrorMessages.InvalidBlobHashes or TxErrorMessages.InvalidProofVersion;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceUnresolvableSender(Transaction tx) =>

@@ -549,21 +549,23 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         {
             if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
             {
-                return TxErrorMessages.InvalidProofVersion;
+                return SidecarError(TxErrorMessages.InvalidProofVersion);
             }
 
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
             bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
             int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
 
-            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
-                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? SidecarError(TxErrorMessages.InvalidBlobDataSize) :
+                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? SidecarError(TxErrorMessages.InvalidBlobHashes) :
                 (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
                 !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }
     }
+
+    internal static ValidationResult SidecarError(string error) => new(error) { IsSidecarError = true };
 }
 
 /// <summary>
@@ -587,7 +589,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
             : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
-            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
+            txProofVersion != spec.BlobProofVersion ? MempoolBlobTxValidator.SidecarError(TxErrorMessages.InvalidProofVersion) : ValidationResult.Success;
     }
 }
 
