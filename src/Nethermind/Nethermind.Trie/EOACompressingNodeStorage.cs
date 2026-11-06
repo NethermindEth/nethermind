@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,7 +21,6 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => Decompress(nodeStorage.Get(address, in path, in keccak, readFlags));
 
-    [SkipLocalsInit]
     public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
         => nodeStorage.Set(address, in path, in hash, Compress(data, stackalloc byte[data.Length]), writeFlags);
 
@@ -39,7 +37,6 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
     {
         public void Dispose() => writeBatch.Dispose();
 
-        [SkipLocalsInit]
         public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
             => writeBatch.Set(address, in path, in currentNodeKeccak, Compress(data, stackalloc byte[data.Length]), writeFlags);
     }
