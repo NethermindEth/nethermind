@@ -8,8 +8,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -48,7 +46,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     /// The scheduler queue is shared by all peers, so without a limit one peer can fill it and delay the requests of all other peers.
     /// A peer cannot have more requests in flight on this side than it has outstanding. go-ethereum has one request for each
     /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap.
-    /// The transaction requests (<see cref="GetPooledTransactionsMessage"/> and <see cref="GetCellsMessage72"/>) have their own
+    /// The transaction requests (<see cref="ITxServeRequest"/>) have their own
     /// counter with the same limit: the requester sends one for each announcement, and they wait in the scheduler queue during
     /// block processing, so they must not use up the slots of the sync requests.
     /// The extra requests are dropped, the same as when the scheduler queue is full.
@@ -137,7 +135,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private void ReleaseSyncServe<TReq>() => Interlocked.Decrement(ref InFlightCounter<TReq>());
 
     private ref int InFlightCounter<TReq>() =>
-        ref typeof(TReq) == typeof(GetPooledTransactionsMessage) || typeof(TReq) == typeof(GetCellsMessage72)
+        ref typeof(TReq).IsAssignableTo(typeof(ITxServeRequest))
             ? ref _txServeRequestsInFlight
             : ref _syncServeRequestsInFlight;
 
