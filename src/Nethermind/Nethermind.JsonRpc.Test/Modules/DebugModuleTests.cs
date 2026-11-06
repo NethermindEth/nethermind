@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,8 +40,11 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.History;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
@@ -72,7 +77,12 @@ public class DebugModuleTests
         new BlocksConfig(),
         _blockFinder,
         new BlockForRpcFactory(),
-        _codeInfoRepository);
+        _codeInfoRepository,
+        new ReceiptConfig(),
+        Substitute.For<ISyncPointers>(),
+        Substitute.For<ISyncProgressResolver>(),
+        new SyncConfig(),
+        Substitute.For<IHistoryPruner>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -726,11 +736,26 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
 
-        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(number));
+        AssertMissingTraceBlock(new BlockParameter(number), $"block #{number} not found", isTemporary);
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_missing_tag_preserves_temporary_status(
+        [Values("safe", "finalized")] string tag, [Values] bool isTemporary)
+    {
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
+
+        AssertMissingTraceBlock(tag == "safe" ? BlockParameter.Safe : BlockParameter.Finalized, $"{tag} block not found", isTemporary);
+    }
+
+    private void AssertMissingTraceBlock(BlockParameter selector, string message, bool isTemporary)
+    {
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(selector);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(response.Result.Error, Is.EqualTo($"block #{number} not found"));
+            Assert.That(response.Result.Error, Is.EqualTo(message));
             Assert.That(response.IsTemporary, Is.EqualTo(isTemporary));
         }
     }

@@ -507,7 +507,9 @@ namespace Ethereum.Test.Base
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
-                testsByName.Add(Convert(name, category, testSpec));
+                BlockchainTest test = Convert(name, category, testSpec);
+                test.FixtureId = testName;
+                testsByName.Add(test);
             }
 
             return testsByName;
