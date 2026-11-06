@@ -74,8 +74,12 @@ public class Bswap64Tests
         {
             for (int cleared = 0; cleared < length; cleared++)
             {
-                buffer[cleared] = 0xfe;
-                Assert.That(ZkEvmBitOperations.AreAllOnes(ref buffer[0], length), Is.False, $"byte {cleared} cleared");
+                for (int bit = 0; bit < 8; bit++)
+                {
+                    buffer[cleared] = (byte)~(1 << bit);
+                    Assert.That(ZkEvmBitOperations.AreAllOnes(ref buffer[0], length), Is.False, $"bit {bit} of byte {cleared} cleared");
+                }
+
                 buffer[cleared] = 0xff;
             }
         }
