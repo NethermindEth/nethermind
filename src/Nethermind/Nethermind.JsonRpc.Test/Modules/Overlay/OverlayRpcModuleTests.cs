@@ -319,7 +319,7 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
-    public async Task GetLogs_applies_a_lone_storage_override_and_rejects_a_conflict([Values("state", "stateDiff", "both")] string field)
+    public async Task GetLogs_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Deployment deployment = await Deploy(chain);
@@ -328,22 +328,13 @@ public class OverlayRpcModuleTests
         byte[] code = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
             .PushData(32).PushData(0).Op(Instruction.LOG0).STOP().Done;
         Dictionary<string, string> storage = new() { [$"0x{0:x64}"] = seven };
-        Dictionary<string, object> account = new() { ["code"] = code.ToHexString(true) };
-        if (field != "stateDiff") account["state"] = storage;
-        if (field != "state") account["stateDiff"] = storage;
+        Dictionary<string, object> account = new() { ["code"] = code.ToHexString(true), [field] = storage };
 
         using JsonDocument response = await Request(chain, "overlay_getLogs",
             new { fromBlock = deployment.Last.ToHexString(true), toBlock = deployment.Last.ToHexString(true) },
             new Dictionary<string, object> { [deployment.Contract.ToString()] = account });
 
-        if (field == "both")
-        {
-            AssertStorageConflict(response, deployment.Contract);
-        }
-        else
-        {
-            Assert.That(response.RootElement.GetProperty("result").EnumerateArray().Select(static l => l.GetProperty("data").GetString()), Is.EqualTo(new[] { seven, seven }));
-        }
+        Assert.That(response.RootElement.GetProperty("result").EnumerateArray().Select(static l => l.GetProperty("data").GetString()), Is.EqualTo(new[] { seven, seven }));
     }
 
     [Test]

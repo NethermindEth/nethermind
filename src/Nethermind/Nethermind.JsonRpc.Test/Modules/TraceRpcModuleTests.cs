@@ -3201,6 +3201,13 @@ public class TraceRpcModuleTests
         """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
+        "Uses storage diff from state override",
+        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x60fe47b1112233445566778899001122334455667788990011223344556677889900112233445566778899001122","gas":"0xf4240"}""",
+        "stateDiff",
+        """{"0xc200000000000000000000000000000000000000":{"stateDiff": {"0x0000000000000000000000000000000000000000000000000000000000000000": "0x0000000000000000000000000000000000000000000000000000000000123456"}, "code":"0x6080604052348015600e575f80fd5b50600436106030575f3560e01c80632a1afcd914603457806360fe47b114604d575b5f80fd5b603b5f5481565b60405190815260200160405180910390f35b605c6058366004605e565b5f55565b005b5f60208284031215606d575f80fd5b503591905056fea2646970667358221220fd4e5f3894be8e57fc7460afebb5c90d96c3486d79bf47b00c2ed666ab2f82b364736f6c634300081a0033"}}""",
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
+    )]
+    [TestCase(
         "Executes precompile using overridden address",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0x0000000000000000000000000000000000123456","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055","gas":"0xf4240"}""",
         "trace",
@@ -3280,13 +3287,15 @@ public class TraceRpcModuleTests
         }
     }
 
-    [TestCase("latest", false)]
-    [TestCase("latest", true)]
-    [TestCase("0x1000", false)]
-    public async Task Trace_call_rejects_conflicting_storage_overrides_after_the_header_lookup(string block, bool tipAboveFeeCap)
+    [TestCase("latest", false, "trace")]
+    [TestCase("latest", true, "trace")]
+    [TestCase("latest", false, "bogus")]
+    [TestCase("0x1000", false, "trace")]
+    public async Task Trace_call_rejects_conflicting_storage_overrides_after_the_header_lookup(string block, bool tipAboveFeeCap, string traceType)
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
         Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressC.ToString(), ["gas"] = "0x5208" };
         if (tipAboveFeeCap)
         {
@@ -3299,7 +3308,7 @@ public class TraceRpcModuleTests
         object conflict = new { state = new { }, stateDiff = new { } };
         Dictionary<string, object> stateOverride = new() { ["0xc200000000000000000000000000000000000000"] = conflict, [lower.ToString()] = conflict };
 
-        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block, stateOverride);
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { traceType }, block, stateOverride);
 
         JToken? error = JToken.Parse(response)["error"];
         if (block == "latest")
@@ -3315,22 +3324,6 @@ public class TraceRpcModuleTests
             JToken? headerError = JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block))["error"];
             Assert.That(error, Is.Not.Null.And.EqualTo(headerError).Using(JToken.EqualityComparer), response);
         }
-    }
-
-    [Test]
-    public async Task Trace_call_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
-    {
-        Context context = new();
-        await context.Build(new TestSpecProvider(Prague.Instance));
-        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" };
-        string seven = $"0x{7:x64}";
-        // PUSH1 0 SLOAD PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns slot 0.
-        Dictionary<string, object> account = new() { ["code"] = "0x60005460005260206000f3", [field] = new Dictionary<string, string> { [$"0x{0:x64}"] = seven } };
-
-        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, "latest",
-            new Dictionary<string, object> { [TestItem.AddressC.ToString()] = account });
-
-        Assert.That(JToken.Parse(response)["result"]?["output"]?.Value<string>(), Is.EqualTo(seven), response);
     }
 
     [Test]
