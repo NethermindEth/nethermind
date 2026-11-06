@@ -22,8 +22,11 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -155,6 +158,35 @@ public partial class BlockDownloaderTests
         await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
 
         Assert.That(receiptsAtSuggestion, Is.True);
+    }
+
+    [Test]
+    public async Task Finalized_catchup_takes_a_late_list_reply_for_released_blocks_as_progress()
+    {
+        await using CatchUp catchUp = CreateCatchUp(2);
+        catchUp.Ctx.PeerPool
+            .EstimateRequestLimit(RequestType.BlockAccessLists, Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(1));
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([.. catchUp.Blocks.Select(static b => b.Body)]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+
+        // A peer can hold two requests at once. The receipts are asked between the two list requests.
+        BlocksRequest first = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+        BlocksRequest second = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.BlockAccessListsRequests.Select(static h => h.Number), Is.EqualTo(new[] { catchUp.Blocks[0].Number }));
+            Assert.That(second.BlockAccessListsRequests.Select(static h => h.Number), Is.EqualTo(new[] { catchUp.Blocks[1].Number }));
+        }
+        first.BlockAccessLists = BuildBlockAccessLists((byte[]?)null);
+        catchUp.Downloader.HandleResponse(first, catchUp.Peer);
+        // The only list peer sleeps for lists, so both blocks leave the buffer without their lists.
+        await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+        second.BlockAccessLists = BuildBlockAccessLists(catchUp.Bal);
+
+        Assert.That(catchUp.Downloader.HandleResponse(second, catchUp.Peer), Is.EqualTo(SyncResponseHandlingResult.OK));
     }
 
     [Test]

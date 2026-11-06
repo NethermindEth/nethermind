@@ -671,12 +671,15 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             long blockAccessListsBytes = 0;
-            int unservedOptionalAccessListsCount = 0;
+            // An answer that stores no list is still progress, so the zero-progress rule below does not put the peer to sleep for blocks.
+            int answeredWithoutStoredListCount = 0;
             for (int i = 0; i < response.BlockAccessListsRequests.Count; i++)
             {
                 BlockHeader header = response.BlockAccessListsRequests[i];
                 if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
                 {
+                    // The block left the buffer while the request was in flight, e.g. released without its list.
+                    if (blockAccessLists is not null) answeredWithoutStoredListCount++;
                     continue;
                 }
 
@@ -685,10 +688,9 @@ namespace Nethermind.Synchronization.Blocks
                     blockAccessListsCount++;
                     blockAccessListsBytes += entry.EncodedAccessList!.Length;
                 }
-                // An answer without the list moves a block that executes without it toward execution.
                 else if (blockAccessLists is not null && entry.CanExecuteMissingData)
                 {
-                    unservedOptionalAccessListsCount++;
+                    answeredWithoutStoredListCount++;
                 }
             }
 
@@ -700,7 +702,7 @@ namespace Nethermind.Synchronization.Blocks
             if (result == SyncResponseHandlingResult.OK)
             {
                 // Request and body does not have the same size so this heuristic is wrong.
-                if (bodiesCount + blockAccessListsCount + unservedOptionalAccessListsCount + receiptsCount == 0)
+                if (bodiesCount + blockAccessListsCount + answeredWithoutStoredListCount + receiptsCount == 0)
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
