@@ -33,11 +33,16 @@ byte[] Sign(ValueHash256 message)
         ArgumentList = { "--sign-message", Convert.ToHexString(message.Bytes), output },
         UseShellExecute = false
     })!;
-    process.WaitForExit();
-    if (process.ExitCode != 0) throw new InvalidOperationException($"fixtures exited {process.ExitCode}");
-    var witness = File.ReadAllBytes(output);
-    File.Delete(output);
-    return witness;
+    try
+    {
+        process.WaitForExit();
+        if (process.ExitCode != 0) throw new InvalidOperationException($"fixtures exited {process.ExitCode}");
+        return File.ReadAllBytes(output);
+    }
+    finally
+    {
+        File.Delete(output);
+    }
 }
 
 var publicKey = new ValueHash256(Sign(default).AsSpan(0, 32));
