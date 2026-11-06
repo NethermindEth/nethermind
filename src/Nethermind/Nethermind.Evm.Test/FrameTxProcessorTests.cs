@@ -273,6 +273,31 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void FeeFreeCall_NeitherReservesNorDistributesFrameFees([Values] bool chargeFees, [Values] bool funded)
+    {
+        UInt256 balance = funded ? 1.Ether : 1;
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), balance);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 1));
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        ExecutionOptions options = ExecutionOptions.CommitAndRestore | (chargeFees ? ExecutionOptions.None : ExecutionOptions.SkipTransactionFees);
+
+        FrameReceiptTracer tracer = new(traceFees: true);
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(funded || !chargeFees), result.ErrorDescription);
+            Assert.That(tracer.ReportedFees.HasValue, Is.EqualTo(funded && chargeFees), "a fee-free call distributes no fees");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balance));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+            if (result.TransactionExecuted) Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+        }
+    }
+
+    [Test]
     public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
         [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
     {
@@ -3096,9 +3121,14 @@ public partial class FrameTxProcessorTests
 
     private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
     {
+        public FrameReceiptTracer(bool traceFees = false) => IsTracingFees = traceFees;
+
         public TxFrameReceipt[]? FrameReceipts { get; private set; }
+        public UInt256? ReportedFees { get; private set; }
 
         public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
+
+        public override void ReportFees(UInt256 fees, UInt256 burntFees) => ReportedFees = fees;
     }
 
     /// <summary>Difference in frame gas between two <c>DEFAULT</c> frames, isolating their entry charges.</summary>
