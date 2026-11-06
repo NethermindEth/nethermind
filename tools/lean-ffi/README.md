@@ -29,6 +29,9 @@ set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
 across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
 Verification never allocates from that arena: it waits for the proof node in flight, whose arena phase
 holds an exclusive lock (1–3 s per node measured on a 12-core arm64 host), not for the whole proof.
+The arena keeps its touched slabs resident between proofs. leanVM also switches glibc's heap trimming and
+large-allocation mmap off process-wide when it enables the arena; the backend restores glibc's defaults
+after each enable, so the host's own freed memory still returns to the kernel.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation

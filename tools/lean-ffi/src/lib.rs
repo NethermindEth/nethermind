@@ -32,8 +32,24 @@ fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     lean_vm::init_prover();
+    restore_system_heap();
     guard
 }
+
+/// Undoes the process-wide glibc tuning `init_prover` applies: the arena is its own mapping and does not rely on it, while
+/// the host would otherwise never trim its heap or mmap large allocations again.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn restore_system_heap() {
+    const DEFAULT_TRIM_THRESHOLD: i32 = 128 * 1024;
+    const DEFAULT_MMAP_MAX: i32 = 65536;
+    // SAFETY: mallopt only adjusts allocator tuning parameters.
+    unsafe {
+        libc::mallopt(libc::M_TRIM_THRESHOLD, DEFAULT_TRIM_THRESHOLD);
+        libc::mallopt(libc::M_MMAP_MAX, DEFAULT_MMAP_MAX);
+    }
+}
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn restore_system_heap() {}
 
 /// Held exclusively by every arena phase and shared by every verification. A phase opening resets the slabs that hold live
 /// `ArenaVec`s, and an open phase routes any thread's `ArenaVec` into the arena, so verification runs only between phases,
@@ -1537,6 +1553,17 @@ mod tests {
         stop.store(true, Ordering::Release);
         assert_eq!(verifier.join().unwrap(), 0);
         verify_aggregate(&other_hash, &other.unwrap()).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn proving_leaves_host_heap_on_glibc_defaults() {
+        drop(begin_proof());
+        // Above glibc's 32 MiB dynamic mmap threshold cap, below a thread arena's 64 MiB heap: only M_MMAP_MAX = 0 keeps it off mmap.
+        let before = unsafe { libc::mallinfo2() }.hblks;
+        let buffer = std::hint::black_box(vec![1u8; 40 << 20]);
+        assert!(unsafe { libc::mallinfo2() }.hblks > before);
+        drop(buffer);
     }
 
     #[test]
