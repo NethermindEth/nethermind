@@ -635,6 +635,66 @@ public class ProofWrapperTransportTests
         Assert.That(badPeer.IsDeprioritized, Is.False, "the score decays");
     }
 
+    // Received wrappers are validated round-robin across the peers that served them, so one peer's backlog does not delay
+    // another's wrapper.
+    [Test]
+    public async Task Validation_alternates_between_serving_peers()
+    {
+        Transaction[] many = [.. Enumerable.Range(0, 8).Select(FrameTransaction)];
+        Transaction one = FrameTransaction(100);
+        byte[][] backlog = [.. many.Select(static t => Wrapper(64, t))];
+        byte[] single = Wrapper(64, one);
+        using WrapperTestNode node = new();
+        using System.Threading.ManualResetEventSlim hold = new();
+        node.Verifier.Hold = hold;
+        FakeWrapperLink busy = new("busy"), other = new("other");
+        WrapperPeer busyPeer = node.Connect(busy), otherPeer = node.Connect(other);
+        node.Transport.OnAnnounce(busyPeer, new([.. backlog.Select(Describe)]));
+        node.Transport.OnProofWrappers(busyPeer, new(busy.Sent<GetProofWrappersMessage>().Single().RequestId,
+            [.. busy.Sent<GetProofWrappersMessage>().Single().Hashes.Select(h => Entry(backlog.Single(w => Describe(w).Hash == h)))]));
+        node.Transport.OnAnnounce(otherPeer, new([Describe(single)]));
+        Answer(node, otherPeer, other, single);
+
+        hold.Set();
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+
+        Transaction[] admitted;
+        lock (node.Pending) admitted = [.. node.Pending];
+        Assert.That(Array.FindIndex(admitted, t => t.Hash == one.Hash), Is.LessThan(admitted.Length - 1), "the other peer's wrapper is not validated last");
+    }
+
+    // A peer that becomes deprioritized has the wrappers it served that still await validation returned to their fetches,
+    // which ask another source.
+    [Test]
+    public async Task Deprioritized_peer_backlog_is_fetched_from_another_source()
+    {
+        byte[][] wrappers = [.. Enumerable.Range(0, 8).Select(static i => Wrapper(64, FrameTransaction(i)))];
+        using WrapperTestNode node = new();
+        using System.Threading.ManualResetEventSlim hold = new();
+        node.Verifier.Hold = hold;
+        FakeWrapperLink bad = new("bad"), good = new("good");
+        WrapperPeer badPeer = node.Connect(bad), goodPeer = node.Connect(good);
+        WrapperAnnouncement[] announcements = [.. wrappers.Select(Describe)];
+        node.Transport.OnAnnounce(badPeer, new(announcements));
+        node.Transport.OnAnnounce(goodPeer, new(announcements));
+        GetProofWrappersMessage request = bad.Sent<GetProofWrappersMessage>().Single();
+        node.Transport.OnProofWrappers(badPeer, new(request.RequestId, [.. request.Hashes.Select(h => Entry(wrappers.Single(w => Describe(w).Hash == h)))]));
+        await WrapperTestNode.Until(() => node.Verifier.Calls == 1);
+        // One more failure makes the peer deprioritized.
+        badPeer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore - 0.5);
+        node.Verifier.Valid = false;
+
+        hold.Set();
+        await WrapperTestNode.Until(() => good.Sent<GetProofWrappersMessage>().Length != 0 || node.Transport.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(good.Sent<GetProofWrappersMessage>(), Is.Not.Empty);
+            Assert.That(node.Verifier.Calls, Is.LessThan(wrappers.Length));
+            Assert.That(bad.Penalties, Is.Empty);
+        }
+    }
+
     // EIP-8437: malformed transport encodings remain penalizable, unlike proof failures.
     [TestCase("duplicate transaction")]
     [TestCase("transaction without frames")]

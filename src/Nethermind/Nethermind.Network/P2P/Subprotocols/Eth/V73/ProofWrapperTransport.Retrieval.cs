@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -380,11 +381,49 @@ public sealed partial class ProofWrapperTransport
     private void Enqueue(WrapperFetch fetch)
     {
         fetch.Processing = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
-        _validation.Enqueue(fetch);
+        WrapperPeer server = fetch.Server!;
+        if (!_validation.TryGetValue(server, out Queue<WrapperFetch>? queued))
+        {
+            _validation[server] = queued = [];
+            // A dropped backlog may have left the server's turn queued.
+            if (!_validationTurns.Contains(server)) _validationTurns.Enqueue(server);
+        }
+        queued.Enqueue(fetch);
         if (_validationWorkers < WrapperTransportLimits.MaxValidationWorkers)
         {
             _validationWorkers++;
             _ = Task.Run(ValidateQueueAsync);
+        }
+    }
+
+    /// <summary>Takes the next received wrapper of the next server in turn.</summary>
+    private bool TryDequeueValidation([NotNullWhen(true)] out WrapperFetch? fetch)
+    {
+        while (_validationTurns.TryDequeue(out WrapperPeer? server))
+        {
+            if (!_validation.TryGetValue(server, out Queue<WrapperFetch>? queued)) continue;
+            fetch = queued.Dequeue();
+            if (queued.Count == 0) _validation.Remove(server);
+            else _validationTurns.Enqueue(server);
+            return true;
+        }
+        fetch = null;
+        return false;
+    }
+
+    /// <summary>Returns the wrappers a deprioritized peer served that await validation to their fetches, which ask the next
+    /// source, so its backlog does not hold validation or byte budgets.</summary>
+    private void DropBacklog(WrapperPeer server)
+    {
+        if (!server.IsDeprioritized || !_validation.Remove(server, out Queue<WrapperFetch>? queued)) return;
+        foreach (WrapperFetch fetch in queued)
+        {
+            fetch.Processing?.Dispose();
+            fetch.Processing = null;
+            Release(server, fetch.ChargedBytes);
+            fetch.ChargedBytes = 0;
+            fetch.Wrapper = null;
+            fetch.Server = null;
         }
     }
 
@@ -396,7 +435,7 @@ public sealed partial class ProofWrapperTransport
             {
                 WrapperFetch? fetch;
                 lock (_gate)
-                    if (_disposed || !_validation.TryDequeue(out fetch)) return;
+                    if (_disposed || !TryDequeueValidation(out fetch)) return;
                 await ValidateAndReleaseAsync(fetch).ConfigureAwait(false);
             }
         }
@@ -494,7 +533,11 @@ public sealed partial class ProofWrapperTransport
                 lock (_gate)
                 {
                     if (verifier is { } judgedUnder) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
-                    fetch.Server?.RecordFailure();
+                    if (fetch.Server is { } server)
+                    {
+                        server.RecordFailure();
+                        DropBacklog(server);
+                    }
                 }
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;

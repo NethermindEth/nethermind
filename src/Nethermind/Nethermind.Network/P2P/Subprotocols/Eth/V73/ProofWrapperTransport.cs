@@ -39,7 +39,9 @@ public sealed partial class ProofWrapperTransport : IDisposable
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
     // target fork verifier may accept them.
     private readonly WrapperBoundedSet _invalid = new(WrapperTransportLimits.MaxTombstones);
-    private readonly Queue<WrapperFetch> _validation = [];
+    // Received wrappers awaiting validation per server, dequeued round-robin so one peer's backlog cannot delay the others'.
+    private readonly Dictionary<WrapperPeer, Queue<WrapperFetch>> _validation = [];
+    private readonly Queue<WrapperPeer> _validationTurns = [];
     private readonly SemaphoreSlim _verification = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private readonly ITimer? _timer;
@@ -249,7 +251,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             _disposed = true;
             foreach (WrapperPeer peer in _peers.ToArray()) RemoveCore(peer, outbox);
             // Workers stop at the next dequeue, so queued validations are released here; running ones release their own.
-            while (_validation.TryDequeue(out WrapperFetch? queued))
+            while (TryDequeueValidation(out WrapperFetch? queued))
             {
                 queued.Processing?.Dispose();
                 queued.Processing = null;
