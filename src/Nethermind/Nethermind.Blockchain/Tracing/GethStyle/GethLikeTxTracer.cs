@@ -110,14 +110,6 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     }
 
     /// <inheritdoc/>
-    public void ReportStorageAttempt(Address address, UInt256 key, UInt256 value)
-    {
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        SetOperationStorage(address, key, bytes, ReadOnlySpan<byte>.Empty);
-    }
-
-    /// <inheritdoc/>
     public virtual void ReportStorageRefund(long refund) { }
 
     protected void ResetRefund() => _refundTracker?.Reset();

@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using BenchmarkDotNet.Attributes;
+using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -21,15 +22,17 @@ using Eth62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Eth63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Eth65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Eth66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Eth68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using Eth72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 namespace Nethermind.Network.Benchmarks;
 
 /// <summary>
-/// Measures serializing eth request and response messages into a packet the way the packet sender does, and
+/// Measures serializing eth messages into a packet the way the packet sender does, and
 /// deserializing them from a DotNetty buffer the way the eth protocol handlers do.
 /// </summary>
 [MemoryDiagnoser]
-public class EthRequestResponseMessageBenchmarks
+public class EthMessageBenchmarks
 {
     public enum Message
     {
@@ -46,11 +49,18 @@ public class EthRequestResponseMessageBenchmarks
         PooledTransactions66,
         NodeData63,
         NodeData66,
-        LargeNodeData66
+        LargeNodeData66,
+        NewPooledTransactionHashes68,
+        Status69,
+        BlockRangeUpdate69,
+        NewPooledTransactionHashes72,
+        GetCells72,
+        Cells72
     }
 
     private const long RequestId = 0x1234_5678_9abc;
     private const ulong BlockNumber = 21_000_000;
+    private static readonly BlobCellMask CellMask = BlobCellMask.FromIndices([4, 9, 21, 40, 63, 77, 100, 127]);
 
     private IContainer _container = null!;
     private Func<int> _serialize = null!;
@@ -123,6 +133,44 @@ public class EthRequestResponseMessageBenchmarks
                 break;
             case Message.LargeNodeData66:
                 SetUp(service, new Eth66.NodeDataMessage(RequestId, new Eth63.NodeDataMessage(NodeData(16, 24 * 1024))));
+                break;
+            case Message.NewPooledTransactionHashes68:
+                ArrayPoolList<byte> types = new(256);
+                ArrayPoolList<int> sizes = new(256);
+                ArrayPoolList<ValueHash256> announcedHashes = new(256);
+                foreach (Hash256 hash in Hashes(256))
+                {
+                    types.Add((byte)TxType.EIP1559);
+                    sizes.Add(512);
+                    announcedHashes.Add(hash.ValueHash256);
+                }
+                SetUp(service, new Eth68.NewPooledTransactionHashesMessage68(types, sizes, announcedHashes));
+                break;
+            case Message.Status69:
+                SetUp(service, new StatusMessage69
+                {
+                    ProtocolVersion = 69,
+                    NetworkId = 1,
+                    GenesisHash = TestItem.KeccakA,
+                    ForkId = new ForkId(0x9f3d2254, 0),
+                    EarliestBlock = BlockNumber - 8192,
+                    LatestBlock = BlockNumber,
+                    LatestBlockHash = TestItem.KeccakB
+                });
+                break;
+            case Message.BlockRangeUpdate69:
+                SetUp(service, new BlockRangeUpdateMessage { EarliestBlock = BlockNumber - 8192, LatestBlock = BlockNumber, LatestBlockHash = TestItem.KeccakA });
+                break;
+            case Message.NewPooledTransactionHashes72:
+                ValueHash256[] blobHashes = Array.ConvertAll(Hashes(256), static hash => hash.ValueHash256);
+                SetUp(service, new Eth72.NewPooledTransactionHashesMessage72(
+                    Array.ConvertAll(blobHashes, static _ => (byte)TxType.Blob), Array.ConvertAll(blobHashes, static _ => 131_072), blobHashes, CellMask.ToBytes()));
+                break;
+            case Message.GetCells72:
+                SetUp(service, new Eth72.GetCellsMessage72(RequestId, Array.ConvertAll(Hashes(64), static hash => hash.ValueHash256), CellMask.ToBytes()));
+                break;
+            case Message.Cells72:
+                SetUp(service, new Eth72.CellsMessage72(RequestId, Array.ConvertAll(Hashes(16), static hash => hash.ValueHash256), Cells(16, blobsPerTransaction: 2), CellMask.ToBytes()));
                 break;
         }
     }
@@ -242,6 +290,19 @@ public class EthRequestResponseMessageBenchmarks
         }
 
         return transactions;
+    }
+
+    private static byte[][][] Cells(int transactions, int blobsPerTransaction)
+    {
+        byte[][][] cells = new byte[transactions][][];
+        for (int i = 0; i < transactions; i++)
+        {
+            cells[i] = new byte[blobsPerTransaction * CellMask.Count][];
+            for (int j = 0; j < cells[i].Length; j++)
+                cells[i][j] = new byte[Ckzg.BytesPerCell];
+        }
+
+        return cells;
     }
 
     private static ByteArrayListAdapter NodeData(int count, int size)

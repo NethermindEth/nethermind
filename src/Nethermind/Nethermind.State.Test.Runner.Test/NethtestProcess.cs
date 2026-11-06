@@ -17,6 +17,12 @@ internal static class NethtestProcess
 
     public static async Task<(string Stdout, string Stderr)> Run(string[] args, string stdin = null)
     {
+        (string stdout, string stderr, _) = await RunWithExitCode(args, stdin);
+        return (stdout, stderr);
+    }
+
+    public static async Task<(string Stdout, string Stderr, int ExitCode)> RunWithExitCode(string[] args, string stdin = null)
+    {
         string executable = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "nethtest.exe" : "nethtest");
         Assert.That(File.Exists(executable), $"nethtest was not built next to the tests at {executable}");
 
@@ -51,6 +57,6 @@ internal static class NethtestProcess
             Assert.Fail($"nethtest did not exit within {Timeout}");
         }
 
-        return (await stdout, await stderr);
+        return (await stdout, await stderr, process.ExitCode);
     }
 }
