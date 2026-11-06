@@ -2063,8 +2063,7 @@ public class OtsRpcModuleTests
             original = meta.GetAll().ToArray();
         }
         index.Start();
-        // The worker logs the catch-up line and arms the idle timer on its own thread, so record the order there:
-        // racing the two signals' asynchronous continuations with WhenAny can report the timer first.
+        // The worker logs the catch-up line and arms the idle timer in sequence, so the order is recorded in the logger callback.
         await clock.TimerCreated.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(timerArmedWhenCaughtUp, Is.False, "productive batches must not wait for the idle timer");
         if (positions) Assert.That(index.TryMatchPositions(indexed.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Not.Null);
