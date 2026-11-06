@@ -262,6 +262,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
+          if ! gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json state,isDraft,labels \
+            --jq '.state == "OPEN" and (.isDraft | not) and ([.labels[].name] | index("wip") | not)' | grep -qx true; then
+            echo "PR stopped by a person, nothing pushed"
+            exit 0
+          fi
           reply() {
             gh api graphql -f id="$1" -f body="$2" -f query='
               mutation($id: ID!, $body: String!) {
