@@ -805,7 +805,7 @@ namespace Nethermind.Synchronization.Blocks
 
             string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
             string effect = canExecuteWithoutList
-                ? "the block executes without it after the retries"
+                ? "another peer serves it, or the block executes without it"
                 : "sync cannot pass this block until another peer serves it";
             _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer:hide} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); {effect}.");
         }
@@ -1060,7 +1060,7 @@ namespace Nethermind.Synchronization.Blocks
             public bool AccessListStored { get; init; }
             public bool SkipReceiptDownload { get; set; }
             public bool HasAccessList => AccessListStored || (CanExecuteMissingData && (SkipAccessListDownload || NoAccessListPeer)) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
-            public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload || NoAccessListPeer)) || !Header.HasTransactions || Receipts?.Length > 0;
+            public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload || (NoAccessListPeer && !AccessListStored && EncodedAccessList is null))) || !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
             public void MarkBlockRequestSent() => _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;

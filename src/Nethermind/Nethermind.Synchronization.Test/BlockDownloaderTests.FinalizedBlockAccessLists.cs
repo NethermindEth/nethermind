@@ -130,6 +130,34 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Finalized_catchup_downloads_receipts_of_a_served_list_while_the_list_peer_sleeps()
+    {
+        await using CatchUp catchUp = CreateCatchUp(2);
+        Block block = catchUp.Blocks[0];
+        bool receiptsAtSuggestion = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) =>
+        {
+            if (args.Block.Hash == block.Hash) receiptsAtSuggestion = catchUp.Ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!);
+        };
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([.. catchUp.Blocks.Select(static b => b.Body)]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+        // The only list peer serves the first list and withholds the second, so it sleeps for lists.
+        BlocksRequest balRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        balRequest.BlockAccessLists = BuildBlockAccessLists(catchUp.Bal, null);
+        catchUp.Downloader.HandleResponse(balRequest, catchUp.Peer);
+
+        BlocksRequest? receiptRequest = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+        Assert.That(receiptRequest?.ReceiptsRequests.Select(static h => h.Number), Is.EqualTo(new[] { block.Number }));
+        receiptRequest!.Receipts = new ArrayPoolList<TxReceipt[]?>(1) { catchUp.Receipts };
+        catchUp.Downloader.HandleResponse(receiptRequest, catchUp.Peer);
+        await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+
+        Assert.That(receiptsAtSuggestion, Is.True);
+    }
+
+    [Test]
     public async Task Finalized_catchup_keeps_requesting_data_cut_short_by_peer_limits()
     {
         const int blockCount = 4;
