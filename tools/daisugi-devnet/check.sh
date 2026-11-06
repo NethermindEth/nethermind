@@ -7,6 +7,9 @@ G=$(realpath "${1:?genesis dir}")
 EL=http://127.0.0.1:${EL_RPC_PORT:-28545}
 CL=http://127.0.0.1:${CL_HTTP_PORT:-25052}
 N=${DEVNET_PREFIX:-daisugi}
+EL_CONTAINER=${EL_CONTAINER:-$N-nethermind}
+BN_CONTAINER=${BN_CONTAINER:-$N-beacon}
+VC_CONTAINER=${VC_CONTAINER:-$N-validator}
 P="$G/params.json"
 GENESIS=$(jq -r .genesisTimestamp "$P"); T8288=$(jq -r .eip8288PrototypeTime "$P"); EPOCH=$(jq -r .daisugiForkEpoch "$P")
 FORK_SLOT=$(( EPOCH * 32 ))
@@ -31,7 +34,7 @@ until curl -sf -o /dev/null -X POST -H 'content-type: application/json' --data '
 EL_GENESIS=$(curl -sf -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["0x0",false]}' $EL | jq -r .result.hash)
 [[ "$EL_GENESIS" == "$(jq -r .elGenesisHash "$P")" ]] || fail "EL genesis $EL_GENESIS differs from CL genesis state"
 echo "EL genesis hash $EL_GENESIS matches the CL genesis state"
-docker logs $N-nethermind 2>&1 | grep -q "InitializeLeanBackend.*failed" && fail "Lean backend failed to start"
+docker logs $EL_CONTAINER 2>&1 | grep -q "InitializeLeanBackend.*failed" && fail "Lean backend failed to start"
 echo "Lean backend: InitializeLeanBackend did not fail"
 
 echo "== waiting for finality past epoch $EPOCH"
@@ -57,7 +60,7 @@ fork_number=$(curl -sf $CL/eth/v2/beacon/blocks/$FORK_SLOT | jq -r .data.message
 echo "slots $FORK_SLOT..$head_slot, EL blocks $fork_number..$head_number, missed $(( head_slot - FORK_SLOT - (head_number - fork_number) ))"
 
 echo "== errors"
-echo "nethermind: $(docker logs $N-nethermind 2>&1 | grep -ciE 'invalid block|rejected|exception') invalid/rejected/exception lines"
-echo "beacon: $(docker logs $N-beacon 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines"
-echo "validator: $(docker logs $N-validator 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines, $(docker logs $N-validator 2>&1 | grep -c 'Successfully published block') blocks published"
+echo "nethermind: $(docker logs $EL_CONTAINER 2>&1 | grep -ciE 'invalid block|rejected|exception') invalid/rejected/exception lines"
+echo "beacon: $(docker logs $BN_CONTAINER 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines"
+echo "validator: $(docker logs $VC_CONTAINER 2>&1 | grep -cE ' (ERROR|CRIT) ') ERROR/CRIT lines, $(docker logs $VC_CONTAINER 2>&1 | grep -c 'Successfully published block') blocks published"
 echo "PASS"
