@@ -97,13 +97,18 @@ public class EraStore : IEraStore
 
         bool hasEraFile = false;
         _epochs = [];
+        Dictionary<int, List<string>> duplicates = [];
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
             if (_epochs.TryGetValue(epoch, out string? other))
-                throw new EraException($"Epoch {epoch} has more than one era1 file: {Path.GetFileName(other)} and {Path.GetFileName(file)}.");
+            {
+                if (!duplicates.TryGetValue(epoch, out List<string>? files))
+                    duplicates[epoch] = files = [other];
+                files.Add(file);
+            }
             _epochs[epoch] = file;
             hasEraFile = true;
             if (epoch > LastEpoch)
@@ -117,7 +122,19 @@ public class EraStore : IEraStore
             throw new EraException($"No relevant era files in directory {directory}");
         }
 
-        _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch);
+        Dictionary<long, string> checksumFiles = [];
+        _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch, checksumFiles);
+
+        // A failed re-export can leave a new file beside the one the manifests name until an export of that epoch
+        // succeeds. Read the file the checksum manifest names: it is the only one its checksum can verify.
+        foreach ((int epoch, List<string> files) in duplicates)
+        {
+            _epochs[epoch] = checksumFiles.TryGetValue(epoch, out string? named) && files.Find(f => Path.GetFileName(f) == named) is { } namedFile
+                ? namedFile
+                : throw new EraException(
+                    $"Epoch {epoch} has more than one era1 file and {EraExporter.ChecksumsFileName} names none of them: " +
+                    $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch or remove the stale file.");
+        }
     }
 
     private long GetEpochNumber(ulong blockNumber)

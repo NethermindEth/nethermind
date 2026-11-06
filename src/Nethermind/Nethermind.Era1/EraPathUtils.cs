@@ -67,8 +67,9 @@ public static class EraPathUtils
     /// rest of the name was a placeholder. A line with only a hash, as geth writes checksums.txt, is keyed by its
     /// position: line i belongs to epoch <paramref name="firstEpoch"/> + i.
     /// </remarks>
+    /// <param name="fileNames">When given, receives the file name each named line lists for its epoch.</param>
     /// <exception cref="EraException">A listed file name has no epoch.</exception>
-    internal static Dictionary<long, ValueHash256> ParseManifest(string[] lines, long firstEpoch)
+    internal static Dictionary<long, ValueHash256> ParseManifest(string[] lines, long firstEpoch, Dictionary<long, string>? fileNames = null)
     {
         Dictionary<long, ValueHash256> entries = new(lines.Length);
         for (int i = 0; i < lines.Length; i++)
@@ -80,6 +81,8 @@ public static class EraPathUtils
             long epoch = firstEpoch + i;
             if (fileName.Length > 0 && !TryGetEpoch(fileName, out epoch))
                 throw new EraException($"Invalid manifest entry: {line}");
+            if (fileName.Length > 0 && fileNames is not null)
+                fileNames[epoch] = fileName;
 
             entries[epoch] = ExtractHashFromAccumulatorAndCheckSumEntry(line);
         }

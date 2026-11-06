@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
+using NSubstitute;
+using Testably.Abstractions;
 
 namespace Nethermind.Era1.Test;
 
@@ -74,18 +79,58 @@ public class EraStoreTests
         }
     }
 
-    [TestCase("00000000")]
-    [TestCase("deadbeef")]
-    public async Task Create_WhenEpochHasTwoFiles_ThrowsNamingBoth(string hash)
+    public enum DuplicateManifest
+    {
+        NamesOneFile,
+        NamesNeither,
+        HashOnly,
+    }
+
+    [Test]
+    public async Task Create_WhenEpochHasTwoFiles_ReadsTheFileTheManifestNames([Values] DuplicateManifest manifest, [Values] bool reversed)
     {
         await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(64);
         string directory = ctx.ResolveTempDirPath();
-        string file = Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-00002-*.era1").Single();
-        string duplicate = $"{EraTestModule.TestNetwork}-00002-{hash}.era1";
-        File.Copy(file, Path.Combine(directory, duplicate));
+        string EpochFile(int epoch) => Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-{epoch:D5}-*.era1").Single();
+        string named = Path.GetFileName(EpochFile(2));
+        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail.
+        string stale = $"{EraTestModule.TestNetwork}-00002-00000000.era1";
+        File.Copy(EpochFile(1), Path.Combine(directory, stale));
+        string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        string[] lines = await File.ReadAllLinesAsync(checksumsPath);
+        lines = manifest switch
+        {
+            DuplicateManifest.NamesNeither => [.. lines.Where(static line => !line.Contains("-00002-"))],
+            DuplicateManifest.HashOnly => [.. lines.Select(static line => line.Split(' ')[0])],
+            _ => lines,
+        };
+        await File.WriteAllLinesAsync(checksumsPath, lines);
 
-        Assert.That(() => ctx.Resolve<IEraStoreFactory>().Create(directory, null), Throws.TypeOf<EraException>()
-            .With.Message.Contains("Epoch 2").And.Message.Contains(Path.GetFileName(file)).And.Message.Contains(duplicate));
+        // List the files in ordinal order or in reverse, so neither the first nor the last file can pass for the named one.
+        IFileSystem real = new RealFileSystem();
+        IDirectory listing = Substitute.For<IDirectory>();
+        listing.GetFiles(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EnumerationOptions>()).Returns(c =>
+        {
+            string[] files = [.. real.Directory.GetFiles(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<EnumerationOptions>(2)).Order(StringComparer.Ordinal)];
+            return reversed ? [.. files.AsEnumerable().Reverse()] : files;
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(real.File);
+        fileSystem.Directory.Returns(listing);
+        EraStore Create() => new(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), fileSystem, EraTestModule.TestNetwork, 16, null, directory);
+
+        if (manifest != DuplicateManifest.NamesOneFile)
+        {
+            Assert.That(() => Create(), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 2").And.Message.Contains(named).And.Message.Contains(stale));
+            return;
+        }
+
+        using EraStore eraStore = Create();
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong block = 0; block < 64; block += 8)
+                Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
+        }
     }
 
     [Test]
