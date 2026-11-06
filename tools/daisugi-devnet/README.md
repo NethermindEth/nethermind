@@ -26,7 +26,7 @@ From a clone of this branch, on Linux x86_64 with the tools under [Prerequisites
 3. Send a proof-bearing transaction: step 4.
 4. Stop: `GENESIS_DIR=$PWD/run/devnet-1 NETHERMIND_IMAGE=$NM LIGHTHOUSE_IMAGE=$LH DEVNET_USER=$(id -u):$(id -g) docker compose --profile replay --profile sync down && rm -rf run/devnet-1`.
 
-To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` then shows whether the chain still crosses the fork, produces the 25-field header and finalizes.
+To test your own consensus-layer changes, build your Lighthouse image and pass it as `LH`. The override clears the image entrypoint and finds `lighthouse` in `/usr/local/bin` or `/`, so it works for both the stock and the reproducible Lighthouse `Dockerfile`. `check.sh` asserts the fork versions and the fork timestamp. Check the `25 header fields` and `missed 0` lines yourself. If it still waits for finality well past the time in step 2, the chain is not finalizing.
 
 ## Pinned sources
 
