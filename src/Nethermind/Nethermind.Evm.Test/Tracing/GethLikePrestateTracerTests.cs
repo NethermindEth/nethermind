@@ -30,13 +30,30 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
-    [Test]
-    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce([Values] bool includeValues)
+    private static IEnumerable<TestCaseData> AccountPrimitiveCases()
+    {
+        yield return new TestCaseData(null, "{}").SetName("{m}: Omitted");
+        foreach (string nonce in new[]
+        {
+            "0",
+            "300",
+            "18446744073709551615",
+            "18446744073709551616",
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        })
+        {
+            yield return new TestCaseData(UInt256.Parse(nonce), "{\"balance\":\"0xff\",\"nonce\":" + nonce + "}")
+                .SetName("{m}: " + nonce);
+        }
+    }
+
+    [TestCaseSource(nameof(AccountPrimitiveCases))]
+    public void Write_WhenAccountPrimitivesArePresent_WritesHexBalanceAndDecimalNonce(UInt256? nonce, string expected)
     {
         NativePrestateTracerAccount account = new()
         {
-            Balance = includeValues ? (UInt256)255 : null,
-            Nonce = includeValues ? (UInt256)300 : null
+            Balance = nonce is not null ? (UInt256)255 : null,
+            Nonce = nonce
         };
         NumberConversion previousValue = ForcedNumberConversion.Value;
         try
@@ -47,7 +64,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(json, Is.EqualTo(includeValues ? """{"balance":"0xff","nonce":300}""" : "{}"));
+                Assert.That(json, Is.EqualTo(expected));
                 Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Raw), "serialization must restore the caller's format");
             }
         }
@@ -155,6 +172,66 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         .AddDecorator<IWorldState, RecordingStorageWorldState>()
         .Build();
 
+    [Test]
+    public void MarkAsSuccess_DiffWithUnchangedCode_DoesNotReadCodeAgain([Values] bool disableCode)
+    {
+        StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        using NativePrestateTracer tracer = CreateCodeSnapshot(state, disableCode);
+        Assert.That(reads.CodeReads, Is.EqualTo(disableCode ? 0 : 1), "precondition: the initial code was captured once");
+
+        state.AddToBalance(TestItem.AddressB, 1, Cancun.Instance);
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.CodeReads, Is.EqualTo(disableCode ? 0 : 1), "an unchanged code hash must reuse the captured code");
+            Assert.That(diff.post[TestItem.AddressB].Balance, Is.EqualTo((UInt256?)2), "other changed fields must remain in the diff");
+            Assert.That(diff.post[TestItem.AddressB].Code.IsEmpty, Is.True, "unchanged code must stay omitted");
+            Assert.That(diff.post[TestItem.AddressB].CodeHash, Is.Null, "unchanged code hashes must stay omitted");
+        }
+    }
+
+    [Test]
+    public void MarkAsSuccess_DiffWithChangedCode_ReadsAndReportsNewCode(
+        [Values] bool disableCode, [Values(CodeChange.Replace, CodeChange.Clear, CodeChange.DeleteAccount)] CodeChange change)
+    {
+        StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        using NativePrestateTracer tracer = CreateCodeSnapshot(state, disableCode);
+        byte[] postCode = change == CodeChange.Replace ? [1, 0] : [];
+
+        if (change == CodeChange.DeleteAccount) state.DeleteAccount(TestItem.AddressB);
+        else state.InsertCode(TestItem.AddressB, postCode, Cancun.Instance);
+        int readsBeforeResult = reads.CodeReads;
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.CodeReads - readsBeforeResult, Is.EqualTo(disableCode ? 0 : 1), "a changed hash needs the new code unless code is disabled");
+            Assert.That(diff.post[TestItem.AddressB].Code.ToArray(), Is.EqualTo(disableCode ? Array.Empty<byte>() : postCode));
+            Assert.That(diff.post[TestItem.AddressB].IncludeEmptyCode, Is.EqualTo(!disableCode && postCode.Length == 0));
+            Assert.That(diff.post[TestItem.AddressB].CodeHash, Is.Not.Null, "code hash changes must survive disabled code output");
+        }
+    }
+
+    private static NativePrestateTracer CreateCodeSnapshot(IWorldState state, bool disableCode)
+    {
+        state.CreateAccount(TestItem.AddressB, 1);
+        state.InsertCode(TestItem.AddressB, new byte[] { 0 }, Cancun.Instance);
+        return new NativePrestateTracer(state,
+            GetGethTraceOptions(JsonSerializer.Serialize(new { diffMode = true, disableCode })), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB);
+    }
+
     private static ILifetimeScope CreateStorageProcessingScope(IContainer container) => container.BeginLifetimeScope(builder =>
         builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
 
@@ -210,15 +287,55 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
+    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace, [Values] bool disableStorage)
     {
-        RecordingPrestateTracer tracer = new(TestState);
+        RecordingPrestateTracer tracer = new(TestState, disableStorage);
         using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
             tracer, fullTrace ? new FullInstructionTracer() : NullTxTracer.Instance));
         byte[] code = Prepare.EvmCode
             .PushData(1)
             .PushData(2)
             .Op(Instruction.ADD)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .PushData(7)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .PushData(TestItem.AddressC)
+            .Op(Instruction.BALANCE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations.Contains(Instruction.SLOAD), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations.Contains(Instruction.SSTORE), Is.EqualTo(fullTrace || !disableStorage));
+            Assert.That(tracer.Operations, Does.Contain(Instruction.BALANCE), "account reads must remain selected when storage capture is disabled");
+            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
+            Assert.That(tracer.Error, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Execute_WhenPrestateIsTraced_ReportsStackPushesOnlyWhenAnotherTracerObservesThem([Values] bool fullTrace)
+    {
+        RecordingPrestateTracer tracer = new(TestState);
+        FullInstructionTracer full = new();
+        using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
+            tracer, fullTrace ? full : NullTxTracer.Instance));
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.ADD)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.SWAP1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.EXP)
+            .PushData(UInt256.MaxValue)
+            .Op(Instruction.CALLDATALOAD)
             .PushData(0)
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
@@ -229,21 +346,23 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
-            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
-            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.Pushes > 0, Is.EqualTo(fullTrace));
+            Assert.That(full.Pushes > 0, Is.EqualTo(fullTrace));
         }
     }
 
     [Test]
-    public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
+    public void Execute_WhenOpcodeFails_ReportsTheError(
+        [Values(Instruction.ADD, Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode,
+        [Values] bool disableStorage)
     {
-        using RecordingPrestateTracer tracer = new(TestState);
+        using RecordingPrestateTracer tracer = new(TestState, disableStorage);
 
-        Execute(tracer, Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+        Execute(tracer, Prepare.EvmCode.Op(opcode).Done, MainnetSpecProvider.CancunActivation);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Operations, Does.Not.Contain(Instruction.ADD));
+            Assert.That(tracer.Operations.Contains(opcode), Is.EqualTo(opcode != Instruction.ADD && !disableStorage));
             Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
         }
     }
@@ -1448,13 +1567,23 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private sealed class FullInstructionTracer : TxTracer
     {
         public override bool IsTracingInstructions => true;
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes++;
     }
 
-    private sealed class RecordingPrestateTracer(IWorldState worldState)
-        : NativePrestateTracer(worldState, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
+    private sealed class RecordingPrestateTracer(IWorldState worldState, bool disableStorage = false)
+        : NativePrestateTracer(worldState, GetGethTraceOptions(JsonSerializer.Serialize(new { disableStorage })), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
     {
         public List<Instruction> Operations { get; } = [];
         public EvmExceptionType? Error { get; private set; }
+        public int Pushes { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            Pushes++;
+            base.ReportStackPush(stackItem);
+        }
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {
@@ -1495,10 +1624,18 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         public int Count { get; set; }
         public bool FailNextRead { get; set; }
         public bool FailNextAccountRead { get; set; }
+        public Address? CodeReadTarget { get; init; }
+        public int CodeReads { get; set; }
     }
 
     private sealed class RecordingStorageWorldState(IWorldState state, StorageReadCounter reads) : WorldStateDecorator(state)
     {
+        public override ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            if (address == reads.CodeReadTarget) reads.CodeReads++;
+            return base.GetCode(address);
+        }
+
         public override void Get(in StorageCell storageCell, out UInt256 value)
         {
             reads.Count++;
@@ -1519,5 +1656,12 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             }
             return base.TryGetAccount(address, out account);
         }
+    }
+
+    public enum CodeChange
+    {
+        Replace,
+        Clear,
+        DeleteAccount
     }
 }

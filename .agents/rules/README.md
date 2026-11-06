@@ -7,5 +7,5 @@ Prepared instructions have a 16 KiB budget, and each selected source file has a 
 After changing consumed rules, run:
 
 ```bash
-python3 -m unittest scripts/ci/test_ai_review_command.py
+dotnet run --file scripts/ci/test-ai-review-command.cs
 ```

@@ -247,7 +247,9 @@ public class LookupKNearestNeighbourTests
             },
             token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current, Is.EqualTo(Seed1));
         await requestStarted.Task.WaitAsync(token);
     }
@@ -270,8 +272,11 @@ public class LookupKNearestNeighbourTests
             },
             token).ToListAsync(token);
 
-        Assert.That(result, Is.EqualTo(new[] { Seed1 }));
-        Assert.That(requests, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { Seed1 }));
+            Assert.That(requests, Is.Zero);
+        }
     }
 
     [Test]
@@ -321,8 +326,11 @@ public class LookupKNearestNeighbourTests
 
         _ = await lookup.Lookup(Self, 8, (_, _) => throw new IOException("channel closed"), token);
 
-        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
-        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+            Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
+        }
     }
 
     [Test]

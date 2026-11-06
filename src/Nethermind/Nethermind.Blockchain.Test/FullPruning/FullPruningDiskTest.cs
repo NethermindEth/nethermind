@@ -216,8 +216,11 @@ public class FullPruningDiskTest
             byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
             Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
             currentItems.Remove(boundaryValue!);
-            Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
-            Assert.That(currentItems.Count, Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
+                Assert.That(currentItems.Count, Is.GreaterThan(0));
+            }
         }
     }
 

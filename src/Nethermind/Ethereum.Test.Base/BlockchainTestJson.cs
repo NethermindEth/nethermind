@@ -41,6 +41,7 @@ namespace Ethereum.Test.Base
         public string? Network { get; set; }
         public string? Chainid { get; set; }
         public Dictionary<string, BlobScheduleEntryJson>? BlobSchedule;
+        public Address[]? ZeroNonceStorageAccounts { get; set; }
     }
 
     public class BlobScheduleEntryJson

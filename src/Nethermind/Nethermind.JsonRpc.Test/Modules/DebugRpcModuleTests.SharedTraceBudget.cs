@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,6 +25,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -34,6 +38,285 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> BufferedDeadlineRoutes()
+    {
+        foreach (bool indexed in new[] { false, true })
+            foreach (bool filtered in new[] { false, true })
+                foreach (string expiry in new[] { "reset", "before", "after" })
+                    yield return new(indexed, filtered, expiry);
+        yield return new(true, false, "external");
+    }
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: false);
+
+    [TestCaseSource(nameof(BufferedDeadlineRoutes))]
+    public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
+        AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
+
+    [Test]
+    public Task Buffered_deadline_raw_block_resets_per_transaction_and_stops_on_expiry(
+        [Values] bool filtered, [Values("reset", "before", "after")] string expiry) =>
+        AssertBufferedDeadlineRoute(indexed: false, filtered, expiry, byHash: false, raw: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash, bool raw = false)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        DeadlineExecution clock = new();
+        ParallelDeadlineProbe probe = new();
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<IParallelBlockTracer>((_, inner) => new DeadlineParallelTracer(inner, probe))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        if (indexed) IndexThroughTheCapture(chain, index, block, parent);
+        clock.Enabled = true;
+        clock.Target = nonce + (filtered ? 2UL : 1UL);
+        clock.Prefix = filtered;
+        clock.Expiry = expiry;
+        clock.Cancel = () => probe.Cancel!();
+        GethTraceOptions options = new()
+        {
+            Tracer = "callTracer",
+            Timeout = TimeSpan.FromSeconds(1),
+            DeadlineClock = clock,
+            TxHash = filtered ? block.Transactions[2].Hash : null
+        };
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => raw
+            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes, options)
+            : byHash ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+            : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+        // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
+        budget.Wait(CancellationToken.None);
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result;
+        try
+        {
+            if (expiry == "external")
+            {
+                Assert.Catch<OperationCanceledException>(() => Trace());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(probe.Attempts, Is.EqualTo(1));
+                    Assert.That(clock.Calls, Is.InRange(2, 3), "indexed workers may acquire the execution permit out of transaction order");
+                    Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                }
+                return;
+            }
+            result = Trace();
+        }
+        finally { budget.Release(); }
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.Attempts, Is.EqualTo(raw || filtered ? 0 : 1), "only retained full-block RPCs take the production parallel route");
+            Assert.That(probe.Completed, Is.EqualTo(indexed && !filtered && expiry == "reset" ? 1 : 0), "a successful seeded trace must not silently fall back");
+            if (expiry == "reset")
+            {
+                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+                Assert.That(response.Data.Count, Is.EqualTo(filtered ? 1 : 3));
+                Assert.That(clock.Calls, Is.EqualTo(indexed && filtered ? 1 : 3), "indexed filtering executes only its target; fallback replays the prefix outside the budget");
+            }
+            else
+            {
+                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(response.Result.Error, Is.EqualTo("execution timeout"));
+                Assert.That(response.Data, Is.Null, "an expired buffered trace must not expose partial results");
+                Assert.That(clock.Calls, indexed && !filtered ? Is.InRange(2, 3) : Is.EqualTo(filtered ? indexed ? 1 : 3 : 2),
+                    "indexed workers may acquire the execution permit out of transaction order");
+            }
+            if (raw)
+                Assert.That(clock.Timers, Has.Count.EqualTo(filtered ? 1 : expiry == "reset" ? 3 : 2),
+                    "each traced transaction owns a fresh budget; expiry prevents later transactions from starting");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public Task Named_block_registered_native_errors_include_null_results(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode, [Values] bool indexed) => AssertNativeErrorResult(method, streamMode, indexed);
+
+    [Test]
+    [NonParallelizable]
+    public Task Raw_block_registered_native_errors_omit_results(
+        [Values("debug_traceBlock", "debug_traceBadBlock")] string method, [Values] bool streamMode) =>
+        AssertNativeErrorResult(method, streamMode, indexed: false);
+
+    private static async Task AssertNativeErrorResult(string method, bool streamMode, bool indexed)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        ParallelDeadlineProbe probe = new();
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<IParallelBlockTracer>((_, inner) => new DeadlineParallelTracer(inner, probe)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        if (indexed) IndexThroughTheCapture(chain, index, block, parent);
+        if (method == "debug_traceBadBlock") chain.Container.Resolve<IBadBlockStore>().Insert(block);
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            _ => block.Hash!
+        };
+        bool named = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
+        string name = $"native-error-result-{Guid.NewGuid():N}";
+        System.Reflection.FieldInfo? registrationsField = typeof(GethLikeNativeTracerFactory)
+            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.That(registrationsField, Is.Not.Null, "the native tracer registry is required to remove the test registration");
+        System.Collections.IDictionary registrations = (System.Collections.IDictionary)registrationsField!.GetValue(null)!;
+        GethLikeNativeTracerFactory.RegisterTracer(name, static (options, _, transaction, _) => new ErrorResultNativeTracer(options, transaction.Hash!));
+        try
+        {
+            string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, selector, new { tracer = name, streamMode });
+            JObject json = JObject.Parse(response);
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(entries, Has.Count.EqualTo(block.Transactions.Length), response);
+                Assert.That(probe.Attempts, Is.EqualTo(named && !streamMode ? 1 : 0));
+                Assert.That(probe.Completed, Is.EqualTo(named && !streamMode && indexed ? 1 : 0));
+                Assert.That(probe.StreamAttempts, Is.EqualTo(named && streamMode ? 1 : 0));
+                Assert.That(probe.StreamCompleted, Is.EqualTo(named && streamMode && indexed ? 1 : 0), "indexed streaming must not silently replay");
+            }
+            for (int i = 0; i < entries.Count; i++)
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entries[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                    Assert.That((string?)entries[i]["error"], Is.EqualTo("native plugin trace failure"), response);
+                    if (named) Assert.That(entries[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
+                    else Assert.That(((JObject)entries[i]).Property("result"), Is.Null, response);
+                }
+        }
+        finally
+        {
+            registrations.Remove(name);
+        }
+        Assert.That(GethLikeNativeTracerFactory.IsNativeTracer(name), Is.False);
+    }
+
+    private sealed class ErrorResultNativeTracer(GethTraceOptions options, Hash256 hash) : GethLikeNativeTxTracer(options)
+    {
+        public override GethLikeTxTrace BuildResult() => new() { TxHash = hash, TraceError = "native plugin trace failure" };
+    }
+
+    private sealed class ParallelDeadlineProbe
+    {
+        internal int Attempts;
+        internal int Completed;
+        internal int StreamAttempts;
+        internal int StreamCompleted;
+        internal Action? Cancel;
+    }
+
+    private sealed class DeadlineParallelTracer(IParallelBlockTracer inner, ParallelDeadlineProbe probe) : IParallelBlockTracer
+    {
+        public bool TryTrace<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, CancellationToken token, [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces)
+        {
+            probe.Attempts++;
+            using CancellationTokenSource external = CancellationTokenSource.CreateLinkedTokenSource(token);
+            probe.Cancel = external.Cancel;
+            bool completed = inner.TryTrace(block, parent, forTransaction, afterTransactions, external.Token, out traces);
+            if (completed) probe.Completed++;
+            return completed;
+        }
+        public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token)
+        {
+            probe.StreamAttempts++;
+            bool completed = inner.TryStream(block, parent, forTransaction, afterTransactions, stream, token);
+            if (completed) probe.StreamCompleted++;
+            return completed;
+        }
+    }
+
+    private sealed class DeadlineAdapter(ITransactionProcessorAdapter inner, DeadlineExecution clock) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer)
+        {
+            if (!clock.Enabled) return inner.Execute(transaction, tracer);
+            clock.Calls++;
+            if (clock.Expiry != "after") clock.Advance(transaction.Nonce);
+            TransactionResult result = inner.Execute(transaction, tracer);
+            if (clock.Expiry == "after") clock.Advance(transaction.Nonce);
+            return result;
+        }
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private static Transaction[] CreateDeadlineTransactions(ulong nonce)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return transactions;
+    }
+
+    private sealed class DeadlineExecution : TimeProvider
+    {
+        private long _timestamp;
+        internal bool Enabled;
+        internal bool FailTimerChange;
+        internal bool DeliverOnlyAtTarget;
+        internal bool Prefix;
+        internal ulong Target;
+        internal string Expiry = "reset";
+        internal Action? Cancel;
+        internal int Calls;
+        internal List<ExecutionTimer> Timers { get; } = [];
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _timestamp;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            ExecutionTimer timer = new(callback, state, FailTimerChange);
+            Timers.Add(timer);
+            return timer;
+        }
+        internal void Advance(ulong nonce)
+        {
+            if (Expiry == "external" && nonce == Target) Cancel!();
+            _timestamp += TimeSpan.FromMilliseconds(Prefix && nonce < Target ? 10_000 : Expiry is "before" or "after" && nonce == Target ? 1_200 : 600).Ticks;
+            if (!DeliverOnlyAtTarget || nonce == Target)
+                foreach (ExecutionTimer timer in Timers) timer.Fire();
+        }
+    }
+
+    private sealed class ExecutionTimer(TimerCallback callback, object? state, bool failChange = false) : ITimer
+    {
+        internal bool Disposed { get; private set; }
+        public bool Change(TimeSpan dueTime, TimeSpan period) => failChange
+            ? throw new InvalidOperationException("timer change failure") : !Disposed;
+        internal void Fire() { if (!Disposed) callback(state); }
+        public void Dispose() => Disposed = true;
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+    }
+
     [Test]
     public async Task Debug_traceCall_log_indices_include_prefix_transactions([Values] bool revertFirst)
     {
@@ -87,6 +370,52 @@ public partial class DebugRpcModuleTests
                 for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
                     Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
             }
+        }
+    }
+
+    [Test]
+    public async Task ByNumber_filtered_javascript_skip_preserves_mux_prefix_log_indices_and_alignment(
+        [Values] bool revertFirst, [Values("blockOverrides", "stateOverrides")] string replay)
+    {
+        DeadlineExecution clock = new();
+        Hash256? selectedHash = null;
+        const string script = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex};}}";
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            selectedHash = block.Transactions[2].Hash!;
+            Dictionary<string, object> options = new()
+            {
+                ["tracer"] = "muxTracer",
+                ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+                ["txHash"] = selectedHash,
+                ["timeout"] = "0s",
+                ["streamMode"] = false,
+                [replay] = new { }
+            };
+            return RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+                "debug_traceBlockByNumber", block.Number, options);
+        });
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            Assert.That(entries, Has.Count.EqualTo(1), response);
+            Assert.That(entries[0]["result"], Is.TypeOf<JObject>(), response);
+            JObject children = (JObject)entries[0]["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)entries[0]["txHash"], Is.EqualTo(selectedHash!.ToString()), response);
+                Assert.That(children, Has.Count.EqualTo(2), response);
+                Assert.That((int?)children[script]?["txIndex"], Is.EqualTo(2), response);
+                Assert.That((string?)children["callTracer"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, Has.Count.EqualTo(2), "each replay has exactly one selected transaction owner");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
 
@@ -146,7 +475,7 @@ public partial class DebugRpcModuleTests
             new { timeout = "bad", streamMode = true });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 2\"},\"id\":67}"));
             Assert.That(counter.Calls, Is.Zero);
         }
     }

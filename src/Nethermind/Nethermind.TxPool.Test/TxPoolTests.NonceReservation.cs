@@ -37,9 +37,12 @@ public partial class TxPoolTests
         NonceManager nonces = CreateReservingPool();
         Transaction reserved = SubmitReserved(nonces, TestItem.PrivateKeyA, 1, TxHandlingOptions.None);
 
-        Assert.That(_txPool.EvictTransaction(reserved), Is.True, "precondition: the transaction is evicted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_txPool.EvictTransaction(reserved), Is.True, "precondition: the transaction is evicted");
 
-        Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));
+            Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -50,7 +53,9 @@ public partial class TxPoolTests
 
         Transaction better = GetTransaction(0, GasCostOf.Transaction, 10, TestItem.AddressF, [], TestItem.PrivateKeyB);
         EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(better, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: the capacity eviction took the reserved transaction");
 
         Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));
@@ -65,9 +70,12 @@ public partial class TxPoolTests
         EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
         await AddEmptyBlock();
         AssertRevalidatedForHead();
-        Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: the head update dropped the unfunded transaction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: the head update dropped the unfunded transaction");
 
-        Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));
+            Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -77,9 +85,12 @@ public partial class TxPoolTests
         Transaction reserved = SubmitReserved(nonces, TestItem.PrivateKeyA, 1, TxHandlingOptions.PersistentBroadcast);
 
         await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithTransactions(reserved).TestObject);
-        Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: inclusion removed the transaction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: inclusion removed the transaction");
 
-        Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL), "the account nonce is left unchanged so only the removal can free it");
+            Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL), "the account nonce is left unchanged so only the removal can free it");
+        }
     }
 
     [Test]
@@ -89,7 +100,9 @@ public partial class TxPoolTests
         Transaction reserved = SubmitReserved(nonces, TestItem.PrivateKeyA, 1, TxHandlingOptions.None);
 
         Transaction replacement = GetTransaction(reserved.Nonce, GasCostOf.Transaction, 100, TestItem.AddressF, [], TestItem.PrivateKeyA);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(replacement, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(1UL));
 
         _txPool.RemoveTransaction(replacement.Hash);
@@ -130,12 +143,16 @@ public partial class TxPoolTests
 
         Transaction better = GetTransaction(0, GasCostOf.Transaction, 10, TestItem.AddressF, [], TestItem.PrivateKeyB);
         EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(better, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(1UL), "precondition: only the broadcaster still holds the nonce");
 
         Transaction betterLocal = GetTransaction(0, GasCostOf.Transaction, 20, TestItem.AddressF, [], TestItem.PrivateKeyC);
         EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(betterLocal, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(_txPool.ContainsTx(reserved.Hash!, reserved.Type), Is.False, "precondition: the broadcaster's capacity eviction took the reserved transaction");
 
         Assert.That(Reserve(nonces, TestItem.AddressA), Is.EqualTo(0UL));

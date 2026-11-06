@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
@@ -54,9 +55,12 @@ public class ValueHash256KademliaDistanceTests
     public void TestDistance(string hash1, string hash2, string xosString, int expectedDistance)
     {
         ValueHash256 xor = XorDistance(new(hash1), new(hash2));
-        Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
-        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)), Is.EqualTo(expectedDistance));
-        Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)), Is.EqualTo(expectedDistance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(xor.ToString(), Is.EqualTo(xosString.ToLower()));
+            Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash1), new ValueHash256(hash2)), Is.EqualTo(expectedDistance));
+            Assert.That(Distance.CalculateLogDistance(new ValueHash256(hash2), new ValueHash256(hash1)), Is.EqualTo(expectedDistance));
+        }
     }
 
     [Test]
@@ -111,6 +115,22 @@ public class ValueHash256KademliaDistanceTests
         }
     }
 
+    [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "0x00000000000000ff000000000000000000000000000000000000000000000000")]
+    [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000ff00000000000000000000000000000000000000000000ff")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000002", "0x0000000000000000000000000000000000000000000000000000000000000001")]
+    public void Compare_uses_big_endian_order_across_all_words(string fartherDistance, string closerDistance)
+    {
+        ValueHash256 target = new("0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a");
+        ValueHash256 farther = XorDistance(new ValueHash256(fartherDistance), target);
+        ValueHash256 closer = XorDistance(new ValueHash256(closerDistance), target);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Distance.Compare(farther, closer, target), Is.GreaterThan(0));
+            Assert.That(Distance.Compare(closer, farther, target), Is.LessThan(0));
+        }
+    }
+
     [Test]
     public void ValueHash_bit_operations_cover_the_full_key_space()
     {
@@ -131,6 +151,93 @@ public class ValueHash256KademliaDistanceTests
                 Assert.That(Distance.CalculateLogDistance(default, actual), Is.EqualTo(Distance.MaxDistance - index));
             }
         }
+    }
+
+    [Test]
+    public void Distance_operations_match_byte_wise_reference_on_random_and_edge_inputs()
+    {
+        Random random = new(1);
+        List<ValueHash256> hashes = [default, new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")];
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
+        for (int index = 0; index < ValueHash256.MemorySize * 8; index++)
+        {
+            bytes.Clear();
+            bytes[index / 8] = (byte)(1 << (7 - (index % 8)));
+            hashes.Add(new ValueHash256(bytes));
+            bytes.Fill(0xff);
+            bytes[index / 8] = (byte)~(1 << (7 - (index % 8)));
+            hashes.Add(new ValueHash256(bytes));
+        }
+
+        for (int i = 0; i < 64; i++)
+        {
+            random.NextBytes(bytes);
+            hashes.Add(new ValueHash256(bytes));
+        }
+
+        for (int i = 0; i < 256; i++)
+        {
+            ValueHash256 baseHash = hashes[random.Next(hashes.Count)];
+            hashes.Add(ValueHash256TestHelper.CreateRandomHashAtDistance(baseHash, random.Next(Distance.MaxDistance + 1), random));
+        }
+
+        for (int i = 0; i < hashes.Count; i++)
+        {
+            for (int j = 0; j < hashes.Count; j++)
+            {
+                int expected = ReferenceLogDistance(hashes[i], hashes[j]);
+                if (Distance.CalculateLogDistance(hashes[i], hashes[j]) != expected)
+                {
+                    Assert.Fail($"Log distance mismatch for {hashes[i]} and {hashes[j]}, expected {expected}");
+                }
+            }
+        }
+
+        for (int i = 0; i < 20000; i++)
+        {
+            ValueHash256 left = hashes[random.Next(hashes.Count)];
+            ValueHash256 right = hashes[random.Next(hashes.Count)];
+            ValueHash256 target = hashes[random.Next(hashes.Count)];
+            int expected = ReferenceCompareSign(left, right, target);
+            if (Math.Sign(Distance.Compare(left, right, target)) != expected)
+            {
+                Assert.Fail($"Compare mismatch for {left}, {right} and target {target}, expected sign {expected}");
+            }
+        }
+    }
+
+    private static int ReferenceLogDistance(ValueHash256 left, ValueHash256 right)
+    {
+        ValueHash256 distance = XorDistance(left, right);
+        ReadOnlySpan<byte> xor = distance.Bytes;
+        int zeros = 0;
+        for (int i = 0; i < xor.Length; i++)
+        {
+            byte value = xor[i];
+            if (value == 0)
+            {
+                zeros += 8;
+                continue;
+            }
+
+            int bitLength = 1;
+            while ((value >>= 1) != 0)
+            {
+                bitLength++;
+            }
+
+            zeros += 8 - bitLength;
+            break;
+        }
+
+        return ValueHash256.MemorySize * 8 - zeros;
+    }
+
+    private static int ReferenceCompareSign(ValueHash256 left, ValueHash256 right, ValueHash256 target)
+    {
+        ValueHash256 leftDistance = XorDistance(left, target);
+        ValueHash256 rightDistance = XorDistance(right, target);
+        return Math.Sign(leftDistance.Bytes.SequenceCompareTo(rightDistance.Bytes));
     }
 
     private static ValueHash256 XorDistance(ValueHash256 left, ValueHash256 right)

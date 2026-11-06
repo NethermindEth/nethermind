@@ -21,6 +21,9 @@ namespace Nethermind.Facade.Filters
         public BlockParameter ToBlock { get; } = toBlock;
         public bool UseIndex { get; set; } = true;
 
+        /// <summary>Whether the filter selects the single block of a <c>blockHash</c>, rather than a range.</summary>
+        public bool IsBlockHashFilter => FromBlock.Type == BlockParameterType.BlockHash && FromBlock.Equals(ToBlock);
+
         public bool AcceptsAnyBlock =>
             AddressFilter.Addresses.Count == 0 &&
             TopicsFilter.AcceptsAnyBlock;

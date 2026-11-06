@@ -66,8 +66,11 @@ public class TxPoolRpcModuleTests
         JsonElement rpcTxA = result.GetProperty("pending").GetProperty(TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)).GetProperty("1");
         JsonElement rpcTxB = result.GetProperty("queued").GetProperty(TestItem.AddressB.ToString(withZeroX: true, withEip55Checksum: true)).GetProperty("2");
 
-        Assert.That(rpcTxA.TryGetProperty("chainId", out _), Is.False, "legacy txs without chainId must not have one injected");
-        Assert.That(rpcTxB.GetProperty("chainId").GetString(), Is.EqualTo($"0x{SomeChainId:x}"), "EIP-2930 txs without chainId should inherit it from the spec provider");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcTxA.TryGetProperty("chainId", out _), Is.False, "legacy txs without chainId must not have one injected");
+            Assert.That(rpcTxB.GetProperty("chainId").GetString(), Is.EqualTo($"0x{SomeChainId:x}"), "EIP-2930 txs without chainId should inherit it from the spec provider");
+        }
     }
 
     [Test]
@@ -81,8 +84,11 @@ public class TxPoolRpcModuleTests
 
         TxPoolStatus status = txPoolRpcModule.txpool_status().Data;
 
-        Assert.That(status.Pending, Is.EqualTo(2ul), "the count provider reported 2 pending");
-        Assert.That(status.Queued, Is.EqualTo(1ul), "the count provider reported 1 queued");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.Pending, Is.EqualTo(2ul), "the count provider reported 2 pending");
+            Assert.That(status.Queued, Is.EqualTo(1ul), "the count provider reported 1 queued");
+        }
     }
 
     [Test]
@@ -105,9 +111,12 @@ public class TxPoolRpcModuleTests
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
         Assert.That(result.Pending, Has.Count.EqualTo(2), "AddressA has exactly 2 pending transactions");
-        Assert.That(result.Pending.ContainsKey(new TxPoolTxKey(1)), Is.True, "nonce 1 belongs to AddressA");
-        Assert.That(result.Pending.ContainsKey(new TxPoolTxKey(2)), Is.True, "nonce 2 belongs to AddressA");
-        Assert.That(result.Queued, Is.Empty, "no queued transactions were set up for AddressA");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pending.ContainsKey(new TxPoolTxKey(1)), Is.True, "nonce 1 belongs to AddressA");
+            Assert.That(result.Pending.ContainsKey(new TxPoolTxKey(2)), Is.True, "nonce 2 belongs to AddressA");
+            Assert.That(result.Queued, Is.Empty, "no queued transactions were set up for AddressA");
+        }
     }
 
     [Test]
@@ -123,8 +132,11 @@ public class TxPoolRpcModuleTests
 
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
-        Assert.That(result.Pending, Is.Empty, "the pool has no transactions for any address");
-        Assert.That(result.Queued, Is.Empty, "the pool has no transactions for any address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pending, Is.Empty, "the pool has no transactions for any address");
+            Assert.That(result.Queued, Is.Empty, "the pool has no transactions for any address");
+        }
     }
 
     [Test]

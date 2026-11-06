@@ -34,9 +34,9 @@ public static class FrameTxValidation
     /// fixed constant.</summary>
     /// <remarks>The cap is the fixed <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, applied unconditionally
     /// as EIP-8141 § Constraints specifies. The check sits in the release-spec-aware validator only because
-    /// <see cref="TryCalculateBlockGasReservations"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
+    /// <see cref="TryCalculateExecutionReservation"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
     /// so just its wording is kept here alongside the other messages.</remarks>
-    public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
+    public static string FrameExecutionGasExceedsCap(UInt128 executionReservation, ulong gasLimitCap) =>
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
@@ -44,7 +44,6 @@ public static class FrameTxValidation
     public const string ArbitrarySignatureWithSigner = "ARBITRARY signatures must not name a signer";
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
-    public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
@@ -240,15 +239,6 @@ public static class FrameTxValidation
             }
         }
 
-        // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
-        // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
-        bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
-        if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
-        {
-            error = BlobFeeWithoutBlobs;
-            return false;
-        }
-
         // The EIP-7594 blob-count limit and versioned-hash version byte need the release spec, so they
         // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
         return true;
@@ -282,6 +272,13 @@ public static class FrameTxValidation
 
         return total;
     }
+
+    /// <summary>The highest uniform per-gas price <c>max_fee</c> covers over <paramref name="gasLimit"/>.</summary>
+    /// <remarks>Policy only, for the mempool and block-building code that ranks by a per-gas cap: execution checks
+    /// the budget itself. Over <see cref="Transaction.GasLimit"/>, which omits the intrinsic cost, it overstates
+    /// the cap execution enforces, so a transaction it admits can still fail the budget check at inclusion.</remarks>
+    public static UInt256 ImpliedMaxFeePerGas(in UInt256 maxFee, ulong gasLimit) =>
+        gasLimit == 0 ? maxFee : maxFee / gasLimit;
 
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
@@ -609,13 +606,21 @@ public static class FrameTxValidation
     /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
     /// caller from the unmeasured reading. The EIP-8250 nonce keys are covered by the same statistics: their measured
     /// calldata is never empty, so a transaction that gains keys never matches a memo taken without them.
+    /// EIP-8141 bounds only the sum of the frame gas limits by <c>2^64 - 1</c>, and the intrinsic gas added to it can
+    /// carry the budget past that. Such a budget saturates rather than failing, so the transaction is judged as the
+    /// specification judges it: its execution gas by the EIP-7825 cap, its state gas by the block's gas limit.
+    /// From a saturated budget, <c>required_max_fee</c>, the tip bound of <c>max_cost</c> and <c>GASPRICE</c> are taken
+    /// over <c>max_gas = 2^64 - 1</c>, so <c>required_max_fee</c> can fall below the unbounded value. No valid block
+    /// holds such a transaction; only a simulation skipping both checks sees it, e.g. <c>eth_call</c> with no RPC gas cap.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
-    /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
-    /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>
+    /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit, saturating at
+    /// <see cref="ulong.MaxValue"/>.</param>
+    /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or its frame gas limits sum past
+    /// <see cref="ulong.MaxValue"/>.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
@@ -644,33 +649,35 @@ public static class FrameTxValidation
         ulong MaxGas) : IIntrinsicGasMemo;
 
     /// <summary>
-    /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
-    /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
+    /// The most <paramref name="transaction"/> can cost its payer at any base fees: its <c>max_fee</c>, which bounds
+    /// the <c>max_cost</c> execution collects at the including block's base fees.
     /// </summary>
-    /// <remarks>
-    /// The upper-bound form: the gas leg is exactly what execution escrows, while the blob leg is priced at
-    /// <c>max_fee_per_blob_gas</c> where execution escrows at the actual blob base fee. Callers that must not
-    /// under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.
-    /// </remarks>
-    /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
+    /// <remarks>Callers that must not under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.</remarks>
+    /// <returns><c>false</c> when the transaction cannot be priced; <paramref name="maxCost"/> is then 0.</returns>
     public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
     {
-        maxCost = UInt256.Zero;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
-            || UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
+        bool priced = TryCalculateGasBudget(transaction, spec, out _, out _, out _);
+        maxCost = priced ? transaction.MaxFee : UInt256.Zero;
+        return priced;
+    }
+
+    /// <summary>Whether <c>max_fee</c> covers <c>required_max_fee</c> at the given base fees.</summary>
+    /// <remarks>The inclusion check execution makes, for block building to skip a transaction that would fail it.
+    /// A pooled blob record carries no frames, so there the frame gas sum, a lower bound on <c>max_gas</c>, stands in.</remarks>
+    public static bool CoversRequiredMaxFee(Transaction transaction, IReleaseSpec spec, in UInt256 baseFee, in UInt256 feePerBlobGas)
+    {
+        if (!transaction.SupportsFrames)
         {
-            return false;
+            return true;
         }
 
-        ulong blobGas = transaction.GetBlobGas();
-        if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
-            || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
-        {
-            maxCost = UInt256.Zero;
-            return false;
-        }
-
-        return true;
+        ulong maxGas = transaction.Frames is not null && TryCalculateGasBudget(transaction, spec, out _, out _, out ulong gasBudget)
+            ? gasBudget
+            : transaction.GasLimit;
+        UInt256 maxFee = transaction.MaxFee;
+        return !UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
+            && FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out _)
+            && maxFee >= requiredMaxFee;
     }
 
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
@@ -719,7 +726,9 @@ public static class FrameTxValidation
             {
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
+                tokens += signature.SignsCanonicalHash
+                    ? (ulong)signature.Signature.Length * spec.GasCosts.TxDataNonZeroMultiplier
+                    : CountCalldataTokens(signature.Signature.Span, spec);
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
@@ -744,10 +753,7 @@ public static class FrameTxValidation
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
             tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
             dataLength += (ulong)(zeroBytes + nonZeroBytes);
-            if (nonceKeys is not [{ IsZero: true }])
-            {
-                keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
-            }
+            keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
         }
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
@@ -759,17 +765,8 @@ public static class FrameTxValidation
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
 
-        ulong standardGas = intrinsicGas + totalFrameGas;
-        if (standardGas < intrinsicGas)
-        {
-            return false;
-        }
-
-        ulong floorReservation = floorGas + totalStateGas;
-        if (floorReservation < floorGas)
-        {
-            return false;
-        }
+        ulong standardGas = intrinsicGas.SaturatingAdd(totalFrameGas);
+        ulong floorReservation = floorGas.SaturatingAdd(totalStateGas);
 
         maxGas = Math.Max(standardGas, floorReservation);
         return true;
@@ -801,6 +798,26 @@ public static class FrameTxValidation
         out ulong stateReservation,
         bool estimateSignatureBytes)
     {
+        bool priced = CalculateBlockGasReservations(transaction, spec, out UInt128 execution, out stateReservation, estimateSignatureBytes);
+        executionReservation = (ulong)UInt128.Min(execution, ulong.MaxValue);
+        return priced;
+    }
+
+    /// <summary>The execution reservation of <see cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// without its saturation at <see cref="ulong.MaxValue"/>: the intrinsic gas plus the frames' execution gas can pass it.</summary>
+    /// <remarks>For the EIP-7825 cap check, whose error reports the amount.</remarks>
+    /// <returns><c>false</c>, with 0, where <see cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// returns <c>false</c>.</returns>
+    public static bool TryCalculateExecutionReservation(Transaction transaction, IReleaseSpec spec, out UInt128 executionReservation) =>
+        CalculateBlockGasReservations(transaction, spec, out executionReservation, out _, estimateSignatureBytes: false);
+
+    private static bool CalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out UInt128 executionReservation,
+        out ulong stateReservation,
+        bool estimateSignatureBytes)
+    {
         executionReservation = 0;
         stateReservation = 0;
         if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
@@ -822,13 +839,7 @@ public static class FrameTxValidation
             stateReservation = nextState;
         }
 
-        ulong standardExecution = intrinsicGas + frameExecution;
-        if (standardExecution < intrinsicGas)
-        {
-            return false;
-        }
-
-        executionReservation = Math.Max(standardExecution, floorGas);
+        executionReservation = UInt128.Max((UInt128)intrinsicGas + frameExecution, floorGas);
         return true;
     }
 

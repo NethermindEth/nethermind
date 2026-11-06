@@ -299,7 +299,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
                 state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGasUnits(in state.Gas), (int)pc, in stack,
-                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
+                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.TraceStackInputs ?? TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
             if (carriesExecutionGas && TOpcode.HasUntracedFastPath)

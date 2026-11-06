@@ -48,8 +48,11 @@ namespace Nethermind.Blockchain.Test.Consensus
             SinglePendingTxSelector selector = new(txSource);
             Transaction[] result = selector.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ToArray();
             Assert.That(result.Length, Is.EqualTo(1));
-            Assert.That(result[0].Timestamp, Is.EqualTo((UInt256)8));
-            Assert.That(result[0].Nonce, Is.EqualTo(1ul));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[0].Timestamp, Is.EqualTo((UInt256)8));
+                Assert.That(result[0].Nonce, Is.EqualTo(1ul));
+            }
         }
     }
 }

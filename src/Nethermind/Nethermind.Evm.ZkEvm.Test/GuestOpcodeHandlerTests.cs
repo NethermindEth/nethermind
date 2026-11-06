@@ -266,6 +266,15 @@ public class GuestOpcodeHandlerTests
             (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
             [0, .. WordA, .. new byte[32], 0, .. WordA[..31], .. new byte[31]]);
 
+        yield return Succeeds("MSTORE and MLOAD at half-word offsets",
+            Code([
+                PUSH32, .. WordA, PUSH1, 4, MSTORE,
+                PUSH1, 4, MLOAD,
+                PUSH1, 0x44, MSTORE,
+                STOP]),
+            (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
+            [.. new byte[4], .. WordA, .. new byte[32], .. WordA, .. new byte[28]]);
+
         yield return Succeeds("MLOAD past the active memory",
             Code(PUSH1, 0x40, MLOAD, PUSH1, 0, MSTORE, STOP),
             (3 + 3 + 9) + (3 + 3),
@@ -381,7 +390,7 @@ public class GuestOpcodeHandlerTests
         // which read as zero-padded.
         byte[] input = Enumerable.Range(1, 40).Select(static b => (byte)b).ToArray();
         byte[] padded = [.. input, .. new byte[256]];
-        foreach (int offset in (int[])[0, 8, 9, 39, 40, 200])
+        foreach (int offset in (int[])[0, 4, 8, 9, 39, 40, 200])
         {
             yield return Succeeds($"CALLDATALOAD at {offset}", Code(PUSH1, (byte)offset, CALLDATALOAD, PUSH1, 0, MSTORE, STOP),
                 3 + 3 + (3 + 3 + 3), padded[offset..(offset + 32)], input);
@@ -450,6 +459,10 @@ public class GuestOpcodeHandlerTests
 
         yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
             Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
+
+        yield return Succeeds("ADDMOD dispatches to PUSH2",
+            Code(PUSH1, 97, PUSH1, 16, PUSH1, 24, ADDMOD, PUSH2, 0, 0, MSTORE, STOP),
+            3 + 3 + 3 + 8 + (3 + 3 + 3), Word(40));
 
         // A zero modulus, one, and ones the operands reach or pass.
         BigInteger[] moduli = [0, 1, 97, ulong.MaxValue, new BigInteger(WordB, isUnsigned: true, isBigEndian: true)];

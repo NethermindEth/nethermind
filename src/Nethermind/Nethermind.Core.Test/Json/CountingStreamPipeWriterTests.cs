@@ -74,11 +74,17 @@ public class CountingStreamPipeWriterTests
 
         writer.Complete();
 
-        Assert.That(stream.Length, Is.EqualTo(first + second));
-        Assert.That(writer.WrittenCount, Is.EqualTo(first + second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.EqualTo(first + second));
+            Assert.That(writer.WrittenCount, Is.EqualTo(first + second));
+        }
         byte[] written = stream.ToArray();
-        Assert.That(written.AsSpan(0, first).ToArray(), Is.All.EqualTo((byte)0xAB));
-        Assert.That(written.AsSpan(first, second).ToArray(), Is.All.EqualTo((byte)0xCD));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written.AsSpan(0, first).ToArray(), Is.All.EqualTo((byte)0xAB));
+            Assert.That(written.AsSpan(first, second).ToArray(), Is.All.EqualTo((byte)0xCD));
+        }
     }
 
     [Test]

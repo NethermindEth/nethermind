@@ -40,10 +40,13 @@ public class BlockDiffsStoreTests
 
         BlockDiffRecord? read = _store.ReadBlockDiff(100);
         Assert.That(read, Is.Not.Null);
-        Assert.That(read!.BlockNumber, Is.EqualTo(record.BlockNumber));
-        Assert.That(read.StateRoot, Is.EqualTo(record.StateRoot));
-        Assert.That(read.CodeHashChanges, Is.EqualTo(record.CodeHashChanges));
-        Assert.That(read.SlotCountChanges, Is.EqualTo(record.SlotCountChanges));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read!.BlockNumber, Is.EqualTo(record.BlockNumber));
+            Assert.That(read.StateRoot, Is.EqualTo(record.StateRoot));
+            Assert.That(read.CodeHashChanges, Is.EqualTo(record.CodeHashChanges));
+            Assert.That(read.SlotCountChanges, Is.EqualTo(record.SlotCountChanges));
+        }
     }
 
     [Test]
@@ -61,8 +64,11 @@ public class BlockDiffsStoreTests
 
         _store.WriteBlockDiff(record);
 
-        Assert.That(_store.GetSlotCount(TestItem.KeccakB.ValueHash256), Is.EqualTo(5UL));
-        Assert.That(_store.GetSlotCount(TestItem.KeccakC.ValueHash256), Is.EqualTo(12UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.GetSlotCount(TestItem.KeccakB.ValueHash256), Is.EqualTo(5UL));
+            Assert.That(_store.GetSlotCount(TestItem.KeccakC.ValueHash256), Is.EqualTo(12UL));
+        }
     }
 
     [Test]
@@ -97,11 +103,14 @@ public class BlockDiffsStoreTests
 
         int removed = _store.PruneOlderThan(cutoffBlock: 3);
 
-        Assert.That(removed, Is.EqualTo(2));
-        Assert.That(_store.ReadBlockDiff(1), Is.Null);
-        Assert.That(_store.ReadBlockDiff(2), Is.Null);
-        Assert.That(_store.ReadBlockDiff(3), Is.Not.Null);
-        Assert.That(_store.ReadBlockDiff(5), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(2));
+            Assert.That(_store.ReadBlockDiff(1), Is.Null);
+            Assert.That(_store.ReadBlockDiff(2), Is.Null);
+            Assert.That(_store.ReadBlockDiff(3), Is.Not.Null);
+            Assert.That(_store.ReadBlockDiff(5), Is.Not.Null);
+        }
     }
 
     [Test]

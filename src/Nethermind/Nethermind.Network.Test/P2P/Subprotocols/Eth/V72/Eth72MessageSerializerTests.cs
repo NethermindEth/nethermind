@@ -44,8 +44,11 @@ public class Eth72MessageSerializerTests
             0b1000_0000,
         ];
 
-        Assert.That(mask.ToBytes(), Is.EqualTo(expected));
-        Assert.That(BlobCellMask.FromBytes(expected), Is.EqualTo(mask));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mask.ToBytes(), Is.EqualTo(expected));
+            Assert.That(BlobCellMask.FromBytes(expected), Is.EqualTo(mask));
+        }
     }
 
     [Test]
@@ -59,9 +62,12 @@ public class Eth72MessageSerializerTests
         serializer.Serialize(buffer, message);
         using GetCellsMessage72 actual = serializer.Deserialize(buffer);
 
-        Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
-        Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
+            Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+        }
     }
 
     [Test]
@@ -104,21 +110,23 @@ public class Eth72MessageSerializerTests
         serializer.Serialize(buffer, message);
         using CellsMessage72 actual = serializer.Deserialize(buffer);
 
-        Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
-        Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
-        Assert.That(actual.CellMask, Is.EqualTo(cellMask));
-        Assert.That(actual.Cells[0][0], Is.EqualTo(cells[0][0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.RequestId, Is.EqualTo(message.RequestId));
+            Assert.That(actual.Hashes, Is.EqualTo(message.Hashes));
+            Assert.That(actual.CellMask, Is.EqualTo(cellMask));
+            Assert.That(actual.Cells[0][0], Is.EqualTo(cells[0][0]));
+        }
     }
 
     [Test]
-    public void CellsMessageSerializer_should_match_canonical_flat_index_major_rlp_vector()
+    public void CellsMessageSerializer_should_match_canonical_flat_blob_major_rlp_vector()
     {
         CellsMessageSerializer72 serializer = new();
         byte[] hashBytes = Convert.FromHexString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
         byte[] cellMask = Convert.FromHexString("0a000000000000000000000000000000");
         byte[][] blobMajorCells = [CreateCell(0x11), CreateCell(0x13), CreateCell(0x21), CreateCell(0x23)];
-        byte[][] wireCells = [blobMajorCells[0], blobMajorCells[2], blobMajorCells[1], blobMajorCells[3]];
-        byte[] expected = BuildCanonicalCellsVector(hashBytes, cellMask, wireCells);
+        byte[] expected = BuildCanonicalCellsVector(hashBytes, cellMask, blobMajorCells);
         using CellsMessage72 message = new(1, [new ValueHash256(hashBytes)], [blobMajorCells], cellMask);
 
         using DisposableByteBuffer serialized = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
@@ -136,7 +144,7 @@ public class Eth72MessageSerializerTests
             Assert.That(deserialized.RequestId, Is.EqualTo(1));
             Assert.That(deserialized.Hashes, Is.EqualTo(message.Hashes));
             Assert.That(deserialized.CellMask, Is.EqualTo(cellMask));
-            Assert.That(deserialized.Cells, Is.EqualTo(message.Cells), "internal blob-major layout");
+            Assert.That(deserialized.Cells, Is.EqualTo(message.Cells), "blob-major layout");
         }
     }
 
@@ -505,6 +513,22 @@ public class Eth72MessageSerializerTests
         hashesPool.Received(1).Return(hashesArray, Arg.Any<bool>());
     }
 
+    [Test]
+    public void Announcement_with_trailing_bytes_returns_its_rented_arrays()
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 source = new([1], [1], [Hash256.Zero], BlobCellMask.Empty.ToBytes());
+        byte[] bytes = serializer.SerializeToArray(source);
+        NewPooledTransactionHashesMessage72 first = serializer.Deserialize(bytes);
+        ValueHash256[] hashes = ((ArrayPoolList<ValueHash256>)first.Hashes).UnsafeGetInternalArray();
+        first.Dispose();
+
+        // ArrayPool<T>.Shared hands the array returned last on this thread to the next rental of its size.
+        Assert.That(() => serializer.Deserialize([.. bytes, 0]), Throws.InstanceOf<RlpException>());
+        using NewPooledTransactionHashesMessage72 next = serializer.Deserialize(bytes);
+        Assert.That(((ArrayPoolList<ValueHash256>)next.Hashes).UnsafeGetInternalArray(), Is.SameAs(hashes));
+    }
+
     [Test, NonParallelizable]
     public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
     {
@@ -512,7 +536,7 @@ public class Eth72MessageSerializerTests
         long allocated = MeasureAnnouncementAllocations(count);
 
         TestContext.Out.WriteLine($"Allocated bytes per {count}-hash announcement: {allocated}; one-hash baseline: {baseline}");
-        // DEBUG list wrappers capture stack traces; compare growth through the same decoder path.
+        // Subtract the one-hash baseline so fixed per-message cost does not count as per-hash cost.
         Assert.That(allocated - baseline, Is.LessThan((count - 1) * 16), "Decoding and consuming hashes must not allocate an object per hash.");
     }
 
@@ -552,6 +576,11 @@ public class Eth72MessageSerializerTests
         {
             buffer.SetReaderIndex(0);
             using NewPooledTransactionHashesMessage72 message = serializer.Deserialize(buffer);
+            if (buffer.ReadableBytes != 0 || message.Types.Count != count || message.Sizes.Count != count || message.Hashes.Count != count)
+            {
+                throw new InvalidOperationException("Announcement shape changed during decoding.");
+            }
+
             for (int i = 0; i < count; i++)
             {
                 if (message.Hashes[i] != hashes[i]) throw new InvalidOperationException("Hash changed during decoding.");

@@ -24,6 +24,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     public UInt256 InstructionMask { get; }
 
+    /// <inheritdoc/>
+    /// <remarks>The prestate reads operands from the stack snapshot of the instructions in <see cref="InstructionMask"/>.</remarks>
+    public override bool IsTracingStackPushes => false;
+
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
     private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 
@@ -86,8 +90,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
-        InstructionMask = instructionMask;
-
         NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
         _includeEmpty = config.IncludeEmpty;
@@ -95,6 +97,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             throw new ArgumentException("cannot use diffMode with includeEmpty");
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
+        if (_disableStorage)
+            instructionMask &= ~((UInt256.One << (int)Instruction.SLOAD) | (UInt256.One << (int)Instruction.SSTORE));
+        InstructionMask = instructionMask;
         if (_diffMode)
         {
             _poststate = [];
@@ -434,10 +439,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
+            bool sameCodeHash = !_disableCode && prestateAccount.CodeHash is { } preCodeHash && preCodeHash == poststateAccountStruct.CodeHash;
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _disableCode ? default : _worldState.GetCode(addr));
+                _disableCode ? default : sameCodeHash ? prestateAccount.Code : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -457,7 +463,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
             }
-            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            if (!_disableCode && !sameCodeHash && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
