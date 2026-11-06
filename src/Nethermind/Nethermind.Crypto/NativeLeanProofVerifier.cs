@@ -33,7 +33,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         try
         {
-            if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+            // The first native call starts leanVM's worker pool and permanently raises its caller's macOS QoS;
+            // keep that on the prover thread, which dispatches every proof.
+            if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
