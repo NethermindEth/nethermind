@@ -16,12 +16,12 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-def request(url, body=None, authorization=None):
+def request(url, body=None, authorization=None, *, timeout=15):
     data = None if body is None else json.dumps(body).encode()
     req = Request(url, data=data, headers={"Content-Type": "application/json"})
     if authorization is not None:
         req.add_header("Authorization", authorization)
-    with urlopen(req, timeout=15) as response:
+    with urlopen(req, timeout=timeout) as response:
         return json.load(response)
 
 
@@ -89,7 +89,7 @@ def main():
         ("eth_getBalance", ["0xde198901C5ee4611142E0c61DfbbCEc7ab468F32", "latest"], None),
     ):
         started = time.monotonic()
-        result = request(args.rpc_url + "/", {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+        result = request(args.rpc_url + "/", {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=95)
         if "error" in result or "result" not in result:
             raise RuntimeError(f"{method} failed: {result}")
         if expected is not None and result["result"] != expected:

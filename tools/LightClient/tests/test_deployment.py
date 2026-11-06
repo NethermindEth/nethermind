@@ -151,7 +151,8 @@ class DeploymentTests(unittest.TestCase):
 
 
 class SmokeTests(unittest.TestCase):
-    def run_smoke(self, mutation=None, *, startup_errors=0, ready_scrapes=0, wait_seconds=0, rate_value=None):
+    def run_smoke(self, mutation=None, *, startup_errors=0, ready_scrapes=0, wait_seconds=0, rate_value=None,
+                  cold_balance_seconds=0, balance_error=False):
         samples = []
         for name, dimensions in (
             ("ready", [{}]), ("initialized", [{}]), ("startup_stage", [{"stage": "running"}]),
@@ -176,7 +177,7 @@ class SmokeTests(unittest.TestCase):
         ready_queries = 0
         dashboard = json.loads(DASHBOARD.read_text(encoding="utf-8"))
 
-        def respond(url, body=None, authorization=None):
+        def respond(url, body=None, authorization=None, *, timeout=15):
             nonlocal status_calls, ready_queries
             if url.endswith("/status"):
                 status_calls += 1
@@ -184,6 +185,11 @@ class SmokeTests(unittest.TestCase):
                     raise URLError(ConnectionRefusedError("client restarting"))
                 return {"startupStage": "running", "rpcInitialized": True, "latest": {"fresh": True}}
             if body is not None:
+                if body["method"] == "eth_getBalance":
+                    if timeout < cold_balance_seconds:
+                        raise TimeoutError("Cold account proof exceeded the HTTP client timeout")
+                    if balance_error:
+                        return {"error": {"code": -32001, "message": "Authenticated data unavailable"}}
                 return {"result": "0x1"}
             if url.endswith("/api/health"):
                 return {"database": "ok"}
@@ -235,6 +241,15 @@ class SmokeTests(unittest.TestCase):
         for rate_value in (None, "NaN", "0"):
             with self.subTest(rate_value=rate_value):
                 self.run_smoke(rate_value=rate_value)
+
+    def test_smoke_allows_the_server_budget_for_cold_account_proofs(self):
+        for seconds in (20, 90):
+            with self.subTest(seconds=seconds):
+                self.run_smoke(cold_balance_seconds=seconds, wait_seconds=900)
+
+    def test_smoke_does_not_hide_an_unavailable_balance_behind_retries(self):
+        with self.assertRaisesRegex(RuntimeError, "eth_getBalance failed"):
+            self.run_smoke(balance_error=True, wait_seconds=900)
 
     def test_smoke_rejects_missing_data_labels_or_dashboard(self):
         for mutation in ("query_empty", "query_labels", "scrape_labels", "dashboard_missing", "dashboard_panels", "dashboard_query"):

@@ -335,7 +335,11 @@ panels and queries, validates query metric names and labels against the real
 scrape, and requires ready, head, peer and process data through Grafana's
 authenticated datasource proxy. Rate and quantile panels may be empty or NaN
 before traffic or a second scrape. Grafana must also reject unauthenticated
-dashboard access:
+dashboard access.
+
+A fresh beacon head can arrive before execution suppliers connect. RPC probes
+allow 95 seconds for the client's 90-second request deadline and transport margin;
+an unavailable-data response still fails the check instead of being hidden by retries.
 
 ```sh
 python3 tools/LightClient/tests/smoke.py --network mainnet
