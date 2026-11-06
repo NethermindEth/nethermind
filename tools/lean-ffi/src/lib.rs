@@ -145,7 +145,7 @@ fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
     drop(state);
     let _opening = OpeningGuard;
     let result = prove();
-    debug_assert!(
+    assert!(
         zk_alloc::stats().phases - generation <= 1,
         "a gated prove opened more than one arena phase"
     );
