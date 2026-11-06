@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.TraceStore.Ots;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -576,8 +577,11 @@ public class OtsRpcModuleTests
         _ = f.Receipts.Get(f.Blocks[3]);
         foreach (Transaction transaction in f.Tree.FindBlock(3)!.Transactions) transaction.SenderAddress = null;
         using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
-        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data, Is.EqualTo(f.Blocks[3].Transactions[1].Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+            Assert.That(response.Data, Is.EqualTo(f.Blocks[3].Transactions[1].Hash));
+        }
     }
 
     [Test]
@@ -678,8 +682,8 @@ public class OtsRpcModuleTests
     {
         using Fixture f = new();
         Block executed = f.Tree.Head!;
-        Block unexecuted = Build.A.Block.WithParent(executed).WithStateRoot(executed.StateRoot).TestObject;
-        f.Tree.Insert(unexecuted);
+        Block unexecuted = Build.A.Block.WithParent(executed).WithStateRoot(executed.StateRoot!).TestObject;
+        f.Tree.Insert(unexecuted, BlockTreeInsertBlockOptions.SaveHeader);
         Assert.That(f.Tree.TryUpdateMainChain(unexecuted.Header, false, false, unexecuted), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -716,7 +720,7 @@ public class OtsRpcModuleTests
         Address contract = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<bool> response = module.ots_hasCode(deployed ? contract : TestItem.AddressF,
-            historical ? new BlockParameter(0) : BlockParameter.Latest);
+            historical ? new BlockParameter(0ul) : BlockParameter.Latest);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
         using JsonDocument json = Serialize(response);
         Assert.That(json.RootElement.GetProperty("result").GetBoolean(), Is.EqualTo(deployed && !historical));
@@ -884,8 +888,11 @@ public class OtsRpcModuleTests
         using ResultWrapper<OtsContractCreator?> creator = module.ots_getContractCreator(created);
         if (missing == "root-address")
         {
-            Assert.That(creator.Result.ResultType, Is.EqualTo(ResultType.Success), creator.Result.Error);
-            Assert.That(creator.Data?.Hash, Is.EqualTo(deployment.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(creator.Result.ResultType, Is.EqualTo(ResultType.Success), creator.Result.Error);
+                Assert.That(creator.Data?.Hash, Is.EqualTo(deployment.Hash));
+            }
         }
         else Assert.That(creator.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
@@ -936,9 +943,9 @@ public class OtsRpcModuleTests
                 if (cancel) timeout.Cancel();
                 else
                 {
-                    Block parent = chain.BlockTree.FindBlock(block.ParentHash)!;
-                    Block sibling = Build.A.Block.WithParent(parent).WithExtraData([1]).WithStateRoot(block.StateRoot).TestObject;
-                    chain.BlockTree.Insert(sibling);
+                    Block parent = chain.BlockTree.FindBlock(block.ParentHash!)!;
+                    Block sibling = Build.A.Block.WithParent(parent).WithExtraData([1]).WithStateRoot(block.StateRoot!).TestObject;
+                    chain.BlockTree.Insert(sibling, BlockTreeInsertBlockOptions.SaveHeader);
                     Assert.That(chain.BlockTree.TryUpdateMainChain(sibling.Header, true, true, sibling), Is.True);
                 }
             };
@@ -1790,8 +1797,11 @@ public class OtsRpcModuleTests
         await chain.AddBlock(ExecutionTransaction(2, child, [], 0));
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<OtsContractCreator?> afterDestruction = module.ots_getContractCreator(child);
-        Assert.That(afterDestruction.Result.ResultType, Is.EqualTo(ResultType.Success), afterDestruction.Result.Error);
-        Assert.That(afterDestruction.Data?.Hash, Is.EqualTo(spec.IsEip6780Enabled ? firstCreation.Hash : null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterDestruction.Result.ResultType, Is.EqualTo(ResultType.Success), afterDestruction.Result.Error);
+            Assert.That(afterDestruction.Data?.Hash, Is.EqualTo(spec.IsEip6780Enabled ? firstCreation.Hash : null));
+        }
         Transaction recreation = ExecutionTransaction(3, factory, [], 0);
         Block recreated = await chain.AddBlock(recreation);
         Assert.That(chain.StateReader.GetCode(recreated.Header, child), Is.Not.Empty);
@@ -1900,11 +1910,12 @@ public class OtsRpcModuleTests
             TraceConfig.AddressIndexFromBlock = fromBlock;
             TraceConfig.AddressIndexLag = lag;
             TraceConfig.AddressIndexReset = resetIndex;
+            RecordingReceiptFinder? receiptFinder = null;
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(TraceConfig, RpcConfig, new ReceiptConfig { StoreReceipts = true, TxLookupLimit = 0 }))
                 .AddModule(new TraceStorePlugin(TraceConfig, RpcConfig).Module)
                 .AddDecorator<IDbFactory>((_, inner) => indexFactory is null ? inner : new IndexOnlyDbFactory(inner, indexFactory, observeTraces))
-                .AddDecorator<IReceiptFinder>((_, inner) => new RecordingReceiptFinder(inner))
+                .AddDecorator<IReceiptFinder>((_, inner) => receiptFinder ??= new RecordingReceiptFinder(inner))
                 .AddDecorator<ITraceSerializer<ParityLikeTxTrace>>((_, inner) => positions ? inner : new RecordingSerializer(inner))
                 .AddSingleton<IJsonRpcService, JsonRpcService>();
             if (logManager is not null) builder.AddSingleton<ILogManager>(logManager);
