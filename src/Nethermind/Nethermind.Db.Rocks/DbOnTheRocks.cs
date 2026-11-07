@@ -68,6 +68,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
+    // Serializes every option change: the whole Tune body, the blob-GC compaction's snapshot/apply prologue and
+    // its restore epilogue, and the effective-options map updates in ApplyOptions. Deliberately not held across
+    // the blob-GC CompactOpenRange, which runs for hours - see CompactReclaimingBlobFiles.
+    private readonly Lock _tuneLock = new();
+
+    // The live values of the options the blob-GC compaction overrides, tracked at the ApplyOptions chokepoint so
+    // the restore reproduces what the database actually runs with instead of inferring it from _currentTune, which
+    // the runtime sync tuner can desync from the live options. Guarded by _tuneLock.
+    private readonly Dictionary<string, string> _effectiveBlobGcOptions;
+
+    // Set while a blob-GC CompactReclaimingBlobFiles rewrite is running, so a Tune landing in the unlocked
+    // compaction window withholds the blob-GC keys from the live database and cannot weaken the running reclaim
+    // pass - it still records its intended values for the epilogue restore. Read and written only under _tuneLock.
+    private bool _blobCompactionInProgress;
+
     public bool WasRepairedOnOpen => _instance.WasRepairedOnOpen;
 
     // Striped: every concurrent reader (RPC workers, prewarm workers) updates these per Get, and
@@ -95,6 +110,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _columnFamily = columnFamily;
         Name = name;
         _perTableDbConfig = config;
+        _effectiveBlobGcOptions = BuildEffectiveBlobGcOptions(config);
         VerifyChecksum = config.VerifyChecksum ?? true;
         ReadAheadSize = config.ReadAheadSize ?? 256UL.KiB;
 
@@ -1342,7 +1358,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <summary>Forcing the bottommost level is what makes a dead-weight compaction return space - the default
     /// moves tombstones down and leaves them there - and is exactly wrong for routine compactions, which would
     /// rewrite every already-settled file on every call.</summary>
-    internal void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost) =>
+    internal virtual void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost) =>
         _db.CompactRange(null, null, forceBottommost, cf);
 
     /// <inheritdoc/>
@@ -1353,6 +1369,142 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (_logger.IsInfo) _logger.Info($"Compacting {LogName}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
         CompactOpenRange(_columnFamily, forceBottommost: true);
         return true;
+    }
+
+    // Age cutoff 1.0 makes every blob file a GC candidate and force threshold 0.0 relocates their live values into
+    // fresh blob files, so the forced-bottommost rewrite can drop every stale blob file - a surviving key pinning the
+    // oldest one otherwise keeps all newer unreferenced files alive.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionOptions = new()
+    {
+        { "enable_blob_files", "true" },
+        { "enable_blob_garbage_collection", "true" },
+        { "blob_garbage_collection_age_cutoff", "1.0" },
+        { "blob_garbage_collection_force_threshold", "0.0" },
+        { "blob_compression_type", "kSnappyCompression" },
+    };
+
+    // RocksDB defaults for the options the blob-GC compaction overrides, used for any key the database's own
+    // configuration leaves unset so the restore never invents a value the node did not run with.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionDefaults = new()
+    {
+        { "enable_blob_files", "false" },
+        { "enable_blob_garbage_collection", "false" },
+        { "blob_garbage_collection_age_cutoff", "0.25" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
+        { "blob_compression_type", "kNoCompression" },
+    };
+
+    /// <inheritdoc/>
+    public virtual bool CompactReclaimingBlobFiles()
+    {
+        // The rewrite reclaims whole stale blob files across the whole store, which only makes sense for a
+        // standalone database such as the blocks DB. A column family shares one underlying database with its
+        // siblings, so a per-column rewrite would touch data it does not own; a column-bound store declines it,
+        // which keeps it a no-op for every column family.
+        if (_columnFamily is not null) return false;
+
+        // A store with no blob files has nothing for the rewrite to reclaim, so skip hours of pointless I/O - but
+        // still report it ran, so the one-shot caller marks it done rather than re-attempting it every start. When
+        // the property is unavailable the rewrite runs rather than silently skip the feature.
+        if (!HasBlobFiles())
+        {
+            if (_logger.IsInfo) _logger.Info($"Skipping blob-file compaction of {Name}: it holds no blob files to reclaim.");
+            return true;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
+
+        lock (_tuneLock)
+        {
+            // Snapshot the steady-state values, apply the transient blob-GC options to the live database, then put
+            // the tracked map back to that snapshot. The map keeps reflecting the steady state rather than this
+            // one-shot's transient GC toggles, so a Tune that lands in the unlocked compaction window below overlays
+            // only its own keys and the epilogue restore re-derives from the result - honoring that Tune instead of
+            // the stale pre-compaction options.
+            Dictionary<string, string> steadyState = SnapshotBlobGarbageCollectionOptions();
+            try
+            {
+                ApplyOptions(BlobGarbageCollectionOptions);
+            }
+            catch
+            {
+                // The apply can fail after RocksDB took the options (e.g. it could not persist its OPTIONS file), which
+                // would leave blob GC on in the live database and the GC values in the tracked map. This runs before
+                // the try below, so nothing else would undo it: put the steady state back before rethrowing.
+                foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+                RestoreOptionsAfterBlobGarbageCollection();
+                throw;
+            }
+
+            foreach ((string key, string value) in steadyState) _effectiveBlobGcOptions[key] = value;
+
+            // From here until the epilogue, a concurrent Tune must not touch the blob-GC keys on the live database:
+            // flipping enable_blob_files off mid-rewrite would weaken this reclaim pass, and the one-shot caller marks
+            // it done either way. Set last, after the GC options above have reached the live database.
+            _blobCompactionInProgress = true;
+        }
+
+        try
+        {
+            // Intentionally outside _tuneLock: this runs for hours, and holding the lock would block every Tune and
+            // the shutdown interrupt. A concurrent Tune updates the tracked map under the lock; the restore reads it.
+            CompactOpenRange(_columnFamily, forceBottommost: true);
+        }
+        finally
+        {
+            lock (_tuneLock)
+            {
+                // Clear first so the restore's own blob-GC keys reach the live database rather than being withheld.
+                _blobCompactionInProgress = false;
+                RestoreOptionsAfterBlobGarbageCollection();
+            }
+        }
+
+        return true;
+    }
+
+    private bool HasBlobFiles()
+    {
+        string? numBlobFiles = GatherProperty("rocksdb.num-blob-files");
+        return !long.TryParse(numBlobFiles, out long count) || count > 0;
+    }
+
+    /// <summary>Seeds the tracked effective values of the blob-GC options from the database's own configuration,
+    /// falling back to the RocksDB defaults in <see cref="BlobGarbageCollectionDefaults"/> for any key the
+    /// configuration leaves unset, so the map starts out matching the options the database opens with.</summary>
+    private static Dictionary<string, string> BuildEffectiveBlobGcOptions(IRocksDbConfig config)
+    {
+        IDictionary<string, string> configured = ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
+        Dictionary<string, string> effective = new(BlobGarbageCollectionDefaults.Count);
+        foreach ((string key, string defaultValue) in BlobGarbageCollectionDefaults)
+        {
+            effective[key] = configured.TryGetValue(key, out string? configuredValue) ? configuredValue : defaultValue;
+        }
+
+        return effective;
+    }
+
+    /// <summary>Returns a copy of the tracked effective values of the blob-GC options - what the database actually
+    /// runs with - so the restore reproduces them rather than inferring from <see cref="_currentTune"/>, which the
+    /// runtime sync tuner can desync from the live options.</summary>
+    /// <remarks>Must be called with <see cref="_tuneLock"/> held.</remarks>
+    private Dictionary<string, string> SnapshotBlobGarbageCollectionOptions() => new(_effectiveBlobGcOptions);
+
+    /// <summary>Re-applies the blob-GC options the database should carry after the compaction, re-derived from the
+    /// tracked effective values so a <see cref="Tune"/> that ran during the unlocked compaction is honored. A
+    /// failing restore is logged, not thrown: the database stays usable, only its compaction options may differ
+    /// until the next restart.</summary>
+    /// <remarks>Must be called with <see cref="_tuneLock"/> held.</remarks>
+    private void RestoreOptionsAfterBlobGarbageCollection()
+    {
+        try
+        {
+            ApplyOptions(SnapshotBlobGarbageCollectionOptions());
+        }
+        catch (RocksDbException e)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to restore {Name} options after blob-file compaction; the database stays usable but its compaction options may differ until restart.", e);
+        }
     }
 
     /// <inheritdoc/>
@@ -1506,8 +1658,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void Tune(ITunableDb.TuneType type)
     {
-        if (_currentTune == type) return;
+        // The whole body runs under _tuneLock: the sync tuner calls this from feed threads while the blob-GC
+        // compaction snapshots and restores options, and both mutate the shared _currentTune / effective-options
+        // state. The lock is not held across the compaction's CompactOpenRange, so this never blocks for long.
+        lock (_tuneLock)
+        {
+            if (_currentTune == type) return;
 
+            TuneUnderLock(type);
+            _currentTune = type;
+        }
+    }
+
+    private void TuneUnderLock(ITunableDb.TuneType type)
+    {
         // See https://github.com/EighteenZi/rocksdb_wiki/blob/master/RocksDB-Tuning-Guide.md
         switch (type)
         {
@@ -1583,8 +1747,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 ApplyOptions(GetStandardOptions());
                 break;
         }
-
-        _currentTune = type;
     }
 
     public void SetWriteBuffer(long sizeBytes) =>
@@ -1594,7 +1756,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             new("max_bytes_for_level_base", (sizeBytes * 4).ToString()),
         ]);
 
-    private void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+    protected virtual void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+    {
+        // Track the live value of every blob-GC option this applies, and - while a blob-GC compaction is running -
+        // withhold those keys from the live database so a concurrent Tune cannot flip blob files off under the
+        // running reclaim pass and weaken it. The intended value is still tracked, so the compaction's epilogue
+        // restore re-derives the correct final state. Tune and the blob-GC compaction prologue/epilogue call this
+        // with _tuneLock held; SetWriteBuffer calls it without. That is safe because the tracked key set is fixed at
+        // construction (only values of existing keys are ever updated, never added or removed), so the lock-free
+        // path performs nothing but ContainsKey reads with no structural change to tear, and SetWriteBuffer's keys
+        // are not blob-GC keys, so it neither writes the map nor reads _blobCompactionInProgress.
+        Dictionary<string, string>? withheldOptions = null;
+        foreach ((string key, string value) in options)
+        {
+            if (!_effectiveBlobGcOptions.ContainsKey(key)) continue;
+
+            _effectiveBlobGcOptions[key] = value;
+            if (_blobCompactionInProgress) (withheldOptions ??= new Dictionary<string, string>(options)).Remove(key);
+        }
+
+        if (withheldOptions is not null)
+        {
+            if (withheldOptions.Count > 0) SetLiveOptions(withheldOptions);
+            return;
+        }
+
+        SetLiveOptions(options);
+    }
+
+    /// <summary>Pushes the options to the live RocksDB instance - to the column family when the store is bound to
+    /// one. The single sink for live option changes, kept separate so <see cref="ApplyOptions"/> can withhold the
+    /// blob-GC keys while a compaction runs.</summary>
+    protected virtual void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
     {
         if (_columnFamily is null) _db.SetOptions(options);
         else _db.SetOptions(_columnFamily, options);

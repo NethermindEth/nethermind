@@ -10,4 +10,5 @@ public class HistoryConfig : IHistoryConfig
     public uint? BalRetentionEpochs { get; set; }
     public ulong PruningInterval { get; set; } = 8;
     public uint PruningTimeoutSeconds { get; set; } = 2;
+    public bool CompactBlocksOnPrune { get; set; }
 }
