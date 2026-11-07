@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -136,8 +137,52 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
+        public void Batch_storage_proofs_match_single_slot_proofs([Values(2, 3, 4, 5, 64, 300)] int count)
+        {
+            const ulong slots = 4096;
+            IDb memDb = new MemDb();
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            byte[] value = new byte[8];
+            for (ulong i = 0; i < slots; i++)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(value, i + 1);
+                storageTree.Set(new UInt256(i), value);
+            }
+            storageTree.Commit();
+            StateTree tree = new(new RawScopedTrieStore(memDb), LimboLogs.Instance);
+            tree.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            tree.Set(TestItem.AddressB, Build.An.Account.WithBalance(2).TestObject);
+            tree.Commit();
+
+            // Every even request is a slot in the trie, an odd one may be absent, and the last repeats the first.
+            Random random = new(count);
+            byte[] sample = new byte[sizeof(ulong)];
+            UInt256[] keys = new UInt256[count];
+            for (int i = 0; i < count - 1; i++)
+            {
+                random.NextBytes(sample);
+                keys[i] = new UInt256(BinaryPrimitives.ReadUInt64LittleEndian(sample) % (i % 2 == 0 ? slots : slots * 2));
+            }
+            keys[^1] = keys[0];
+
+            AccountProof batch = CollectProof(tree, TestItem.AddressA, keys);
+
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    AccountProof single = CollectProof(tree, TestItem.AddressA, [keys[i]]);
+                    Assert.That(batch.Proof, Is.EqualTo(single.Proof));
+                    Assert.That(batch.StorageProofs[i].Key, Is.EqualTo(single.StorageProofs[0].Key));
+                    Assert.That(batch.StorageProofs[i].Proof, Is.EqualTo(single.StorageProofs[0].Proof), $"slot {keys[i]}");
+                    Assert.That(batch.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(single.StorageProofs[0].Value!.Value.ToArray()), $"slot {keys[i]}");
+                }
+            }
+        }
+
+        [Test]
         public void ShouldVisit_compares_only_the_used_path_nibbles(
-            [Values(0, 1, 2, 31, 63, 64)] int length,
+            [Values(0, 1, 2, 3, 5, 31, 63, 64)] int length,
             [Values] bool storage)
         {
             ValueHash256 target = TestItem.KeccakA.ValueHash256;
@@ -159,7 +204,24 @@ namespace Nethermind.Store.Test.Proofs
                     Path = new TreePath(other, length),
                     Storage = context.Storage
                 };
-                Assert.That(collector.ShouldVisit(context, default), Is.False);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(collector.ShouldVisit(context, default), Is.False);
+
+                    // The last nibble inside the path counts, and the first nibble after it does not.
+                    Assert.That(collector.ShouldVisit(WithNibbleFlipped(length - 1), default), Is.False);
+                    if (length < 64)
+                        Assert.That(collector.ShouldVisit(WithNibbleFlipped(length), default), Is.True);
+                }
+            }
+
+            TreePathContextWithStorage WithNibbleFlipped(int nibble)
+            {
+                ReadOnlySpan<byte> masks = [0x10, 0x01];
+                ValueHash256 flipped = target;
+                flipped.BytesAsSpan[nibble / 2] ^= masks[nibble % 2];
+                return new TreePathContextWithStorage { Path = new TreePath(flipped, length), Storage = context.Storage };
             }
         }
 
