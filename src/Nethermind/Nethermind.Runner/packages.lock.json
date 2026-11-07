@@ -11,6 +11,12 @@
           "AspNetCore.HealthChecks.UI.Core": "9.0.0"
         }
       },
+      "Cilica.OptimizerTask": {
+        "type": "Direct",
+        "requested": "[0.18.1-preview, )",
+        "resolved": "0.18.1-preview",
+        "contentHash": "waZJxCF6Hr6thsACnTngscM4jzpvn9PCKGgPxUVcttz+Qdf+os3kbqm2SJDYW+WCRvi2ombUjfdFzF8dHBJhFw=="
+      },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
         "requested": "[10.0.403, )",
