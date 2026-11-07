@@ -2064,7 +2064,7 @@ public partial class FrameTxProcessorTests
 
     private static IEnumerable<TestCaseData> StructurallyInvalidFrameLists()
     {
-        TxFrame reserved = Frame(FrameMode.Default, flags: (FrameFlags)((byte)FrameFlags.AtomicBatch << 1), target: Observer);
+        TxFrame reserved = Frame(FrameMode.Default, flags: (FrameFlags)((byte)FrameFlags.AssertExempt << 1), target: Observer);
         TxFrame batched = Frame(FrameMode.Default, flags: FrameFlags.AtomicBatch, target: Observer);
 
         yield return Case("ReservedFlagBits", FrameTxValidation.InvalidFlags, SelfVerifyFrame(), reserved);
@@ -2269,6 +2269,41 @@ public partial class FrameTxProcessorTests
 #pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
             "the sender nonce bump is part of the prefix that payment approval committed");
+    }
+
+    [TestCase(false, false, true, TestName = "Execute_AssertReverts_KeepsTheExemptFrames")]
+    [TestCase(true, false, true, TestName = "Execute_AssertReverts_KeepsTheExemptAtomicBatch")]
+    [TestCase(false, true, true, TestName = "Execute_ExemptFrameFails_AssertRevertStillKeepsTheExemptFrameAheadOfIt")]
+    [TestCase(true, true, false, TestName = "Execute_ExemptAtomicBatchUnrolls_AssertRevertUnwindsToBeforeTheBatch")]
+    public void Execute_AssertReverts_KeepsExemptFramesAndUnwindsTheRest(bool batched, bool secondExemptFrameFails, bool exemptWriteSurvives)
+    {
+        Address exemptWriter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(exemptWriter, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, batched ? FrameFlags.AtomicBatch | FrameFlags.AssertExempt : FrameFlags.AssertExempt, target: exemptWriter),
+            Frame(FrameMode.Sender, FrameFlags.AssertExempt, target: secondExemptFrameFails ? Recipient : exemptWriter),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Assert, target: Recipient));
+
+        FrameReceiptTracer tracer = new();
+
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorage(exemptWriter, 0, exemptWriteSurvives ? UInt256.One : UInt256.Zero);
+            AssertStorage(Observer, 0, UInt256.Zero, "the non-exempt write goes back");
+            Assert.That(tracer.FrameReceipts![1].StateGasUsed != 0, Is.EqualTo(exemptWriteSurvives), "a write keeps its state charge only while it is kept");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(secondExemptFrameFails ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[3].StateGasUsed, Is.Zero, "an unwound write's state charge goes back with it");
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[4].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "the transaction stays valid");
+        }
     }
 
     [Test]
