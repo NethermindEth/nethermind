@@ -459,7 +459,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         int frames = scenario == "root" ? 1 : 2;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(records[selfDestructRecord + 1] == selfDestructExit, Is.EqualTo(completes));
+            Assert.That(records[selfDestructRecord + 1], completes ? Is.EqualTo(selfDestructExit) : Is.Not.EqualTo(selfDestructExit));
             Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(frames + (completes ? 1 : 0)));
         }
     }
