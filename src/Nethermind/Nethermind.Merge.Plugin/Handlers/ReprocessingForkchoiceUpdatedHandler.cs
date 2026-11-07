@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -30,10 +29,9 @@ internal sealed class ReprocessingForkchoiceUpdatedHandler(
     IBlockTree blockTree,
     IStateReader stateReader,
     IBlockProcessingQueue processingQueue,
-    IReceiptConfig receiptConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
-    private readonly ProcessingOptions _processingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+    private readonly ProcessingOptions _processingOptions = ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts;
     private readonly ILogger _logger = logManager.GetClassLogger<ReprocessingForkchoiceUpdatedHandler>();
     private Task _reprocessing = Task.CompletedTask;
 

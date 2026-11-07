@@ -3,7 +3,9 @@
 
 using System;
 using System.Buffers;
+using Autofac;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -1523,4 +1526,297 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
+}
+
+
+[Parallelizable(ParallelScope.All)]
+public class TransientReceiptStorageTests
+{
+    [Test]
+    public void Keeps_noncanonical_receipts_but_indexes_only_canonical_transactions()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block block, TxReceipt receipt) = TransientReceiptTestContext.Sample(1);
+        ctx.Storage.Insert(block, [receipt], ensureCanonical: false);
+        Assert.That(ctx.Storage.FindBlockHash(receipt.TxHash!), Is.Null);
+        ctx.Canonicalize(block);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(block), Is.EqualTo(new[] { receipt }));
+            Assert.That(ctx.Storage.FindBlockHash(receipt.TxHash!), Is.EqualTo(block.Hash));
+            Assert.That(receipt.BlockNumber, Is.EqualTo(block.Number));
+            Assert.That(receipt.BlockHash, Is.EqualTo(block.Hash));
+        }
+    }
+
+    [Test]
+    public void Finalization_removes_captured_receipts_but_keeps_pending_orphans()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1);
+        (Block orphan, TxReceipt orphanReceipt) = TransientReceiptTestContext.Sample(1, extra: 1);
+        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(2, parent: first);
+        ctx.Storage.Insert(first, [firstReceipt], ensureCanonical: false);
+        ctx.Storage.Insert(orphan, [orphanReceipt], ensureCanonical: false);
+        ctx.Canonicalize(first);
+        ctx.Storage.Insert(next, [nextReceipt], ensureCanonical: false);
+        ctx.Canonicalize(next);
+        ctx.Tree.ForkChoiceUpdated(first.Hash, first.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.HasBlock(1, first.Hash!), Is.False);
+            Assert.That(ctx.Storage.HasBlock(1, orphan.Hash!), Is.True, "not yet captured, but still subject to eviction");
+            Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+            Assert.That(ctx.Storage.FindBlockHash(nextReceipt.TxHash!), Is.EqualTo(next.Hash));
+        }
+    }
+
+    [Test]
+    public void Finalization_before_canonicalization_preserves_the_whole_pending_branch()
+    {
+        using TransientReceiptTestContext ctx = new();
+        IReceiptMonitor monitor = ctx.Container.Resolve<IReceiptMonitor>();
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1);
+        (Block second, TxReceipt secondReceipt) = TransientReceiptTestContext.Sample(2, parent: first);
+        ctx.Storage.Insert(first, [firstReceipt], ensureCanonical: false);
+        ctx.Storage.Insert(second, [secondReceipt], ensureCanonical: false);
+        ctx.Tree.SuggestBlock(first);
+        ctx.Tree.SuggestBlock(second);
+        ConcurrentQueue<ReceiptsEventArgs> delivered = new();
+        using CountdownEvent notified = new(2);
+        monitor.ReceiptsInserted += (_, e) =>
+        {
+            delivered.Enqueue(e);
+            notified.Signal();
+        };
+        ctx.Tree.ForkChoiceUpdated(second.Hash, second.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.True);
+            Assert.That(ctx.Storage.HasBlock(second.Number, second.Hash!), Is.True);
+        }
+#pragma warning disable NUnit2045 // Canonicalization and delivery must succeed before inspecting the notifications.
+        Assert.That(ctx.Tree.TryUpdateMainChain(second.Header, true), Is.True);
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(10)), Is.True);
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delivered.Select(e => e.BlockHeader.Hash), Is.EqualTo(new[] { first.Hash, second.Hash }));
+            Assert.That(delivered.Select(e => e.TxReceipts.Single().Logs!.Single().Address),
+                Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressA }));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().Hash),
+                Is.EqualTo(new[] { first.Transactions[0].Hash, second.Transactions[0].Hash }));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().GasPrice),
+                Is.EqualTo(new[] { first.Transactions[0].GasPrice, second.Transactions[0].GasPrice }));
+            Assert.That(delivered.Select(e => e.Transactions?.Single().GasLimit),
+                Is.EqualTo(new[] { first.Transactions[0].GasLimit, second.Transactions[0].GasLimit }));
+            Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.False);
+            Assert.That(ctx.Storage.HasBlock(second.Number, second.Hash!), Is.False);
+        }
+    }
+
+    [Test]
+    public void Oldest_receipts_are_evicted_without_finalization()
+    {
+        using TransientReceiptTestContext ctx = new();
+        long before = Interlocked.Read(ref Metrics.TransientReceiptEvictions);
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, 600_000);
+        (Block second, TxReceipt secondReceipt) = TransientReceiptTestContext.Sample(2, 600_000);
+        (Block third, TxReceipt thirdReceipt) = TransientReceiptTestContext.Sample(3, 600_000);
+        ctx.Storage.Insert(first, [firstReceipt]);
+        ctx.Storage.Insert(second, [secondReceipt]);
+        ctx.Storage.Insert(third, [thirdReceipt]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(first), Is.Empty);
+            Assert.That(ctx.Storage.Get(second), Is.Empty);
+            Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+            Assert.That(ctx.Storage.Get(third), Has.Length.EqualTo(1));
+            Assert.That(Interlocked.Read(ref Metrics.TransientReceiptEvictions), Is.GreaterThanOrEqualTo(before + 2));
+        }
+    }
+
+    [Test]
+    public void Oversized_block_does_not_flush_the_retained_window([Values("logs", "return", "frames")] string payload)
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block small, TxReceipt smallReceipt) = TransientReceiptTestContext.Sample(1);
+        (Block large, TxReceipt largeReceipt) = TransientReceiptTestContext.Sample(2);
+        byte[] data = new byte[1_100_000];
+        switch (payload)
+        {
+            case "logs": largeReceipt.Logs = [new LogEntry(TestItem.AddressA, data, [])]; break;
+            case "return": largeReceipt.ReturnValue = data; break;
+            case "frames": largeReceipt.FrameReceipts = [new TxFrameReceipt(1, 0, 0, [new LogEntry(TestItem.AddressA, data, [])])]; break;
+        }
+        long before = Interlocked.Read(ref Metrics.TransientReceiptOversizedBlocks);
+        ctx.Storage.Insert(small, [smallReceipt]);
+        ctx.Storage.Insert(large, [largeReceipt]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(small), Has.Length.EqualTo(1));
+            Assert.That(ctx.Storage.Get(large), Is.Empty);
+            Assert.That(ctx.Storage.FindBlockHash(largeReceipt.TxHash!), Is.Null);
+            Assert.That(Interlocked.Read(ref Metrics.TransientReceiptOversizedBlocks), Is.GreaterThan(before));
+        }
+    }
+
+    [Test]
+    public void Reinserted_block_does_not_leave_stale_eviction_entries()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1, 600_000);
+        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(2, 600_000);
+        for (int i = 0; i < 20; i++) ctx.Storage.Insert(first, [firstReceipt]);
+        ctx.Storage.Insert(next, [nextReceipt]);
+        ctx.Storage.Insert(next, [nextReceipt], ensureCanonical: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(first), Is.Empty);
+            Assert.That(ctx.Storage.Get(next), Has.Length.EqualTo(1));
+            Assert.That(ctx.Storage.FindBlockHash(nextReceipt.TxHash!), Is.EqualTo(next.Hash));
+        }
+    }
+
+    [Test]
+    public void Evicting_an_orphan_does_not_remove_the_replacements_transaction_index()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1);
+        (Block replacement, TxReceipt replacementReceipt) = TransientReceiptTestContext.Sample(1, transaction: first.Transactions[0], extra: 1);
+        ctx.Storage.Insert(first, [firstReceipt], ensureCanonical: false);
+        ctx.Canonicalize(first);
+        ctx.Storage.Insert(replacement, [replacementReceipt], ensureCanonical: false);
+        ctx.Canonicalize(replacement);
+        ctx.Storage.RemoveReceipts(first);
+        Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.EqualTo(replacement.Hash));
+        bool rewound = ctx.Tree.TryRewindHead(ctx.Genesis.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewound, Is.True);
+            Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Removing_a_range_clears_bodies_and_transaction_indexes()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block first, TxReceipt firstReceipt) = TransientReceiptTestContext.Sample(1);
+        (Block next, TxReceipt nextReceipt) = TransientReceiptTestContext.Sample(2);
+        ctx.Storage.Insert(first, [firstReceipt]);
+        ctx.Storage.Insert(next, [nextReceipt]);
+        ctx.Storage.RemoveReceiptsRange(1, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(first), Is.Empty);
+            Assert.That(ctx.Storage.FindBlockHash(firstReceipt.TxHash!), Is.Null);
+            Assert.That(ctx.Storage.Get(next), Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Empty_blocks_also_consume_the_retention_budget()
+    {
+        using TransientReceiptTestContext ctx = new();
+        Block first = Build.A.Block.WithNumber(1).TestObject;
+        ctx.Storage.Insert(first, []);
+        for (ulong number = 2; number <= 2050; number++)
+            ctx.Storage.Insert(Build.A.Block.WithNumber(number).TestObject, []);
+        Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.False);
+    }
+
+    [Test]
+    public void Default_budget_retains_160_representative_heavy_blocks()
+    {
+        int budget = new ReceiptConfig().MaxTransientReceiptStorageSizeMb;
+        Assert.That(budget, Is.EqualTo(256));
+        using TransientReceiptTestContext ctx = new(budget);
+        LogEntry log = new(TestItem.AddressA, new byte[64], [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC]);
+        Block first = Build.A.Block.WithNumber(1).TestObject;
+        for (ulong number = 1; number <= 160; number++)
+        {
+            TxReceipt[] receipts = Enumerable.Range(0, 500)
+                .Select(_ => Build.A.Receipt.WithLogs(log, log, log).TestObject).ToArray();
+            Block block = number == 1 ? first : Build.A.Block.WithNumber(number).TestObject;
+            ctx.Storage.Insert(block, receipts, ensureCanonical: false);
+        }
+        Assert.That(ctx.Storage.HasBlock(first.Number, first.Hash!), Is.True);
+    }
+
+    [Test]
+    public void Zero_budget_selects_null_storage_and_disables_notifications()
+    {
+        using TransientReceiptTestContext ctx = new(0);
+        Assert.That(ctx.Storage, Is.SameAs(NullReceiptStorage.Instance));
+        int notifications = 0;
+        ctx.Container.Resolve<IReceiptMonitor>().ReceiptsInserted += (_, _) => notifications++;
+        (Block block, TxReceipt receipt) = TransientReceiptTestContext.Sample(1);
+        ctx.Storage.Insert(block, [receipt], ensureCanonical: false);
+        ctx.Canonicalize(block);
+        Assert.That(ctx.Tree.TryRewindHead(ctx.Genesis.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(block), Is.Empty);
+            Assert.That(notifications, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Negative_budget_is_rejected() =>
+        Assert.That(() => new TransientReceiptTestContext(-1), Throws.Exception);
+
+    [Test]
+    public void Disposing_unsubscribes_and_releases_receipts()
+    {
+        using TransientReceiptTestContext ctx = new();
+        (Block block, TxReceipt receipt) = TransientReceiptTestContext.Sample(1);
+        ctx.Storage.Insert(block, [receipt]);
+        int notifications = 0;
+        ctx.Storage.NewCanonicalReceipts += (_, _) => notifications++;
+        ((IDisposable)ctx.Storage).Dispose();
+        ctx.Canonicalize(block);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Storage.Get(block), Is.Empty);
+            Assert.That(ctx.Storage.FindBlockHash(receipt.TxHash!), Is.Null);
+            Assert.That(notifications, Is.Zero);
+        }
+    }
+}
+
+internal sealed class TransientReceiptTestContext : IDisposable
+{
+    public IContainer Container { get; }
+    public IBlockTree Tree { get; }
+    public IReceiptStorage Storage { get; }
+    public Block Genesis { get; } = Build.A.Block.Genesis.TestObject;
+
+    public TransientReceiptTestContext(int budgetMb = 1)
+    {
+        Container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ReceiptConfig { StoreReceipts = false, MaxTransientReceiptStorageSizeMb = budgetMb }))
+            .Build();
+        Tree = Container.Resolve<IBlockTree>();
+        Storage = Container.Resolve<IReceiptStorage>();
+        Canonicalize(Genesis);
+    }
+
+    public void Canonicalize(Block block)
+    {
+        Tree.SuggestBlock(block);
+        Assert.That(Tree.TryUpdateMainChain(block.Header, true), Is.True);
+    }
+
+    public static (Block Block, TxReceipt Receipt) Sample(ulong number, int logBytes = 0, Transaction? transaction = null, byte extra = 0, Block? parent = null, int transactionBytes = 0)
+    {
+        transaction ??= Build.A.Transaction.WithNonce(number).WithData(new byte[transactionBytes]).SignedAndResolved().TestObject;
+        Block block = Build.A.Block.WithParent(parent ?? Build.A.Block.Genesis.TestObject)
+            .WithNumber(number).WithExtraData([extra]).WithTransactions(transaction).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithTransactionHash(transaction.Hash).WithLogs(
+            new LogEntry(TestItem.AddressA, new byte[logBytes], [])).TestObject;
+        return (block, receipt);
+    }
+
+    public void Dispose() => Container.Dispose();
 }
