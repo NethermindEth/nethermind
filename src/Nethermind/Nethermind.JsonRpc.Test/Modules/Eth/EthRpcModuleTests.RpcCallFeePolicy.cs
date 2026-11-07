@@ -236,6 +236,26 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task RpcCallFeePolicy_access_list_follows_call_fee_semantics(
+        [Values(null, true, false)] bool? chargeFees, [Values] bool dynamicFees)
+    {
+        using Context ctx = await FeePolicyContext(chargeFees, validateLegacy: true);
+        JToken response = JToken.Parse(await ctx.Test.TestEthRpc("eth_createAccessList",
+            FeePolicyRequest(dynamicFees ? FeePolicy1559 : FeePolicyLegacy), "latest", FeePolicyState()));
+        if (chargeFees is false)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response["error"], Is.Null, response.ToString());
+                Assert.That(response["result"]?["error"], Is.Null, response.ToString());
+                Assert.That((string?)response["result"]?["gasUsed"], Is.Not.EqualTo("0x0"), response.ToString());
+            }
+        }
+        else
+            Assert.That((string?)response["error"]?["message"], Does.Contain(TxErrorMessages.InsufficientFundsForGas), response.ToString());
+    }
+
+    [Test]
     public async Task RpcCallFeePolicy_debug_retains_upfront_payment([Values] bool registerPolicy)
     {
         using Context ctx = await FeePolicyContext(registerPolicy ? false : null);

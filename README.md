@@ -177,14 +177,14 @@ allocating unused replacement code wrappers for non-code account overrides.
 RPC tests exercise both default and container-registered policies with empty, balance,
 nonce, code, state and state-diff account overrides.
 
-Chains can independently select fee semantics for `eth_call` by registering the
-immutable `Nethermind.Facade.RpcCallExecutionPolicy`. Its default values preserve
+Chains can independently select fee semantics for `eth_call` and `eth_createAccessList`
+by registering the immutable `Nethermind.Facade.RpcCallExecutionPolicy`. Its default values preserve
 existing Ethereum/geth behavior. Setting `chargeFees: false` skips gas purchase,
 monetary refunds and fee distribution, including EIP-8141 frame escrow and settlement,
 without creating balances, changing gas metering, or bypassing value affordability.
 Typed and blob fee caps are still validated. The independent
 `validateLegacyGasPriceAgainstBaseFee` flag does not disable typed fee-cap checks.
-These options apply only to restoring calls, not estimates, traces, simulated
+These options apply only to those restoring calls, not estimates, traces, simulated
 blocks or consensus execution. `BuyGas` and `PayFees` overrides receive `ExecutionOptions`;
 forward them to the base implementation and use `ShouldChargeTransactionFees`
 for monetary side effects without skipping unrelated execution semantics.

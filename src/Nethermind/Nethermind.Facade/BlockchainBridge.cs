@@ -273,11 +273,7 @@ namespace Nethermind.Facade
         {
             CallOutputTracer tracer = new();
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
-            TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
-                ? tipAboveFeeCap
-                : _callExecutionOptions != ExecutionOptions.CommitAndRestore && tx.Supports1559 && tx.MaxFeePerGas < header.BaseFeePerGas
-                    ? TransactionResult.MaxFeePerGasBelowBaseFee(tx, header.BaseFeePerGas)
-                    : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken), _callExecutionOptions);
+            TransactionResult result = RunRestoringCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
             if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
@@ -531,7 +527,8 @@ namespace Nethermind.Facade
                 opcodeTracer?.Reset(previousAccessList);
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
+                BlockExecutionContext runContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+                result = RunRestoringCall(txProcessor, tx, in runContext, tracer);
                 AccessList? discovered = opcodeTracer?.BuildAccessList() ?? accessTracer!.AccessList;
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, discovered);
                 previousAccessList = discovered;
@@ -542,7 +539,7 @@ namespace Nethermind.Facade
             {
                 // The transaction still carries the access list of the final run, so the rerun fails the same way.
                 BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
-                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText))
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText, _callExecutionOptions))
                 {
                     output.Error = failureText;
                 }
@@ -710,51 +707,27 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer, ExecutionOptions options)
+        /// <summary>Runs a restoring call of <c>eth_call</c> or <c>eth_createAccessList</c> under the chain's <see cref="RpcCallExecutionPolicy"/>.</summary>
+        /// <remarks>
+        /// A fee-free policy skips <c>BuyGas</c>'s fee checks, so a typed fee cap below the base fee is rejected here, with
+        /// the error the processor's own check gives.
+        /// </remarks>
+        private TransactionResult RunRestoringCall(ITransactionProcessor txProcessor, Transaction tx, in BlockExecutionContext blockContext, ITxTracer tracer)
         {
+            if (TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap) return tipAboveFeeCap;
+            UInt256 baseFee = blockContext.Header.BaseFeePerGas;
+            if (_callExecutionOptions != ExecutionOptions.CommitAndRestore && tx.Supports1559 && tx.MaxFeePerGas < baseFee)
+                return TransactionResult.MaxFeePerGasBelowBaseFee(tx, baseFee);
+
             try
             {
                 txProcessor.SetBlockExecutionContext(in blockContext);
-                return txProcessor.Process(transaction, tracer, options);
+                return txProcessor.Process(tx, tracer, _callExecutionOptions);
             }
             catch (InsufficientBalanceException)
             {
                 return TransactionResult.InsufficientSenderBalance;
             }
-        }
-
-        private TransactionResult TryCallAndRestore(
-            IWorldState nonceSource,
-            ITransactionProcessor txProcessor,
-            BlockHeader blockHeader,
-            Transaction transaction,
-            UInt256? blobBaseFeeOverride,
-            ITxTracer tracer,
-            bool rejectsTipAboveFeeCap = false)
-        {
-            try
-            {
-                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap);
-            }
-            catch (InsufficientBalanceException)
-            {
-                return TransactionResult.InsufficientSenderBalance;
-            }
-        }
-
-        private TransactionResult CallAndRestore(
-            IWorldState nonceSource,
-            ITransactionProcessor txProcessor,
-            BlockHeader blockHeader,
-            Transaction transaction,
-            UInt256? blobBaseFeeOverride,
-            ITxTracer tracer,
-            bool rejectsTipAboveFeeCap = false)
-        {
-            BlockExecutionContext blockExecutionContext = PrepareCall(nonceSource, blockHeader, transaction, blobBaseFeeOverride);
-            return rejectsTipAboveFeeCap && TipAboveFeeCap(transaction, blockExecutionContext.Spec) is { } tipAboveFeeCap
-                ? tipAboveFeeCap
-                : txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         /// <summary>Readies <paramref name="transaction"/> to run on top of <paramref name="blockHeader"/>, the call's own copy, and returns that block's execution context.</summary>

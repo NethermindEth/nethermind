@@ -5,7 +5,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade;
 
-/// <summary>Immutable, chain-selected fee semantics for <c>eth_call</c> only.</summary>
+/// <summary>Immutable, chain-selected fee semantics for the restoring calls of <c>eth_call</c> and <c>eth_createAccessList</c>.</summary>
 /// <remarks>
 /// Defaults preserve Ethereum's existing call behaviour. This policy does not change gas metering,
 /// GASPRICE, BASEFEE, value transfers, estimates, traces, simulated blocks or consensus execution.
