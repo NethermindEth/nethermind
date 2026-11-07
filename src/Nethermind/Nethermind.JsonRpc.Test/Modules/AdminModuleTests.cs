@@ -166,6 +166,26 @@ public class AdminModuleTests
         }
     }
 
+    [TestCase("127.0.0.1", "127.0.0.1:30303")]
+    [TestCase("[::1]", "[::1]:30303")]
+    public async Task AdminNodeInfo_SerializesGethKeyNames(string enodeHost, string expectedListenAddr)
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(enode: _enodeString.Replace("127.0.0.1", enodeHost));
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        JsonElement eth = result.GetProperty("protocols").GetProperty("eth");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TryGetProperty("listenAddr", out JsonElement listenAddr) ? listenAddr.GetString() : null, Is.EqualTo(expectedListenAddr));
+            Assert.That(eth.TryGetProperty("genesis", out JsonElement genesis) ? genesis.GetString() : null, Is.EqualTo(_blockTree.GenesisHash!.ToString()));
+            Assert.That(eth.TryGetProperty("head", out JsonElement head) ? head.GetString() : null, Is.EqualTo(_blockTree.HeadHash!.ToString()));
+            Assert.That(eth.TryGetProperty("network", out JsonElement network) ? network.GetString() : null, Is.EqualTo("0x" + _blockTree.NetworkId.ToString("x")));
+        }
+    }
+
     [Test]
     public async Task AdminDataDir_OnDefaultModule_ReturnsConfiguredPath()
     {
@@ -750,7 +770,8 @@ public class AdminModuleTests
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
         IBlockProcessingPauseControl? blockProcessingPauseControl = null,
-        INodeRecordProvider? nodeRecordProvider = null)
+        INodeRecordProvider? nodeRecordProvider = null,
+        string enode = _enodeString)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -759,7 +780,7 @@ public class AdminModuleTests
             peerPool ?? Substitute.For<IPeerPool>(),
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),
             Substitute.For<IStateReader>(),
-            new Enode(_enodeString),
+            new Enode(enode),
             _exampleDataDir,
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),

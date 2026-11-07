@@ -246,7 +246,7 @@ public class AdminRpcModule : IAdminRpcModule
             Enode = _enode.Info,
             Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
             Ip = _enode.HostIp?.ToString(),
-            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            ListenAddress = $"{Enode.FormatEnodeHost(_enode.HostIp)}:{_enode.Port}",
             Ports =
             {
                 Discovery = _networkConfig.DiscoveryPort,
