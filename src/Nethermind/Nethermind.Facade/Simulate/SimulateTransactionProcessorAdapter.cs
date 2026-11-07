@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -70,11 +71,12 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 
         // The per-dimension budgets shrink as the block is processed.
         ulong blockGasAvailable = GetBlockGasAvailable(stateGasAvailable);
-        if (!simulateRequestState.Calls[_currentTxIndex].HadGasLimitInRequest)
+        TransactionWithSourceDetails call = simulateRequestState.Calls[_currentTxIndex];
+        if (!call.HadGasLimitInRequest)
         {
             transaction.GasLimit = Math.Min(blockGasAvailable, simulateRequestState.TotalGasLeft);
         }
-        else if (simulateRequestState.Calls[_currentTxIndex].GasLimitToFitBlock is { } requestedGas
+        else if (call.GasLimitToFitBlock is { } requestedGas
             && !FitsBlock(transaction, requestedGas, blockGasAvailable, stateGasAvailable, out ulong remaining, out ulong required))
         {
             TransactionResult result = TransactionResult.ErrorType.BlockGasLimitExceeded.WithDetail(
@@ -86,6 +88,10 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         {
             transaction.GasLimit = simulateRequestState.TotalGasLeft;
         }
+
+        // A frame transaction's gas limit is its frames' sum, not the requested gas, so the cap cannot be told from it.
+        ulong? uncappedGas = call.HadGasLimitInRequest ? call.GasLimitToFitBlock : blockGasAvailable;
+        call.GasCapped = !transaction.SupportsFrames && transaction.GasLimit < uncappedGas;
     }
 
     /// <summary>The largest gas limit the block can still include.</summary>
