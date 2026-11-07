@@ -19,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -179,22 +180,35 @@ public class AdminModuleTests
         Assert.That(response.Result!.ToString(), Is.EqualTo(_exampleDataDir), "admin_dataDir reflects the path passed at module construction");
     }
 
-    [TestCase("admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirConfigured_ReturnsAbsoluteDataDir")]
-    [TestCase(null, TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirNull_ReturnsAbsoluteCurrentDirectory")]
-    [TestCase("", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirEmpty_ReturnsAbsoluteCurrentDirectory")]
-    [TestCase("   ", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirWhitespace_ReturnsAbsoluteCurrentDirectory")]
+    [TestCase("admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRelative_ReturnsDataDirUnderExecutingDirectory")]
+    [TestCase("/admin-datadir-test/node", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirRooted_ReturnsDataDir")]
+    [TestCase(null, TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirNull_ReturnsExecutingDirectory")]
+    [TestCase("", TestName = "AdminDataDir_ResolvedThroughDiWiring_WhenDataDirEmpty_ReturnsExecutingDirectory")]
+    [NonParallelizable]
     public async Task AdminDataDir_ResolvedThroughDiWiring_ReturnsAbsoluteDataDir(string? dataDir)
     {
         const string baseDbPath = "nethermind_db/mainnet";
-        string expected = Path.GetFullPath(string.IsNullOrWhiteSpace(dataDir) ? "." : dataDir);
+        using TempPath workingDirectory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(workingDirectory.Path);
+        string originalDirectory = Directory.GetCurrentDirectory();
 
-        string? result = await ResolveAdminDataDir(new InitConfig { BaseDbPath = baseDbPath, DataDir = dataDir });
+        string expected;
+        string? result;
+        Directory.SetCurrentDirectory(workingDirectory.Path);
+        try
+        {
+            expected = Path.GetFullPath(Path.Combine(PathUtils.ExecutingDirectory, dataDir ?? string.Empty));
+            result = await ResolveAdminDataDir(new InitConfig { BaseDbPath = baseDbPath, DataDir = dataDir });
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.Not.EqualTo(baseDbPath), "the DB subdirectory is not the data directory");
-            Assert.That(Path.IsPathRooted(result), Is.True, "the data directory is absolute");
-            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(result, Is.EqualTo(expected), "the node stores its data relative to the executable directory, not the working directory");
         }
     }
 
