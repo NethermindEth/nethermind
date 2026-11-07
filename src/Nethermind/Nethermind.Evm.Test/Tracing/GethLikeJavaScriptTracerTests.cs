@@ -278,6 +278,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("6420000000005f5ff0", 100000UL, "step:CREATE:32000:out of gas: gas uint64 overflow:3:0,0,137438953472:0", null)]
     [TestCase("680100000000000000005f5ff0", 100000UL, "step:CREATE:32000:gas uint64 overflow:3:0,0,18446744073709551616:0", null)]
     [TestCase("5fff", 26001UL, "step:SELFDESTRUCT:5000:out of gas:1:0:0", null)]
+    [TestCase("61beefff", 26003UL, "step:SELFDESTRUCT:5000:out of gas: out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 28603UL, "step:SELFDESTRUCT:32600:out of gas:1:48879:0", null)]
+    [TestCase("61beefff", 100000UL, "step:SELFDESTRUCT:32600::1:48879:0", null)]
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
     [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
@@ -395,7 +398,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f5ff0", "step:32000:out of gas: write protection", null)]
     [TestCase("5f5f5f5ff5", "step:32000:out of gas: write protection", null)]
     [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
-    [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
+    [TestCase("5f5f5f5fa2", "step:1125:", "fault:1125:write protection")]
+    [TestCase("5f5f60205fa2", "step:1384:", "fault:1384:write protection")]
+    [TestCase("ff", "step:5000:stack underflow (0 <=> 1)", null)]
+    [TestCase("61beefff", "step:5000:out of gas: write protection", null)]
     public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
         const string userTracer = """
@@ -791,6 +797,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("63ffffffff5f5f5e", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:PUSH0,P6:PUSH0,S7:MCOPY(out of gas),P7:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_out_of_gas")]
     [TestCase("5f5f63ffffffff5fa2", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:PUSH4,P2:PUSH4,S7:PUSH0,P7:PUSH0,S8:LOG2(out of gas),P8:LOG2", 0, TestName = "Callbacks_ordered_log2_out_of_gas")]
     [TestCase("5f600163ffffffff5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH1,P1:PUSH1,S3:PUSH4,P3:PUSH4,S8:PUSH0,P8:PUSH0,S9:CREATE2(out of gas),P9:CREATE2", 0, TestName = "Callbacks_ordered_create2_out_of_gas")]
+    // The memory expansion leaves too little gas for the cold beneficiary, then for the new account.
+    [TestCase("5f62029a3f5361beefff", "S0:PUSH0,P0:PUSH0,S1:PUSH3,P1:PUSH3,S5:MSTORE8,P5:MSTORE8,S6:PUSH2,P6:PUSH2,S9:SELFDESTRUCT(out of gas: out of gas),P9:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_self_destruct_cold_access_out_of_gas")]
+    [TestCase("5f620270ff5361beefff", "S0:PUSH0,P0:PUSH0,S1:PUSH3,P1:PUSH3,S5:MSTORE8,P5:MSTORE8,S6:PUSH2,P6:PUSH2,S9:SELFDESTRUCT(out of gas),P9:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_self_destruct_new_account_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
     [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
     [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
@@ -2505,6 +2514,27 @@ public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
             {
                 events: [],
                 step: function(log) { if (log.op.toNumber() === 0xfa) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        Assert.That(RunTrace(block, transaction, tracerCode),
+            Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{expectedCost}:{error}" }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    [TestCase(0UL, 29999UL, 30000UL, "out of gas")]
+    [TestCase(0UL, 30000UL, 30000UL, "")]
+    [TestCase(3UL, 7999UL, 8000UL, "out of gas: out of gas")]
+    [TestCase(3UL, 200599UL, 17000UL, "out of gas")]
+    [TestCase(3UL, 200600UL, 17000UL, "")]
+    public void SelfDestruct_dynamic_charge_reports_geth_execution_cost_from_one_step(ulong fork, ulong executionGas, ulong expectedCost, string error)
+    {
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, Bytes.FromHexString("61beefff"));
+        transaction.GasLimit = IntrinsicGasCalculator.Calculate(transaction, SpecProvider.GetSpec((ForkActivation)fork), block.Header.GasLimit).Standard + 3 + executionGas;
+        const string tracerCode = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
                 fault: function(log) { this.events.push("fault:" + log.getError()); },
                 result: function() { return this.events; }
             }

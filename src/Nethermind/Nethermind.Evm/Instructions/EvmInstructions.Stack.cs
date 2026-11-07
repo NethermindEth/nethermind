@@ -1187,8 +1187,9 @@ public static partial class EvmInstructions
         // Logging is not permitted in static call contexts.
         if (vmState.IsStatic)
         {
-            // Geth raises write protection while executing LOG, after a step that carries no error.
-            vm.TraceOperationReady(0);
+            // Geth prices LOG, then raises write protection while executing it, after a step that carries no error.
+            if (DispatchFlags.ConstTracing && (vm.IsTracingOperationGasCost || vm.IsTracingOperationStart))
+                TraceStaticLogGasCost<TGasPolicy, TOpCount>(vm, in stack);
             goto StaticCallViolation;
         }
 
@@ -1214,7 +1215,7 @@ public static partial class EvmInstructions
             if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory)
                 vmState.Memory.LoadSpanAfterGas(in position, in length);
             for (int i = 0; i < TOpCount.Count; i++)
-                if (!stack.PopLimbo()) goto StackUnderflow;
+                if (!stack.PopLimbo()) return TopicStackUnderflow(ref stack, i);
             return EvmExceptionType.None;
         }
 
@@ -1225,7 +1226,7 @@ public static partial class EvmInstructions
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
+            if (!stack.PopWord256(out Span<byte> topic)) return TopicStackUnderflow(ref stack, i);
             // Topic 0 is the event signature, which repeats across logs, so its instance is shared.
             topics[i] = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
         }
@@ -1246,5 +1247,30 @@ public static partial class EvmInstructions
         return EvmExceptionType.StaticCallViolation;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>Restores the depth a LOG started with when a topic is missing, so underflow diagnostics report it.</summary>
+    /// <remarks>A topic pop fails only on an empty stack, after the data position and length and <paramref name="topicIndex"/> topics.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static EvmExceptionType TopicStackUnderflow(ref EvmStack stack, int topicIndex)
+    {
+        stack.Head = 2 + topicIndex;
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>Reports a static LOG's cost from the step, as Geth's dynamic gas function prices it before write protection.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceStaticLogGasCost<TGasPolicy, TOpCount>(VirtualMachine<TGasPolicy> vm, in EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCount : struct, IOpCount
+    {
+        // Reads a copy, so the stack keeps its operands; an underflow was already reported when the step started.
+        EvmStack operands = stack;
+        if (!operands.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
+            return;
+
+        ulong emissionCost = GasCostOf.Log + (ulong)TOpCount.Count * GasCostOf.LogTopic;
+        if (length <= (ulong.MaxValue - emissionCost) / GasCostOf.LogData)
+            vm.TraceMemoryOperationGasCost(in position, in length, emissionCost + (ulong)length * GasCostOf.LogData);
     }
 }

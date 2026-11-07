@@ -298,11 +298,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Static_storage_fault_keeps_dynamic_gas_error()
+    [TestCase("600160005500", "SSTORE", "out of gas: write protection", 0UL)]
+    [TestCase("ff", "SELFDESTRUCT", "stack underflow (0 <=> 1)", 5000UL)]
+    public void Static_storage_fault_keeps_dynamic_gas_error(string childCode, string opcode, string error, ulong gasCost)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("600160005500"), CancunSpec);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), CancunSpec);
         TestState.Commit(CancunSpec);
         byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 65535).Op(Instruction.STOP).Done;
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
@@ -312,9 +313,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         GethTxTraceEntry storage = result.Entries[^2];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.Opcode, Is.EqualTo("SSTORE"));
-            Assert.That(storage.Error, Is.EqualTo("out of gas: write protection"));
-            Assert.That(storage.GasCost, Is.Zero);
+            Assert.That(storage.Opcode, Is.EqualTo(opcode));
+            Assert.That(storage.Error, Is.EqualTo(error));
+            Assert.That(storage.GasCost, Is.EqualTo(gasCost));
             Assert.That(result.Failed, Is.False);
             Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
         }
@@ -567,12 +568,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> PartialPopUnderflowCases()
     {
-        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2 })
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2,
+                     Instruction.KECCAK256, Instruction.EXP, Instruction.BLOCKHASH, Instruction.BLOBHASH, Instruction.MCOPY, Instruction.LOG4, Instruction.SELFDESTRUCT })
         {
             int required = opcode switch
             {
                 Instruction.CALL or Instruction.CALLCODE => 7,
-                Instruction.DELEGATECALL or Instruction.STATICCALL => 6,
+                Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.LOG4 => 6,
+                Instruction.KECCAK256 or Instruction.EXP => 2,
+                Instruction.BLOCKHASH or Instruction.BLOBHASH or Instruction.SELFDESTRUCT => 1,
+                Instruction.MCOPY => 3,
                 _ => 4
             };
             for (int depth = 0; depth < required; depth++)

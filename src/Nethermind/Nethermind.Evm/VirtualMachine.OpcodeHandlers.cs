@@ -778,10 +778,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8360 : struct, IFlag =>
         (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
         {
-            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
-            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<TTracingInst, OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip4758, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
         };
 
     private readonly struct BadInstructionOpcode : IOpcodeBody
@@ -2019,7 +2019,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct SelfDestructOpcode<TEip8037, TEip7708, TSpec> : IOpcodeBody
+    private readonly struct SelfDestructOpcode<TTracingInst, TEip8037, TEip7708, TSpec> : IOpcodeBody
+        where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
         where TSpec : struct, EvmInstructions.ISelfDestructSpec
@@ -2028,6 +2029,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int? TraceStackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionSelfDestruct<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
 }
