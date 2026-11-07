@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -13,6 +15,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -22,7 +25,8 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionPicker(
             ISpecProvider specProvider,
             long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
-            bool ignoreEip3607 = false)
+            bool ignoreEip3607 = false,
+            LeanProofStore? leanProofStore = null)
             : IBlockProductionTransactionPicker
         {
             private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
@@ -54,7 +58,8 @@ namespace Nethermind.Consensus.Processing
                     return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Stop, "Block full");
                 }
 
-                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                if (block is BlockToProduce blockToProduce
+                    && blockToProduce.TxByteLength + currentTx.GetLength(false) + StarkProofReserve(blockToProduce, currentTx, spec) > _maxTxLengthBytes)
                 {
                     return NewArgs(block, currentTx, transactionsInBlock).Set(
                         // If smallest tx is too large, stop picking
@@ -132,9 +137,40 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
+                if (spec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(currentTx) != 0)
+                {
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx, FrameTxSigHash.ComputeValue);
+                    BlockToProduce? producing = block as BlockToProduce;
+                    if (producing?.LeanDependencyLimit is { } limit)
+                        foreach (FrameDependency dependency in required)
+                            if (!limit.Contains(dependency)) return args.Set(TxAction.Skip, "Dependency proof not ready");
+                    LeanProofBudget budget = producing?.LeanProofBudget ?? new();
+                    List<FrameDependency> missing = budget.Missing(required);
+                    AggregationInput candidateInput = new();
+                    if (missing.Count != 0 && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput)
+                        && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput)))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
+                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                        return args.Set(TxAction.Skip, proofError!);
+                    args.LeanProofInput = contribution;
+                    args.LeanDependencies = required;
+                }
+
                 OnAddingTransaction(args);
                 return args;
             }
+
+            // len(rlp(stark_proof)) - 1: the one byte of an empty stark_proof is already part of the block's fixed overhead.
+            private static readonly int MaxStarkProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0) - 1;
+
+            /// <summary>The body bytes kept for the EIP-8288 <c>stark_proof</c> once the block carries dependencies.</summary>
+            /// <remarks>The proof counts toward the EIP-7934 RLP block size and the CL payload but is attached only after packing,
+            /// so the largest admissible proof, the local <see cref="Eip8288Constants.MaxAggregateProofBytes"/> bound, is reserved
+            /// out of the transaction byte budget, measured against an empty <c>stark_proof</c> in place.</remarks>
+            private static int StarkProofReserve(BlockToProduce block, Transaction candidate, IReleaseSpec spec) =>
+                spec.IsEip8288Enabled && (block.LeanProofInputs.Count != 0 || Eip8288Dependencies.IsDependencyBearing(candidate))
+                    ? MaxStarkProofLength
+                    : 0;
 
             private static AddingTxEventArgs NewArgs(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock) =>
                 new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);

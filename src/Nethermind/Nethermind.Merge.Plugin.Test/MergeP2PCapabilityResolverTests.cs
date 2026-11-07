@@ -81,6 +81,30 @@ public class MergeP2PCapabilityResolverTests
     }
 
     [Test]
+    public void Resolve_advertises_eth73_once_eip8288_is_scheduled_before_it_activates([Values] bool scheduled)
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        IReleaseSpec head = Substitute.For<IReleaseSpec>();
+        head.IsEip7594Enabled.Returns(true);
+        head.IsEip8288Enabled.Returns(false);
+        IReleaseSpec final = Substitute.For<IReleaseSpec>();
+        final.IsEip8288Enabled.Returns(scheduled);
+        specProvider.GetCurrentHeadSpec().Returns(head);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(final);
+        using MergeP2PCapabilityResolver resolver = new(
+            poSSwitcher,
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.StorageWithReorgs },
+            specProvider);
+
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+
+        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
+    }
+
+    [Test]
     public void Raises_Changed_when_eip7594_activation_changes()
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();

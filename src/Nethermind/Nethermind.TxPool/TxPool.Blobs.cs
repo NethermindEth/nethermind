@@ -128,7 +128,8 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
-            if (!tx.SupportsBlobs)
+            // Type-3, or a blob-carrying frame transaction, which callers pass only once its covering wrapper validated (EIP-8437).
+            if (!tx.SupportsBlobs && !(tx.SupportsFrames && tx.CarriesBlobs))
             {
                 return AcceptTxResult.Invalid;
             }
@@ -143,6 +144,8 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                state.ProofReservation?.Dispose();
+                state.SenderProofReservation?.Dispose();
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }

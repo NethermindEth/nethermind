@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -87,7 +89,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
                 }
-                catch (Exception e) when (e is not TaskCanceledException)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (Logger.IsError) Logger.Error("Failed to produce block", e);
                     Metrics.FailedBlockSeals++;
@@ -137,7 +139,7 @@ namespace Nethermind.Consensus.Producers
             {
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    Block? processedBlock = ProcessWithProvenDependencies(block, parent, blockTracer, payloadAttributes, flags, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -184,6 +186,38 @@ namespace Nethermind.Consensus.Producers
             }
 
             return Task.FromResult((Block?)null);
+        }
+
+        private const int MaxProofFallbacks = 8;
+
+        /// <summary>Processes the block, rebuilding its body from proven dependencies when its own proof is not ready.</summary>
+        /// <remarks>
+        /// Each rebuild is limited to a set with an existing proof, which can still shrink when its transactions are not
+        /// includable together, for example behind a skipped nonce. At most <see cref="MaxProofFallbacks"/> rebuilds run, and
+        /// the last has no proof-backed transactions, so a deadline-bound pass always yields a body without waiting for native
+        /// proving.
+        /// </remarks>
+        private Block? ProcessWithProvenDependencies(Block block, BlockHeader parent, IBlockTracer? blockTracer,
+            PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token)
+        {
+            for (int fallback = 0; ; fallback++)
+            {
+                try
+                {
+                    return ProcessPreparedBlock(block, blockTracer, token);
+                }
+                catch (LeanProofNotReadyException exception) when (fallback < MaxProofFallbacks)
+                {
+                    token.ThrowIfCancellationRequested();
+                    IReadOnlySet<FrameDependency> limit = fallback + 1 == MaxProofFallbacks ? new HashSet<FrameDependency>() : exception.Proven;
+                    if (Logger.IsDebug)
+                        Logger.Debug($"Rebuilding block {block.Number} ({block.Transactions.Length} txs, {Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue).Count} dependencies) from {limit.Count} proven dependencies while its proof is prepared");
+                    Interlocked.Increment(ref Metrics.LeanProofFallbacks);
+                    block = PrepareBlock(parent, payloadAttributes, flags);
+                    if (block is not BlockToProduce producing) throw;
+                    producing.LeanDependencyLimit = limit;
+                }
+            }
         }
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
@@ -243,8 +277,13 @@ namespace Nethermind.Consensus.Producers
                 Array.Empty<Transaction>() :
                 TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true);
 
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            BlockToProduce block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            ApplyInclusionList(block, payloadAttributes);
+            return block;
         }
+
+        protected virtual void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
+            => InclusionListV1.ApplyToBlock(block, attributes);
 
         private ProcessingOptions GetProcessingOptions()
         {

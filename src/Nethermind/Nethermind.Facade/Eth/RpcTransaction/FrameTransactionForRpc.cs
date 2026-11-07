@@ -143,7 +143,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
         // The measurements below assume the processor's structural checks; a transaction failing them is left for the
         // processor to reject with its own error, and any budget will do.
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out _)
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out _)
             || (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys)))
         {
             return UInt256.MaxValue;

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -95,6 +96,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8038Enabled { get; set; }
     public bool IsEip8282Enabled { get; set; }
     public bool IsEip8141Enabled { get; set; }
+    public bool IsEip8288Enabled { get; set; }
+    public ValueHash256 Eip8288AggregatedVk { get; set; } = Eip8288Verifier.PinnedAggregatedVk;
     public bool IsEip8250Enabled { get; set; }
     public bool IsEip8272Enabled { get; set; }
     public bool IsEip7906Enabled { get; set; }

@@ -26,6 +26,12 @@ namespace Nethermind.TxPool
         // Code intentionally kept as nameof(): the success path returns the tx hash, not this Code string.
         public static readonly AcceptTxResult Accepted = new(nameof(Accepted));
 
+        /// <summary>A dependency transaction was submitted without verified EIP-8288 witnesses.</summary>
+        public static readonly AcceptTxResult MissingDependencyProof = new(nameof(MissingDependencyProof), "Submit dependency transactions through eth_sendProofWrapper.");
+
+        /// <summary>The transaction exceeds the deduplicated EIP-8288 mempool dependency limits.</summary>
+        public static readonly AcceptTxResult TooManyDependencies = new(nameof(TooManyDependencies), "Transaction exceeds EIP-8288 dependency limits.");
+
         /// <summary>
         /// A transaction with the same hash has already been added to the pool in the past.
         /// </summary>

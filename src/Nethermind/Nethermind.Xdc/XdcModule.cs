@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -197,7 +198,8 @@ public class XdcModule : Module
             ],
             true,
             frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
-            stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
+            leanProofStore: ctx.Resolve<LeanProofStore>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

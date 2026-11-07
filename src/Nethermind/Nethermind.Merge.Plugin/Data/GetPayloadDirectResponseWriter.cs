@@ -136,6 +136,13 @@ internal static class GetPayloadDirectResponseWriter
             WriteNullableUlongHexString(writer, block.SlotNumber);
         }
 
+        // Proof fields are present only on EIP-8288 payloads.
+        if (block.Header.RecursiveStark is not null)
+        {
+            writer.Write(",\"starkProof\":"u8);
+            WriteHexString(writer, block.StarkProof ?? throw new InvalidOperationException("Missing block proof body"), chunked: true);
+        }
+
         writer.Write("}"u8);
         return false;
     }

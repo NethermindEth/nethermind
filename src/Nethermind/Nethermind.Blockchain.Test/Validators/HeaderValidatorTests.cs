@@ -62,6 +62,71 @@ public class HeaderValidatorTests
         _blockTree.SuggestBlock(_block);
     }
 
+    [TestCase(false, "absent", true, null)]
+    [TestCase(false, "valid", false, BlockErrorMessages.RecursiveStarkNotEnabled)]
+    [TestCase(true, "absent", false, BlockErrorMessages.MissingRecursiveStark)]
+    [TestCase(true, "missing-proof-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "empty-deps", true, null)]
+    [TestCase(true, "empty-deps-with-proof", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "valid", true, null)]
+    public void Header_validation_gates_recursive_proof_shape(bool enabled, string shape, bool valid, string? expectedError)
+    {
+        OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = enabled, IsEip8288Enabled = enabled };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStarkCommitment(shape switch
+        {
+            "missing-proof-hash" => null!,
+            "empty-deps" => Keccak.OfAnEmptyString,
+            _ => Keccak.Compute(new byte[] { 1 })
+        }, shape switch
+        {
+            "missing-hash" => null!,
+            "empty-deps" or "empty-deps-with-proof" => new Hash256(Eip8288Dependencies.ComputeDepsHash([])),
+            _ => Keccak.Zero
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.EqualTo(valid));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    [Test]
+    public void Decoded_recursive_proof_header_without_slot_numbers_is_valid()
+    {
+        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        BlockHeader header = Build.A.BlockHeader.WithParent(_parentBlock.Header)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .TestObject;
+        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        header.Hash = header.CalculateHash();
+
+        BlockHeader decoded = Rlp.Decode<BlockHeader>(Rlp.Encode(header))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.CalculateHash(), Is.EqualTo(header.Hash));
+            Assert.That(_validator.ValidateOrphaned(decoded, out string? error), Is.True, error);
+        }
+    }
+
+    [Test]
+    public void Active_fork_genesis_does_not_require_a_recursive_proof()
+    {
+        OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).TestObject;
+        genesis.Hash = genesis.CalculateHash();
+        Assert.That(_validator.ValidateOrphaned(genesis, out string? error), Is.True, error);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Valid_when_valid()
     {

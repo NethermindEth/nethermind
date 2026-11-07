@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
                 return lightTx.GetElidedNetworkEncodingSize();
             }
 
-            if (!tx.SupportsBlobs)
+            if (!tx.CarriesBlobs)
             {
                 return tx.GetLength();
             }

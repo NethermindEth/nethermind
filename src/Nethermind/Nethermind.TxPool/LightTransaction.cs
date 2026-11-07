@@ -46,6 +46,8 @@ public class LightTransaction : Transaction
         // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
         // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
         PersistedPaymaster = PendingPaymasterCache.KeyFor(fullTx);
+        // Kept so a blob-carrying EIP-8288 dependency-bearing record still takes the eth/73 cell path once frameless.
+        PersistedDependencyBearing = Eip8288Dependencies.IsDependencyBearing(fullTx);
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
         _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
         _size = fullTx.GetLength();
@@ -124,7 +126,8 @@ public class LightTransaction : Transaction
         Address? payerAddress,
         UInt256? payerExposure,
         Address? paymaster,
-        UInt256 maxFee)
+        UInt256 maxFee,
+        bool? dependencyBearing = null)
     {
         Type = type;
         Hash = hash;
@@ -152,6 +155,7 @@ public class LightTransaction : Transaction
         PayerExposure = payerExposure;
         // The slot this record already holds against its sponsor, so the cap keeps counting it after a reload.
         PersistedPaymaster = paymaster;
+        PersistedDependencyBearing = dependencyBearing;
         _size = size;
     }
 
@@ -162,6 +166,9 @@ public class LightTransaction : Transaction
 
     /// <inheritdoc/>
     public override Address? PersistedPaymaster { get; }
+
+    /// <inheritdoc/>
+    public override bool? PersistedDependencyBearing { get; }
 
     /// <summary>
     /// Cell availability mask of the pooled sparse blob transaction.

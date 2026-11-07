@@ -163,7 +163,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    // EIP-8437: a dependency-bearing transaction is answered as unavailable on every eth version.
+                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx)
+                        && !Eip8288Dependencies.IsDependencyBearing(tx))
                     {
                         Transaction responseTx = PreparePooledTransactionForResponse(tx);
                         int txSize = responseTx.GetLength();

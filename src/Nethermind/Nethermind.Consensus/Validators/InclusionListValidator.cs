@@ -5,12 +5,15 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -20,18 +23,24 @@ public static class InclusionListValidator
     private const int StackAllocEntries = 256;
 
     public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator);
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, block.InclusionLists);
 
     /// <summary>Checks appendability against state after transactions, before withdrawals and request system calls.</summary>
-    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+    /// <param name="lists">The counted lists with their resolved EIP-8288 proofs, or <c>null</c> when only the flattened
+    /// <paramref name="il"/> was supplied, which then binds only its transactions without dependencies.</param>
+    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
+        IReadOnlyList<CommitteeInclusionList>? lists, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
-
         // No room for even the cheapest possible tx → nothing is appendable.
-        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
+        if (IsBlockFull(block, spec)) return true;
+
+        if (spec.IsEip8288Enabled)
+        {
+            il = InclusionListProofValidator.SelectEligible(il, lists, spec);
+        }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
         bool[]? rented = il.Length > StackAllocEntries
@@ -41,7 +50,7 @@ public static class InclusionListValidator
         {
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
-            return IsSatisfied(block, il, included, state, spec, txValidator);
+            return IsSatisfied(block, il, included, state, spec, txValidator, frameCanInclude);
         }
         finally
         {
@@ -49,7 +58,37 @@ public static class InclusionListValidator
         }
     }
 
-    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+    /// <summary>Whether <paramref name="block"/> leaves out an EIP-8141 frame entry of its inclusion list that
+    /// <see cref="IsSatisfied(Block, Transaction[], IReadOnlyStateProvider, IReleaseSpec, ITxValidator, IReadOnlyList{CommitteeInclusionList}, Func{Transaction, bool})"/>
+    /// may have to judge by prefix simulation.</summary>
+    /// <remarks>Decided from transaction hashes alone, before execution, and conservatively: an entry is left out unless the block
+    /// carries a transaction of its hash, whether or not it is eligible. When none is, the simulation is never asked for.</remarks>
+    public static bool OmitsFrameEntry(Block block)
+    {
+        if (block.InclusionListTransactions is not { } il) return false;
+        HashSet<Hash256>? included = null;
+        foreach (Transaction tx in il)
+        {
+            if (!tx.SupportsFrames || tx.SupportsBlobs || tx.CarriesBlobs) continue;
+            if (tx.Hash is null) return true;
+            if (included is null)
+            {
+                included = new(block.Transactions.Length);
+                foreach (Transaction blockTx in block.Transactions)
+                    if (blockTx.Hash is { } hash) included.Add(hash);
+            }
+            if (!included.Contains(tx.Hash)) return true;
+        }
+        return false;
+    }
+
+    public static bool IsBlockFull(Block block, IReleaseSpec spec)
+    {
+        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return block.GasUsed > block.GasLimit || minIntrinsicGas > block.GasLimit - block.GasUsed;
+    }
+
+    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, Func<Transaction, bool>? frameCanInclude)
     {
         // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
@@ -68,16 +107,24 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (included[i]) continue;
-            // EIP-7805 excludes blob transactions from the appendability check.
-            if (il[i].SupportsBlobs) continue;
-            // The rules below judge appendability on the account nonce, which a frame transaction does not
-            // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
-            if (il[i].SupportsFrames) continue;
+            if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
+            // EIP-7805 excludes blob transactions from the appendability check; a list carries no sidecar for frame blobs either.
+            if (il[i].SupportsBlobs || il[i].CarriesBlobs) continue;
+            if (il[i].SupportsFrames)
+            {
+                // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
+                if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
+                if ((frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
+                continue;
+            }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
+
+    private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)
+        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec) && validator.IsWellFormed(tx, spec, block.GasLimit)
+            && FrameTxValidation.CoversRequiredMaxFee(tx, spec, block.BaseFeePerGas, UInt256.Zero);
 
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {

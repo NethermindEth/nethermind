@@ -10,6 +10,10 @@ Nethermind stateless executor for each host. Compiler settings are shared in
 proof.** The pinned SP1 and OpenVM runner images currently provide execution
 only. Adding `--gpus all` does not turn those runners into provers.
 
+EIP-8288 prototype proof payloads are unsupported by the guest's SSZ input
+format. Its explicit proof backend fails closed and does not load the host Lean
+FFI. Execution before EIP-8288 activation never invokes that backend.
+
 ## Build and execute the standard block
 
 Use Linux with Docker, GNU Make, Python 3, curl, and the .NET SDK required by

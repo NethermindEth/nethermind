@@ -23,6 +23,14 @@ internal class FrameTxVerifyGasFilterTest
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
+        static TxFrame Dependency()
+        {
+            int count = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8288Constants.LeanSphincsVerificationGas) + 1;
+            byte[] data = new byte[count * Eip8288Constants.DependencyTripleLength];
+            for (int i = 0; i < count; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
+            return new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data);
+        }
+
         yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("execution behind a recognized prefix is outside the ceiling");
         yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(3_000_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
@@ -50,6 +58,10 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("raised headroom accepts its configured limit");
         yield return new TestCaseData(new[] { SelfVerify(500_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)500_000)
             .SetName("raised headroom rejects one gas above its configured limit");
+        yield return new TestCaseData(new[] { Dependency(), SelfVerify(1_000) }, AcceptTxResult.Accepted, null)
+            .SetName("leading dependency declarations do not consume the verify gas ceiling");
+        yield return new TestCaseData(new[] { OnlyVerify(1_000), Dependency(), Pay(TestItem.AddressB, 1_000) }, AcceptTxResult.Accepted, null)
+            .SetName("dependency declarations between approval stages do not consume the verify gas ceiling");
     }
 
     [TestCaseSource(nameof(PrefixCases))]

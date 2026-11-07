@@ -96,7 +96,10 @@ public class BlockHeader
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
-    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+
+    /// <summary>EIP-8288 commitments to the body proof and the block's transaction dependencies.</summary>
+    public RecursiveStarkCommitment? RecursiveStark { get; set; }
+    public bool HasBody => RecursiveStark is not null || (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
                            || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
@@ -150,6 +153,11 @@ public class BlockHeader
         if (SlotNumber is not null)
         {
             builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
+        if (RecursiveStark is not null)
+        {
+            builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
+            builder.AppendLine($"{indent}StarkProofHash: {RecursiveStark.StarkProofHash}");
         }
 
         return builder.ToString();
@@ -236,6 +244,7 @@ public class BlockHeader
         dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         dst.SlotNumber = SlotNumber;
         dst.BlockAccessListHash = BlockAccessListHash;
+        dst.RecursiveStark = RecursiveStark;
         dst.BlobGasUsed = BlobGasUsed;
         dst.ExcessBlobGas = ExcessBlobGas;
     }

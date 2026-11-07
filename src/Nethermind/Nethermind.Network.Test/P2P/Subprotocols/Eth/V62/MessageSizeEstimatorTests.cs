@@ -43,6 +43,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(MessageSizeEstimator.EstimateSize(block), Is.EqualTo(expected));
         }
 
+        [TestCase(0)]
+        [TestCase(Eip8288Constants.MaxAggregateProofBytes)]
+        public void Estimate_block_size_counts_present_proof_field(int proofBytes)
+        {
+            BlockHeader header = Build.A.BlockHeader.TestObject;
+            Block withoutProof = new(header, new BlockBody([], []));
+            Block withProof = new(header, new BlockBody([], [], starkProof: new byte[proofBytes]));
+            ulong increase = MessageSizeEstimator.EstimateSize(withProof) - MessageSizeEstimator.EstimateSize(withoutProof);
+            Assert.That(increase, Is.EqualTo((ulong)Rlp.LengthOf(new byte[proofBytes])));
+        }
+
         [Test]
         public void Estimate_null_block_size() => Assert.That(MessageSizeEstimator.EstimateSize((Block)null), Is.EqualTo(0));
 

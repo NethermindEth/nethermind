@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -26,6 +31,42 @@ public class InclusionListValidatorTests
         ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
+    private const bool Proven = true;
+
+    /// <summary>A counted list as newPayload resolves it: with a verified proof covering its entries, or with none.</summary>
+    private static CommitteeInclusionList Counted(Transaction[] transactions, bool proven)
+        => new(transactions)
+        {
+            VerifiedProofDeps = proven
+                ? transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)).ToHashSet()
+                : null
+        };
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void Lists_without_a_verified_proof_establish_no_mandatory_dependency_transactions(bool dependencies, bool full)
+    {
+        Transaction transaction = BuildFrameTx();
+        byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
+        data[31] = Eip8288Constants.LeanSphincsScheme;
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
+            .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
+        // A list without a verified proof obligates only dependency-free entries; an empty list binds nothing whatever it proves.
+        block.InclusionLists = [Counted(block.InclusionListTransactions!, !dependencies)];
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+    }
+
+    private static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator validator)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, validator);
+
+    private static bool IsSatisfied(Block block, Transaction[]? list, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator validator)
+        => InclusionListValidator.IsSatisfied(block, list, state, spec, validator, block.InclusionLists);
 
     public static IEnumerable<TestCaseData> SatisfactionCases
     {
@@ -84,7 +125,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+        Assert.That(IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
@@ -106,7 +147,7 @@ public class InclusionListValidatorTests
             .TestObject;
         if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
 
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
@@ -126,8 +167,99 @@ public class InclusionListValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
-            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+            Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
         }
+    }
+
+    // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
+    // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
+    [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Full proof envelope is no omission ground")]
+    [TestCase(4096, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Large dependency union is no omission ground")]
+    [TestCase(4096, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
+    [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
+    [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
+    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
+    {
+        FrameDependency[] blockDeps = new FrameDependency[blockDependencies];
+        for (int i = 0; i < blockDependencies; i++)
+            blockDeps[i] = new(i < blockLeanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        Transaction blockTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressB,
+            Frames = [.. blockDeps.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                .Select(static chunk => new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(chunk)))],
+            FrameSignatures = [],
+        };
+        blockTx.Hash = blockTx.CalculateHash();
+
+        FrameDependency dependency = present ? blockDeps[^1] : new(scheme, ValueKeccak.Compute("omitted"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
+            dependency.Scheme == Eip8288Constants.LeanStarkScheme ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        entry.Hash = entry.CalculateHash();
+
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).WithTransactions(blockTx)
+            .WithInclusionListTransactions([entry]).TestObject;
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        CommitteeInclusionList[] lists = [Counted([entry], Proven)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
+            Assert.That(InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+                lists, frameCanInclude: static _ => true), Is.False);
+        }
+    }
+
+    // EIPs#12475: obligations follow from each signed list alone. An entry with dependencies binds through a list whose proof
+    // verifies and covers it, and not through a list without one; an independent proven list can still require it.
+    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only an unproven list imposes no obligation")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "Another proven list still requires the entry")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a proven list is required")]
+    public bool Each_list_proof_derives_its_own_obligations(bool firstProven, bool secondList)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        entry.Hash = entry.CalculateHash();
+        List<CommitteeInclusionList> lists = [Counted([entry], firstProven)];
+        if (secondList) lists.Add(Counted([entry], Proven));
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
+        block.InclusionLists = lists;
+        block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        return InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, 10.Ether, 0), spec,
+            _txValidator, lists, frameCanInclude: static _ => true);
+    }
+
+    // EIP-8141: an entry is appendable once its max_fee covers required_max_fee, which prices max_gas, intrinsic gas included.
+    [TestCase(true, ExpectedResult = false, TestName = "Entry whose max_fee covers max_gas is required")]
+    [TestCase(false, ExpectedResult = true, TestName = "Entry whose max_fee covers only its frame gas imposes no obligation")]
+    public bool Frame_entry_is_required_only_when_its_max_fee_covers_max_gas(bool coversMaxGas)
+    {
+        UInt256 baseFee = 1.GWei;
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        ulong frameGas = FrameTxValidation.TotalGasLimit(entry.Frames);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(entry, spec, out _, out _, out ulong maxGas), Is.True);
+        entry.MaxFee = baseFee * (coversMaxGas ? maxGas : frameGas);
+        entry.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(entry.MaxFee, frameGas);
+        entry.Hash = entry.CalculateHash();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).WithBaseFeePerGas(baseFee)
+            .WithInclusionListTransactions([entry]).TestObject;
+
+        return InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+            [Counted([entry], Proven)], frameCanInclude: static _ => true);
     }
 
     private static Transaction BuildFrameTx() => new()
@@ -152,7 +284,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
+        Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
     }
 
     // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
@@ -177,7 +309,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>
