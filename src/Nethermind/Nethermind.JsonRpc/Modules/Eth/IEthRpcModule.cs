@@ -207,7 +207,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Executes a tx call and returns gas used (does not create a transaction)",
             IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
+        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, EstimateGasOptions? options = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction",
