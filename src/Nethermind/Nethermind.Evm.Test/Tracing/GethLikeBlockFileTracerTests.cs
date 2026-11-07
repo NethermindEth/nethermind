@@ -109,14 +109,27 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(Instruction.REVERT, "0x6")]
-    [TestCase(Instruction.RETURN, "0x6")]
-    public void File_summary_reports_execution_gas_after_top_level_action(Instruction exit, string gasUsed)
+    [TestCase("revert", "0x6", "execution reverted")]
+    [TestCase("return", "0x6", null)]
+    [TestCase("badJump", "0x13498", "invalid jump destination")]
+    [TestCase("underflow", "0x13498", "stack underflow (1 \\u003c=\\u003e 2)")]
+    public void File_summary_reports_execution_gas_and_error_after_top_level_action(string scenario, string gasUsed, string? error)
     {
-        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
-        string file = TraceFile(code);
-        using JsonDocument summary = JsonDocument.Parse(file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1]);
-        Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo(gasUsed));
+        byte[] code = scenario switch
+        {
+            "revert" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+            "return" => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done,
+            "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null)
+        };
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[^1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            Assert.That(records[^2], Does.Not.Contain("\\u003C").And.Not.Contain("\\u003E"), "Geth escapes HTML characters with lowercase hex");
+        }
     }
 
     [Test]
@@ -293,6 +306,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [TestCase("identity", "0xf", null)]
     [TestCase("identity", "0xe", "out of gas", 14)]
     [TestCase("return", "0x11", "out of gas", 17)]
+    [TestCase("underflow", "0xc350", "stack underflow (1 \\u003c=\\u003e 2)")]
     public void Nested_exit_precedes_parent_resume(string scenario, string gasUsed, string? error, long gasLimit = 50_000)
     {
         byte[] code = PrepareNestedCall(scenario, gasLimit);
@@ -310,6 +324,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
             "return" or "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", scenario.ToUpperInvariant()],
             "badJump" => ["PUSH1", "JUMP"],
+            "underflow" => ["PUSH1", "ADD"],
             _ => []
         };
         string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
@@ -461,10 +476,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 
             anyMemory = true;
             string value = memory.GetString();
-            Assert.That(value, Does.StartWith("0x"));
-            Assert.That(value, Does.Not.StartWith("0x0x"), "memory must not have a doubled 0x prefix");
-            // After the single 0x prefix, the blob is contiguous hex with no embedded prefixes.
-            Assert.That(value!.IndexOf("0x", 2), Is.EqualTo(-1), "memory blob must not contain embedded 0x prefixes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Does.StartWith("0x"));
+                Assert.That(value, Does.Not.StartWith("0x0x"), "memory must not have a doubled 0x prefix");
+                // After the single 0x prefix, the blob is contiguous hex with no embedded prefixes.
+                Assert.That(value!.IndexOf("0x", 2), Is.EqualTo(-1), "memory blob must not contain embedded 0x prefixes");
+                Assert.That(line.IndexOf("\"memory\":", StringComparison.Ordinal), Is.LessThan(line.IndexOf("\"memSize\":", StringComparison.Ordinal)),
+                    "Geth writes memory before memSize");
+            }
         }
 
         Assert.That(anyMemory, Is.True, "expected at least one entry to carry a memory blob");
@@ -544,6 +564,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             "return" or "revert" => Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
                 .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
             "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            "underflow" => Prepare.EvmCode.PushData(7).Op(Instruction.ADD).Done,
             _ => []
         };
         TestState.CreateAccount(address, 1.Ether);
