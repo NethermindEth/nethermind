@@ -57,7 +57,7 @@ public class OptimismTransactionProcessorTests
     }
 
     [Test]
-    public void Operator_fee_is_charged_up_front_and_settled_on_gas_used()
+    public void Sender_recipient_and_operator_fee_recipient_balances_are_exact([Values] bool jovian)
     {
         IReleaseSpec spec = Prague.Instance;
         Address l1Block = TestItem.AddressE;
@@ -66,6 +66,7 @@ public class OptimismTransactionProcessorTests
             BedrockBlockNumber = 0,
             RegolithTimestamp = 0,
             IsthmusTimestamp = 0,
+            JovianTimestamp = jovian ? 0 : null,
             L1BlockAddress = l1Block,
             L1FeeRecipient = TestItem.AddressF
         }, spec);
@@ -97,7 +98,9 @@ public class OptimismTransactionProcessorTests
             .Execute(tx, new BlockExecutionContext(header, spec), NullTxTracer.Instance);
 
         const ulong gasUsed = GasCostOf.Transaction;
-        UInt256 operatorFee = gasUsed * operatorFeeScalar / 1_000_000 + operatorFeeConstant;
+        UInt256 operatorFee = jovian
+            ? (UInt256)gasUsed * operatorFeeScalar * 100 + operatorFeeConstant
+            : gasUsed * operatorFeeScalar / 1_000_000 + operatorFeeConstant;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
