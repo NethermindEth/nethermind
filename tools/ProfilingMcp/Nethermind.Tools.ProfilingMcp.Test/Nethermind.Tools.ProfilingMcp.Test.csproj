@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../src/Nethermind/tests.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="../Nethermind.Tools.ProfilingMcp/Nethermind.Tools.ProfilingMcp.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -31,6 +31,7 @@ jobs:
           - HiveCompare/HiveCompare.slnx
           - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
+          - ProfilingMcp/ProfilingMcp.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
           - StatelessInputGen/StatelessInputGen.slnx
@@ -62,6 +63,11 @@ jobs:
         if: matrix.project == 'Evm/Evm.slnx'
         working-directory: tools
         run: dotnet test ./Evm/Evm.Test/Evm.Test.csproj -c ${{ matrix.config }} --no-build
+
+      - name: Test ProfilingMcp
+        if: matrix.project == 'ProfilingMcp/ProfilingMcp.slnx'
+        working-directory: tools
+        run: dotnet test --project ./ProfilingMcp/Nethermind.Tools.ProfilingMcp.Test/Nethermind.Tools.ProfilingMcp.Test.csproj -c ${{ matrix.config }} --no-build
 
       - name: Test SendBlobs
         if: matrix.project == 'SendBlobs/SendBlobs.slnx'
