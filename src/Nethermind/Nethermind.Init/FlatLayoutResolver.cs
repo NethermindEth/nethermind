@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO.Abstractions;
+using System.Linq;
+using System.Text;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -43,10 +44,14 @@ public sealed class FlatLayoutResolver(IInitConfig initConfig, IHardwareInfo har
         string markerPath = fileSystem.Path.Combine(directory, MarkerFileName);
         if (fileSystem.File.Exists(markerPath))
         {
-            string recorded = fileSystem.File.ReadAllText(markerPath);
-            if (!Enum.TryParse(recorded, out FlatLayout recordedLayout) || recordedLayout is not (FlatLayout.Flat or FlatLayout.FlatInTrie))
-                throw new InvalidConfigurationException(
-                    $"Unrecognized flat DB layout '{recorded}' in {markerPath}. Set FlatDb.Layout to the layout the flat DB was created with.", -1);
+            string recorded = fileSystem.File.ReadAllText(markerPath).Trim();
+            FlatLayout recordedLayout = recorded switch
+            {
+                nameof(FlatLayout.Flat) => FlatLayout.Flat,
+                nameof(FlatLayout.FlatInTrie) => FlatLayout.FlatInTrie,
+                _ => throw new InvalidConfigurationException(
+                    $"Unrecognized flat DB layout '{recorded}' in {markerPath}. Set FlatDb.Layout to the layout the flat DB was created with.", -1)
+            };
 
             flatDbConfig.Layout = recordedLayout;
             if (_logger.IsInfo) _logger.Info($"Flat DB layout: {recordedLayout} (recorded in {markerPath}).");
@@ -54,14 +59,27 @@ public sealed class FlatLayoutResolver(IInitConfig initConfig, IHardwareInfo har
         }
 
         (FlatLayout layout, string reason) =
-            FlatStateActivationPolicy.HasSstFile(fileSystem, directory) ? (FlatLayout.Flat, "existing flat DB")
+            HasData(directory) ? (FlatLayout.Flat, "existing flat DB")
             : flatDbConfig.HistoryEnabled ? (FlatLayout.Flat, "flat history requires it")
             : hardwareInfo.AvailableMemoryBytes < FlatStateActivationPolicy.LowMemoryLayoutThreshold ? (FlatLayout.FlatInTrie, $"{hardwareInfo.AvailableMemoryBytes / 1.GiB} GB of available memory")
             : (FlatLayout.Flat, $"{hardwareInfo.AvailableMemoryBytes / 1.GiB} GB of available memory");
 
         fileSystem.Directory.CreateDirectory(directory);
-        fileSystem.File.WriteAllText(markerPath, layout.ToString());
+        // Synced aside and renamed into place, so a crash leaves either no marker or a complete one.
+        string temporaryPath = markerPath + ".tmp";
+        using (FileSystemStream stream = fileSystem.File.Create(temporaryPath))
+        {
+            stream.Write(Encoding.UTF8.GetBytes(layout.ToString()));
+            stream.Flush(flushToDisk: true);
+        }
+        fileSystem.File.Move(temporaryPath, markerPath);
         flatDbConfig.Layout = layout;
         if (_logger.IsInfo) _logger.Info($"Flat DB layout: {layout} ({reason}).");
     }
+
+    // Until its first flush a DB holds its writes only in its write-ahead log, which an open without writes leaves empty.
+    private bool HasData(string directory) =>
+        fileSystem.Directory.Exists(directory) &&
+        (FlatStateActivationPolicy.HasSstFile(fileSystem, directory)
+            || fileSystem.Directory.EnumerateFiles(directory, "*.log").Any(path => fileSystem.FileInfo.New(path).Length > 0));
 }
