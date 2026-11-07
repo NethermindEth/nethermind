@@ -183,10 +183,16 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void ShouldVisit_compares_only_the_used_path_nibbles(
             [Values(0, 1, 2, 3, 5, 31, 63, 64)] int length,
-            [Values] bool storage)
+            [Values] bool storage,
+            [Values] bool sorted)
         {
             ValueHash256 target = TestItem.KeccakA.ValueHash256;
-            AccountProofCollector collector = new(target.Bytes, new[] { target });
+
+            // Four more keys take the request to the sorted lookup. Their first nibble differs from every path below.
+            ValueHash256[] keys = sorted
+                ? [target, WithFirstByteFlipped(0x80), WithFirstByteFlipped(0x40), WithFirstByteFlipped(0x20), WithFirstByteFlipped(0xC0)]
+                : [target];
+            AccountProofCollector collector = new(target.Bytes, keys);
             TreePathContextWithStorage context = new()
             {
                 Path = new TreePath(target, length),
@@ -214,6 +220,13 @@ namespace Nethermind.Store.Test.Proofs
                     if (length < 64)
                         Assert.That(collector.ShouldVisit(WithNibbleFlipped(length), default), Is.True);
                 }
+            }
+
+            ValueHash256 WithFirstByteFlipped(byte mask)
+            {
+                ValueHash256 flipped = target;
+                flipped.BytesAsSpan[0] ^= mask;
+                return flipped;
             }
 
             TreePathContextWithStorage WithNibbleFlipped(int nibble)
