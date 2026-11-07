@@ -20,6 +20,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Consensus.Ethash.NethDevPlugin),
         typeof(Nethermind.EthStats.EthStatsPlugin),
         typeof(Nethermind.Flashbots.Flashbots),
+        typeof(Nethermind.FlatPriorityRead.FlatPriorityReadPlugin),
         typeof(Nethermind.HealthChecks.HealthChecksPlugin),
         typeof(Nethermind.Hive.HivePlugin),
         typeof(Nethermind.Init.Snapshot.SnapshotPlugin),

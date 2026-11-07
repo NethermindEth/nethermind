@@ -846,6 +846,16 @@
           "Nethermind.Merge.Plugin": "[2.3.0-preview, )"
         }
       },
+      "nethermind.flatpriorityread": {
+        "type": "Project",
+        "dependencies": {
+          "LightningDB": "[0.23.1, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Db.Rocks": "[2.3.0-preview, )",
+          "Nethermind.State.Flat": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.healthchecks": {
         "type": "Project",
         "dependencies": {
@@ -1419,6 +1429,12 @@
           "YamlDotNet": "16.3.0"
         }
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
+      },
       "Microsoft.ClearScript.V8": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -1766,6 +1782,12 @@
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
+      },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -1861,6 +1883,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1958,6 +1986,12 @@
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
+      },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -2053,6 +2087,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2150,6 +2190,12 @@
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
+      },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -2245,6 +2291,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.1, )",
+        "resolved": "0.23.1",
+        "contentHash": "CPEnq2DcqFRuPP5CYXnFhzjN+J1A+8hpo1KAhreOymC2K76rtNf/4Ed7ef3HfLQ2Ag1heRUu0Lml8y3mj+jh6w=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",

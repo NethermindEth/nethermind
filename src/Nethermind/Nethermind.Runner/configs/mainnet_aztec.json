@@ -47,5 +47,29 @@
   },
   "Discovery": {
     "DiscoveryVersion": "All"
+  },
+  "FlatPriorityRead": {
+    "Addresses": {
+      "0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT",
+      "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": "USDC",
+      "0x000000000004444c5dc75cb358380d2e3de08a90": "Uniswap v4 PoolManager",
+      "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "WETH",
+      "0xb276f62db0ce8ca2ca5bc522695be604521eac1c": "Fake World Assets FWA: Core (TokenWorks)",
+      "0x2b591e99afe9f32eaa6214f7b7629768c40eeb39": "HEX",
+      "0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb": "Morpho Blue",
+      "0x278d858f05b94576c1e6f73285886876ff6ef8d2": "Unidentified trading contract",
+      "0x004395edb43efca9885cedad51ec9faf93bd34ac": "UMA VotingV2",
+      "0xbeef007ecfbfdf9b919d0050821a9b6dbd634ff0": "Morpho VaultV2 (Steakhouse)",
+      "0x5e3ef299fddf15eaa0432e6e66473ace8c13d908": "Polygon PoS StakeManager",
+      "0x0a252663dbcc0b073063d6420a40319e438cfa59": "XEN Torrent",
+      "0x91ff8bbd8ebb07893010d50a48a1609e5ebd8e34": "Aztec Rollup",
+      "0x2f50d538606fa9edd2b11e2446beb18c9d5846bb": "Curve GaugeController",
+      "0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2": "Aave v3 Pool",
+      "0x51c72848c68a965f66fa7a88855f9f7784502a7f": "Market maker",
+      "0xf280b16ef293d8e534e370794ef26bf312694126": "Asteroid Shiba (ASTEROID)",
+      "0x447654338fba13ce25988cc576b2903ac7cdcec3": "Unidentified read-mostly contract",
+      "0x0000bbddc7ce488642fb579f8b00f3a590007251": "EIP-7251 consolidation requests",
+      "0x00000961ef480eb55e80d19ad83579a64c007002": "EIP-7002 withdrawal requests"
+    }
   }
 }

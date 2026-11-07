@@ -1900,14 +1900,18 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Smoke_test_large_writes_with_nowal()
+        public void Smoke_test_large_writes_with_nowal([Values] bool atomic)
         {
+            WriteFlags flags = atomic ? WriteFlags.DisableWAL | WriteFlags.Atomic : WriteFlags.DisableWAL;
             IWriteBatch writeBatch = _db.StartWriteBatch();
 
             for (int i = 0; i < 1000; i++)
             {
-                writeBatch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), WriteFlags.DisableWAL);
+                writeBatch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), flags);
             }
+
+            // Without Atomic a no-WAL batch is written in parts as it fills, so its first writes are already visible.
+            Assert.That(_db.Get(0.ToBigEndianByteArray()), atomic ? Is.Null : Is.Not.Null);
 
             writeBatch.Dispose();
 

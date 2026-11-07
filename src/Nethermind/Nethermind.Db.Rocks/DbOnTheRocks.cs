@@ -1186,7 +1186,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         /// <summary>
         /// Because of how rocksdb parallelize writes, a large write batch can stall other new concurrent writes, so
-        /// we write the batch in smaller batches. This removes atomicity so it's only turned on when the NoWAL flag is on.
+        /// we write the batch in smaller batches. This removes atomicity so it's only turned on when the NoWAL flag is on
+        /// and the Atomic flag is off.
         /// It does not work as well as just turning on unordered_write, but Snapshot and Iterator can still work.
         /// </summary>
         private const int MaxWritesOnNoWal = 256;
@@ -1273,7 +1274,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             _writeFlags = flags;
 
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+            if ((flags & (WriteFlags.DisableWAL | WriteFlags.Atomic)) == WriteFlags.DisableWAL) FlushOnTooManyWrites();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
@@ -1292,7 +1293,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _rocksBatch.Merge(key, value, cf);
             _writeFlags = flags;
 
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+            if ((flags & (WriteFlags.DisableWAL | WriteFlags.Atomic)) == WriteFlags.DisableWAL) FlushOnTooManyWrites();
         }
 
         private void FlushOnTooManyWrites()
