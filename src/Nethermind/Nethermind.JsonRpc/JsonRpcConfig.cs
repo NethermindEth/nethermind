@@ -18,7 +18,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int Timeout { get; set; } = 20000;
     public int RequestQueueLimit { get; set; } = 500;
     public int MaxConcurrentSharedRequests { get; set; } = 10000;
-    public int? MaxConcurrentExecutionRequests { get; set; } = null;
     public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
 
     public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;

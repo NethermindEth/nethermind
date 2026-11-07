@@ -16,9 +16,6 @@ namespace Nethermind.JsonRpc.Modules
 
         public bool IsSharable { get; set; } = true;
 
-        /// <summary>Wait for a bounded execution permit before renting or decoding this method.</summary>
-        public bool IsExecutionHeavy { get; set; }
-
         public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
 
         public string? ResponseDescription { get; set; }
