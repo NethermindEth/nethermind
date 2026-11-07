@@ -666,8 +666,12 @@ public class EthereumRunnerTests
         {
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
-            genesis["config"]!["amsterdamTime"] = 0;
-            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
+            JsonObject config = genesis["config"]!.AsObject();
+            // Geth's fork order check rejects Amsterdam at genesis unless every earlier timestamp fork is there too.
+            foreach (string fork in config.Select(static entry => entry.Key).Where(static key => key.EndsWith("Time")).ToList())
+                config[fork] = 0;
+            config["amsterdamTime"] = 0;
+            if (chain == "bogota") config["bogotaTime"] = 0;
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }

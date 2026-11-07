@@ -425,15 +425,6 @@ public class GethGenesisLoaderTests
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"pragueTime\": 10, \"amsterdamTime\": 20", null)]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"eip4758PrototypeTime\": 15", null)]
     [TestCase("\"homesteadBlock\": 0, \"daoForkBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"muirGlacierBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"grayGlacierBlock\": 0, \"mergeNetsplitBlock\": 0", null)]
-    public void Fork_schedule_must_not_skip_a_required_fork(string config, string? expectedError)
-    {
-        string json = $$"""{ "config": { "chainId": 1, {{config}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
-
-        Assert.That(() => LoadFromString(json), expectedError is null
-            ? Throws.Nothing
-            : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
-    }
-
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 20, \"londonBlock\": 10", "berlinBlock enabled at block 20, but londonBlock enabled at block 10")]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 100, \"cancunTime\": 50", "shanghaiTime enabled at timestamp 100, but cancunTime enabled at timestamp 50")]
     [TestCase("\"homesteadBlock\": 10, \"daoForkBlock\": 5", "homesteadBlock enabled at block 10, but daoForkBlock enabled at block 5")]
@@ -443,8 +434,15 @@ public class GethGenesisLoaderTests
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"cancunTime\": 10, \"pragueTime\": 10, \"osakaTime\": 10", null)]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 100, \"londonBlock\": 100, \"shanghaiTime\": 5", null)]
     [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"amsterdamTime\": 20, \"eip8141PrototypeTime\": 10", null)]
-    public void Fork_schedule_must_not_go_back(string config, string? expectedError) =>
-        Fork_schedule_must_not_skip_a_required_fork(config, expectedError);
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"bpo2Time\": 20, \"amsterdamTime\": 10", "bpo2Time enabled at timestamp 20, but amsterdamTime enabled at timestamp 10")]
+    public void Fork_schedule_must_follow_geth_order(string config, string? expectedError)
+    {
+        string json = $$"""{ "config": { "chainId": 1, {{config}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+
+        Assert.That(() => LoadFromString(json), expectedError is null
+            ? Throws.Nothing
+            : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
+    }
 
     private static readonly string[] RequiredForks =
     [
@@ -463,7 +461,7 @@ public class GethGenesisLoaderTests
         int next = Array.IndexOf(schedule, skippedFork) + 1;
         string nextKind = schedule[next].EndsWith("Time", StringComparison.Ordinal) ? "timestamp" : "block";
 
-        Fork_schedule_must_not_skip_a_required_fork(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
+        Fork_schedule_must_follow_geth_order(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
     }
 
     [Test]
