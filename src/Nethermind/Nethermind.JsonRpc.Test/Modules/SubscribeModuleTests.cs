@@ -39,7 +39,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Nethermind.Network.Rlpx;
 
@@ -540,16 +539,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task Subscription_argument_exception_returns_invalid_params_without_data()
+        public async Task TransactionReceiptsSubscription_with_too_many_hashes_returns_invalid_params_with_reason()
         {
-            ISubscriptionManager subscriptionManager = Substitute.For<ISubscriptionManager>();
-            subscriptionManager.AddSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
-                .Throws(new ArgumentException("bad subscription argument"));
-            ISubscribeRpcModule subscribeRpcModule = new SubscribeRpcModule(subscriptionManager) { Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient) };
+            string hashes = string.Join(",", Enumerable.Repeat($"\"{TestItem.KeccakA}\"", 201));
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":[{{hashes}}]}""");
 
-            string serialized = await RpcTest.TestSerializedRequest(subscribeRpcModule, "eth_subscribe", "newHeads");
-
-            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""));
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Cannot subscribe to more than 200 transaction hashes at once."},"id":67}"""));
         }
 
         [Test]
@@ -557,7 +552,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string args = new('a', 1_000_001);
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
         }
 

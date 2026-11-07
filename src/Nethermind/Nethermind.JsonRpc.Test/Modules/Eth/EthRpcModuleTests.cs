@@ -2317,12 +2317,12 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_revert_without_output_reports_empty_hex_data()
     {
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
-        bridge.Call(null!, null!).ReturnsForAnyArgs(new CallOutput { Error = "execution reverted", ExecutionReverted = true, OutputData = null! });
-        using Context ctx = await Context.Create(blockchainBridge: bridge);
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        string code = Prepare.EvmCode.Revert(0, 0).Done.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{code}}", "gas": 1000000}""")!;
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", new { to = TestItem.AddressB }, "latest");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}"""));
     }

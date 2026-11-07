@@ -336,7 +336,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithoutData()
+    public async Task AdminSubscribe_WithArgumentException_ReturnsInvalidParamsWithReason()
     {
         _subscriptionManager = Substitute.For<ISubscriptionManager>();
         _subscriptionManager.AddSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
@@ -346,7 +346,7 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_subscribe", "peerEvents");
 
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"},"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"bad subscription argument"},"id":67}"""));
     }
 
     [Test]
@@ -355,7 +355,7 @@ public class AdminModuleTests
         string args = new('a', 1_000_001);
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents", args);
 
-        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
+        string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
         Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
     }
 

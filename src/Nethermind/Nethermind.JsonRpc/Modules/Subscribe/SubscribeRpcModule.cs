@@ -23,9 +23,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
             }
-            catch (ArgumentException)
+            catch (ArgumentException e)
             {
-                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
+                return ResultWrapper<string>.Fail(e.Message, ErrorCodes.InvalidParams);
             }
             catch (Exception e) when (e is IExceptionWithSafePublicMessage safe)
             {

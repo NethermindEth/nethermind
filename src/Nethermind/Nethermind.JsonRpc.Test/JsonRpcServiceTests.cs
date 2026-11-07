@@ -1518,12 +1518,16 @@ public class JsonRpcServiceTests
     [TestCase("internal", ErrorCodes.InternalError, "Internal error", TestName = "InternalErrorArm")]
     [TestCase("argument", ErrorCodes.InvalidParams, "bad argument", TestName = "InvalidParamsArm")]
     [TestCase("json", ErrorCodes.InvalidParams, "Invalid params", TestName = "JsonExceptionArm")]
-    public void Exception_error_has_no_error_data(string kind, int expectedCode, string expectedMessage)
+    [TestCase("notFound", ErrorCodes.PrunedHistoryUnavailable, null, TestName = "ResourceNotFoundArm")]
+    [TestCase("balance", ErrorCodes.InvalidInput, null, TestName = "InsufficientBalanceArm")]
+    public void Exception_error_has_no_error_data(string kind, int expectedCode, string? expectedMessage)
     {
         Exception thrown = kind switch
         {
             "internal" => new InvalidOperationException("Stack empty."),
             "argument" => new ArgumentException("bad argument"),
+            "notFound" => new ResourceNotFoundException("History pruned"),
+            "balance" => new InsufficientBalanceException(TestItem.AddressA),
             _ => new JsonException("bad json")
         };
 
@@ -1719,6 +1723,7 @@ public class JsonRpcServiceTests
             {
                 Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
                 Assert.That(warning, Does.Not.Contain("Node missing"));
+                Assert.That(response.Error!.Data, Is.Null);
             }
         }
         finally
@@ -1739,6 +1744,7 @@ public class JsonRpcServiceTests
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
 
+        Assert.That(response.Error!.Data, Is.Null);
         logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(static text => text.StartsWith("Missing trie node during eth_getLogs")));
     }
 

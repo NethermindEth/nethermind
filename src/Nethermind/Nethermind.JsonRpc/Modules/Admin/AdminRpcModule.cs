@@ -185,9 +185,9 @@ public class AdminRpcModule : IAdminRpcModule
         {
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
-        catch (ArgumentException)
+        catch (ArgumentException e)
         {
-            return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
+            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.InvalidParams);
         }
         catch (JsonException)
         {
