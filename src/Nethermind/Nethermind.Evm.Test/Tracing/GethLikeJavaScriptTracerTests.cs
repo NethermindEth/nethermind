@@ -150,6 +150,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Create_frame_to_is_the_creation_address_when_the_precheck_fails([Values] bool salted)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                enter: function(frame) { this.events.push(frame.getType() + ":" + toHex(frame.getTo())); },
+                exit: function(frame) { this.events.push("exit:" + (frame.getError() || "")); },
+                fault: function(log) { },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
+        // The first creation lacks the balance to transfer, so it fails its precheck; the second, identical but for
+        // its value, deploys at the same address because the failed precheck leaves the creator's nonce unchanged.
+        Prepare code = salted
+            ? Prepare.EvmCode.Create2(initCode, salt, 1000.Ether).Op(Instruction.POP).Create2(initCode, salt, 0)
+            : Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0);
+        Address expected = salted ? ContractAddress.From(Recipient, salt, initCode) : ContractAddress.From(Recipient, 0);
+        string type = salted ? "CREATE2" : "CREATE";
+
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), code.Op(Instruction.POP).STOP().Done, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+
+        string to = $"{type}:{expected.ToString().ToLowerInvariant()}";
+        AssertResult(trace, new[] { to, "exit:insufficient balance for transfer", to, "exit:" });
+    }
+
+    [Test]
     public void Fixed_cost_stack_underflow_is_reported_by_step()
     {
         const string userTracer = """
