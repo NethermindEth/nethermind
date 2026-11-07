@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Google.Protobuf;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -11,7 +13,9 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
@@ -304,27 +308,91 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    // A peer's vote admitted before one of its votes is rejected may be a real one it relayed ahead of the mesh, whose other copies the router
+    // dropped while it waited: it is checked as any other, so it is not lost.
     [Test]
-    public async Task Queued_aggregate_from_a_peer_with_a_rejected_vote_is_throttled_before_fork_choice([Values] bool gloas, [Values] bool sourceRejected)
+    public async Task Aggregate_queued_before_its_peers_rejected_vote_still_reaches_fork_choice()
     {
         Harness harness = CreateHarness();
-        List<MessageValidity> given = [];
-        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null) { SkipForRejectedSource = () => sourceRejected };
-        SignedAggregateAndProofGloas gloasAggregate = GossipMessageValidatorTests.GloasAggregate();
-        SignedAggregateAndProof fuluAggregate = GossipRouterTests.CreateAggregate(WallSlot);
-        harness.Orchestrator.WorkWriter.TryWrite(gloas
-            ? new BeaconSyncOrchestrator.GossipGloasAggregateItem(gloasAggregate, verdict)
-            : new BeaconSyncOrchestrator.GossipAggregateItem(fuluAggregate, verdict));
+        harness.Orchestrator.RouteGossipEvents();
+        List<PeerId> rejected = [];
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
+        DeferredGossipValidation validation = CreateVoteValidation(pubsub, harness, rejected);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
 
+        Task queued = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 1));
+        await SendVote(validation, peer, [1]);
+        int rejectedBeforeCheck = rejected.Count;
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await queued;
 
-        bool seen = gloas
-            ? harness.Router.IsAggregateSeen(gloasAggregate.Message!.Aggregate!.Data!, gloasAggregate.Message.Aggregate.CommitteeBits!, gloasAggregate.Message.Aggregate.AggregationBits!, gloasAggregate.Message.AggregatorIndex)
-            : harness.Router.IsAggregateSeen(fuluAggregate.Message!.Aggregate!.Data!, fuluAggregate.Message.Aggregate.CommitteeBits!, fuluAggregate.Message.Aggregate.AggregationBits!, fuluAggregate.Message.AggregatorIndex);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(sourceRejected ? 0 : 1), "a skipped aggregate's signatures are not checked");
-        Assert.That(given, Is.EqualTo(new[] { sourceRejected ? MessageValidity.Throttled : MessageValidity.Accepted }), "a skip charges no gossipsub penalty");
-        Assert.That(seen, Is.EqualTo(!sourceRejected), "a skipped aggregate marks nothing seen, so another peer's copy is still checked");
+        Assert.That(rejectedBeforeCheck, Is.EqualTo(1), "fixture: the malformed vote is rejected while the valid one waits in the queue");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1), "the queued aggregate is checked");
+        Assert.That(rejected, Is.EqualTo(new[] { peer }), "only the malformed vote counts against the peer");
+    }
+
+    // The router dispatches a peer's next message without waiting for the verdicts of its earlier ones, so a malformed vote can be rejected
+    // while the import worker checks the peer's valid aggregate; that aggregate's acceptance lifts the refusal of the peer's votes.
+    [Test]
+    public async Task Peer_whose_aggregate_is_accepted_after_its_later_vote_was_rejected_is_admitted_again_and_charged_once()
+    {
+        Harness harness = CreateHarness();
+        harness.Orchestrator.RouteGossipEvents();
+        List<PeerId> rejected = [];
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
+        DeferredGossipValidation validation = CreateVoteValidation(pubsub, harness, rejected);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        int rejectedDuringCheck = -1;
+        harness.Importer.GossipOperationVerdict = _ =>
+        {
+            if (rejectedDuringCheck < 0)
+            {
+                _ = SendVote(validation, peer, [1]);
+                rejectedDuringCheck = rejected.Count;
+            }
+
+            return true;
+        };
+
+        Task first = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 1));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await first;
+        Task next = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 2));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await next;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejectedDuringCheck, Is.EqualTo(1), "fixture: the malformed vote is rejected while the valid one is being checked");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "both valid aggregates reach fork choice");
+        Assert.That(rejected, Is.EqualTo(new[] { peer }), "only the malformed vote counts against the peer");
+    }
+
+    private static DeferredGossipValidation CreateVoteValidation(PubsubRouter pubsub, Harness harness, List<PeerId> rejected)
+    {
+        SlotClock clock = new(Spec, harness.Timestamper);
+        return new DeferredGossipValidation(pubsub,
+            new GossipMessageValidator(harness.Router, new ColumnGossipRouter(Spec, clock, LimboLogs.Instance), Spec, clock),
+            maxPending: 16, maxPendingBytes: 1 << 20, maxPendingVotes: 1024, TimeSpan.FromSeconds(30), LimboLogs.Instance.GetClassLogger<BeaconSyncOrchestratorTests>(), CancellationToken.None)
+        {
+            ReportRejectedMessage = (peer, _) => rejected.Add(peer),
+        };
+    }
+
+    private static Task SendVote(DeferredGossipValidation validation, PeerId peer, byte[] data)
+    {
+        Message message = new() { Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(WallSlot)), GossipTopics.BeaconAggregateAndProof), Data = ByteString.CopyFrom(data) };
+        Assert.That(validation.Verify(peer, message), Is.EqualTo(MessageValidity.Deferred), "fixture: the vote is reserved");
+        return validation.ValidateAsync(peer, message);
+    }
+
+    private static byte[] AggregatePayload(ulong aggregatorIndex)
+    {
+        SignedAggregateAndProof aggregate = GossipRouterTests.CreateAggregate(WallSlot);
+        aggregate.Message!.AggregatorIndex = aggregatorIndex;
+        // Another participant each, so an accepted aggregate does not cover the next one's bits.
+        aggregate.Message.Aggregate!.AggregationBits![(int)aggregatorIndex] = true;
+        return Snappy.CompressToArray(SignedAggregateAndProof.Encode(aggregate));
     }
 
     [Test]

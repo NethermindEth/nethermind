@@ -54,21 +54,6 @@ public sealed class GossipVerdict
     public bool IsCompleted => Volatile.Read(ref _state) != Pending;
     /// <summary>Whether a consumer took the verdict over, so the code that handed it the message must not give one; once taken over it stays so.</summary>
     internal bool IsHandedOff => Volatile.Read(ref _handedOff) != 0;
-    /// <summary>Returns whether the message must not be checked, as its delivering peer sent a vote rejected this slot, and counts the skip against that peer.</summary>
-    internal Func<bool>? SkipForRejectedSource { get; init; }
-
-    /// <summary>Gives <see cref="MessageValidity.Throttled"/> without checking the message when <see cref="SkipForRejectedSource"/> says so.</summary>
-    /// <returns>Whether the message was skipped.</returns>
-    internal bool TrySkipForRejectedSource()
-    {
-        if (SkipForRejectedSource?.Invoke() != true)
-        {
-            return false;
-        }
-
-        Complete(MessageValidity.Throttled);
-        return true;
-    }
 
     /// <summary>Runs <paramref name="release"/> if the verdict given is <see cref="MessageValidity.Throttled"/>: refused for local load, so a later copy must be checked again.</summary>
     /// <remarks>Register before the verdict is handed off; a consumer may give it at once.</remarks>
