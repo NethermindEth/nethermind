@@ -622,9 +622,15 @@ public class OrderedTraceEmitterTests
         JsonWriterOptions options = stream.SerializeAheadOptions!.Value;
 
         for (int warm = 0; warm < 3; warm++) TraceBlock();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int block = 0; block < 100; block++) TraceBlock();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // An allocation the emission makes shows in every window. A one-off runtime allocation on the test thread
+        // (7,616 bytes seen in CI) shows in one window only, so the minimum excludes it.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < 5; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int block = 0; block < 100; block++) TraceBlock();
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         Assert.That(allocated, Is.Zero);
 
