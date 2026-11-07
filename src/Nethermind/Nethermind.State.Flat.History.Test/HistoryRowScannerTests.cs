@@ -324,20 +324,31 @@ public class HistoryRowScannerTests
     }
 
     [Test]
-    public void BulkReplay_WhenReleased_CanBootstrapAgainWithoutOldRows([Values] bool rocks)
+    public void BulkReplay_WhenReleased_CanBootstrapAgainWithoutOldRows([Values] bool rocks, [Values] bool reopenBeforeRelease)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
         using MemDb code = new();
         IDbFactory factory = new ScratchDbFactory(directory.Path, memory, rocks);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
-        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false);
+        try
         {
             ImportEmptyState(session);
             BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
             CommitScratch(session, next, writer => writer.Set(TestItem.AddressA, new Account(1, 100)));
+            if (reopenBeforeRelease)
+            {
+                // Closing flushes the rows to SST files, so the release has to cover them with range tombstones.
+                session.Dispose();
+                session = new(factory, code, TestItem.KeccakA, anchor, false);
+            }
             session.ReleaseState(CancellationToken.None);
             Assert.That(session.IsReady, Is.False);
+        }
+        finally
+        {
+            session.Dispose();
         }
 
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
