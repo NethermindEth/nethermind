@@ -18,15 +18,20 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// Each runtime is a V8 isolate with its own heap: a script that outgrows the soft limit interrupts only the trace
 /// that runs it, traces served concurrently no longer serialise on one isolate lock, and disposing the runtime
 /// with the trace releases everything the trace allocated, so no limit has to be re-armed for the next one.
-/// The monitored soft limit is the effective bound on the script heap. The old-space size sits above it and the
-/// expansion multiplier lets V8 grow the heap on demand instead of terminating the process, so together they
-/// absorb the allocation burst between two heap samples and keep the sampler ahead of V8's own hard limit.
+/// Every limit below applies to one runtime, not to all the traces served at once.
+/// The soft limit is a sampled, best-effort bound on the V8 heap: ClearScript samples the heap size whenever a hook
+/// enters the script and periodically while it runs, and interrupts the script with its memory-limit error when the
+/// heap is still over the limit after a full collection, so a script can allocate past it between two samples.
+/// The old-space size is V8's own hard limit, which ends the process when reached. It is the headroom for what a
+/// script allocates between two samples, so it sits far above the soft limit. It is fixed: ClearScript enforces the
+/// soft limit with a last-resort collection, and V8 calls the near-heap-limit callback on every last-resort
+/// collection, so a heap expansion multiplier would raise the hard limit each time a collection brings a script back
+/// under the soft limit, until it overflows and V8 aborts the process.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
 internal sealed class TracerRuntime : IDisposable
 {
-    private const int MaxOldSpaceMb = 256;
-    private const double HeapExpansionMultiplier = 2;
+    private const int MaxOldSpaceMb = 4096;
     private static readonly UIntPtr HeapSoftLimit = new(128 * 1024 * 1024);
 
     private const string TracersPath = "Data/JSTracers/";
@@ -44,8 +49,7 @@ internal sealed class TracerRuntime : IDisposable
     {
         _runtime = new V8Runtime(new V8RuntimeConstraints
         {
-            MaxOldSpaceSize = MaxOldSpaceMb,
-            HeapExpansionMultiplier = HeapExpansionMultiplier
+            MaxOldSpaceSize = MaxOldSpaceMb
         });
 
         try
@@ -60,6 +64,11 @@ internal sealed class TracerRuntime : IDisposable
     }
 
     public V8ScriptEngine CreateScriptEngine(V8ScriptEngineFlags flags) => _runtime.CreateScriptEngine(flags);
+
+    /// <summary>
+    /// V8's hard limit on this runtime's heap in bytes, the old-space size plus the young generation.
+    /// </summary>
+    internal ulong HeapSizeLimit => _runtime.GetHeapInfo().HeapSizeLimit;
 
     public V8Script BigInteger => GetScript(BigIntegerJavaScript,
         _builtInSources.Value.TryGetValue(BigIntegerJavaScript, out string? code)

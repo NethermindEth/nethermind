@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -2058,6 +2059,135 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             ((object)hoardingTracer as IDisposable)?.Dispose();
         }
     }
+
+    [Test]
+    [NonParallelizable]
+    public void Heap_held_at_the_soft_limit_does_not_raise_the_hard_limit()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        ulong hardLimit = runtime.HeapSizeLimit;
+        dynamic hoveringTracer = engine.CreateTracer(HoveringTracer);
+        try
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                hoveringTracer.step(null, null);
+            }
+
+            int steps = (int)hoveringTracer.result(null, null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(steps, Is.EqualTo(10), "the script stays under the soft limit after each collection");
+                Assert.That(runtime.HeapSizeLimit, Is.EqualTo(hardLimit), "the collections enforcing the soft limit leave V8's hard limit as configured");
+            }
+        }
+        finally
+        {
+            ((object)hoveringTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Allocation_burst_between_heap_samples_ends_in_the_memory_limit_error()
+    {
+        // V8 ends the process if the burst reaches its hard heap limit, so the burst runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(AllocationBurstChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    private static async Task<(int ExitCode, string Output)> RunInChildProcess(string argument)
+    {
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(GethLikeJavaScriptTracerTests).Assembly.Location);
+        start.ArgumentList.Add(argument);
+        using Process child = new() { StartInfo = start };
+        Assert.That(child.Start(), Is.True);
+        Task<string> output = child.StandardOutput.ReadToEndAsync();
+        Task<string> error = child.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(2));
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+            Assert.Fail($"The child process did not end.\n{await output}\n{await error}");
+        }
+
+        return (child.ExitCode, $"{await output}\n{await error}");
+    }
+
+    // Runs before the test host starts, so whatever ends a child process ends only that process.
+    private static Task<int> Main(string[] args) => args switch
+    {
+        [AllocationBurstChildArgument] => Task.FromResult(RunAllocationBurst()),
+        _ => MicrosoftTestingPlatformEntryPoint.Main(args)
+    };
+
+    private static int RunAllocationBurst()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic burstingTracer = engine.CreateTracer(BurstingTracer);
+        try
+        {
+            burstingTracer.step(null, null);
+            Console.Error.WriteLine("The burst ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)burstingTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private const string AllocationBurstChildArgument = "--nethermind-js-tracer-allocation-burst";
+
+    // Tries to allocate about 9.6 GB in one step, so only the heap samples taken while the step runs keep it under
+    // V8's hard limit.
+    private const string BurstingTracer = @"{
+                    hoard: [],
+                    step: function(log, db) { for (var i = 0; i < 40; i++) this.hoard.push(new Array(30000000).fill(i + 0.5)); },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.hoard.length; }
+                }";
+
+    // Keeps 120 MB of arrays alive (about 116 MiB of heap after a collection) and leaves 16 MB of garbage per step,
+    // so the heap is over the 128 MiB soft limit when the next step starts and back under it after the collection
+    // that enforces the limit.
+    private const string HoveringTracer = @"{
+                    live: null,
+                    steps: 0,
+                    step: function(log, db) {
+                        this.steps++;
+                        if (this.live === null) {
+                            this.live = [];
+                            for (var i = 0; i < 15; i++) this.live.push(new Array(1000000).fill(i + 0.5));
+                        }
+                        var garbage = new Array(2000000).fill(1.5);
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.steps; }
+                }";
 
     private const string HoardingTracer = @"{
                     hoard: [],
