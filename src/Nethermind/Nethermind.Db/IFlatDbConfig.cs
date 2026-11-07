@@ -110,7 +110,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Flat db layout. `Auto` keeps the layout of an existing flat DB, and creates a new one as `FlatInTrie` below 16 GB of memory and as `Flat` otherwise.", DefaultValue = "Auto")]
     FlatLayout Layout { get; set; }
 
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
