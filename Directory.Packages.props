@@ -12,6 +12,7 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <PackageVersion Include="Cilica.OptimizerTask" Version="0.18.1-preview" />
     <PackageVersion Include="Ckzg.Bindings" Version="2.1.8.1680" />
     <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
     <PackageVersion Include="CommunityToolkit.HighPerformance" Version="8.4.2" />

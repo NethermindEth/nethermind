@@ -33,4 +33,14 @@
     <Using Include="System.Runtime.Intrinsics.Vector256&lt;byte&gt;" Alias="EvmWord" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <CilicaAllMethods>true</CilicaAllMethods>
+  </PropertyGroup>
+
+  <!-- Cilica runs on Release builds only. Its OptimizeAttribute source is excluded: CilicaAllMethods makes it unused,
+       and a copy in every assembly collides through InternalsVisibleTo. -->
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('netstandard'))">
+    <PackageReference Include="Cilica.OptimizerTask" PrivateAssets="all" ExcludeAssets="contentFiles" />
+  </ItemGroup>
+
 </Project>
