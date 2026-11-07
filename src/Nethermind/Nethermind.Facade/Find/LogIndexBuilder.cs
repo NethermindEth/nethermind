@@ -91,6 +91,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     // The forward walk starts below the pivot when the stored index ends below the barrier the pivot is raised to.
     private ulong _forwardProgressStart;
     private long _lowestReplacedBlock = long.MaxValue;
+    private int _forwardBatchesInFlight;
 
     public string Description => "log index builder";
 
@@ -443,6 +444,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             throw new($"{GetLogPrefix(isForward)}: non sequential batches: ({aggregate.FirstBlockNum} instead of {next}).");
 
         await _logIndexStorage.AddReceiptsAsync(aggregate, _stats);
+        if (isForward)
+            Interlocked.Decrement(ref _forwardBatchesInFlight);
         LastUpdate = DateTimeOffset.Now;
 
         UpdateProgress();
@@ -460,14 +463,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             ProcessingQueue queue = Direction(isForward).Queue!;
 
             int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
-            int firstStart = start;
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
                 if (isForward && Interlocked.Exchange(ref _lowestReplacedBlock, long.MaxValue) is var replaced && replaced < start)
                 {
-                    await RevertReplacedBlocksAsync(replaced, firstStart, start);
+                    await RevertReplacedBlocksAsync(replaced);
                     start = GetNextBlockNumber(isForward) ?? start;
                 }
 
@@ -566,6 +568,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 }
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
+                if (isForward)
+                    Interlocked.Increment(ref _forwardBatchesInFlight);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);
             }
         }
@@ -583,9 +587,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     /// Runs on the forward queueing task after the queued batches are written, as the storage rejects concurrent writes in the same direction.
     /// The removed keys are taken from every block at each reverted height, which covers the replaced block.
     /// </remarks>
-    private async Task RevertReplacedBlocksAsync(long replaced, int firstStart, int start)
+    private async Task RevertReplacedBlocksAsync(long replaced)
     {
-        while (start != firstStart && GetNextBlockNumber(isForward: true) != start)
+        while (Volatile.Read(ref _forwardBatchesInFlight) != 0)
             await Task.Delay(QueueDrainPollInterval, CancellationToken);
 
         // Taken again after draining, so a single ascending revert covers the reorgs seen meanwhile
