@@ -69,14 +69,17 @@ public sealed class EraStore : IEraStore
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
 
+        Dictionary<long, string> checksumFiles = [];
         foreach (string line in fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsSHA256FileName)))
         {
-            (long checksumEpoch, ValueHash256 hash) = EraPathUtils.ParseChecksumEntry(line);
+            (long checksumEpoch, ValueHash256 hash) = EraPathUtils.ParseChecksumEntry(line, out string checksumFile);
             _checksumsByEpoch[checksumEpoch] = hash;
+            checksumFiles[checksumEpoch] = checksumFile;
         }
 
         bool hasEraFile = false;
         _epochs = [];
+        Dictionary<int, List<string>> duplicates = [];
 
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
@@ -92,6 +95,13 @@ public sealed class EraStore : IEraStore
                 _epochs[epoch] = file;
             }
 
+            if (existing is not null)
+            {
+                if (!duplicates.TryGetValue(epoch, out List<string>? files))
+                    duplicates[epoch] = files = [existing];
+                files.Add(file);
+            }
+
             hasEraFile = true;
             if (epoch > LastEpoch) LastEpoch = epoch;
             if (epoch < FirstEpoch) FirstEpoch = epoch;
@@ -99,6 +109,19 @@ public sealed class EraStore : IEraStore
 
         if (!hasEraFile)
             throw new EraException($"No relevant era files (.ere or .erae) found for network '{networkName}' in directory {directory}.");
+
+        // A failed re-export can leave a new file beside the one the manifests name until an export of that epoch
+        // succeeds. Read the file the checksum manifest names; when it names none of them and the extension does not
+        // decide, the choice would depend on enumeration order.
+        foreach ((int epoch, List<string> files) in duplicates)
+        {
+            if (checksumFiles.TryGetValue(epoch, out string? named) && files.Find(f => Path.GetFileName(f) == named) is { } namedFile)
+                _epochs[epoch] = namedFile;
+            else if (files.Count(EraPathUtils.IsCanonicalEraFile) != 1)
+                throw new EraException(
+                    $"Epoch {epoch} has more than one era file and {EraExporter.ChecksumsSHA256FileName} names none of them: " +
+                    $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch or remove the stale file.");
+        }
 
         _blockRange = new Lazy<(ulong, ulong)>(() =>
         {
