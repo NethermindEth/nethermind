@@ -405,7 +405,7 @@ namespace Nethermind.Synchronization
 
             // The receipt finder loads and decodes the block itself, so check only the header and that the body exists.
             BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null || (header.HasBody && !_blockTree.HasBlock(header.Number, blockHash))) return null;
+            if (header is null || !_blockTree.HasBlock(header.Number, blockHash)) return null;
             if (header.TxRoot == Keccak.EmptyTreeHash) return [];
 
             TxReceipt[] receipts = _receiptFinder.Get(blockHash);

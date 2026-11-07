@@ -109,11 +109,16 @@ public class SyncServerReceiptsBenchmarks
             parent = block;
         }
 
+        // Serve from a fresh storage over the same database: receipts of old blocks are not in the receipts cache.
+        PersistentReceiptStorage servingStorage = new(
+            receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, builder.BlockStore, new ReceiptConfig())
+        { MigratedBlockNumber = 0 };
+
         _server = new SyncServer(
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
-            receiptStorage,
+            new FullInfoReceiptFinder(servingStorage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
             Always.Valid,
@@ -131,6 +136,9 @@ public class SyncServerReceiptsBenchmarks
                 throw new InvalidOperationException($"Block {hash} does not serve its {TransactionsPerBlock} receipts.");
         }
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _server.Dispose();
 
     [Benchmark(OperationsPerInvoke = ServedBlocks)]
     public int GetReceipts()

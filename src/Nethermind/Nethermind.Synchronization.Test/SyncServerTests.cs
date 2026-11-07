@@ -84,7 +84,7 @@ public class SyncServerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(served, hasTransactions ? (bodyStored ? Is.SameAs(stored) : Is.Null) : Is.Empty);
+            Assert.That(served, bodyStored ? (hasTransactions ? Is.SameAs(stored) : Is.Empty) : Is.Null);
             ctx.BlockTree.DidNotReceiveWithAnyArgs().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
             receiptFinder.Received(hasTransactions && bodyStored ? 1 : 0).Get(hash);
         }
