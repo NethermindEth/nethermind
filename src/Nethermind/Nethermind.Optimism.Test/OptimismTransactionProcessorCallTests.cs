@@ -29,22 +29,15 @@ public class OptimismTransactionProcessorCallTests
     private const ulong OperatorFeePerGas = 10;
     private static readonly Address L1FeeRecipient = TestItem.AddressF;
 
-    [TestCase(ExecutionOptions.CommitAndRestore)]
-    [TestCase(ExecutionOptions.SkipValidationAndCommit)]
-    public void Call_from_unfunded_sender_is_not_charged_rollup_fees(ExecutionOptions options)
+    [Test]
+    public void Call_from_unfunded_sender_is_not_charged_rollup_fees()
     {
         using ProcessorEnvironment context = new();
-        Transaction tx = CreateTransaction(TestItem.AddressC);
 
         context.Processor.SetBlockExecutionContext(context.BlockContext);
-        TransactionResult result = context.Processor.Process(tx, NullTxTracer.Instance, options);
+        TransactionResult result = context.Processor.CallAndRestore(CreateTransaction(TestItem.AddressC), NullTxTracer.Instance);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
-            Assert.That(context.State.GetBalance(L1FeeRecipient), Is.EqualTo(UInt256.One));
-            Assert.That(context.State.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo(UInt256.One));
-        }
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
     }
 
     [Test]
@@ -62,29 +55,36 @@ public class OptimismTransactionProcessorCallTests
         }
     }
 
-    [Test]
-    public void Block_transaction_pays_rollup_fees()
+    // SkipValidationAndCommit is how proof_getTransactionReceipt and retrospective tracing replay mined transactions.
+    [TestCase(ExecutionOptions.Commit)]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit)]
+    public void Mined_transaction_pays_rollup_fees(ExecutionOptions options)
     {
         using ProcessorEnvironment context = new();
         context.State.CreateAccount(TestItem.AddressA, 1.Ether);
         context.State.Commit(Prague.Instance);
+        UInt256 operatorCost = (UInt256)GasCostOf.Transaction * OperatorFeePerGas;
 
-        TransactionResult result = context.Processor.Execute(CreateTransaction(TestItem.AddressA), context.BlockContext, NullTxTracer.Instance);
+        context.Processor.SetBlockExecutionContext(context.BlockContext);
+        TransactionResult result = context.Processor.Process(CreateTransaction(TestItem.AddressA), NullTxTracer.Instance, options);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(TransactionResult.Ok));
             Assert.That(context.State.GetBalance(L1FeeRecipient), Is.EqualTo((UInt256)L1Cost + 1));
-            Assert.That(context.State.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo((UInt256)GasCostOf.Transaction * OperatorFeePerGas + 1));
+            Assert.That(context.State.GetBalance(PreDeploys.OperatorFeeRecipient), Is.EqualTo(operatorCost + 1));
         }
     }
 
-    [Test]
-    public void Block_transaction_from_unfunded_sender_is_rejected()
+    [TestCase(ExecutionOptions.Commit)]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit)]
+    [TestCase(ExecutionOptions.Warmup | ExecutionOptions.SkipValidation)]
+    public void Transaction_from_unfunded_sender_is_rejected_outside_calls(ExecutionOptions options)
     {
         using ProcessorEnvironment context = new();
 
-        TransactionResult result = context.Processor.Execute(CreateTransaction(TestItem.AddressC), context.BlockContext, NullTxTracer.Instance);
+        context.Processor.SetBlockExecutionContext(context.BlockContext);
+        TransactionResult result = context.Processor.Process(CreateTransaction(TestItem.AddressC), NullTxTracer.Instance, options);
 
         Assert.That(result, Is.EqualTo(TransactionResult.InsufficientSenderBalance));
     }

@@ -38,8 +38,9 @@ public class OptimismTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
-        // Matches op-geth, where RPC call messages are charged neither the L1 data fee nor the operator fee.
-        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.SkipValidation) || opts.HasFlag(ExecutionOptions.Warmup);
+        // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
+        // Replays of mined transactions also run with SkipValidation, so only the restoring call mode is exempt.
+        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.CommitAndRestore) || opts.HasFlag(ExecutionOptions.Warmup);
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
