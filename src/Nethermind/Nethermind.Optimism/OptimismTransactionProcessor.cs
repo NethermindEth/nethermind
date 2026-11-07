@@ -25,6 +25,7 @@ public class OptimismTransactionProcessor(
     ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
+    private bool _chargesRollupFees;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -37,6 +38,9 @@ public class OptimismTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
+        // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
+        // Replays of mined transactions also run with SkipValidation, so only the restoring call mode is exempt.
+        _chargesRollupFees = !opts.HasFlag(ExecutionOptions.CommitAndRestore) || opts.HasFlag(ExecutionOptions.Warmup);
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
@@ -98,8 +102,8 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
+            UInt256 l1Cost = _chargesRollupFees ? (_currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState)) : UInt256.Zero;
+            UInt256 maxOperatorCost = _chargesRollupFees ? costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState) : UInt256.Zero;
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {
@@ -153,6 +157,9 @@ public class OptimismTransactionProcessor(
         {
             // Skip coinbase payments for deposit tx in Regolith
             base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobGasFee, statusCode);
+
+            if (!_chargesRollupFees)
+                return;
 
             if (opSpecHelper.IsBedrock(header))
             {
