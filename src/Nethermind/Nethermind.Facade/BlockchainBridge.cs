@@ -1022,6 +1022,7 @@ namespace Nethermind.Facade
                     .AddScoped<SingleCallRequestState>()
                     .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                     .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                    .AddDecorator<IBlockhashProvider, BlockNumberOverrideBlockhashProvider>()
                     // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
                     // processor decorator drops it after any transaction that keeps its changes.
                     .AddScoped<ResolvedCodeMemo>()
