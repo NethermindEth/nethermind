@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -259,7 +260,9 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
+    string? command = parseResult.GetValue(BasicOptions.Command);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins,
+        command is null ? null : new StepCommandSelection(command, parseResult.GetValue(BasicOptions.CommandArguments) ?? []));
 
     try
     {
@@ -468,6 +471,7 @@ RootCommand CreateRootCommand()
     RootCommand rootCommand =
     [
         BasicOptions.Command,
+        BasicOptions.CommandArguments,
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -554,6 +558,12 @@ static class BasicOptions
     {
         Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
         Arity = ArgumentArity.ZeroOrOne
+    };
+
+    public static Argument<string[]> CommandArguments { get; } = new("arguments")
+    {
+        Description = "Arguments for the command, such as the database to rewrite in `rewrite-db receipts`.",
+        Arity = ArgumentArity.ZeroOrMore
     };
 
     public static Option<string> Configuration { get; } =

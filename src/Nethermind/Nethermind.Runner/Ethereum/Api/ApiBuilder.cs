@@ -7,6 +7,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -47,7 +48,7 @@ public class ApiBuilder
     /// <param name="command">
     /// The standalone command to run instead of the node, or <c>null</c> to start a node.
     /// </param>
-    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins, string? command)
+    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins, StepCommandSelection? command)
     {
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
