@@ -654,11 +654,11 @@ public class OptimismEthRpcModuleTest
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 0 }), "a transaction the node did not sign must not use up a nonce of its from");
     }
 
-    [TestCase(StateFailure.MissingTrieNode, typeof(MissingTrieNodeException))]
-    [TestCase(StateFailure.CorruptTrieNode, typeof(TrieNodeException))]
-    [TestCase(StateFailure.SnapshotNotGathered, typeof(InvalidOperationException))]
-    [TestCase(StateFailure.StoreClosed, typeof(ObjectDisposedException))]
-    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, Type error)
+    [TestCase(StateFailure.MissingTrieNode, ErrorCodes.ResourceNotFound)]
+    [TestCase(StateFailure.CorruptTrieNode, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.SnapshotNotGathered, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.StoreClosed, ErrorCodes.InternalError)]
+    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, int errorCode)
     {
         RecordingSequencer sequencer = new();
         HeadState headState = new() { Failure = failure };
@@ -669,7 +669,7 @@ public class OptimismEthRpcModuleTest
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(withoutNonce)["error"]?["data"]?.Value<string>(), Does.Contain(error.FullName),
+            Assert.That(JToken.Parse(withoutNonce)["error"]?["code"]?.Value<int>(), Is.EqualTo(errorCode),
                 "without the head state there is no nonce to fill, so the state error stops the send");
             Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 5 }), "a request with its nonce needs no head state");
         }
