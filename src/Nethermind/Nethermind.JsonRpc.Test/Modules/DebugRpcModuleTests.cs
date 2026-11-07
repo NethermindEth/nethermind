@@ -1613,6 +1613,7 @@ public partial class DebugRpcModuleTests
         : PrecompileRepositoryProbe(inner, source), IOverridableCodeInfoRepository
     {
         public int Moves;
+        public bool DisablePrecompileOnAccountOverride => inner.DisablePrecompileOnAccountOverride;
         public void SetCodeOverride(IReleaseSpec spec, Address address, CodeInfo code) => inner.SetCodeOverride(spec, address, code);
         public void MovePrecompile(IReleaseSpec spec, Address source, Address destination)
         {

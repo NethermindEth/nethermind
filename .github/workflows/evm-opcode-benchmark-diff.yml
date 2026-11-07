@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
 
       - name: Determine if benchmark is needed
         id: check
@@ -48,7 +48,7 @@ jobs:
             exit 0
           fi
           base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
+          head="${{ github.sha }}"
           # Always run if EVM source changed
           if git diff --name-only "$base" "$head" | grep -q "^src/Nethermind/Nethermind\.Evm/"; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
@@ -100,14 +100,18 @@ jobs:
           tool-cache: false
           swap-storage: false
 
-      - name: Check out PR head
+      - name: Check out PR merge result
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          # Match the workflow revision so its comparison helpers are present, even for older PR heads.
+          ref: ${{ github.sha }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          # File-based helpers restore SDK-provided NativeAOT packages; keep them serviced.
+          dotnet-version: "10.0.x"
 
       - name: Create base worktree
         shell: bash
@@ -141,7 +145,7 @@ jobs:
           probe_log="${GITHUB_WORKSPACE}/evm-base-harness-probe.log"
           # Taken before the probe so it can gate the fallback: an unchanged harness cannot be why base
           # fails to build. `|| true` keeps a git failure from aborting a run the probe may yet pass.
-          harness_delta="$(git -C "${GITHUB_WORKSPACE}" diff --shortstat "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- "${benchmark_sources[@]}" | sed 's/^[[:space:]]*//')" || true
+          harness_delta="$(git -C "${GITHUB_WORKSPACE}" diff --shortstat "${{ github.event.pull_request.base.sha }}" HEAD -- "${benchmark_sources[@]}" | sed 's/^[[:space:]]*//')" || true
           pushd "${BASE_WORKTREE}/src/Nethermind" >/dev/null
           dotnet restore Benchmarks.slnx --locked-mode
           if ! dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee "${probe_log}"; then

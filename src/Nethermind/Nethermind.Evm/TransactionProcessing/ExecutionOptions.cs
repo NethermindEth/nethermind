@@ -57,6 +57,14 @@ public enum ExecutionOptions
     /// <summary>With <see cref="Warmup"/>: charge gas and value in full, so a sender that cannot pay fails the run.</summary>
     StrictWarmup = 256,
 
+    /// <summary>For a restoring RPC call: do not buy gas, refund its price, or distribute transaction fees.
+    /// Only effective together with <see cref="CommitAndRestore"/>; value transfers and gas metering are unchanged.</summary>
+    SkipTransactionFees = 512,
+
+    /// <summary>For a restoring RPC call: permit a legacy gas price below the block base fee.
+    /// Only effective together with <see cref="CommitAndRestore"/>; typed fee-cap validation is unchanged.</summary>
+    SkipLegacyGasPriceValidation = 1024,
+
     /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
