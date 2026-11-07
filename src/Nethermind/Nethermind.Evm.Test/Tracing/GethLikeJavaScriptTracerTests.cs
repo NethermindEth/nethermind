@@ -4,8 +4,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -1914,6 +1917,291 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
 
         Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+    }
+
+    [Test]
+    public void Javascript_request_cancellation_interrupts_a_busy_tracer(
+        [Values("expression", "setup", "result", "nested", "render")] string phase, [Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        // While the result renders, a getter cancels the request and returns; the cycle after it then reaches the depth limit,
+        // which reports the interruption. A busy getter that V8 stops is reported as a pending script exception instead.
+        Action entered = phase == "render" ? request.Cancel : () => request.CancelAfter(150);
+        using ScriptObject spin = (ScriptObject)((ScriptObject)engine.CreateTracer("{f: function() { var e = Date.now() + 20; while (Date.now() < e) {} }}")).GetProperty("f");
+        Func<object> nested = () => spin.Invoke(false);
+        bool caught = false;
+        Action caughtNested = () => caught = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(action, nested, caught){globalThis.enteredForTest=action;globalThis.nestedForTest=nested;globalThis.caughtForTest=caught;}}"))
+            installer.InvokeMethod("install", entered, nested, caughtNested);
+        // Every busy script ends on its own after 5 s, so a tracer the request cannot stop fails the bound instead of hanging.
+        const string busy = "enteredForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        string script = phase switch
+        {
+            "expression" => "{fault: function() {}, result: (function() {" + busy + "})()}",
+            "setup" => "{fault: function() {}, result: function() { return 1; }, setup: function() {" + busy + "}}",
+            "result" => "{fault: function() {}, result: function() {" + busy + "}}",
+            // A host helper re-enters a 20 ms script; an interrupt there must end the whole script, not reach the catch.
+            "nested" => "{fault: function() {}, result: function() { enteredForTest(); var end = Date.now() + 5000;"
+                + " while (Date.now() < end) { try { nestedForTest(); } catch (e) { caughtForTest(); } } throw new Error('escape'); }}",
+            _ => "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { enteredForTest(); return 1; }, rest: o}; }}"
+        };
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = script,
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+            Assert.That(caught, Is.False);
+        }
+    }
+
+    [Test]
+    public void Javascript_result_is_not_rendered_after_the_request_is_cancelled([Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        bool rendered = false;
+        Action render = () => rendered = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(cancel, render){globalThis.cancelForTest=cancel;globalThis.renderedForTest=render;}}"))
+            installer.InvokeMethod("install", (Action)request.Cancel, render);
+        // The result hook cancels the request as its last call; the getter of what it returns runs only if it is rendered.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { var r = {get value() { renderedForTest(); return 1; }}; cancelForTest(); return r; }}",
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token
+        });
+
+        OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() => tracer.BuildResult())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rendered, Is.False);
+            Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+        }
+    }
+
+    [Test]
+    public void Javascript_request_cancelled_while_the_hook_check_throws_is_reported_as_cancellation([Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, step: function() {}}",
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
+        });
+        engine.Interrupt();
+        // The hook check sits inside the handlers that classify it, so a request cancellation that becomes visible only
+        // after the check has thrown is still reported as cancellation. The observer acts once, on this thread only.
+        bool cancelledAtThrow = false;
+        int owner = Environment.CurrentManagedThreadId;
+        EventHandler<FirstChanceExceptionEventArgs> cancel = (_, args) =>
+        {
+            if (Environment.CurrentManagedThreadId != owner || cancelledAtThrow || args.Exception is not ScriptInterruptedException) return;
+            cancelledAtThrow = true;
+            request.Cancel();
+        };
+        AppDomain.CurrentDomain.FirstChanceException += cancel;
+        Exception failure;
+        try { failure = Assert.Catch(() => tracer.SetOperationStack(default))!; }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= cancel; }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelledAtThrow, Is.True);
+            Assert.That(failure, Is.TypeOf<OperationCanceledException>());
+            Assert.That((failure as OperationCanceledException)?.CancellationToken, Is.EqualTo(request.Token));
+        }
+    }
+
+    [Test]
+    public void Javascript_recorded_hook_failure_outlasts_the_trace_timeout()
+    {
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, step: function() { throw new Error('first step failure'); }}",
+            CaptureJavaScriptErrors = true,
+            Timeout = TimeSpan.FromMilliseconds(200)
+        });
+        tracer.SetOperationStack(default);
+        bool expired = WaitForInterrupt(engine);
+
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expired, Is.True);
+            Assert.That(trace.TraceError, Does.Contain("first step failure"));
+        }
+    }
+
+    [Test]
+    public void Javascript_interrupt_while_no_script_runs_stops_the_next_script(
+        [Values("construction", "result", "trace timeout")] string before, [Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        // V8 drops an interrupt that arrives while no script runs; the engine has to stop the script entered after it.
+        const string busy = "var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = before == "construction"
+                ? "{fault: function() {}, result: (function() {" + busy + "})()}"
+                : "{fault: function() {}, result: function() {" + busy + "}}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(before == "trace timeout" ? 50 : 30_000)
+        };
+
+        if (before == "construction") engine.Interrupt();
+        Stopwatch elapsed = Stopwatch.StartNew();
+        Exception failure = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            if (before == "result") engine.Interrupt();
+            else if (before == "trace timeout") Thread.Sleep(250);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+    }
+
+    [Test]
+    public void Javascript_hook_does_not_start_after_the_trace_timeout([Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        bool armed = false, busy = false;
+        Func<bool> late = () => busy = armed;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(late){globalThis.lateForTest=late;}}"))
+            installer.InvokeMethod("install", late);
+        // The warmed step hook turns busy only once the test has seen the trace timeout's interrupt reach the engine.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; },"
+                + " step: function() { if (lateForTest()) { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); } }}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(150)
+        });
+        // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
+        try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
+        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        bool expired = WaitForInterrupt(engine);
+        armed = true;
+
+        Exception failure = Assert.Catch(() => tracer.SetOperationStack(default))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expired, Is.True);
+            Assert.That(busy, Is.False);
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+        }
+    }
+
+    [Test]
+    public void Engine_dispose_stops_interrupt_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Interrupt();
+        Timer redelivery = RedeliveryTimer(engine)!;
+        engine.Dispose();
+        Assert.That(redelivery.Change(10, 10), Is.False);
+    }
+
+    [Test]
+    public void Engine_interrupt_after_dispose_starts_no_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.That(RedeliveryTimer(engine), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Engine_repeated_interrupt_waits_for_the_delivery_gate()
+    {
+        // Interrupt delivery takes the gate that disposal also takes, so a delivery cannot run while the gate is held.
+        Engine engine = new(Shanghai.Instance);
+        Thread second = new(engine.Interrupt);
+        bool started = false, finishedWhileHeld = false;
+        try
+        {
+            engine.Interrupt();
+            using (InterruptGate(engine).EnterScope())
+            {
+                second.Start();
+                started = true;
+                finishedWhileHeld = second.Join(300);
+            }
+        }
+        finally
+        {
+            if (started) second.Join();
+            engine.Dispose();
+        }
+        Assert.That(finishedWhileHeld, Is.False);
+    }
+
+    private static Timer? RedeliveryTimer(Engine engine) =>
+        (Timer?)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine);
+
+    private static Lock InterruptGate(Engine engine) =>
+        (Lock)typeof(Engine).GetField("_interruptGate", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
+
+    private static bool WaitForInterrupt(Engine engine) => SpinWait.SpinUntil(() =>
+    {
+        try { engine.ThrowIfInterrupted(); return false; }
+        catch (ScriptInterruptedException) { return true; }
+    }, TimeSpan.FromSeconds(5));
+
+    [Test]
+    public void Javascript_trace_timeout_starts_after_setup_and_interrupts_a_busy_result([Values] bool busyResult)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        string script = busyResult
+            ? "{fault: function() {}, result: function() { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); }}"
+            : "{fault: function() {}, result: function() { return 7; }, setup: function() { var end = Date.now() + 750; while (Date.now() < end) {} }}";
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(),
+            GethTraceOptions.Default with { Tracer = script, Timeout = TimeSpan.FromMilliseconds(250) });
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        if (busyResult)
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+        else
+        {
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            Assert.That(JsonSerializer.Serialize(trace, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+        }
     }
 
     [TestCase(2, true)]
