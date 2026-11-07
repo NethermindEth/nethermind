@@ -21,12 +21,15 @@ namespace Nethermind.Blockchain;
 public static class BlockTraceDumper
 {
     private const string UnknownHash = "unknown";
-    public static void LogDiagnosticRlp(
+
+    /// <returns>The path of the file written, or <c>null</c> when <paramref name="toFile"/> is <c>false</c>.</returns>
+    public static string? LogDiagnosticRlp(
         Block block,
         ILogger logger,
         bool toFile,
         bool toLog)
     {
+        string? filePath = null;
         if (toFile || toLog)
         {
             Rlp rlp = Rlp.Encode(block, RlpBehaviors.AllowExtraBytes);
@@ -36,6 +39,7 @@ public static class BlockTraceDumper
                 string fileName = $"block_{blockHash}.rlp";
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 diagnosticFile.Write(rlp.Bytes);
+                filePath = diagnosticFile.Name;
                 if (logger.IsInfo)
                     logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name:hide}");
             }
@@ -45,14 +49,18 @@ public static class BlockTraceDumper
                 if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.Bytes.ToHexString()}");
             }
         }
+
+        return filePath;
     }
 
-    public static void LogDiagnosticTrace(
+    /// <returns>The path of the file written, or <c>null</c> when <paramref name="blockTracer"/> has no dump format or writing failed.</returns>
+    public static string? LogDiagnosticTrace(
         IBlockTracer blockTracer,
         Either<Hash256, IList<Block>> blocksOrHash,
         ILogger logger)
     {
         string fileName = string.Empty;
+        string? filePath = null;
         bool isSuccess = GetConditionAndHashString(blocksOrHash, out string logCondition, out string blockHash);
 
         string state = isSuccess ? "success" : "failed";
@@ -64,6 +72,7 @@ public static class BlockTraceDumper
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
+                filePath = diagnosticFile.Name;
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
@@ -74,6 +83,7 @@ public static class BlockTraceDumper
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
+                filePath = diagnosticFile.Name;
                 if (logger.IsInfo)
                     logger.Info($"Created a Geth-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
@@ -84,15 +94,20 @@ public static class BlockTraceDumper
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
+                filePath = diagnosticFile.Name;
                 if (logger.IsInfo)
                     logger.Info($"Created a Parity-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
         }
         catch (IOException e)
         {
+            // The final flush on disposal can fail after the path was recorded.
+            filePath = null;
             if (logger.IsError)
                 logger.Error($"Cannot save trace of {logCondition} block {blockHash} in file {fileName:hide}", SensitiveLogMasking.Enabled ? null : e);
         }
+
+        return filePath;
     }
 
     private static bool GetConditionAndHashString(Either<Hash256, IList<Block>> blocksOrHash, out string condition, out string blockHash)

@@ -26,6 +26,7 @@
   <Project Path="../../src/Nethermind/Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.InvalidChainDump/Nethermind.InvalidChainDump.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Kademlia/Nethermind.Kademlia.csproj" />

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -31,8 +32,10 @@ public class InvalidBlockDiagnosticsTests
         using ManualResetEventSlim replayEntered = new();
         using ManualResetEventSlim releaseReplay = new();
         GatedEnvFactory? gatedFactory = null;
+        CapturingDumpHandler dumpHandler = new();
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .Intercept<IInitConfig>(static initConfig => initConfig.AutoDump = DumpOptions.Receipts | DumpOptions.Parity | DumpOptions.Geth)
+            .AddSingleton<IInvalidBlockDumpHandler>(dumpHandler)
             .AddDecorator<IOverridableEnvFactory>((_, inner) => gatedFactory = new GatedEnvFactory(inner, replayEntered, releaseReplay)));
         Block head = await chain.AddBlock();
         // A transaction makes the replay reach the per-transaction cancellation check.
@@ -61,6 +64,7 @@ public class InvalidBlockDiagnosticsTests
             {
                 Assert.That(rejected.Wait(Wait), Is.True, "the rejections should not wait for the blocked replay");
                 Assert.That(dumps.Any(File.Exists), Is.False);
+                Assert.That(dumpHandler.Dumps, Is.Empty);
             }
 
             if (shutDownMidDump)
@@ -76,7 +80,7 @@ public class InvalidBlockDiagnosticsTests
             else
             {
                 releaseReplay.Set();
-                Assert.That(() => dumps.All(IsWritten), Is.True.After((int)Wait.TotalMilliseconds, 50));
+                Assert.That(() => dumps.All(IsWritten) && !dumpHandler.Dumps.IsEmpty, Is.True.After((int)Wait.TotalMilliseconds, 50));
                 diagnostics.Dispose();
             }
 
@@ -86,6 +90,7 @@ public class InvalidBlockDiagnosticsTests
                 Assert.That(receipts.RootElement.GetArrayLength(), Is.EqualTo(1));
                 Assert.That(gatedFactory.Created, Is.EqualTo(1), "a block rejected during a dump should not start another");
                 Assert.That(skippedDumps.Any(File.Exists), Is.False);
+                Assert.That(dumpHandler.Dumps, Is.EqualTo(new[] { (invalid.Hash, dumps) }), "handlers should receive the written files of the dumped block only");
             }
         }
         finally
@@ -118,6 +123,13 @@ public class InvalidBlockDiagnosticsTests
         {
             return false;
         }
+    }
+
+    private sealed class CapturingDumpHandler : IInvalidBlockDumpHandler
+    {
+        public ConcurrentQueue<(Hash256? BlockHash, string[] FilePaths)> Dumps { get; } = new();
+
+        public void OnDumped(Block block, IReadOnlyList<string> filePaths) => Dumps.Enqueue((block.Hash, [.. filePaths]));
     }
 
     /// <summary>Holds the first env created once armed until released, standing in for a long replay.</summary>
