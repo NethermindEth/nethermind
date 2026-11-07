@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -23,9 +24,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         public ref TGasPolicy Gas;
 
-        /// <summary>The table the chain dispatches through, for handlers that reload it after their body.</summary>
+        /// <summary>The paired table, which fills the dispatch cells.</summary>
         /// <remarks>In the form <see cref="RawCalliHelper.DispatchTable"/> gives, so read only through the chain's table helpers.</remarks>
         public nint* OpcodeHandlers;
+
+        /// <summary>What the chain dispatches through, for handlers that reload it after their body.</summary>
+        /// <remarks>
+        /// On Airbender, the address of the dispatch cell of the code byte at address 0: the cell of the byte at <c>ip</c>
+        /// is at this plus <c>ip * sizeof(nint)</c> (see <see cref="CodeAnalysis.CodeInfo.GetDispatchCells"/>). Elsewhere,
+        /// <see cref="OpcodeHandlers"/>.
+        /// </remarks>
+        public nint* Dispatch;
 
         public VirtualMachine<TGasPolicy> Vm;
 
@@ -129,20 +138,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.None;
 
         nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
+        nint[] cells = AirbenderFlag.IsActive ? stack.CodeInfo!.GetDispatchCells(handlers) : handlers;
 
-        // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that
-        // follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
+        // Safety: PairHandlers allocates the table pinned, and the cells and the code remain pinned for the complete
+        // tail-call chain, as the cell of a byte is found from its address. Every bytecode read lands in the code or in
+        // the padding that follows CodeInfo.ExecutionCodeSpan, any two bytes are a valid table index, and every such byte
+        // has a cell.
+        fixed (nint* firstCell = cells)
+        fixed (byte* code = &stack.Code)
         {
             nint* entries = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers));
             nint* table = CompactsHandlers ? (nint*)((uint*)entries + FollowerHandlersLength) : entries + FollowerHandlersLength;
             nint* dispatched = RawCalliHelper.DispatchTable(table);
+            nint* bias = AirbenderFlag.IsActive ? (nint*)((nint)firstCell - (nint)code * sizeof(nint)) : dispatched;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
-            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Vm = this, Memory = ref VmState.Memory };
+            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = dispatched, Dispatch = bias, Vm = this, Memory = ref VmState.Memory };
 
-            ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
+            ref byte ip = ref Unsafe.Add(ref stack.Code, programCounter);
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)(CompactsHandlers ? (nint)((uint*)table)[opcodes] : table[opcodes]))(
-                    ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, dispatched, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+                ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)RawCalliHelper.NextHandler(ref state, bias, ref ip))(
+                    ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref ip, stack.Head, bias, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -279,7 +294,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((!TOpcode.HasCheckedBody && !TOpcode.StaysInline) || TOpcode.CallsOutOfLine)
             {
                 // Reloaded, not held: live across an out-of-line call they would each take a callee-saved register.
-                handlers = state.OpcodeHandlers;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
             }
@@ -297,7 +312,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = HandlerAt(handlers, PairAt(ref ip));
+            nint next = NextHandler(ref state, handlers, ref ip);
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
@@ -334,6 +349,87 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         Exit:
             return ExitChain(ref state, gas, pc, head, exceptionType);
+        }
+
+        /// <summary>The handler for the opcode at <paramref name="ip"/>, its dispatch cell filled first if empty.</summary>
+        /// <param name="state">The chain's state, whose paired table fills an empty cell.</param>
+        /// <param name="dispatch">The chain's <see cref="DispatchState.Dispatch"/>.</param>
+        /// <param name="ip">The opcode's address.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static nint NextHandler(ref DispatchState state, nint* dispatch, ref byte ip)
+        {
+            nint next = NextEntry(dispatch, ref ip);
+            return IsFilled(next) ? next : Decode(ref state, dispatch, ref ip);
+        }
+
+        /// <summary>
+        /// On Airbender, the dispatch cell of the opcode at <paramref name="ip"/>, zero while it is empty; elsewhere, the
+        /// paired table's entry for it.
+        /// </summary>
+        /// <remarks>
+        /// A cell saves Airbender the two byte loads and the table: it has no unaligned halfword load. The others read the
+        /// pair in one load, so a cell would save them nothing and cost the first dispatch to each opcode.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint NextEntry(nint* dispatch, ref byte ip) =>
+            AirbenderFlag.IsActive ? *CellAt(dispatch, ref ip) : HandlerAt(dispatch, PairAt(ref ip));
+
+        /// <summary>Whether <see cref="NextEntry"/> gave a handler, rather than an empty cell to fill with <see cref="Decode"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsFilled(nint entry) => !AirbenderFlag.IsActive || entry != 0;
+
+        /// <summary>The dispatch cell of the byte at <paramref name="ip"/>.</summary>
+        /// <remarks>
+        /// The byte's address is taken as its offset from null, as in <see cref="AlignedSlot"/>: casting the byref to a
+        /// pointer would copy <paramref name="ip"/>, which stays live, to another register first.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint* CellAt(nint* cellBias, ref byte ip)
+        {
+            nint cell = (nint)cellBias + Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref ip) * sizeof(nint);
+            // The rounding is a no-op that lets the JIT prove the load aligned (see HandlerAt).
+            return (nint*)(StrictAlignmentFlag.IsActive ? cell & ~(nint)(sizeof(nint) - 1) : cell);
+        }
+
+        /// <summary>Fills the empty dispatch cell of the opcode at <paramref name="ip"/> and returns its handler.</summary>
+        /// <remarks>
+        /// The paired table's entry depends only on the code at the position, so every later dispatch there reads the cell
+        /// instead of the two bytes and the table. Inline at each dispatch, as a handler of its own would cost every first
+        /// dispatch a jump there and back: most opcodes in a block run only a few times.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint Decode(ref DispatchState state, nint* cellBias, ref byte ip)
+        {
+            nint entry = Resolve(state.OpcodeHandlers, ref ip);
+            // Formed again, as a sum the JIT does not match with the dispatch's product: sharing the address would keep
+            // it in a register of its own across the cell's load, a move on every filled cell.
+            nint offset = Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref ip);
+            nint twice = offset + offset;
+            *(nint*)((nint)cellBias + (sizeof(nint) == sizeof(uint) ? twice + twice : twice + twice + twice + twice)) = entry;
+            return entry;
+        }
+
+        /// <summary>The paired table's entry for the opcode at <paramref name="ip"/>, with a PUSH1 that the table sends on by its follower resolved to the follower's entry, as its handler would pick it.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint Resolve(nint* table, ref byte ip)
+        {
+            nint entry = HandlerAt(table, PairAt(ref ip));
+            // Only a PUSH1 is sent on by its follower: one test of the opcode spares the others both entry tests.
+            if (ip != (byte)Instruction.PUSH1)
+                return entry;
+
+            if (entry == Entry(&ExecutePush1ByFollower))
+                return FollowerHandlerAt(table, Unsafe.Add(ref ip, 2));
+
+            if (entry == Entry(&ExecutePush1OneByFollower))
+            {
+                byte following = Unsafe.Add(ref ip, 2);
+                return following == (byte)Instruction.PUSH1 && Unsafe.Add(ref ip, 3) == 1
+                    ? Entry(&ExecutePush1OneMask)
+                    : FollowerHandlerAt(table, following);
+            }
+
+            return entry;
         }
 
         /// <summary>Writes back what the chain carries, and leaves it with <paramref name="exceptionType"/>.</summary>
@@ -384,7 +480,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head = stack.Head;
             gas = ChainGas(GetExecutionGas(ref fixedGas));
             pc = result.ProgramCounter;
-            handlers = state.OpcodeHandlers;
+            handlers = state.Dispatch;
             code = ref stack.Code;
             sp = ref SlotAt(ref stack.Bottom, head);
 
@@ -403,7 +499,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (pc != fallthroughPc)
             {
                 ip = ref Unsafe.Add(ref code, pc);
-                nint taken = HandlerAt(handlers, ip);
+                nint taken = NextHandler(ref state, handlers, ref ip);
                 IL.EnsureLocal(in taken);
 
                 IL.Emit.Ldarg(nameof(stack));
@@ -432,7 +528,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else
             {
                 ip = ref Unsafe.Add(ref code, fallthroughPc);
-                nint notTaken = HandlerAt(handlers, ip);
+                nint notTaken = NextHandler(ref state, handlers, ref ip);
                 IL.EnsureLocal(in notTaken);
 
                 IL.Emit.Ldarg(nameof(stack));
