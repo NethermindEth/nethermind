@@ -1222,6 +1222,13 @@
           "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
+      "nethermind.stateless.executor": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
@@ -1257,6 +1264,13 @@
           "Nethermind.Db": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.trustedinput": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Stateless.Executor": "[2.3.0-preview, )"
         }
       },
       "nethermind.txpool": {

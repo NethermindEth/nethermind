@@ -533,12 +533,14 @@ public sealed partial class KeccakHash
     /// <param name="input">The re-encoded node, of a length <see cref="IsResumable"/> accepts.</param>
     /// <param name="previous">The encoding <paramref name="input"/> was re-encoded from.</param>
     /// <param name="tag">What <see cref="LoadedWitnessNode"/> returned when <paramref name="previous"/> was loaded.</param>
+    /// <param name="unchanged">How many leading bytes of <paramref name="input"/> the caller knows to equal those of
+    /// <paramref name="previous"/>, or a negative value to have the leading blocks compared.</param>
     /// <remarks>Starts after the leading rate blocks <paramref name="input"/> shares with <paramref name="previous"/>,
     /// from the state <see cref="ComputeHash256OfWitnessNodes"/> kept, when <paramref name="previous"/> is the keyed node
     /// <paramref name="tag"/> names. Anything else, a stale tag included, hashes <paramref name="input"/> whole. An RLP
     /// list's first block holds its length, so an encoding of another length shares no block with it.</remarks>
     [SkipLocalsInit]
-    internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag)
+    internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag, int unchanged)
     {
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
@@ -561,8 +563,8 @@ public sealed partial class KeccakHash
             }
 
             bool absorbed = StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0
-                ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index, length)
-                : TryAbsorbEdited(ref lane, data, original, index, length);
+                ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index, length, unchanged)
+                : TryAbsorbEdited(ref lane, data, original, index, length, unchanged);
             if (!absorbed)
             {
                 return ValueKeccak.Compute(input);
@@ -576,21 +578,35 @@ public sealed partial class KeccakHash
 
     /// <summary>Absorbs all of the <paramref name="length"/>-byte node <paramref name="data"/> but its pad byte into
     /// <paramref name="lane"/>, from the state <see cref="ComputeHash256OfWitnessNodes"/> kept for the leading rate blocks
-    /// it shares with <paramref name="original"/>.</summary>
+    /// it shares with <paramref name="original"/>: those within its first <paramref name="unchanged"/> bytes, or if that
+    /// is negative, those that compare equal.</summary>
     /// <returns>Whether any leading block is shared; if none is, <paramref name="lane"/> is left as it was.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe bool TryAbsorbEdited(ref ulong lane, byte* data, byte* original, nuint index, nuint length)
+    private static unsafe bool TryAbsorbEdited(ref ulong lane, byte* data, byte* original, nuint index, nuint length, int unchanged)
     {
         // Spelled out over the at most three retained blocks rather than looped: a loop's compare call spilled and
         // reloaded every value it carries on each iteration.
         Debug.Assert(RetainedBlocks == 3 && length >= 2 * HASH_DATA_AREA, "A resumable node has two to three retained blocks");
-        if (!BlockEquals(data, original))
+        nuint offset = HASH_DATA_AREA;
+        nuint last = 0;
+        if (unchanged >= 0)
+        {
+            nuint shared = Math.Min((nuint)unchanged, length) / HASH_DATA_AREA;
+            if (shared == 0)
+            {
+                return false;
+            }
+
+            if (shared > RetainedBlocks) shared = RetainedBlocks;
+            offset = shared * HASH_DATA_AREA;
+            last = (shared - 1) * (nuint)RetainedStride;
+        }
+        else if (!BlockEquals(data, original))
         {
             return false;
         }
-
         // There a full branch keeps only the state its second block leaves; see ComputeHash256OfWitnessNodesPacked.
-        if (FirstTouchMemoryFlag.IsActive)
+        else if (FirstTouchMemoryFlag.IsActive)
         {
             if (!BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
             {
@@ -604,10 +620,7 @@ public sealed partial class KeccakHash
             AbsorbPaddedTail(ref lane, data + RetainedBlocks * HASH_DATA_AREA, FullBranchTailLength);
             return true;
         }
-
-        nuint offset = HASH_DATA_AREA;
-        nuint last = 0;
-        if (BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
+        else if (BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
         {
             offset = 2 * HASH_DATA_AREA;
             last = (nuint)RetainedStride;
@@ -989,8 +1002,9 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
-        // SP1 and OpenVM have no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes.
-        if (intoZeroState && !Sp1Flag.IsActive && !OpenVmFlag.IsActive)
+        // SP1 and OpenVM have no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes; so is
+        // Airbender's for a word-aligned block, which the lanes read with plain loads.
+        if (intoZeroState && !Sp1Flag.IsActive && !OpenVmFlag.IsActive && !(AirbenderFlag.IsActive && ((nuint)data & 3) == 0))
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where

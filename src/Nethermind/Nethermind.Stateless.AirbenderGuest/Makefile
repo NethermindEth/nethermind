@@ -15,16 +15,18 @@ GUEST_ARCH := riscv32
 # manifest, so the download is checked against AIRBENDER_SHA256 instead.
 # AIRBENDER_LIB_DIR names another libairbender build.
 BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:c8f6294cca505f5118590e7fd23fdb408264f8dc@sha256:7af7b20e333de60d3e80ff371970a79164f8598ca5e02ecbb67ecbb1416eb6c7
-AIRBENDER_VERSION := v1.0.2
-AIRBENDER_SHA256 := 73e55decb782f9b29b4a77d5ccda81009d1751caaae4d2f96a1b6c27892dd554
+AIRBENDER_VERSION := v1.0.3
+AIRBENDER_SHA256 := 9b6bce0271fca9d4f2f0c55a1c5a28530f99f5cefab8087e33b858bf369483ec
 AIRBENDER_LIB_DIR ?= $(GUEST_DIR)/obj/libairbender-$(AIRBENDER_VERSION)
 BFLAT_DOCKER_ARGS = --mount type=bind,source="$(AIRBENDER_LIB_DIR)",target=/airbender,readonly
 GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 
-# Airbender's ROM is 4 MiB: favour size, and leave the reflection data out (about
-# 0.9 MB). The symbols stay: bflat's post-link patch reads them.
+# Airbender's ROM is 4 MiB: favour size. The reflection data stays (about 240 KB):
+# without it the type loader cannot resolve a generic virtual call the compiler
+# left to run time, and the guest fails. The symbols stay too: bflat's post-link
+# patch reads them.
 OPT_FLAGS := -Os
-TRIM_FLAGS := --no-stacktrace-data --no-reflection
+TRIM_FLAGS := --no-stacktrace-data
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
@@ -53,14 +55,14 @@ AIRBENDER_CYCLES ?= 12000000000
 run:
 	@$(REQUIRE_INPUT)
 	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).hex
-	$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/nethermind.bin --text $(GUEST_DIR)/bin/nethermind.text \
+	$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/$(GUEST_NAME).bin --text $(GUEST_DIR)/bin/$(GUEST_NAME).text \
 		--input-file $(GUEST_DIR)/bin/$(INPUT).hex --cycles $(AIRBENDER_CYCLES)
 
 verify:
 	@$(REQUIRE_INPUT)
 	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).hex
 	@expected=$$(python3 -c "import json,struct,sys; entries=json.load(open(sys.argv[1])); digest=next(e['digest'] for e in entries if e['input']==sys.argv[2]); print(*struct.unpack('<8I',bytes.fromhex(digest)), *([0]*8))" $(MAKEFILE_DIR)/../Nethermind.Stateless.ZiskGuest/inputs.json $(INPUT)) && \
-		$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/nethermind.bin --text $(GUEST_DIR)/bin/nethermind.text \
+		$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/$(GUEST_NAME).bin --text $(GUEST_DIR)/bin/$(GUEST_NAME).text \
 		--input-file $(GUEST_DIR)/bin/$(INPUT).hex --cycles $(AIRBENDER_CYCLES) --expected-results $$expected
 
 # Airbender reads its input as hex words: the length in bytes, then the payload in

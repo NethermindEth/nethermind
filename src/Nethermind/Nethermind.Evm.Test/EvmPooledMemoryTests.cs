@@ -28,6 +28,16 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
+    [Test]
+    public void Swizzled_input_realigns_without_changing_bytes([Range(0, 3)] int offset,
+        [Values(0, 1, 2, 3, 4, 31, 32, 33)] int length)
+    {
+        byte[] natural = Enumerable.Range(0, 40).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+        ReadOnlyMemory<byte> aligned = SwizzledMemory.Realign(swizzled.Span.Slice(offset, length));
+        Assert.That(SwizzledMemory.ToNatural(aligned).ToArray(), Is.EqualTo(natural.AsSpan(offset, length).ToArray()));
+    }
+
     public enum StoreKind
     {
         Byte,

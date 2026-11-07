@@ -68,6 +68,14 @@ internal static unsafe class AirbenderArithmetic
         airbender_u256_op(left, right, AddOp);
     }
 
+    /// <summary>Subtracts <paramref name="right"/> from <paramref name="left"/>, modulo 2^256; whether it borrowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool Subtract(void* left, void* right)
+    {
+        Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
+        return airbender_u256_op(left, right, SubtractOp) != 0;
+    }
+
     /// <summary>Replaces <paramref name="subtrahend"/> with <paramref name="minuend"/> minus it, modulo 2^256.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SubtractFrom(void* subtrahend, void* minuend)

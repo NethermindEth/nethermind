@@ -85,6 +85,9 @@ public static unsafe partial class EvmInstructions
             return;
         }
 
+        if (AirbenderMontgomery.TryMultiply(in a, in b, in m, out result))
+            return;
+
         byte* buffer = stackalloc byte[3 * 32 + 31];
         UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
         words[0] = a;

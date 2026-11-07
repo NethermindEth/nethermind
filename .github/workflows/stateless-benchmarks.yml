@@ -241,6 +241,85 @@ jobs:
 
   # Separated so the measuring job keeps `contents: read` and never holds write scope while it runs
   # a downloaded binary. Skipped for forks, whose tokens cannot comment anyway.
+  # The guest that takes the trusted-input format, on the same pinned blocks converted to it. Absolute values only:
+  # nothing keeps a baseline for it yet.
+  measure-trusted:
+    name: Measure trusted-input guest cost
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          DOCKERHUB_OIDC_EXPIREIN: 3600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
+
+      - name: Build guest
+        working-directory: ${{ env.GUEST_DIR }}
+        run: make build GUEST_INPUT=Trusted
+
+      - name: Download and convert inputs
+        run: |
+          set -euo pipefail
+          bin="$GUEST_DIR/bin"
+          jq -r '.[] | "\(.input) \(.hash)"' "$GUEST_DIR/inputs.json" | while read -r input hash; do
+            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20261021/${input}" -o "$bin/${input}"
+            echo "${hash}  $bin/${input}" | sha256sum --status -c - \
+              || { echo "::error::Checksum failed for ${input}"; exit 1; }
+          done
+          dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
+            convert --source "$bin" --output "$bin" | grep -E '^[^ ]+\.nti [0-9a-f]+ [0-9a-f]{64}$' > "$RUNNER_TEMP/trusted-inputs.txt"
+
+      - name: Measure
+        working-directory: ${{ env.GUEST_DIR }}
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          echo '[]' > "$RUNNER_TEMP/current.json"
+          while read -r input output _; do
+            echo "::group::${input}"
+            make stats INPUT="${input}" GUEST_INPUT=Trusted 2>&1 | tee "$RUNNER_TEMP/stats.log"
+            echo "::endgroup::"
+
+            grep -Fxq "${output}" "$RUNNER_TEMP/stats.log" \
+              || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
+
+            # Rows are named by block, as the stateless guest's are.
+            dotnet run --file "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.cs" -- \
+              --input "${input%.nti}.ssz" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
+          done < "$RUNNER_TEMP/trusted-inputs.txt"
+
+      - name: Report
+        run: |
+          set -euo pipefail
+          echo "## Trusted-input guest" >> "$GITHUB_STEP_SUMMARY"
+          dotnet run --file scripts/zisk-bench/report.cs -- \
+            --current "$RUNNER_TEMP/current.json" \
+            --commit "${{ github.sha }}" \
+            --commit-kind "${{ github.event_name == 'pull_request' && 'merge commit' || 'commit' }}" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --github-output "$RUNNER_TEMP/report-output"
+
   comment:
     name: Publish comparison
     needs: measure

@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -54,6 +55,45 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 
         Assert.That(actualOutput, Is.EqualTo(expectedOutput),
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
+    }
+
+    /// <remarks>
+    /// The trusted input carries the stateless input's block and witness but not its engine API envelope, the claimed
+    /// block hash and the versioned hashes, so it must reach the same verdict unless the envelope alone decided it.
+    /// </remarks>
+    [NonParallelizable]
+    [TestCaseSource(nameof(LoadStatelessTests))]
+    public void TrustedInputVerdictMatchesFixture(PyspecStatelessRef testRef)
+    {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+        byte[] statelessInput = Convert.FromHexString(inputBytes[2..]);
+        StatelessValidationResult.Decode(Convert.FromHexString(expectedOutputBytes[2..]), out StatelessValidationResult expected);
+
+        byte[] trustedInput;
+        Block block;
+        StatelessPayload payload;
+        try
+        {
+            payload = InputDecoder.Decode(statelessInput);
+            block = payload.GetBlock();
+            trustedInput = TrustedInput.FromStatelessInput(statelessInput);
+        }
+        catch (Exception) when (!expected.IsSuccess)
+        {
+            // A block that does not decode has no trusted input.
+            return;
+        }
+
+        StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(trustedInput), out StatelessValidationResult actual);
+        Hash256 headerHash = block.Header.CalculateHash();
+        bool decidedByEnvelope = headerHash != block.Hash
+            || !StatelessExecutor.BlobVersionedHashesMatch(block.Transactions, payload.VersionedHashes.Span);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (expected.IsSuccess || !decidedByEnvelope) Assert.That(actual.IsSuccess, Is.EqualTo(expected.IsSuccess));
+            Assert.That(actual.NewPayloadRequestRoot, Is.EqualTo(headerHash));
+        }
     }
 
     private static IEnumerable<TestCaseData> LoadWitnessTests() =>
