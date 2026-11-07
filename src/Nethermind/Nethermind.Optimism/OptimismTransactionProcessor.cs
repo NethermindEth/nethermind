@@ -121,7 +121,7 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
+            senderReservedGasPayment += l1Cost + maxOperatorCost; // no overflow here, otherwise previous check would fail
         }
 
         if (!senderReservedGasPayment.IsZero)
