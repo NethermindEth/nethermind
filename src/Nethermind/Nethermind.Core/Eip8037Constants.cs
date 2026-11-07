@@ -16,6 +16,14 @@ public static class Eip8037Constants
     /// <summary> Absolute cap on <c>tx.gas</c> covering both gas dimensions (2^32 - 1). </summary>
     public const ulong TxMaxTotalGasLimit = 4_294_967_295;
 
+    /// <summary> Legacy share of a new account's state gas: paid from <c>gas_left</c> before the reservoir. </summary>
+    /// <remarks> Keeps the <c>gas_left</c> cost of account creation at least its cost before EIP-8037. </remarks>
+    public const long NewAccountLegacyShare = (long)GasCostOf.NewAccount;
+
+    /// <summary> Legacy share of a CREATE's account state gas: paid from <c>gas_left</c> before the reservoir. </summary>
+    /// <remarks> <c>max(0, GAS_CREATE - CREATE_ACCESS)</c>: keeps the <c>gas_left</c> cost of CREATE at least its cost before EIP-8037. Assumes EIP-8038 (<c>CREATE_ACCESS</c>), which Amsterdam enables together with EIP-8037. </remarks>
+    public const long CreateLegacyShare = GasCostOf.Create > Eip8038Constants.CreateAccess ? (long)(GasCostOf.Create - Eip8038Constants.CreateAccess) : 0;
+
     public const ulong SystemCallBaseGasLimit = 30_000_000;
     public const long SystemMaxSstoresPerCall = 16;
     public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
