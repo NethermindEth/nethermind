@@ -229,6 +229,32 @@ public partial class GossipRouterTests
         Assert.That(rejected, Is.EqualTo(new[] { fixture.Sender }), "only the malformed vote counts against the peer");
     }
 
+    // The accepted-peer set is bounded, so a peer can be evicted from it within the slot in which its acceptance lifted a refusal; it is then
+    // new again, and only clearing the mark on that acceptance keeps its votes admitted.
+    [Test]
+    public async Task Peer_evicted_after_its_accepted_vote_lifted_a_refusal_is_admitted_again_in_the_slot()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        (GossipVerdict? valid, Task validValidation) = fixture.SendVote(fixture.Sender, aggregatorIndex: 1);
+        await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 2, MessageValidity.Rejected);
+        MessageValidity whileMarked = fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(3));
+        valid!.Complete(MessageValidity.Accepted);
+        await validValidation;
+        const int acceptedPeerCapacity = 1024;
+        for (int i = 0; i < acceptedPeerCapacity; i++)
+        {
+            PeerId other = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+            await fixture.CompleteVoteFromAsync(other, aggregatorIndex: (ulong)(100 + i), MessageValidity.Accepted);
+        }
+
+        MessageValidity[] votes = [.. Enumerable.Range(3, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(whileMarked, Is.EqualTo(MessageValidity.Throttled), "fixture: the rejection refused the peer's votes");
+        Assert.That(votes[0], Is.EqualTo(MessageValidity.Deferred), "the acceptance cleared the refusal, so the evicted peer's next vote is admitted");
+        Assert.That(votes[1..], Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Throttled }), "fixture: the peer was evicted, so it is held to a new peer's two votes");
+    }
+
     [Test]
     public async Task Block_from_a_new_peer_with_a_rejected_vote_is_still_admitted()
     {
