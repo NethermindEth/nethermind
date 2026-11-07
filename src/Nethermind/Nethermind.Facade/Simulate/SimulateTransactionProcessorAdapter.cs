@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Facade.Simulate;
 /// guarantees this by never attaching a <c>BlockAccessList</c> to its synthesised blocks, which keeps
 /// <c>BlockAccessListManager.ParallelExecutionEnabled</c> false. Do not register it on a parallel pool.
 /// </remarks>
-public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
+public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState, IWorldState worldState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
     private BlockHeader? _header;
@@ -33,6 +34,12 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
         // here; on the BAL path this repeats it with the same budget, leaving the accepted limit unchanged.
         PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
+        // Like geth's sanitizeCall, an omitted nonce is read when the call runs, after the earlier calls of the block.
+        if (!simulateRequestState.Calls[_currentTxIndex].HadNonceInRequest)
+        {
+            transaction.Nonce = worldState.GetNonce(transaction.SenderAddress!);
+        }
+
         transaction.Hash = transaction.CalculateHash();
 
         // The state budget only depletes while a BlockReceiptsTracer publishes the cumulative state gas;

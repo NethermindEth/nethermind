@@ -2031,6 +2031,50 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// An omitted nonce is read when the call runs, so a call after one with an explicit nonce from the same sender
+    /// takes the next nonce, as in geth's <c>sanitizeCall</c>.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_fills_an_omitted_nonce_after_an_explicit_one([Values] bool validation, [Values] bool balPath)
+    {
+        const ulong accountNonce = 4;
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = accountNonce } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = accountNonce },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            ReturnFullTransactionObjects = true,
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        TransactionForRpc[] transactions = result.Data![0].Transactions!.Full!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data[0].Calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(transactions.Select(static t => ((LegacyTransactionForRpc)t).Nonce), Is.EqualTo(new ulong?[] { accountNonce, accountNonce + 1 }));
+            Assert.That(transactions.Select(static t => t.Hash), Is.EqualTo(transactions.Select(static t => t.ToTransaction().Data!.CalculateHash())));
+        }
+    }
+
+    /// <summary>
     /// A call whose explicit gas is above the gas the block can still include fails the request with
     /// <c>-38015</c>, with or without validation, instead of running past the block gas limit.
     /// </summary>
@@ -3132,8 +3176,7 @@ public class EthSimulateTestsBlocksAndTransactions
         [
             CreateAuthorizationCall(chain, TestItem.AddressB, 400_000),
             laterCallSentByAuthority
-                // The authorization bumped the authority's nonce to 1.
-                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 1 }
+                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
                 : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
         ])[0].Calls.ToArray();
 
