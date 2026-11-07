@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -168,7 +169,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IStaticNodesManager>(),
             ctx.Resolve<IStateReader>(),
             ctx.Resolve<IEnode>(),
-            ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
+            // Resolved like the paths Program.ResolveDataDirectory rebases: relative to the executable directory, not the working directory
+            Path.GetFullPath(string.Empty.GetApplicationResourcePath(ctx.Resolve<IInitConfig>().DataDir)),
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>(),
