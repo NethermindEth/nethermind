@@ -358,6 +358,22 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Spurious_dragon_eips_follow_geth_fork_blocks([Values(0UL, 9UL, 10UL)] ulong blockNumber)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: "\"eip158Block\": 10"));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+        bool eip158Active = blockNumber >= 10;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip155Enabled, Is.True);
+            Assert.That(spec.IsEip158Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip160Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip170Enabled, Is.EqualTo(eip158Active));
+        }
+    }
+
+    [Test]
     public void Absent_pre_merge_forks_never_activate([Values] bool spuriousDragon, [Values(0UL, 1_000_000UL)] ulong blockNumber)
     {
         string json = spuriousDragon
