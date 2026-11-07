@@ -355,7 +355,7 @@ internal class XdcTransactionProcessorTests
             in UInt256 effectiveGasPrice,
             in UInt256 blobBaseFee,
             int statusCode) =>
-            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode, ExecutionOptions.Commit);
     }
 }
 

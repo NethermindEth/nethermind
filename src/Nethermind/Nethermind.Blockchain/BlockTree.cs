@@ -546,17 +546,20 @@ namespace Nethermind.Blockchain
 
         /// <summary>Tells whether pre-merge <paramref name="header"/> is lighter than <see cref="BestSuggestedHeader"/>.</summary>
         /// <remarks>The improvement check compares against <see cref="BestSuggestedBody"/>, which unprocessed
-        /// suggestions never advance, so any lighter pre-merge block would otherwise replace the header.</remarks>
-        private bool IsLighterPreMergeThanBestSuggestedHeader(BlockHeader header) =>
+        /// suggestions never advance, so any lighter pre-merge block would otherwise replace the header. Derived
+        /// trees may change header promotion while the existing body-selection policy remains responsible for bodies.</remarks>
+        protected virtual bool IsLighterPreMergeThanBestSuggestedHeader(BlockHeader header) =>
             !header.IsPostTTD(SpecProvider) && header.TotalDifficulty < BestSuggestedHeader?.TotalDifficulty;
 
         /// <summary>Tells whether <paramref name="header"/> is one <see cref="Suggest"/> answers with
         /// <see cref="AddBlockResult.AlreadyKnown"/> rather than adding.</summary>
+        /// <remarks>Derived trees may return <see langword="false"/> for a known header when an external policy
+        /// needs the normal suggestion and promotion path to reconsider it.</remarks>
         /// <param name="isKnown">The caller's <see cref="IsKnownBlock"/> result for <paramref name="header"/>, taken as
         /// a parameter because callers already need it for their own branches; this method does not re-derive it, so
         /// passing a value read for another header or before a concurrent insert gives a wrong answer.</param>
         /// <param name="header">The block header to compare with the best suggested header.</param>
-        protected bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) =>
+        protected virtual bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) =>
             isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number;
 
         public AddBlockResult SuggestHeader(BlockHeader header) => Suggest(null, header);

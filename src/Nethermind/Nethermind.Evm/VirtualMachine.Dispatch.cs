@@ -39,15 +39,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>A policy that holds only the carried execution <paramref name="gas"/>, for a body that charges nothing else.</summary>
     /// <remarks>
     /// Such a body never reads the rest of the policy, so it stays uninitialized, and a local policy can stay in registers.
-    /// A body that may touch the rest runs on the frame's policy instead: the carried gas is written to it with
-    /// <c>SetExecutionGas</c> before the body and read back with <see cref="GetExecutionGas"/> after, and written to it
-    /// once more as the chain leaves.
+    /// The one exception is the unspent gas a halt observes, which starts at zero so that <see cref="KeepHaltGas"/> can
+    /// tell whether the body recorded one. A body that may touch the rest runs on the frame's policy instead: the carried
+    /// gas is written to it with <c>SetExecutionGas</c> before the body and read back with <see cref="GetExecutionGas"/>
+    /// after, and written to it once more as the chain leaves.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void LoadFixedGas(out TGasPolicy fixedGas, ulong gas)
     {
         Unsafe.SkipInit(out fixedGas);
         SetExecutionGas(ref fixedGas, gas);
+        if (typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy))
+            Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref fixedGas).UnspentGasBeforeHalt = 0;
+    }
+
+    /// <summary>Keeps on the frame's policy the unspent gas that a halt in a <see cref="LoadFixedGas"/> body recorded.</summary>
+    /// <remarks>
+    /// The halt clears the carried gas, so what it observed lives only in the local policy, which the chain drops. A body
+    /// running on the frame's policy records it there directly, so both kinds of body leave the frame the same policy.
+    /// Call only on an exceptional exit; a body that recorded nothing leaves the frame's value as it was.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void KeepHaltGas(ref TGasPolicy frameGas, ref TGasPolicy fixedGas)
+    {
+        if (typeof(TGasPolicy) != typeof(GasPolicy.EthereumGasPolicy))
+            return;
+
+        ulong unspent = Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref fixedGas).UnspentGasBeforeHalt;
+        if (unspent != 0)
+            Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref frameGas).UnspentGasBeforeHalt = unspent;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

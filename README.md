@@ -149,6 +149,18 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
 
+### RPC execution admission
+
+CPU-heavy RPC methods can opt into bounded execution by setting `IsExecutionHeavy = true` on their `JsonRpcMethod` attribute. The built-in `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction` methods use this gate. Calls wait asynchronously before parameter decoding or module rental; streaming results retain the execution permit until disposal.
+
+`JsonRpc.MaxConcurrentExecutionRequests` defaults to twice the logical processor count. The effective limit is also bounded by `JsonRpc.EthModuleConcurrentInstances` (or the logical processor count when unset) and half of a positive `JsonRpc.MaxConcurrentSharedRequests`, with at least one execution slot. This leaves shared admission capacity for lightweight methods when the shared limit permits it.
+
+An explicit positive execution limit replaces the processor-derived default, not the module/shared bounds. A non-positive value removes only the processor-derived bound. Waiting calls use the existing `JsonRpc.RequestQueueLimit` and `JsonRpc.Timeout`; increasing execution concurrency may also require increasing the module/shared limits. Qualify throughput and chain following together rather than increasing these limits solely to admit more work.
+
+### Gas policy at exceptional exits
+
+`EthereumGasPolicy.UnspentGasBeforeHalt` records the execution gas remaining immediately before an exceptional halt. Traced and untraced execution must preserve the same value on the frame's policy. Fixed-gas dispatch bodies use a temporary policy for their fast path; on failure they copy the recorded halt gas back before returning. Plugins consuming child-frame completion therefore observe the same halt accounting with instruction tracing enabled or disabled.
+
 ## Getting help
 
 Check out the [docs][docs] first. If the answer is not there, see:

@@ -299,7 +299,12 @@ public class HostMemoryFastPathTests
         {
             Assert.That(fast, Is.EqualTo(plain));
             Assert.That(fast.Exception, Is.EqualTo(value <= 1 ? EvmExceptionType.OutOfGas : EvmExceptionType.Stop));
-            Assert.That(fast.Policy, Is.EqualTo(initial with { Value = value <= 1 ? 0UL : ulong.MaxValue - BoundaryGasCost }));
+            // An out-of-gas halt keeps the unspent gas it observed, as the traced handlers do.
+            Assert.That(fast.Policy, Is.EqualTo(initial with
+            {
+                Value = value <= 1 ? 0UL : ulong.MaxValue - BoundaryGasCost,
+                UnspentGasBeforeHalt = value <= 1 ? value : 0UL,
+            }));
         }
     }
 

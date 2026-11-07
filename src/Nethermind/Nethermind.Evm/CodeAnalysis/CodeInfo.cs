@@ -40,6 +40,17 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
+    /// <summary>Creates a precompile descriptor that also exposes its stored bytecode to code inspection operations.</summary>
+    /// <param name="precompile">The implementation used when the descriptor is dispatched as a precompile.</param>
+    /// <param name="code">The stored bytecode exposed by code inspection operations.</param>
+    /// <remarks>The bytecode is not analyzed for regular EVM execution because precompile dispatch handles it.</remarks>
+    public CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
+    {
+        Precompile = precompile;
+        InitializeCode(code);
+        _analyzer = null;
+    }
+
     public partial ReadOnlyMemory<byte> Code { get; }
     public partial ReadOnlySpan<byte> CodeSpan { get; }
 
