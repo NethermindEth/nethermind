@@ -136,9 +136,11 @@ public partial class EthRpcModuleTests
         using Context ctx = await FeePolicyContext(false, validateLegacy);
         string fees = "\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"" + (priorityAboveCap ? "0x3" : "0x1") + "\"";
         JToken response = await FeePolicyCall(ctx, FeePolicyRequest(fees, gas), FeePolicyState(code: "0xfe"), "0x64");
+        string sender = new Address(FeePolicySender).ToString(withEip55Checksum: true);
+        // The policy's pre-check gives the processor's own error, as a node without a policy reports it.
         string expected = priorityAboveCap
-            ? $"{TxErrorMessages.TipAboveFeeCap}: address {new Address(FeePolicySender).ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"
-            : "max fee per gas less than block base fee";
+            ? $"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"
+            : $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: 2, baseFee: 100";
         using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());

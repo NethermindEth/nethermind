@@ -276,7 +276,7 @@ namespace Nethermind.Facade
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
                 ? tipAboveFeeCap
                 : _callExecutionOptions != ExecutionOptions.CommitAndRestore && tx.Supports1559 && tx.MaxFeePerGas < header.BaseFeePerGas
-                    ? TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail("max fee per gas less than block base fee")
+                    ? TransactionResult.MaxFeePerGasBelowBaseFee(tx, header.BaseFeePerGas)
                     : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken), _callExecutionOptions);
 
             string? error = result.GetErrorMessage(tracer.Error);

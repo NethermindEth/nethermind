@@ -1214,8 +1214,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.Supports1559 || !HasRestoringCallOption(opts, ExecutionOptions.SkipLegacyGasPriceValidation))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
-                    return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
+                    return TransactionResult.MaxFeePerGasBelowBaseFee(tx, header.BaseFeePerGas);
                 }
                 premiumPerGas = UInt256.Zero;
             }
@@ -2181,6 +2180,11 @@ namespace Nethermind.Evm.TransactionProcessing
             new(evmException: evmExceptionType, errorDescription: description ?? "");
 
         public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
+
+        /// <summary>A fee cap below the block's base fee, naming the sender, the cap and the base fee.</summary>
+        public static TransactionResult MaxFeePerGasBelowBaseFee(Transaction tx, in UInt256 baseFee) =>
+            new(ErrorType.MaxFeePerGasBelowBaseFee, errorDescription:
+                $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {baseFee}");
 
         // A property rather than a static field: a struct holding a string cannot be preinitialized by ILC, so a
         // field would make every hot success return pay a class-constructor check in the zkVM guest.
