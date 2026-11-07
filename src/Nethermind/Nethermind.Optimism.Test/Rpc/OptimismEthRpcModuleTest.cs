@@ -1664,6 +1664,68 @@ public class OptimismEthRpcModuleTest
                          """;
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
+
+    private const string NullResult = """{"jsonrpc":"2.0","result":null,"id":67}""";
+    private const ulong LowestServedBlock = 5;
+
+    /// <summary>A finder with a head and a served floor above a known header whose body it does not have.</summary>
+    private static IBlockFinder FinderWithoutTheBodyOf(Block pruned)
+    {
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.WithNumber(LowestServedBlock + 10).TestObject);
+        finder.LowestServedBlock.Returns(LowestServedBlock);
+        finder.FindHeader(new BlockParameter(pruned.Hash!)).Returns(pruned.Header);
+        return finder;
+    }
+
+    private static Task<string> CallWithBlock(TestRpcBlockchain rpc, string method, object selector) => method switch
+    {
+        "eth_getBlockByNumber" => rpc.TestEthRpc(method, selector, false),
+        "eth_getTransactionByBlockNumberAndIndex" => rpc.TestEthRpc(method, selector, "0x0"),
+        _ => rpc.TestEthRpc(method, selector),
+    };
+
+    [TestCase("eth_getBlockReceipts", false)]
+    [TestCase("eth_getBlockReceipts", true)]
+    [TestCase("eth_getBlockByNumber", false)]
+    [TestCase("eth_getBlockByNumber", true)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", false)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", true)]
+    public async Task Block_read_of_a_body_pruned_below_the_lowest_served_block_returns_pruned_history(string method, bool byHash)
+    {
+        Block block = Build.A.Block.WithNumber(LowestServedBlock - 2).TestObject;
+        using TestRpcBlockchain rpc = await BuildOptimismRpc(FinderWithoutTheBodyOf(block), Substitute.For<IReceiptFinder>());
+
+        string serialized = await CallWithBlock(rpc, method, byHash ? block.Hash! : new BlockParameter(block.Number));
+
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{(byHash ? block.Hash : block.Number)}}"},"id":67}"""));
+    }
+
+    private const string UnknownHash = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    private const string HeaderNotFound = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"header not found"},"id":67}""";
+    private const string UnknownBlock = """{"jsonrpc":"2.0","error":{"code":-39001,"message":"Unknown block error"},"id":67}""";
+
+    [TestCase("eth_getBlockReceipts", "0x7", NullResult)]
+    [TestCase("eth_getBlockReceipts", UnknownHash, NullResult)]
+    [TestCase("eth_getBlockReceipts", "safe", NullResult)]
+    [TestCase("eth_getBlockReceipts", "finalized", NullResult)]
+    [TestCase("eth_getBlockByNumber", "0x7", NullResult)]
+    [TestCase("eth_getBlockByNumber", UnknownHash, NullResult)]
+    [TestCase("eth_getBlockByNumber", "safe", UnknownBlock)]
+    [TestCase("eth_getBlockByNumber", "finalized", UnknownBlock)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", "0x7", HeaderNotFound)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", UnknownHash, HeaderNotFound)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", "safe", UnknownBlock)]
+    [TestCase("eth_getTransactionByBlockNumberAndIndex", "finalized", UnknownBlock)]
+    public async Task Block_read_of_a_block_the_node_does_not_know_keeps_its_answer(string method, string selector, string expected)
+    {
+        Block block = Build.A.Block.WithNumber(LowestServedBlock - 2).TestObject;
+        using TestRpcBlockchain rpc = await BuildOptimismRpc(FinderWithoutTheBodyOf(block), Substitute.For<IReceiptFinder>());
+
+        string serialized = await CallWithBlock(rpc, method, selector);
+
+        Assert.That(serialized, Is.EqualTo(expected));
+    }
 }
 
 internal static class TestRpcBlockchainExt
