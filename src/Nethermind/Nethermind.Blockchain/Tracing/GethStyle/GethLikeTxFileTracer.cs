@@ -27,6 +27,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
     private string? _errorDetails;
+    private bool _hasPendingActionEnd;
+    private ulong _pendingActionEndGas;
+    private string? _pendingActionEndError;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -187,8 +190,46 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         _errorDetails = error;
     }
 
+    // Geth reports a failed depth or balance precheck only in the rejected action's exit record.
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (error is not (EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded))
+            base.ReportOperationError(error);
+    }
+
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        base.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
+        DeferActionEnd(gas.SaturatingSub(gasLeft), error.GetEvmExceptionDescription());
+    }
+
+    // Geth wraps a SELFDESTRUCT that completes in an empty frame with no gas.
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        DeferActionEnd(0, null);
+    }
+
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
-        => _sink.WriteEntry(entry);
+    {
+        _sink.WriteEntry(entry);
+
+        if (!_hasPendingActionEnd) return;
+
+        _hasPendingActionEnd = false;
+        _sink.WriteActionEnd(default, _pendingActionEndGas, _pendingActionEndError);
+    }
+
+    // The exit follows its opcode's record, which is complete only once the opcode has finished.
+    private void DeferActionEnd(ulong gasUsed, string? error)
+    {
+        if (_actionGas is null || CurrentTraceEntry is null) return;
+
+        _hasPendingActionEnd = true;
+        _pendingActionEndGas = gasUsed;
+        _pendingActionEndError = error;
+    }
 
     protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode)
     {
@@ -228,6 +269,10 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         _errorDetails = null;
         if (_actionGas?.TryPop(out ulong initialGas) != true)
             return;
+
+        // A frame failing in its SELFDESTRUCT, which reported before charging all of its gas, never completed it.
+        if (error is not null)
+            _hasPendingActionEnd = false;
 
         if (_actionGas.Count == 0)
         {
