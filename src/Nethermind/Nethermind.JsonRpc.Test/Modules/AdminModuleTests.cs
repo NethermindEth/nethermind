@@ -560,6 +560,35 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public void AdminPeers_ReportsThisNodeEndpointAsLocalAddress([Values] bool isInbound)
+    {
+        int remotePort = isInbound ? 45678 : 30303;
+        Peer peer = new(new Node(TestItem.PublicKeyA, "94.237.54.114", 30303));
+        ISession session = Substitute.For<ISession>();
+        session.RemoteHost.Returns("94.237.54.114");
+        session.RemotePort.Returns(remotePort);
+        session.LocalPort.Returns(30304);
+        session.IsNetworkIdMatched.Returns(true);
+        if (isInbound)
+        {
+            peer.InSession = session;
+        }
+        else
+        {
+            peer.OutSession = session;
+        }
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        NetworkInfo network = module.admin_peers().Data[0].Network;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(network.LocalAddress, Is.EqualTo("127.0.0.1:30304"), "local address is this node's enode IP with the session's local port");
+            Assert.That(network.RemoteAddress, Is.EqualTo($"94.237.54.114:{remotePort}"));
+        }
+    }
+
     [TestCase(68, "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8", TestName = "AdminPeers_WithEthOnlyV68Peer_DoesNotIncludeSnap")]
     [TestCase(66, "Geth/v1.10.0-stable/linux-amd64/go1.16.15", TestName = "AdminPeers_WithLegacyEthV66Peer_DoesNotIncludeSnap")]
     public void AdminPeers_WithEthOnlyPeer_DoesNotIncludeSnapProtocol(int ethVersion, string clientId)
