@@ -14,6 +14,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -169,6 +170,43 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         }
     }
 
+    /// <summary>
+    /// A move destination is an ordinary account, so an EIP-7702 authorization it signs after the move changes the
+    /// code it shows while the moved precompile keeps running there.
+    /// </summary>
+    [Test]
+    public void Move_destination_code_view_follows_a_later_authorization(
+        [Values] bool preservePrecompiles, [Values] bool movedRepository, [Values] bool clearDelegation)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address destination = TestItem.AddressA;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository inner = new(worldState);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: !preservePrecompiles));
+        worldState.CreateAccount(destination, 0);
+        inner.SetDelegation(TestItem.AddressB, destination, spec);
+        worldState.ApplyStateOverridesNoCommit(repository, new()
+        {
+            [IdentityPrecompile.Address] = new() { MovePrecompileToAddress = destination }
+        }, spec);
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+        Assert.That(reader.GetCachedCodeInfo(destination, spec).CodeSpan, Is.SequenceEqualTo(worldState.GetCode(destination).Span));
+
+        reader.SetDelegation(clearDelegation ? Address.Zero : TestItem.AddressC, destination, spec);
+        CodeInfo dispatch = reader.GetCachedCodeInfo(destination, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dispatch.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(dispatch.CodeSpan, Is.SequenceEqualTo(worldState.GetCode(destination).Span));
+            Assert.That(dispatch.CodeSpan.IsEmpty, Is.EqualTo(clearDelegation));
+            Assert.That(reader.GetPrecompile(destination, spec), Is.SameAs(IdentityPrecompile.Instance));
+            if (!movedRepository) Assert.That(reader.GetCachedCodeInfo(destination, spec), Is.SameAs(dispatch), "the refreshed view is cached");
+        }
+    }
+
     [Test]
     public void Account_overrides_preserve_native_dispatch_only_when_opted_in(
         [Values] bool preservePrecompiles,
@@ -285,9 +323,11 @@ public class PrecompileOverrideCodeInfoRepositoryTests
     public void GetCachedCodeInfo_at_move_destination_records_the_account_access()
     {
         Address movedTo = Address.FromNumber(0x123456);
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = inner.BeginScope(IWorldState.PreGenesis);
+        AccessRecordingWorldState worldState = new(inner);
         CodeOverrideStore overrides = new();
-        overrides.Precompiles[movedTo] = new CodeInfo(IdentityPrecompile.Instance);
+        overrides.Precompiles[movedTo] = (new CodeInfo(IdentityPrecompile.Instance), worldState.GetCodeHash(movedTo));
         MovedPrecompileCodeInfoRepository repository = new(Substitute.For<ICodeInfoRepository>(), worldState, overrides);
 
         CodeInfo codeInfo = repository.GetCachedCodeInfo(movedTo, followDelegation: false, Prague.Instance, out _);
@@ -295,8 +335,8 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(codeInfo.IsPrecompile, Is.True);
-            worldState.Received().AddAccountRead(movedTo);
-            worldState.Received().RecordAccountAccess(movedTo);
+            Assert.That(worldState.Reads, Is.EqualTo(new[] { movedTo }));
+            Assert.That(worldState.Accesses, Is.EqualTo(new[] { movedTo }));
         }
     }
 
@@ -326,6 +366,24 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         {
             Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(eip7702Enabled ? targetCode : designator));
             Assert.That(delegation, Is.EqualTo(eip7702Enabled ? target : null));
+        }
+    }
+
+    private sealed class AccessRecordingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public List<Address> Reads { get; } = [];
+        public List<Address> Accesses { get; } = [];
+
+        public override void AddAccountRead(Address address)
+        {
+            Reads.Add(address);
+            base.AddAccountRead(address);
+        }
+
+        public override void RecordAccountAccess(Address address)
+        {
+            Accesses.Add(address);
+            base.RecordAccountAccess(address);
         }
     }
 }

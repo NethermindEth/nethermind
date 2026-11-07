@@ -29,7 +29,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
-        if (TryGetMoved(codeSource, out CodeInfo? codeInfo) || TryGetOverriddenPrecompileAddress(codeSource, vmSpec, out codeInfo))
+        if (TryGetMoved(codeSource, out CodeInfo? codeInfo, withCurrentCode: true) || TryGetOverriddenPrecompileAddress(codeSource, vmSpec, out codeInfo))
         {
             worldState.AddAccountRead(codeSource);
             worldState.RecordAccountAccess(codeSource);
@@ -74,11 +74,24 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
         codeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
 
     /// <summary>Returns the precompile moved to <paramref name="codeSource"/>.</summary>
-    private bool TryGetMoved(Address codeSource, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    /// <remarks>
+    /// The destination is an ordinary account whose code an earlier transaction or an EIP-7702 authorization can change
+    /// after the move. With <paramref name="withCurrentCode"/>, a destination whose code hash no longer matches the one
+    /// recorded at the move gets a view of its current code. The env's store is shared, so that view is not written back.
+    /// </remarks>
+    private bool TryGetMoved(Address codeSource, [NotNullWhen(true)] out CodeInfo? codeInfo, bool withCurrentCode = false)
     {
-        Dictionary<Address, CodeInfo> precompiles = overrides.Precompiles;
-        codeInfo = null;
-        return precompiles.Count != 0 && precompiles.TryGetValue(codeSource, out codeInfo);
+        Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> precompiles = overrides.Precompiles;
+        if (precompiles.Count == 0 || !precompiles.TryGetValue(codeSource, out (CodeInfo codeInfo, ValueHash256 codeHash) entry))
+        {
+            codeInfo = null;
+            return false;
+        }
+
+        codeInfo = withCurrentCode && worldState.GetCodeHash(codeSource) != entry.codeHash
+            ? new CodeInfo(entry.codeInfo.Precompile!, worldState.GetCode(codeSource))
+            : entry.codeInfo;
+        return true;
     }
 
     /// <summary>Returns the env's dispatch or plain-code view of an overridden precompile, including a moved-away origin.</summary>

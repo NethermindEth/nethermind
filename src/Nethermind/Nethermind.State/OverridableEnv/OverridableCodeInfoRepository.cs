@@ -21,7 +21,7 @@ public class OverridableCodeInfoRepository(
     PrecompileOverridePolicy? precompileOverridePolicy = null) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash)> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
-    private readonly Dictionary<Address, CodeInfo> _precompileOverrides = overrides.Precompiles;
+    private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
     public bool DisablePrecompileOnAccountOverride => precompileOverridePolicy?.DisableOnAccountOverride ?? true;
@@ -29,8 +29,7 @@ public class OverridableCodeInfoRepository(
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        // Moved precompiles are rare, so skip the hash lookup when there are none.
-        if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile)) return precompile;
+        if (TryGetMovedPrecompile(codeSource, out CodeInfo? precompile)) return precompile;
 
         if (TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result))
         {
@@ -58,7 +57,7 @@ public class OverridableCodeInfoRepository(
         : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
-        _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile) ? precompile.Precompile
+        _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, ValueHash256 codeHash) moved) ? moved.codeInfo.Precompile
         : TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
@@ -87,7 +86,7 @@ public class OverridableCodeInfoRepository(
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         CodeInfo source = this.GetCachedCodeInfo(precompileAddr, vmSpec);
-        _precompileOverrides[targetAddr] = new CodeInfo(source.Precompile!, worldState.GetCode(targetAddr));
+        _precompileOverrides[targetAddr] = (new CodeInfo(source.Precompile!, worldState.GetCode(targetAddr)), worldState.GetCodeHash(targetAddr));
         CodeInfo origin = new(worldState.GetCode(precompileAddr));
         _codeOverrides[precompileAddr] = (origin, origin, worldState.GetCodeHash(precompileAddr));
     }
@@ -100,6 +99,31 @@ public class OverridableCodeInfoRepository(
         TryGetCodeOverride(address, vmSpec, out CodeInfo? result)
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegatedAddress)
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
+
+    /// <summary>Finds the precompile moved to <paramref name="address"/>, showing the destination's current code.</summary>
+    /// <remarks>
+    /// The destination is an ordinary account, so its code can change after the move, for example through an
+    /// EIP-7702 authorization. The view is rebuilt when the code hash recorded at the move no longer matches.
+    /// </remarks>
+    private bool TryGetMovedPrecompile(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    {
+        // Moved precompiles are rare, so skip the hash lookup when there are none.
+        if (_precompileOverrides.Count == 0 || !_precompileOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry))
+        {
+            codeInfo = null;
+            return false;
+        }
+
+        ValueHash256 codeHash = worldState.GetCodeHash(address);
+        if (codeHash != entry.codeHash)
+        {
+            entry = (new CodeInfo(entry.codeInfo.Precompile!, worldState.GetCode(address)), codeHash);
+            _precompileOverrides[address] = entry;
+        }
+
+        codeInfo = entry.codeInfo;
+        return true;
+    }
 
     /// <summary>Finds the code this repository answers <paramref name="address"/> with, ahead of the inner repository.</summary>
     /// <remarks>
