@@ -300,6 +300,28 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    [TestCase("latest", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("head hash", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("unprocessed side-chain hash", ErrorCodes.ResourceNotFound)]
+    public async Task Eth_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing(string selector, int expectedCode)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        Block head = test.BlockTree.Head!;
+        Block sideChain = Build.A.Block.WithParent(test.BlockTree.FindBlock(head.ParentHash!)!)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
+            .WithExtraData([1])
+            .TestObject;
+        test.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        test.ReceiptStorage.RemoveReceipts(head);
+        Block block = selector == "unprocessed side-chain hash" ? sideChain : head;
+        Assert.That(block.Transactions, Is.Not.Empty, "precondition: the block has transactions");
+
+        string serialized = await test.TestEthRpc("eth_getBlockReceipts", selector == "latest" ? "latest" : block.Hash!.ToString());
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode), serialized);
+    }
+
     [Test]
     public async Task Eth_config_includes_builder_request_contracts()
     {
