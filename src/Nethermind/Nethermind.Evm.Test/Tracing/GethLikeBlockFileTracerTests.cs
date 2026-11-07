@@ -407,6 +407,63 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(TraceFile(code, boundary + offset), Is.EqualTo(string.Join('\n', records[..expectedRecords]) + "\n"));
     }
 
+    [TestCase(Instruction.CALL, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0xb4a5", "contract address collision")]
+    public void Rejected_action_exit_follows_its_opcode(Instruction operation, string gasUsed, string error)
+    {
+        bool collides = error == "contract address collision";
+        if (collides)
+        {
+            TestState.CreateAccount(ContractAddress.From(Recipient, 0), 0, nonce: 1);
+            TestState.Commit(Spec);
+        }
+
+        UInt256 value = collides ? UInt256.Zero : UInt256.MaxValue;
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, value)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], value);
+        string[] records = TraceFile(code.Op(Instruction.POP).Op(Instruction.STOP).Done).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int operationRecord = Array.FindIndex(records, record => record.Contains($"\"opName\":\"{operation}\""));
+        Assert.That(operationRecord, Is.InRange(0, records.Length - 3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[operationRecord], Does.Not.Contain("\"error\""));
+            Assert.That(records[operationRecord + 1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\",\"error\":\"{error}\"}}"));
+            Assert.That(records[operationRecord + 2], Does.Contain("\"opName\":\"POP\""));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
+        }
+    }
+
+    [TestCase("root", true)]
+    [TestCase("nested", true)]
+    [TestCase("outOfGas", false)]
+    [TestCase("static", false)]
+    public void SelfDestruct_exit_follows_completed_opcode(string scenario, bool completes)
+    {
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, selfDestruct, Spec);
+        TestState.Commit(Spec);
+        Prepare caller = scenario switch
+        {
+            "nested" => Prepare.EvmCode.Call(TestItem.AddressC, 50_000),
+            "outOfGas" => Prepare.EvmCode.Call(TestItem.AddressC, 10_000),
+            _ => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000)
+        };
+        byte[] code = scenario == "root" ? selfDestruct : caller.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int selfDestructRecord = Array.FindIndex(records, record => record.Contains("\"opName\":\"SELFDESTRUCT\""));
+        Assert.That(selfDestructRecord, Is.InRange(0, records.Length - 2));
+        const string selfDestructExit = "{\"output\":\"\",\"gasUsed\":\"0x0\"}";
+        int frames = scenario == "root" ? 1 : 2;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[selfDestructRecord + 1] == selfDestructExit, Is.EqualTo(completes));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(frames + (completes ? 1 : 0)));
+        }
+    }
+
     [Test]
     public void Requires_active_specification()
     {
