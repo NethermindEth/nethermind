@@ -42,7 +42,7 @@ public class SyncServerReceiptsBenchmarks
     private SyncServer _server = null!;
     private Hash256[] _servedHashes = null!;
 
-    [Params(150)]
+    [Params(50, 150, 300)]
     public int TransactionsPerBlock { get; set; }
 
     [GlobalSetup]
