@@ -301,7 +301,8 @@ public class GethGenesisLoaderTests
     [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": true", 1234UL)]
     public void Dao_fork_is_enabled_by_block(string configExtra, ulong? expectedBlock)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        string configSuffix = configExtra.Length > 0 ? ", " + configExtra : "";
+        ChainSpec chainSpec = LoadFromString($$"""{ "config": { "chainId": 1, "homesteadBlock": 0{{configSuffix}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""");
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<EthashChainSpecEngineParameters>();
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -346,7 +347,7 @@ public class GethGenesisLoaderTests
     public void Historical_forks_keep_validation_enabled([Values(0UL, 9UL, 10UL, 19UL, 20UL, 29UL, 30UL)] ulong blockNumber)
     {
         ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra:
-            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
+            "\"eip155Block\": 10, \"eip158Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
         IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
 
         using (Assert.EnterMultipleScope())
@@ -432,6 +433,18 @@ public class GethGenesisLoaderTests
             ? Throws.Nothing
             : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
     }
+
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 20, \"londonBlock\": 10", "berlinBlock enabled at block 20, but londonBlock enabled at block 10")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 100, \"cancunTime\": 50", "shanghaiTime enabled at timestamp 100, but cancunTime enabled at timestamp 50")]
+    [TestCase("\"homesteadBlock\": 10, \"daoForkBlock\": 5", "homesteadBlock enabled at block 10, but daoForkBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 10, \"eip158Block\": 5", "eip155Block enabled at block 10, but eip158Block enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 10, \"berlinBlock\": 5", "istanbulBlock enabled at block 10, but berlinBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"cancunTime\": 10, \"osakaTime\": 5", "cancunTime enabled at timestamp 10, but osakaTime enabled at timestamp 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"cancunTime\": 10, \"pragueTime\": 10, \"osakaTime\": 10", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 100, \"londonBlock\": 100, \"shanghaiTime\": 5", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"amsterdamTime\": 20, \"eip8141PrototypeTime\": 10", null)]
+    public void Fork_schedule_must_not_go_back(string config, string? expectedError) =>
+        Fork_schedule_must_not_skip_a_required_fork(config, expectedError);
 
     private static readonly string[] RequiredForks =
     [
