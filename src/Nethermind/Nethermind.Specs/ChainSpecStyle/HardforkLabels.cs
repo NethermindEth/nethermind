@@ -62,9 +62,9 @@ public static partial class HardforkLabels
             throw new InvalidConfigurationException(
                 $"EIP-8288 at 0x{target.Eip8288TransitionTimestamp:x} cannot activate before the EIP-8141 it extends at 0x{target.Eip8141TransitionTimestamp:x}.",
                 ExitCodes.ConflictingChainspecEipConfiguration);
-        // The EIP-8288 header field follows EIP-7843's slot number, which would otherwise be encoded as a phantom zero, so
-        // scheduling EIP-8288 alone schedules slot numbers too, and a later EIP-7843 is refused.
-        target.Eip7843TransitionTimestamp ??= target.Eip8288TransitionTimestamp;
+        // The EIP-8288 header field follows EIP-7843's slot number. EIP-8288 does not schedule slot numbers itself: a chain
+        // without EIP-7843 has no slot in its Prague payloads and attributes, and encodes it as a zero placeholder. A later
+        // EIP-7843 is refused.
         if (target.Eip7843TransitionTimestamp > target.Eip8288TransitionTimestamp)
             throw new InvalidConfigurationException(
                 $"EIP-8288 at 0x{target.Eip8288TransitionTimestamp:x} cannot activate before the EIP-7843 slot numbers it extends at 0x{target.Eip7843TransitionTimestamp:x}.",
