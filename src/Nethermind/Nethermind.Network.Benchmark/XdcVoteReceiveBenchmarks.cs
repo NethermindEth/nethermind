@@ -49,6 +49,7 @@ public class XdcVoteReceiveBenchmarks
     private IQuorumCertificateManager _quorumCertificateManager = null!;
     private ISpecProvider _specProvider = null!;
     private ISigner _signer = null!;
+    private VotesManager _votesManager = null!;
 
     /// <summary>Copies of each vote that reach the node: one per relaying peer.</summary>
     [Params(1, 10, 30)]
@@ -83,23 +84,32 @@ public class XdcVoteReceiveBenchmarks
         _signer = Substitute.For<ISigner>();
     }
 
-    [Benchmark]
-    public long ReceiveRound()
+    // Every round starts with a new manager, so no vote of the round is known yet. Building it is not measured: the
+    // node builds one for its lifetime.
+    [IterationSetup]
+    public void CreateManager()
     {
         XdcConsensusContext context = new();
         context.SetNewRound(Round);
-        using VotesManager votesManager = new(context, _syncPeerPool, _blockTree, _epochSwitchManager, _snapshotManager,
+        _votesManager = new VotesManager(context, _syncPeerPool, _blockTree, _epochSwitchManager, _snapshotManager,
             _quorumCertificateManager, _specProvider, _signer, _forensicsProcessor, NullLogManager.Instance);
+    }
 
+    [IterationCleanup]
+    public void DisposeManager() => _votesManager.Dispose();
+
+    [Benchmark]
+    public long ReceiveRound()
+    {
         for (int copy = 0; copy < CopiesPerVote; copy++)
         {
             foreach (Signature signature in _signatures)
             {
-                votesManager.OnReceiveVote(new Vote(_block, GapNumber, signature)).GetAwaiter().GetResult();
+                _votesManager.OnReceiveVote(new Vote(_block, GapNumber, signature)).GetAwaiter().GetResult();
             }
         }
 
-        return votesManager.GetVotesCount(new Vote(_block, GapNumber, _signatures[0]));
+        return _votesManager.GetVotesCount(new Vote(_block, GapNumber, _signatures[0]));
     }
 
     private sealed class FixedSnapshotManager(Snapshot snapshot) : ISnapshotManager
