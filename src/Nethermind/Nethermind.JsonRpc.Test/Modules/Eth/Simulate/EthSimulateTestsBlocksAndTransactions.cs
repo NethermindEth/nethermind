@@ -27,6 +27,7 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -479,6 +480,58 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(ErrorCode(response), Is.Null, response);
             return document.RootElement.GetProperty("result")[0].Clone();
         }
+    }
+
+    private static IEnumerable<TestCaseData> CanonicalHeaderEncodingCases()
+    {
+        foreach (IReleaseSpec spec in new IReleaseSpec[] { Berlin.Instance, London.Instance, Paris.Instance })
+            yield return new TestCaseData(spec).SetName($"Simulated_header_matches_the_canonical_encoding_{spec.Name}");
+    }
+
+    /// <summary>
+    /// Without validation a simulated block has a zero base fee. EIP-1559 puts the base fee in every header from London,
+    /// so <c>hash</c> and <c>size</c> must count it before Shanghai too, where no later field follows it.
+    /// </summary>
+    [TestCaseSource(nameof(CanonicalHeaderEncodingCases))]
+    public async Task Simulated_header_matches_the_canonical_encoding(IReleaseSpec spec)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]}"), "latest");
+        Assert.That(ErrorCode(response), Is.Null, response);
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement block = document.RootElement.GetProperty("result")[0];
+
+        List<Rlp> fields =
+        [
+            Rlp.Encode(new Hash256(block.GetProperty("parentHash").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("sha3Uncles").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("miner").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("stateRoot").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("transactionsRoot").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("receiptsRoot").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("logsBloom").GetString()!)),
+            Rlp.Encode(Quantity("difficulty")),
+            Rlp.Encode(Quantity("number")),
+            Rlp.Encode(Quantity("gasLimit")),
+            Rlp.Encode(Quantity("gasUsed")),
+            Rlp.Encode(Quantity("timestamp")),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("extraData").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("mixHash").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("nonce").GetString()!)),
+        ];
+        if (spec.IsEip1559Enabled) fields.Add(Rlp.Encode(Quantity("baseFeePerGas")));
+        Rlp header = Rlp.Encode([.. fields]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.TryGetProperty("baseFeePerGas", out JsonElement baseFee) ? baseFee.GetString() : null,
+                Is.EqualTo(spec.IsEip1559Enabled ? "0x0" : null));
+            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header.Bytes).ToString()));
+            // The block is [header, transactions, uncles], both lists empty.
+            Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
+        }
+
+        ulong Quantity(string name) => Convert.ToUInt64(block.GetProperty(name).GetString(), 16);
     }
 
     [Test]

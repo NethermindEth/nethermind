@@ -75,6 +75,23 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Zero_base_fee_is_encoded_when_EncodeZeroBaseFee_is_set()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
+        byte[] withoutBaseFee = Rlp.Encode(header).Bytes;
+        header.EncodeZeroBaseFee = true;
+        byte[] withBaseFee = Rlp.Encode(header).Bytes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutBaseFee[..3], Is.EqualTo(Bytes.FromHexString("f901f6")));
+            Assert.That(withBaseFee, Is.EqualTo((byte[])[.. Bytes.FromHexString("f901f7"), .. withoutBaseFee[3..], Rlp.EmptyByteArrayByte]));
+            Assert.That(header.CalculateHash(), Is.EqualTo(Keccak.Compute(withBaseFee)));
+            Assert.That(DecodeHeader(new Rlp(withBaseFee)).BaseFeePerGas, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Can_encode_with_withdrawals()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)

@@ -80,6 +80,7 @@ public sealed class AuRaBlockHeader(
             Hash = src.Hash,
             TotalDifficulty = src.TotalDifficulty,
             BaseFeePerGas = src.BaseFeePerGas,
+            EncodeZeroBaseFee = src.EncodeZeroBaseFee,
             WithdrawalsRoot = src.WithdrawalsRoot,
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             RequestsHash = src.RequestsHash,

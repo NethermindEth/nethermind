@@ -236,7 +236,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)
         {
-            requiredItems[0] = !header.BaseFeePerGas.IsZero;
+            requiredItems[0] = header.EncodeZeroBaseFee || !header.BaseFeePerGas.IsZero;
             requiredItems[1] = header.WithdrawalsRoot is not null;
             requiredItems[2] = header.BlobGasUsed is not null;
             // EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.
