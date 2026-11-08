@@ -138,6 +138,10 @@ dotnet test --solution EthereumTests.slnx -c release
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
+Pull-request opcode benchmark comparisons use the immutable merge revision, keeping
+the workflow's helper scripts and measured code on the same revision. The comparison
+job installs the latest serviced .NET 10 SDK for its file-based helper dependencies.
+
 ## Plugin development
 
 Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
@@ -148,6 +152,45 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 - Additional JSON-RPC namespaces
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
+
+Runner startup, cancellation and dependency-resolution smoke tests apply
+`Plugin.PluginOrder` through the same loader ordering used by the production runner.
+External plugins with dependent modules therefore use their configured order rather
+than filesystem assembly-discovery order; built-in core config coverage is retained.
+
+Read-only execution environments use geth's precompile override behavior by default:
+any account override replaces the native precompile with the account's code.
+An extension can register `PrecompileOverridePolicy(disableOnAccountOverride: false)`
+from `Nethermind.State.OverridableEnv` to retain native dispatch while still applying
+storage, balance, nonce and code changes to the overridden state. Native dispatch
+and the plain bytecode/delegation view share the overridden bytes and are cached
+once per override. Code introspection sees those bytes; calling the native address
+does not follow an overridden EIP-7702 designator, while an ordinary account
+delegating to it executes its visible code without following delegation twice.
+Explicit precompile moves remain separate. Ordinary VM outcomes marked `ShouldRevert` preserve their
+original revert bytes through `eth_call` and `eth_estimateGas`, even when an
+extension does not also set the redundant `Revert` exception marker.
+
+Decorators implementing `IOverridableCodeInfoRepository` must forward
+`DisablePrecompileOnAccountOverride`. The override layer uses this policy before
+allocating unused replacement code wrappers for non-code account overrides.
+RPC tests exercise both default and container-registered policies with empty, balance,
+nonce, code, state and state-diff account overrides.
+
+Chains can independently select fee semantics for `eth_call` and `eth_createAccessList`
+by registering the immutable `Nethermind.Facade.RpcCallExecutionPolicy`. Its default values preserve
+existing Ethereum/geth behavior. Setting `chargeFees: false` skips gas purchase,
+monetary refunds and fee distribution, including EIP-8141 frame escrow and settlement,
+without creating balances, changing gas metering, or bypassing value affordability.
+Typed and blob fee caps are still validated. The independent
+`validateLegacyGasPriceAgainstBaseFee` flag does not disable typed fee-cap checks.
+These options apply only to those restoring calls, not estimates, traces, simulated
+blocks or consensus execution. `BuyGas` and `PayFees` overrides receive `ExecutionOptions`;
+forward them to the base implementation and use `ShouldChargeTransactionFees`
+for monetary side effects without skipping unrelated execution semantics.
+
+Direct fee-payment tests use `ExecutionOptions.None` for ordinary transaction
+semantics; restoring-call cases must pass their actual execution options.
 
 ## Getting help
 

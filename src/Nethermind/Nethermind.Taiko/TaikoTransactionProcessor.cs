@@ -43,8 +43,10 @@ public class TaikoTransactionProcessor(
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
+        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, ExecutionOptions opts)
     {
+        if (!ShouldChargeTransactionFees(opts)) return;
+
         UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
         UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
 
