@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
-using AccountCache = Nethermind.TxPool.TxPool.AccountCache;
 
 namespace Nethermind.TxPool.Test;
 
@@ -16,9 +15,10 @@ public class AccountCacheTests
     public void RemoveAccounts_drops_only_the_given_accounts_in_every_shard()
     {
         CountingAccounts provider = new();
-        AccountCache cache = new(provider);
+        TxPool.AccountCache cache = new(provider);
 
-        // The last address byte picks the shard, so 64 addresses fill each of the 16 shards four times.
+        // The low nibble of the last address byte picks the shard, so 64 addresses fill each of the 16 shards four times.
+        // The first half is removed, which leaves two removed and two kept addresses in every shard.
         Address[] addresses = new Address[64];
         for (byte i = 0; i < addresses.Length; i++)
         {
@@ -30,7 +30,7 @@ public class AccountCacheTests
         }
 
         using ArrayPoolList<AddressAsKey> changed = new(addresses.Length / 2);
-        for (int i = 0; i < addresses.Length; i += 2) changed.Add(addresses[i]);
+        for (int i = 0; i < addresses.Length / 2; i++) changed.Add(addresses[i]);
         cache.RemoveAccounts(changed);
 
         foreach (Address address in addresses) cache.TryGetAccount(address, out _);
@@ -39,7 +39,7 @@ public class AccountCacheTests
         {
             for (int i = 0; i < addresses.Length; i++)
             {
-                Assert.That(provider.Reads[addresses[i]], Is.EqualTo(i % 2 == 0 ? 2 : 1), $"address {i}");
+                Assert.That(provider.Reads[addresses[i]], Is.EqualTo(i < addresses.Length / 2 ? 2 : 1), $"address {i}");
             }
         }
     }
