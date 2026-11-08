@@ -38,6 +38,25 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(SwizzledMemory.ToNatural(aligned).ToArray(), Is.EqualTo(natural.AsSpan(offset, length).ToArray()));
     }
 
+    [Test]
+    public void Swizzled_input_keeps_its_length_in_whole_groups([Range(0, 9)] int length)
+    {
+        byte[] natural = Enumerable.Range(1, length).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+
+        // The byte at offset o lies at o ^ 3; the positions of the last group no byte takes are zero.
+        byte[] expected = new byte[(length + 3) & ~3];
+        for (int i = 0; i < length; i++) expected[i ^ 3] = natural[i];
+
+        Assert.That(MemoryMarshal.TryGetArray(swizzled, out ArraySegment<byte> segment), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(segment.Count, Is.EqualTo(length));
+            Assert.That(segment.Array, Is.EqualTo(expected));
+            Assert.That(SwizzledMemory.ToNatural(swizzled).ToArray(), Is.EqualTo(natural));
+        }
+    }
+
     public enum StoreKind
     {
         Byte,

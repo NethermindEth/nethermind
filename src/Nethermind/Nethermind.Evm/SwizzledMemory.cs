@@ -118,11 +118,18 @@ internal static unsafe class SwizzledMemory
     }
 
     /// <summary><paramref name="bytes"/>, in natural order, laid out as memory from its start, in a new array.</summary>
-    public static byte[] FromNatural(ReadOnlySpan<byte> bytes)
+    /// <remarks>The array ends at a group boundary: the last bytes of a partial group lie past the length.</remarks>
+    public static ReadOnlyMemory<byte> FromNatural(ReadOnlySpan<byte> bytes)
     {
-        byte[] laidOut = GC.AllocateUninitializedArray<byte>(bytes.Length);
-        Write(ref MemoryMarshal.GetArrayDataReference(laidOut), bytes);
-        return laidOut;
+        int length = bytes.Length;
+        byte[] laidOut = GC.AllocateUninitializedArray<byte>((length + (int)GroupMask) & ~(int)GroupMask);
+        ref byte start = ref MemoryMarshal.GetArrayDataReference(laidOut);
+        // The bytes of the last group past the length stay zero, as those of a realigned range do.
+        if ((length & (int)GroupMask) != 0)
+            Unsafe.As<byte, uint>(ref Unsafe.Add(ref start, length & ~(int)GroupMask)) = 0;
+
+        Write(ref start, bytes);
+        return laidOut.AsMemory(0, length);
     }
 
     /// <summary>The bytes of <paramref name="laidOut"/>, laid out as memory from its start, in natural order.</summary>
