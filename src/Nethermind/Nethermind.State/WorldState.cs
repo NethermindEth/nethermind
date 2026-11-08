@@ -206,7 +206,7 @@ namespace Nethermind.State
 
         public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;
 
-        public bool StorageRootsAreAuthoritative => _currentScope?.StorageRootsAreAuthoritative ?? true;
+        public bool IsTrieBacked => _currentScope?.StorageRootsAreAuthoritative ?? true;
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();

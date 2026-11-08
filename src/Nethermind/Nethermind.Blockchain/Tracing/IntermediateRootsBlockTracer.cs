@@ -27,7 +27,7 @@ public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec s
     : BlockTracerBase<Hash256, IntermediateRootsBlockTracer.IntermediateRootsTxTracer>
 {
     protected override IntermediateRootsTxTracer OnStart(Transaction? tx) =>
-        worldState.StorageRootsAreAuthoritative
+        worldState.IsTrieBacked
             ? new(worldState, spec)
             : throw new StateNotRetainedException("Intermediate roots are unavailable: the state at this block is trie-less (historical flat state).");
 
