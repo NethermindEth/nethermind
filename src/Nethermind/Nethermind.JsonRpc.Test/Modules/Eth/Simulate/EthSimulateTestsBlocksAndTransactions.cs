@@ -490,16 +490,22 @@ public class EthSimulateTestsBlocksAndTransactions
 
     /// <summary>
     /// Without validation a simulated block has a zero base fee. EIP-1559 puts the base fee in every header from London,
-    /// so <c>hash</c> and <c>size</c> must count it before Shanghai too, where no later field follows it.
+    /// so <c>hash</c> and <c>size</c> must count it before Shanghai too, where no later field follows it. Later simulated
+    /// blocks must see the same hash: the next block as its parent hash, the one after it through BLOCKHASH, which reads
+    /// the simulated chain.
     /// </summary>
     [TestCaseSource(nameof(CanonicalHeaderEncodingCases))]
     public async Task Simulated_header_matches_the_canonical_encoding(IReleaseSpec spec)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
-        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]}"), "latest");
+        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns the hash of the block two back.
+        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000f3\"}}," + Calls + "}";
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]},{\"calls\":[]}," + GrandparentHashReader), "latest");
         Assert.That(ErrorCode(response), Is.Null, response);
         using JsonDocument document = JsonDocument.Parse(response);
         JsonElement block = document.RootElement.GetProperty("result")[0];
+        JsonElement child = document.RootElement.GetProperty("result")[1];
+        JsonElement grandchild = document.RootElement.GetProperty("result")[2];
 
         List<Rlp> fields =
         [
@@ -529,6 +535,8 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header.Bytes).ToString()));
             // The block is [header, transactions, uncles], both lists empty.
             Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
+            Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
+            Assert.That(grandchild.GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
         }
 
         ulong Quantity(string name) => Convert.ToUInt64(block.GetProperty(name).GetString(), 16);

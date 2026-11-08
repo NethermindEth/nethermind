@@ -89,13 +89,6 @@ public class BlockHeader
     public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
     public UInt256 BaseFeePerGas;
-
-    /// <summary>When set, the header RLP keeps <see cref="BaseFeePerGas"/> even when it is zero, as EIP-1559 requires from London.</summary>
-    /// <remarks>
-    /// Without it, a zero base fee is encoded only when a later field follows, which gives a London header before
-    /// Shanghai the pre-London shape. Headers left unset keep their existing encoding and hashes.
-    /// </remarks>
-    public bool EncodeZeroBaseFee { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }
@@ -237,7 +230,6 @@ public class BlockHeader
         dst.TotalDifficulty = TotalDifficulty;
         dst.ReceiptsRoot = ReceiptsRoot;
         dst.BaseFeePerGas = BaseFeePerGas;
-        dst.EncodeZeroBaseFee = EncodeZeroBaseFee;
         dst.WithdrawalsRoot = WithdrawalsRoot;
         dst.RequestsHash = RequestsHash;
         dst.IsPostMerge = IsPostMerge;
