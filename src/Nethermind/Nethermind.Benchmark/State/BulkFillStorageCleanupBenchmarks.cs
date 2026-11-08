@@ -22,13 +22,14 @@ using Testably.Abstractions;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Bulk transaction index replay on a RocksDB scratch database: each block clears the storage of a number of new
-/// contracts, commits, and runs the storage cleanup, after a given number of blocks were already replayed.
+/// Bulk transaction index replay on a RocksDB scratch database with the default configuration: each block clears the
+/// storage of a number of new contracts, commits, and runs the storage cleanup. The setup replays a fixed number of
+/// blocks first, so every case measures the steady per-block cost of a session that is already running.
 /// </summary>
 [MemoryDiagnoser]
 public class BulkFillStorageCleanupBenchmarks
 {
-    private const ulong ClearsPerBlock = 50;
+    private const int WarmUpBlocks = 2_000;
     private const int BlocksPerOperation = 100;
     private static readonly Account Contract = Build.An.Account.WithBalance(1).TestObject;
 
@@ -37,8 +38,8 @@ public class BulkFillStorageCleanupBenchmarks
     private BlockHeader _head = null!;
     private ulong _contracts;
 
-    [Params(0, 5_000, 20_000)]
-    public int ReplayedBlocks { get; set; }
+    [Params(0UL, 5UL, 50UL)]
+    public ulong ClearsPerBlock { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -52,7 +53,7 @@ public class BulkFillStorageCleanupBenchmarks
         _head = Build.A.BlockHeader.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
         _session = new BulkFillSession(factory, new MemDb(), Keccak.Compute(_path), _head, rlpWrappedSlots: false);
         _session.ImportGenesis([], CancellationToken.None);
-        for (int i = 0; i < ReplayedBlocks; i++) ReplayBlock();
+        for (int i = 0; i < WarmUpBlocks; i++) ReplayBlock();
     }
 
     [GlobalCleanup]

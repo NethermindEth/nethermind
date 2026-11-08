@@ -49,13 +49,15 @@ internal static class BulkFillStorageCleanup
     public static void Run(IColumnsDb<Columns> db, IReadOnlyList<ValueHash256> addresses, CancellationToken token)
     {
         IDb clears = db.GetColumnDb(Columns.Clears);
+        Span<byte> marker = stackalloc byte[sizeof(ulong)];
         for (int i = 0; i < addresses.Count; i++)
         {
             token.ThrowIfCancellationRequested();
             ValueHash256 address = addresses[i];
-            byte[]? marker = clears[address.Bytes];
-            if (marker is null) continue;
-            if (marker.Length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
+            // A missing marker reads as zero bytes.
+            int length = clears.Get(address.Bytes, marker);
+            if (length == 0) continue;
+            if (length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
             CleanAccount(db, address, BinaryPrimitives.ReadUInt64BigEndian(marker), token);
         }
     }

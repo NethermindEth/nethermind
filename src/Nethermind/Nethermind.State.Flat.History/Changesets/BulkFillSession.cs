@@ -19,9 +19,9 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
     private readonly BulkFillScratchState _import;
     private readonly bool _rlpWrappedSlots;
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
-    // Accounts the staged block clears, and those the committed blocks cleared that are not cleaned yet.
-    private readonly List<ValueHash256> _pendingClears = [];
-    private readonly List<ValueHash256> _committedClears = [];
+    // Accounts the replayed blocks cleared since the last cleanup. A block that is staged but not committed leaves the
+    // session unable to clean, so every entry here belongs to a committed block when the cleanup reads it.
+    private readonly List<ValueHash256> _clears = [];
     // Markers that reached the scratch before this session, from an import or a run that stopped before its cleanup,
     // are found only by a full scan, so the first cleanup of a session does one.
     private bool _isFullyCleaned;
@@ -183,7 +183,6 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         _batch = _db.StartWriteBatch();
         _pendingBlock = block;
         _hasFinalState = false;
-        _pendingClears.Clear();
     }
 
     internal BulkFillStateReader CreateReader() => new(_db, CurrentState, _rlpWrappedSlots);
@@ -193,7 +192,7 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         RequireHealthy();
         if (_batch is null || _pendingBlock is null || _hasFinalState) throw new InvalidOperationException("Unexpected bulk final-state capture.");
         using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = takeSnapshot();
-        using BulkFillStateWriter writer = new(_db, _batch, (ulong)_pendingBlock.Number, _rlpWrappedSlots, _pendingClears);
+        using BulkFillStateWriter writer = new(_db, _batch, (ulong)_pendingBlock.Number, _rlpWrappedSlots, _clears);
         snapshot.WriteTo(writer);
         _hasFinalState = true;
     }
@@ -217,8 +216,6 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
             BlockHash = hash;
             _pendingBlock = null;
             _pendingCode.Clear();
-            _committedClears.AddRange(_pendingClears);
-            _pendingClears.Clear();
         }
         catch
         {
@@ -243,22 +240,23 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
     }
 
     /// <summary>Cleans the storage the committed blocks cleared. After the first full scan of the session, only the
-    /// accounts the blocks since then cleared are cleaned: a full scan per block walks every tombstone the earlier
-    /// cleanups left in the clears column, and those pile up over a long replay.</summary>
+    /// accounts the blocks since then cleared are cleaned. A full scan per block walks the marker writes and deletes
+    /// that are still in the clears memtable and level-0 files, a steady cost per block that only flushes and
+    /// compactions bound.</summary>
     public void CleanStorage(CancellationToken token)
     {
         RequireHealthy();
         if (_batch is not null) throw new InvalidOperationException("Cannot clean an active replay block.");
         if (_isFullyCleaned)
         {
-            BulkFillStorageCleanup.Run(_db, _committedClears, token);
+            BulkFillStorageCleanup.Run(_db, _clears, token);
         }
         else
         {
             BulkFillStorageCleanup.Run(_db, token);
             _isFullyCleaned = true;
         }
-        _committedClears.Clear();
+        _clears.Clear();
     }
 
     private static byte[] EncodeCheckpoint(in StateId state, Hash256 hash)

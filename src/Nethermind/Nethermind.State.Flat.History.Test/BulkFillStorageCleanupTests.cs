@@ -67,6 +67,29 @@ public class BulkFillStorageCleanupTests
         }
     }
 
+    [Test]
+    public void CleanStorage_handles_several_blocks_and_repeated_clears_at_once()
+    {
+        using Fixture fixture = new();
+        fixture.Replay(writer => SetSlots(writer, TestItem.AddressA, 1, 2));
+        fixture.Session.CleanStorage(CancellationToken.None);
+
+        // Two blocks commit before one cleanup, and one block clears the same account twice.
+        fixture.Replay(writer => ClearAndSetSlots(writer, TestItem.AddressA, 3));
+        fixture.Replay(writer =>
+        {
+            ClearAndSetSlots(writer, TestItem.AddressB, 1);
+            ClearAndSetSlots(writer, TestItem.AddressB, 2);
+        });
+        fixture.Session.CleanStorage(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Count(Columns.Clears), Is.Zero);
+            Assert.That(fixture.Count(Columns.Storage), Is.EqualTo(3), "slot 3 of A and slots 1 and 2 of B remain");
+        }
+    }
+
     private static void SetSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writer, Address address, params ulong[] slots)
     {
         writer.Set(address, Contract);
