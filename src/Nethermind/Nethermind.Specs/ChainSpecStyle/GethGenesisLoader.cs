@@ -185,7 +185,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
             Eip150Transition = config.Eip150Block ?? config.TangerineWhistleBlock,
 
-            Eip160Transition = config.Eip155Block ?? config.SpuriousDragonBlock,
+            Eip160Transition = config.Eip158Block ?? config.SpuriousDragonBlock,
             Eip161abcTransition = config.Eip158Block ?? config.SpuriousDragonBlock,
             Eip161dTransition = config.Eip158Block ?? config.SpuriousDragonBlock,
             Eip155Transition = config.Eip155Block ?? config.SpuriousDragonBlock,
