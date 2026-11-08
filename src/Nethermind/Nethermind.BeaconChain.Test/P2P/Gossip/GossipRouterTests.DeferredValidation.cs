@@ -240,12 +240,7 @@ public partial class GossipRouterTests
         MessageValidity whileMarked = fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(3));
         valid!.Complete(MessageValidity.Accepted);
         await validValidation;
-        const int acceptedPeerCapacity = 1024;
-        for (int i = 0; i < acceptedPeerCapacity; i++)
-        {
-            PeerId other = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-            await fixture.CompleteVoteFromAsync(other, aggregatorIndex: (ulong)(100 + i), MessageValidity.Accepted);
-        }
+        await fixture.EvictFromAcceptedPeersAsync();
 
         MessageValidity[] votes = [.. Enumerable.Range(3, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
 
@@ -253,6 +248,41 @@ public partial class GossipRouterTests
         Assert.That(whileMarked, Is.EqualTo(MessageValidity.Throttled), "fixture: the rejection refused the peer's votes");
         Assert.That(votes[0], Is.EqualTo(MessageValidity.Deferred), "the acceptance cleared the refusal, so the evicted peer's next vote is admitted");
         Assert.That(votes[1..], Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Throttled }), "fixture: the peer was evicted, so it is held to a new peer's two votes");
+    }
+
+    // A peer that delivered a valid vote is not marked by a rejected one, so it is not refused once it is evicted from the accepted-peer set.
+    [Test]
+    public async Task Rejected_vote_from_a_peer_with_an_accepted_one_does_not_refuse_its_votes_after_its_eviction()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 1, MessageValidity.Accepted);
+        await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 2, MessageValidity.Rejected);
+        await fixture.EvictFromAcceptedPeersAsync();
+
+        MessageValidity[] votes = [.. Enumerable.Range(3, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
+
+        Assert.That(votes, Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Deferred, MessageValidity.Throttled }),
+            "the evicted peer is held to a new peer's two votes, but not refused");
+    }
+
+    // A vote whose reservation expired before the router dispatched it is validated unreserved; it is still a vote, so its rejection marks its peer.
+    [Test]
+    public async Task Rejected_vote_whose_reservation_expired_before_dispatch_refuses_its_peers_votes()
+    {
+        ManualTimeProvider time = new();
+        time.JumpUtc(TimeSpan.FromDays(20_000));
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), time: time);
+        Message malformed = new() { Topic = DeferredFixture.AggregateTopic, Data = ByteString.CopyFrom([1]) };
+        Assert.That(fixture.Validation.Verify(fixture.Sender, malformed), Is.EqualTo(MessageValidity.Deferred), "fixture: the malformed vote is reserved");
+        time.Advance(TimeSpan.FromSeconds(32));
+        fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
+        int reservedVotes = fixture.Validation.PendingVotes;
+
+        await fixture.Validation.ValidateAsync(fixture.Sender, malformed);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reservedVotes, Is.Zero, "fixture: the reservation expired before dispatch");
+        Assert.That(fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(2)), Is.EqualTo(MessageValidity.Throttled), "the peer's next vote is refused");
     }
 
     [Test]
@@ -581,6 +611,73 @@ public partial class GossipRouterTests
         Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
     }
 
+    // The router admits on its own thread while the import worker hands verdicts back, so admission reads the rejection marks under their lock.
+    [Test]
+    public async Task Admission_of_a_new_peers_vote_reads_the_rejection_marks_under_their_lock()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        Lock marks = RejectedVoteSourcesLock(fixture.Validation);
+        Task<MessageValidity> admission;
+        bool admittedWhileHeld;
+        using (marks.EnterScope())
+        {
+            admission = Task.Run(() => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(1)));
+            admittedWhileHeld = admission.Wait(TimeSpan.FromMilliseconds(300));
+        }
+
+        MessageValidity validity = await admission;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admittedWhileHeld, Is.False, "admission waits while a verdict holds the marks");
+        Assert.That(validity, Is.EqualTo(MessageValidity.Deferred), "fixture: the vote is admitted once the lock is free");
+    }
+
+    // A peer's promotion is ordered against a concurrent rejection of its vote, so a mark cannot land after the acceptance that cleared it.
+    [Test]
+    public async Task Acceptance_promotes_its_peer_under_the_rejection_marks_lock()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        (GossipVerdict? valid, Task validation) = fixture.SendVote(fixture.Sender, aggregatorIndex: 1);
+        Lock marks = RejectedVoteSourcesLock(fixture.Validation);
+        Task accepting;
+        bool acceptedWhileHeld;
+        using (marks.EnterScope())
+        {
+            accepting = Task.Run(() => valid!.Complete(MessageValidity.Accepted));
+            acceptedWhileHeld = accepting.Wait(TimeSpan.FromMilliseconds(300));
+        }
+
+        await accepting;
+        await validation;
+
+        Assert.That(acceptedWhileHeld, Is.False, "the acceptance waits while another verdict holds the marks");
+    }
+
+    // A peer with an accepted vote is never marked, so admitting its votes neither reads the marks nor waits for their lock.
+    [Test]
+    public async Task Admission_of_a_promoted_peers_vote_does_not_wait_for_the_rejection_marks_lock()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        await fixture.CompleteVoteFromAsync(fixture.Sender, aggregatorIndex: 1, MessageValidity.Accepted);
+        Lock marks = RejectedVoteSourcesLock(fixture.Validation);
+        Task<MessageValidity> admission;
+        bool admittedWhileHeld;
+        using (marks.EnterScope())
+        {
+            admission = Task.Run(() => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote(2)));
+            admittedWhileHeld = admission.Wait(TimeSpan.FromSeconds(5));
+        }
+
+        MessageValidity validity = await admission;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admittedWhileHeld, Is.True, "a promoted peer's vote is admitted while a verdict holds the marks");
+        Assert.That(validity, Is.EqualTo(MessageValidity.Deferred));
+    }
+
+    private static Lock RejectedVoteSourcesLock(DeferredGossipValidation validation) =>
+        (Lock)typeof(DeferredGossipValidation).GetField("_rejectedVoteSourcesLock", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(validation)!;
+
     private static readonly ulong GloasColumnSlot = FirstGloasSlot + 1;
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
@@ -656,6 +753,16 @@ public partial class GossipRouterTests
             Assert.That(raised, Is.Not.Null, "fixture: the vote passes the checks before the import worker");
             raised!.Complete(validity);
             await validation;
+        }
+
+        /// <summary>Accepts one vote from each of as many new peers as the accepted-peer set holds, which evicts every peer accepted before.</summary>
+        public async Task EvictFromAcceptedPeersAsync()
+        {
+            const int acceptedPeerCapacity = 1024;
+            for (int i = 0; i < acceptedPeerCapacity; i++)
+            {
+                await CompleteVoteFromAsync(new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId, aggregatorIndex: (ulong)(100 + i), MessageValidity.Accepted);
+            }
         }
 
         /// <summary>Validates one aggregate from <paramref name="peer"/>.</summary>
