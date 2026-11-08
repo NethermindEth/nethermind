@@ -1837,7 +1837,7 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
-                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
                         _hashCache.SetInvalidBlobProofs(tx.Hash);
                     }
@@ -2858,7 +2858,7 @@ namespace Nethermind.TxPool
                     bool invalidTransactionForm = validation.Error == TxErrorMessages.InvalidTransactionForm;
                     _invalidTransactions[transaction.Hash!] = new ForkValidationResult(
                         validation,
-                        validation.Error == TxErrorMessages.InvalidProofVersion,
+                        TxErrorMessages.IsBlobSidecarError(validation.Error),
                         !invalidTransactionForm);
                 }
             }
