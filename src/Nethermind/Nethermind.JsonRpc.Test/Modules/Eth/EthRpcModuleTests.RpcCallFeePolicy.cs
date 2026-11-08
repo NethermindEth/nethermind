@@ -129,23 +129,43 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task RpcCallFeePolicy_fee_cap_validation_precedes_intrinsic_gas_and_invalid_opcode(
+    public async Task RpcCallFeePolicy_fee_cap_errors_match_node_without_policy(
         [Values("0x0", "0x186a0")] string gas, [Values] bool priorityAboveCap,
         [Values] bool validateLegacy)
     {
+        using Context withoutPolicy = await FeePolicyContext(null);
         using Context ctx = await FeePolicyContext(false, validateLegacy);
         string fees = "\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"" + (priorityAboveCap ? "0x3" : "0x1") + "\"";
-        JToken response = await FeePolicyCall(ctx, FeePolicyRequest(fees, gas), FeePolicyState(code: "0xfe"), "0x64");
+        JsonElement request = FeePolicyRequest(fees, gas);
+        JToken response = await FeePolicyCall(ctx, request, FeePolicyState(code: "0xfe"), "0x64");
+        JToken reference = await FeePolicyCall(withoutPolicy, request, FeePolicyState(code: "0xfe"), "0x64");
         string sender = new Address(FeePolicySender).ToString(withEip55Checksum: true);
-        // The policy's pre-check gives the processor's own error, as a node without a policy reports it.
+        // The tip check precedes intrinsic gas; the base-fee check is BuyGas's and follows it, under any policy.
         string expected = priorityAboveCap
             ? $"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 2"
-            : $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: 2, baseFee: 100";
+            : gas == "0x0"
+                ? $"{TxErrorMessages.IntrinsicGasTooLow}: have 0"
+                : $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: 2, baseFee: 100";
         using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)response["error"]?["message"], Does.Contain(expected), response.ToString());
             Assert.That((int?)response["error"]?["code"], Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?.ToString(), Is.EqualTo(reference["error"]?.ToString()), reference.ToString());
         }
+    }
+
+    [Test]
+    public async Task RpcCallFeePolicy_system_sender_typed_call_matches_node_without_policy([Values] bool chargeFees, [Values] bool validateLegacy)
+    {
+        // A typed fee cap below the base fee: the system processor's BuyGas exempts this sender.
+        JsonElement request = JsonSerializer.Deserialize<JsonElement>(
+            $$"""{"from":"{{Address.SystemUser}}","to":"{{FeePolicyTarget}}","gas":"0x186a0","maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x0"}""");
+        Dictionary<string, object> state = new() { [FeePolicyTarget] = new { balance = "0x7", code = FeePolicySnapshot } };
+        using Context withoutPolicy = await FeePolicyContext(null);
+        using Context withPolicy = await FeePolicyContext(chargeFees, validateLegacy);
+        JToken expected = await FeePolicyCall(withoutPolicy, request, state, "0x2");
+        Assert.That(expected["error"], Is.Null, expected.ToString());
+        AssertFeePolicyOutput(await FeePolicyCall(withPolicy, request, state, "0x2"), (string)expected["result"]!);
     }
 
     [TestCase(32)]

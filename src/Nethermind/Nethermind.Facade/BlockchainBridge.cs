@@ -709,15 +709,12 @@ namespace Nethermind.Facade
 
         /// <summary>Runs a restoring call of <c>eth_call</c> or <c>eth_createAccessList</c> under the chain's <see cref="RpcCallExecutionPolicy"/>.</summary>
         /// <remarks>
-        /// A fee-free policy skips <c>BuyGas</c>'s fee checks, so a typed fee cap below the base fee is rejected here, with
-        /// the error the processor's own check gives.
+        /// Typed fee caps are left to the processor's virtual <c>BuyGas</c>, which validates them whether or not fees are charged,
+        /// so processor-specific exemptions such as the system sender's apply under every policy.
         /// </remarks>
         private TransactionResult RunRestoringCall(ITransactionProcessor txProcessor, Transaction tx, in BlockExecutionContext blockContext, ITxTracer tracer)
         {
             if (TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap) return tipAboveFeeCap;
-            UInt256 baseFee = blockContext.Header.BaseFeePerGas;
-            if (_callExecutionOptions != ExecutionOptions.CommitAndRestore && tx.Supports1559 && tx.MaxFeePerGas < baseFee)
-                return TransactionResult.MaxFeePerGasBelowBaseFee(tx, baseFee);
 
             try
             {
