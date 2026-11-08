@@ -5,10 +5,12 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -50,13 +52,14 @@ public class SyncServerReceiptsBenchmarks
     {
         TestSpecProvider specProvider = new(Byzantium.Instance);
         EthereumEcdsa ecdsa = new(specProvider.ChainId);
-        BlockTreeBuilder builder = Build.A.BlockTree().WithSpecProvider(specProvider).OfChainLength(1);
+        BlockStore blockStore = new(new TestMemDb());
+        BlockTreeBuilder builder = Build.A.BlockTree().WithSpecProvider(specProvider).WithBlockStore(blockStore).OfChainLength(1);
         BlockTree blockTree = builder.TestObject;
 
         TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
         receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, []);
         PersistentReceiptStorage receiptStorage = new(
-            receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, builder.BlockStore, new ReceiptConfig())
+            receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, blockStore, new ReceiptConfig())
         { MigratedBlockNumber = 0 };
 
         _servedHashes = new Hash256[ServedBlocks];
@@ -109,16 +112,35 @@ public class SyncServerReceiptsBenchmarks
             parent = block;
         }
 
-        // Serve from a fresh storage over the same database: receipts of old blocks are not in the receipts cache.
-        PersistentReceiptStorage servingStorage = new(
-            receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, builder.BlockStore, new ReceiptConfig())
+        // Check every served block through a throwaway server, so nothing the check caches reaches the measured one.
+        using (SyncServer check = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa))
+        {
+            foreach (Hash256 hash in _servedHashes)
+            {
+                if (check.GetReceipts(hash)?.Length != TransactionsPerBlock)
+                    throw new InvalidOperationException($"Block {hash} does not serve its {TransactionsPerBlock} receipts.");
+            }
+        }
+
+        // The served blocks are outside the head block cache window, but the set-associative block cache can still
+        // hold some of them, so start from an empty one. A fresh receipt storage starts with an empty receipts cache.
+        IClearableCache blockCache = blockStore;
+        blockCache.ClearCache();
+        _server = CreateServer(blockTree, blockStore, receiptsDb, specProvider, ecdsa);
+    }
+
+    private static SyncServer CreateServer(
+        BlockTree blockTree, BlockStore blockStore, IColumnsDb<ReceiptsColumns> receiptsDb, TestSpecProvider specProvider, EthereumEcdsa ecdsa)
+    {
+        PersistentReceiptStorage storage = new(
+            receiptsDb, specProvider, new ReceiptsRecovery(ecdsa, specProvider), blockTree, blockStore, new ReceiptConfig())
         { MigratedBlockNumber = 0 };
 
-        _server = new SyncServer(
+        return new SyncServer(
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
-            new FullInfoReceiptFinder(servingStorage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
+            new FullInfoReceiptFinder(storage, new ReceiptsRecovery(ecdsa, specProvider), blockTree),
             Substitute.For<IBlockAccessListStore>(),
             Always.Valid,
             Always.Valid,
@@ -129,12 +151,6 @@ public class SyncServerReceiptsBenchmarks
             Substitute.For<IHistoryPruner>(),
             specProvider,
             LimboLogs.Instance);
-
-        foreach (Hash256 hash in _servedHashes)
-        {
-            if (_server.GetReceipts(hash)?.Length != TransactionsPerBlock)
-                throw new InvalidOperationException($"Block {hash} does not serve its {TransactionsPerBlock} receipts.");
-        }
     }
 
     [GlobalCleanup]
