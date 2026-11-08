@@ -96,17 +96,29 @@ public sealed class EraExporter(
         },
         (epochIdx, cancel) => new ValueTask(WriteEpoch(epochIdx, cancel)));
 
+        // Keep the entries of an earlier export whose era files are still in the directory, so the manifests
+        // cover the whole directory. The epochs of this export replace them.
+        SortedDictionary<long, ManifestEntry> manifest = [];
+        foreach ((string fileName, ValueHash256 checksum) in cachedChecksums)
+        {
+            if (EraPathUtils.TryGetEpoch(fileName, out long epoch) && fileSystem.File.Exists(Path.Combine(destinationPath, fileName)))
+                manifest[epoch] = new ManifestEntry(fileName, checksum, cachedAccumulators.GetValueOrDefault(fileName));
+        }
+
+        for (int i = 0; i < fileNames.Count; i++)
+            manifest[(long)startEpoch + i] = new ManifestEntry(fileNames[i], checksums[i], accumulators[i]);
+
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
-        await WriteHashFile(accumulatorPath, accumulators, fileNames, cancellation);
+        await WriteLines(accumulatorPath, manifest.Values, static e => $"{e.Accumulator.ToString(false)}  {e.FileName}", cancellation);
 
         string checksumSha256FilePath = Path.Combine(destinationPath, ChecksumsSHA256FileName);
         fileSystem.File.Delete(checksumSha256FilePath);
-        await WriteHashFile(checksumSha256FilePath, checksums, fileNames, cancellation);
+        await WriteLines(checksumSha256FilePath, manifest.Values, static e => $"{e.Checksum.ToString(false)}  {e.FileName}", cancellation);
 
         string checksumFilePath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumFilePath);
-        await WriteChecksumFile(checksumFilePath, checksums, cancellation);
+        await WriteLines(checksumFilePath, manifest.Values, static e => $"0x{e.Checksum.ToString(false)}", cancellation);
 
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
@@ -287,37 +299,17 @@ public sealed class EraExporter(
         return result;
     }
 
-    private async Task WriteHashFile(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellation)
-    {
-        IEnumerable<string> Lines()
-        {
-            for (int i = 0; i < hashes.Count; i++)
-                yield return $"{hashes[i].ToString(false)}  {fileNames[i]}";
-        }
-        await WriteLines(path, Lines(), cancellation);
-    }
-
-    private async Task WriteChecksumFile(string path, ArrayPoolList<ValueHash256> hashes, CancellationToken cancellation)
-    {
-        await WriteLines(path, Lines(), cancellation);
-        return;
-
-        IEnumerable<string> Lines()
-        {
-            for (int i = 0; i < hashes.Count; i++)
-                yield return $"0x{hashes[i].ToString(false)}";
-        }
-    }
-
-    private async Task WriteLines(string path, IEnumerable<string> lines, CancellationToken cancellation)
+    private async Task WriteLines(string path, IEnumerable<ManifestEntry> entries, Func<ManifestEntry, string> format, CancellationToken cancellation)
     {
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
         await using StreamWriter writer = new(stream);
 
-        foreach (string line in lines)
+        foreach (ManifestEntry entry in entries)
         {
             cancellation.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync(line);
+            await writer.WriteLineAsync(format(entry));
         }
     }
+
+    private readonly record struct ManifestEntry(string FileName, ValueHash256 Checksum, ValueHash256 Accumulator);
 }

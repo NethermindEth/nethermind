@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -52,20 +51,6 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < bytes.Length; i++)
             {
                 buffer.WriteByte(bytes[i]);
-            }
-        }
-
-        [return: MaybeNull]
-        public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
-        {
-            RlpReader ctx = new(buffer.AsSpan());
-            try
-            {
-                return deserialize(ref ctx);
-            }
-            finally
-            {
-                buffer.SetReaderIndex(buffer.ReaderIndex + ctx.Position);
             }
         }
 

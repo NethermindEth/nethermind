@@ -101,7 +101,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
-        parent = GetParent(parent, payload, blockTree);
+        parent = GetParent(parent, blockTree);
 
         env.SimulateRequestState.TotalGasLeft = gasCapLimit;
 
@@ -181,7 +181,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return body;
     }
 
-    private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+    private static BlockHeader GetParent(BlockHeader parent, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
         ulong latestBlockNumber = latestBlock?.Number ?? 0;
@@ -189,21 +189,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         if (latestBlockNumber < parent.Number)
         {
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
-        }
-
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
-            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
-                ? blockStateCalls[0]
-                : null;
-
-        ulong lastKnown = latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
-        {
-            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
-            if (searchResult is not null)
-            {
-                parent = searchResult.Header;
-            }
         }
 
         return parent;

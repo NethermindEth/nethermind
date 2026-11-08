@@ -166,6 +166,26 @@ public class AdminModuleTests
         }
     }
 
+    [TestCase("127.0.0.1", "127.0.0.1:30303")]
+    [TestCase("[::1]", "[::1]:30303")]
+    public async Task AdminNodeInfo_SerializesGethKeyNames(string enodeHost, string expectedListenAddr)
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(enode: _enodeString.Replace("127.0.0.1", enodeHost));
+
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        JsonElement eth = result.GetProperty("protocols").GetProperty("eth");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TryGetProperty("listenAddr", out JsonElement listenAddr) ? listenAddr.GetString() : null, Is.EqualTo(expectedListenAddr));
+            Assert.That(eth.TryGetProperty("genesis", out JsonElement genesis) ? genesis.GetString() : null, Is.EqualTo(_blockTree.GenesisHash!.ToString()));
+            Assert.That(eth.TryGetProperty("head", out JsonElement head) ? head.GetString() : null, Is.EqualTo(_blockTree.HeadHash!.ToString()));
+            Assert.That(eth.TryGetProperty("network", out JsonElement network) ? network.GetString() : null, Is.EqualTo("0x" + _blockTree.NetworkId.ToString("x")));
+        }
+    }
+
     [Test]
     public async Task AdminDataDir_OnDefaultModule_ReturnsConfiguredPath()
     {
@@ -560,6 +580,35 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public void AdminPeers_ReportsThisNodeEndpointAsLocalAddress([Values] bool isInbound)
+    {
+        int remotePort = isInbound ? 45678 : 30303;
+        Peer peer = new(new Node(TestItem.PublicKeyA, "94.237.54.114", 30303));
+        ISession session = Substitute.For<ISession>();
+        session.RemoteHost.Returns("94.237.54.114");
+        session.RemotePort.Returns(remotePort);
+        session.LocalPort.Returns(30304);
+        session.IsNetworkIdMatched.Returns(true);
+        if (isInbound)
+        {
+            peer.InSession = session;
+        }
+        else
+        {
+            peer.OutSession = session;
+        }
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        NetworkInfo network = module.admin_peers().Data[0].Network;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(network.LocalAddress, Is.EqualTo("127.0.0.1:30304"), "local address is this node's enode IP with the session's local port");
+            Assert.That(network.RemoteAddress, Is.EqualTo($"94.237.54.114:{remotePort}"));
+        }
+    }
+
     [TestCase(68, "Nethermind/v1.25.4+2bf8a789/linux-x64/dotnet8.0.8", TestName = "AdminPeers_WithEthOnlyV68Peer_DoesNotIncludeSnap")]
     [TestCase(66, "Geth/v1.10.0-stable/linux-amd64/go1.16.15", TestName = "AdminPeers_WithLegacyEthV66Peer_DoesNotIncludeSnap")]
     public void AdminPeers_WithEthOnlyPeer_DoesNotIncludeSnapProtocol(int ethVersion, string clientId)
@@ -721,7 +770,8 @@ public class AdminModuleTests
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
         IBlockProcessingPauseControl? blockProcessingPauseControl = null,
-        INodeRecordProvider? nodeRecordProvider = null)
+        INodeRecordProvider? nodeRecordProvider = null,
+        string enode = _enodeString)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -730,7 +780,7 @@ public class AdminModuleTests
             peerPool ?? Substitute.For<IPeerPool>(),
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),
             Substitute.For<IStateReader>(),
-            new Enode(_enodeString),
+            new Enode(enode),
             _exampleDataDir,
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),

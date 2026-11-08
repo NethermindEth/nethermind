@@ -235,6 +235,8 @@ public class FlatWorldStateScopeProviderTests
         public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, Hash256? stateRoot = null, bool decorateBuffer = false, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
+            // Resolving Auto needs the hardware info and records the layout on disk.
+            if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
@@ -389,6 +391,50 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead186);
         Assert.That(slotRead186, Is.EqualTo(new UInt256(newerSlotValue, isBigEndian: true)));
+    }
+
+    [Test]
+    public void ClearStorage_WithOtherAccountsAndRewrites_RemovesOnlyTargetSlots([Values(0, 1, 128)] int slots)
+    {
+        using TestContext ctx = new();
+        SnapshotBundle bundle = ctx.SnapshotBundle;
+        Address target = TestItem.AddressA;
+        Address other = TestItem.AddressB;
+        Hash256 targetHash = Keccak.Compute(target.Bytes);
+        for (int i = 0; i < slots; i++)
+        {
+            bundle.SetChangedSlot(target, (UInt256)(ulong)i, i % 2 == 0 ? UInt256.Zero : (UInt256)11);
+            bundle.SetChangedSlot(other, (UInt256)(ulong)i, (UInt256)22);
+        }
+        if (slots > 0)
+        {
+            bundle.GetSlot(other, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? before);
+            Assert.That(before, Is.EqualTo((UInt256)22), "precondition: both accounts have current slot entries");
+        }
+
+        bundle.ClearStorage(target, targetHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < slots; i++)
+            {
+                UInt256 slot = (ulong)i;
+                bundle.GetSlot(target, slot, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? cleared);
+                bundle.GetSlot(other, slot, bundle.DetermineSelfDestructSnapshotIdx(other), out UInt256? retained);
+                Assert.That(cleared, Is.Null, "the target's values and deletion entries must both be removed");
+                Assert.That(retained, Is.EqualTo((UInt256)22), "clearing one account must retain the other account's slots");
+            }
+        }
+
+        bundle.SetChangedSlot(target, UInt256.Zero, (UInt256)33);
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? rewritten);
+        Assert.That(rewritten, Is.EqualTo((UInt256)33), "writes after a clear register the account again");
+
+        bundle.ClearStorage(target, targetHash);
+        bundle.ClearStorage(target, targetHash);
+
+        bundle.GetSlot(target, UInt256.Zero, bundle.DetermineSelfDestructSnapshotIdx(target), out UInt256? clearedAgain);
+        Assert.That(clearedAgain, Is.Null, "a later clear must remove rewritten slots and a repeated clear must remain empty");
     }
 
     [Test]
@@ -1455,8 +1501,9 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
-            Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+        NodeCollector bundleNodes = new();
+        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, VisitingOptions.Default, diagnostics: null);
+        Assert.That(bundleNodes.Nodes, Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
     }
 
     [Test]

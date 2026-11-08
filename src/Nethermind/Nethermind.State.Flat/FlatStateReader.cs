@@ -6,8 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -15,13 +15,12 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    IHistoricalTrieVisitor historicalTrieVisitor,
-    ILogManager logManager
+    IHistoricalTrieVisitor historicalTrieVisitor
 ) : IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock, ReaderFlags.None);
         if (reader.GetAccount(address) is { } accountCls)
         {
             account = accountCls.ToStruct();
@@ -34,14 +33,14 @@ public class FlatStateReader(
 
     public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
-        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock, ReaderFlags.None);
         reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
         value = slot.GetValueOrDefault();
     }
 
     public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
     {
-        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock, ReaderFlags.None);
         int selfDestructSnapshotIdx = reader.DetermineSelfDestructSnapshotIdx(address);
         for (int i = 0; i < indexes.Length; i++)
         {
@@ -64,7 +63,7 @@ public class FlatStateReader(
             return;
         }
 
-        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock, treeVisitor.IsFullDbScan ? ReaderFlags.FullScan : ReaderFlags.None);
         if (reader.IsHistorical)
         {
             // Persistence moved past the block between the routing check and the gather.
@@ -75,9 +74,8 @@ public class FlatStateReader(
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
-            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }
 
@@ -102,11 +100,11 @@ public class FlatStateReader(
     /// contract — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
     /// <see cref="StateNotRetainedException"/> and resource-not-found otherwise.
     /// </summary>
-    private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock, ReaderFlags readerFlags)
     {
         try
         {
-            return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
+            return flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock), readerFlags);
         }
         catch (StateUnavailableException e)
         {
