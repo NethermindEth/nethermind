@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/sepolia-devnet-5-sepolia-devnet-5.json.zst",
+    "GenesisHash": "0x7264e49acd5cef5405a88db9c0b948932964a9802d59502b76810b7e3ce6c32d",
+    "BaseDbPath": "nethermind_db/sepolia-devnet-5-sepolia-devnet-5",
+    "LogFileName": "sepolia-devnet-5-sepolia-devnet-5.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 256
+  },
+  "Blocks": {
+    "SecondsPerSlot": 1
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": ""
+  }
+}
