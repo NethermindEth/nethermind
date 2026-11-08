@@ -663,9 +663,10 @@ public class JsonRpcProcessorTests
                 CreateRequest("2", "eth_chainId", "[]")),
             CreateHttpContext());
 
-        List<JsonRpcResponse> items = AssertBatchResponse(responses, 2).BatchItems!;
+        List<JsonRpcResponse> items = AssertOnlyResult(responses).BatchItems!;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(items, Has.Count.EqualTo(2));
             Assert.That(items[0], Is.TypeOf<JsonRpcErrorResponse>());
             Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Message, Is.EqualTo("non-array args"));
