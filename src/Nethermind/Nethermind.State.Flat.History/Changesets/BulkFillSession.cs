@@ -239,10 +239,10 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         return new CodeWriter(this);
     }
 
-    /// <summary>Cleans the storage the committed blocks cleared. After the first full scan of the session, only the
-    /// accounts the blocks since then cleared are cleaned. A full scan per block walks the marker writes and deletes
-    /// that are still in the clears memtable and level-0 files, a steady cost per block that only flushes and
-    /// compactions bound.</summary>
+    /// <summary>Cleans the storage the committed blocks cleared.</summary>
+    /// <remarks>The first cleanup of a session scans the whole clears column; later ones read only the markers of the
+    /// accounts the blocks since then cleared. A full scan per block walks the marker writes and deletes that are still
+    /// in the clears memtable and level-0 files, a steady cost per block that only flushes and compactions bound.</remarks>
     public void CleanStorage(CancellationToken token)
     {
         RequireHealthy();

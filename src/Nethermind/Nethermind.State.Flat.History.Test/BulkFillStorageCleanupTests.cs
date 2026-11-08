@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -90,6 +91,33 @@ public class BulkFillStorageCleanupTests
         }
     }
 
+    [TestCase(0, TestName = "CleanStorage_rejects_an_empty_marker")]
+    [TestCase(sizeof(ulong) + 1, TestName = "CleanStorage_rejects_an_oversized_marker")]
+    public void CleanStorage_rejects_a_malformed_marker_as_the_full_scan_does(int length)
+    {
+        using Fixture fixture = new();
+        fixture.Replay(writer => SetSlots(writer, TestItem.AddressA, 1));
+        fixture.Session.CleanStorage(CancellationToken.None);
+        fixture.Replay(writer => ClearAndSetSlots(writer, TestItem.AddressA, 2));
+        fixture.Scratch.GetColumnDb(Columns.Clears).PutSpan(TestItem.AddressA.ToAccountPath.Bytes, new byte[length]);
+
+        Assert.That(() => fixture.Session.CleanStorage(CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void CleanStorage_skips_an_account_whose_marker_is_gone()
+    {
+        using Fixture fixture = new();
+        fixture.Replay(writer => SetSlots(writer, TestItem.AddressA, 1));
+        fixture.Session.CleanStorage(CancellationToken.None);
+        fixture.Replay(writer => ClearAndSetSlots(writer, TestItem.AddressA, 2));
+        fixture.Scratch.GetColumnDb(Columns.Clears).Remove(TestItem.AddressA.ToAccountPath.Bytes);
+
+        fixture.Session.CleanStorage(CancellationToken.None);
+
+        Assert.That(fixture.Count(Columns.Storage), Is.EqualTo(2), "with no marker, the old slot 1 is not dropped");
+    }
+
     private static void SetSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writer, Address address, params ulong[] slots)
     {
         writer.Set(address, Contract);
@@ -122,6 +150,8 @@ public class BulkFillStorageCleanupTests
 
         public BulkFillSession Session { get; private set; }
 
+        public IColumnsDb<Columns> Scratch => _factory.Db!;
+
         public void Replay(Action<IWorldStateScopeProvider.IWorldStateWriteBatch> write)
         {
             BlockHeader block = Build.A.BlockHeader.WithParent(_head).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
@@ -140,7 +170,7 @@ public class BulkFillStorageCleanupTests
         public int Count(Columns column)
         {
             int count = 0;
-            foreach (byte[] _ in _factory.Db!.GetColumnDb(column).GetAllKeys()) count++;
+            foreach (byte[] _ in Scratch.GetColumnDb(column).GetAllKeys()) count++;
             return count;
         }
 
