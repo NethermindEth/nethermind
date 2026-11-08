@@ -646,6 +646,35 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_rejects_non_array_params_without_aborting_other_items()
+    {
+        JsonRpcConfig config = new();
+        RpcModuleProvider provider = new(new Testably.Abstractions.RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        IEthRpcModule module = Substitute.For<IEthRpcModule>();
+        module.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
+        provider.Register(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(module), true));
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(provider, LimboLogs.Instance, config, gcKeeper), config);
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(
+            processor,
+            CreateBatchRequest(
+                CreateRequest("1", "eth_chainId", "{\"a\":1}"),
+                CreateRequest("2", "eth_chainId", "[]")),
+            CreateHttpContext());
+
+        List<JsonRpcResponse> items = AssertBatchResponse(responses, 2).BatchItems!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(items[0], Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Message, Is.EqualTo("non-array args"));
+            Assert.That(items[1], Is.TypeOf<JsonRpcSuccessResponse>());
+        }
+        module.Received(1).eth_chainId();
+    }
+
+    [Test]
     public async Task Batch_executes_consecutive_calls_concurrently_and_answers_in_order()
     {
         List<string> events = [];

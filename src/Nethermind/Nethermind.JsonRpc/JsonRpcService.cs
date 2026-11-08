@@ -270,6 +270,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         LogRequest(methodName);
 
+        if (request.ParamsKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Array))
+        {
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", null, in request.IdRef);
+        }
+
         return expectedParameters.Length == 0
             ? PrepareNoParameters(
                 request,

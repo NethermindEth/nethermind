@@ -1379,6 +1379,24 @@ public class JsonRpcServiceTests
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
 
+    [TestCase("{\"a\":1}")]
+    [TestCase("\"bar\"")]
+    [TestCase("1")]
+    [TestCase("true")]
+    public void Non_array_params_are_rejected(string rawParams)
+    {
+        INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
+        using JsonDocument parameters = JsonDocument.Parse(rawParams);
+        JsonRpcRequest request = new() { JsonRpc = "2.0", Method = "net_version", Params = parameters.RootElement, Id = 67 };
+
+        using JsonRpcResponse response = SendRequestWithPool(
+            new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(netRpcModule), true),
+            request);
+
+        AssertInvalidParamsWithoutData(response, "non-array args");
+        netRpcModule.DidNotReceive().net_version();
+    }
+
     [Test]
     public void NetVersionTest()
     {
