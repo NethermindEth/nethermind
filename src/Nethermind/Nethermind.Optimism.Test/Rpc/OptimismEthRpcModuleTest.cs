@@ -1593,6 +1593,26 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task GetBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing([Values] bool canonical, [Values] bool byHash)
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithHash(TestItem.KeccakA).WithSenderAddress(TestItem.AddressA).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakC).TestObject).WithTransactions(tx).TestObject;
+        IBlockFinder blockFinder = MockBlockFinder(block);
+        if (canonical)
+        {
+            blockFinder.Head.Returns(block);
+            blockFinder.IsMainChain(block.Header).Returns(true);
+        }
+
+        using TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(blockFinder, MockReceiptFinder(block));
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", byHash ? new BlockParameter(block.Hash!) : new BlockParameter(block.Number));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(),
+            Is.EqualTo(canonical ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), serialized);
+    }
+
+    [Test]
     public async Task GetTransactionReceipt_ReturnsDepositReceipt()
     {
         Transaction tx = Build.A.Transaction
