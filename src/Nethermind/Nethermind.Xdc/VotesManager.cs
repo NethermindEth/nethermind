@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -44,6 +45,13 @@ internal class VotesManager : IVotesManager, IDisposable
     private static readonly VoteDecoder _voteDecoder = new();
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
+
+    // Every peer relays each vote once, so the same vote arrives about once per peer. The same bytes give the same
+    // verification result, so only the first copy recovers the signer. Only accepted votes are kept: a vote rejected
+    // for a missing snapshot can still be accepted later. Sized for the masternodes of the rounds kept around the
+    // current one, with room for competing blocks.
+    private const int VerifiedVoteCapacity = 4096;
+    private readonly ClockCache<ValueHash256, Address> _verifiedVoteSigners = new(VerifiedVoteCapacity);
     private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
     private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
 
@@ -284,11 +292,27 @@ internal class VotesManager : IVotesManager, IDisposable
             return Task.CompletedTask;
         }
 
-        if (!VerifyVote(vote))
+        if (!IsVerified(vote))
             return Task.CompletedTask;
 
         BroadcastVote(vote);
         return HandleVote(vote);
+    }
+
+    private bool IsVerified(Vote vote)
+    {
+        ValueHash256 hash = vote.Hash.ValueHash256;
+        if (_verifiedVoteSigners.TryGet(hash, out Address? signer))
+        {
+            vote.Signer ??= signer;
+            return true;
+        }
+
+        if (!VerifyVote(vote))
+            return false;
+
+        _verifiedVoteSigners.Set(hash, vote.Signer!);
+        return true;
     }
 
     private bool VerifyVote(Vote vote)
