@@ -6,12 +6,10 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Abi;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
@@ -340,7 +338,6 @@ public class StatelessInputGeneratorTests
             // The witness is assembled from trie nodes persisted in StateDb.
             .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = false })
             .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
-            .AddSingleton<IInitConfig>(new InitConfig { StateDbKeyScheme = INodeStorage.KeyScheme.Hash })
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using ILifetimeScope processingScope = container.BeginLifetimeScope(builder =>
@@ -371,11 +368,12 @@ public class StatelessInputGeneratorTests
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
         IDbProvider dbProvider = container.Resolve<IDbProvider>();
-        INodeStorage nodeStorage = container.Resolve<INodeStorage>();
+        TrieNodeRlpCollector stateNodes = new();
+        new PatriciaTree(new RawScopedTrieStore(container.Resolve<INodeStorage>()), NullLogManager.Instance).Accept(stateNodes, parent.StateRoot!);
         Witness witness = new()
         {
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
-            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllKeys().Select(key => nodeStorage.Get(null, TreePath.Empty, new ValueHash256(key))!)]),
+            State = stateNodes.Nodes,
             Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
         };
@@ -430,4 +428,29 @@ public class StatelessInputGeneratorTests
         Keys = ArrayPoolList<byte[]>.Empty(),
         Headers = new ArrayPoolList<byte[]>(headers ?? [])
     };
+
+    private sealed class TrieNodeRlpCollector : ITreeVisitor<TreePathContextWithStorage>
+    {
+        public ArrayPoolList<byte[]> Nodes { get; } = new(0);
+
+        public bool IsFullDbScan => true;
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash)
+        {
+        }
+
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
+            Assert.Fail($"Missing trie node {nodeHash} at {nodeContext.Path}.");
+
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
+        {
+        }
+    }
 }
