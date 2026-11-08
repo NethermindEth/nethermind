@@ -1412,6 +1412,9 @@ public class FlatWorldStateScopeProviderTests
         [Values(48, 512)] int slotsPerContract)
     {
         const int contractCount = 8;
+        // Accounts with storage that no block touches, so some state and storage nodes are read only from persistence.
+        const int untouchedContractCount = 4;
+        const int untouchedContractOffset = 100;
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
         Account baseAccount = new(1, 1);
 
@@ -1425,6 +1428,16 @@ public class FlatWorldStateScopeProviderTests
             expectedStorages[contract].Commit();
             expectedState.Set(TestItem.Addresses[contract], baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        Account[] untouchedAccounts = new Account[untouchedContractCount];
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            Address address = TestItem.Addresses[untouchedContractOffset + i];
+            StorageTree storage = new(expectedStore.GetTrieStore(address.ToAccountPath.ToHash256()), LimboLogs.Instance);
+            for (int slot = 0; slot < slotsPerContract; slot++) storage.Set((UInt256)slot, ((UInt256)(slot + 7)).ToMinimalBigEndian());
+            storage.Commit();
+            untouchedAccounts[i] = baseAccount.WithChangedStorageRoot(storage.RootHash);
+            expectedState.Set(address, untouchedAccounts[i]);
+        }
         expectedState.Commit();
 
         // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node buffer.
@@ -1436,6 +1449,10 @@ public class FlatWorldStateScopeProviderTests
         {
             ctx.PersistenceReader.GetAccount(TestItem.Addresses[contract]).Returns(baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            ctx.PersistenceReader.GetAccount(TestItem.Addresses[untouchedContractOffset + i]).Returns(untouchedAccounts[i]);
+        }
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
         ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
@@ -1444,10 +1461,13 @@ public class FlatWorldStateScopeProviderTests
         warmer.Scope = scope;
 
         int lastBlock = blocksBetweenCommits + 2;
-        // The first and last blocks write every contract and the ones in between one each, so the last block
-        // updates tries committed many blocks, and buffer generations, before.
+        // The first block writes every contract, the ones in between one each, and the last block every contract but the
+        // last one. So the last block updates tries committed many blocks, and buffer generations, before, and the newest
+        // snapshot has no storage root for the last contract, which an older snapshot holds.
         (int First, int End) ContractsOf(int block) =>
-            block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
+            block == 1 ? (0, contractCount)
+            : block == lastBlock ? (0, contractCount - 1)
+            : (block % contractCount, block % contractCount + 1);
         UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
 
         for (int block = 1; block <= lastBlock; block++)
@@ -1520,8 +1540,10 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(snapshots.Count, Is.GreaterThan(1), "the bundle holds several snapshots");
             Assert.That(probe.Nodes, Is.EquivalentTo(expectedNodes));
-            // With 512 slots per contract the blocks rewrite only part of each trie, so the rest is read from persistence.
-            if (slotsPerContract == 512) Assert.That(probe.NewestMisses, Is.Positive, "some nodes are only persisted");
+            // The untouched accounts keep state nodes that only persistence holds, and every block rewrites only part of
+            // each storage trie, so both kinds of lookup miss in the newest snapshot that holds the trie's root.
+            Assert.That(probe.StateMisses, Is.Positive, "some state nodes are only persisted");
+            Assert.That(probe.StorageMisses, Is.Positive, "some storage nodes are only persisted");
             Assert.That(probe.OlderOnlyHits, Is.Empty, "an older snapshot never holds a node the newest one misses");
         }
     }
@@ -1693,7 +1715,9 @@ public class FlatWorldStateScopeProviderTests
 
         public HashSet<string> Nodes => _collector.Nodes;
 
-        public int NewestMisses { get; private set; }
+        public int StateMisses { get; private set; }
+
+        public int StorageMisses { get; private set; }
 
         public List<string> OlderOnlyHits { get; } = [];
 
@@ -1727,7 +1751,8 @@ public class FlatWorldStateScopeProviderTests
 
             if (newest < 0 || Holds(snapshots[newest], storage, nodeContext.Path)) return;
 
-            NewestMisses++;
+            if (storage is null) StateMisses++;
+            else StorageMisses++;
             for (int i = newest - 1; i >= 0; i--)
             {
                 if (Holds(snapshots[i], storage, nodeContext.Path)) OlderOnlyHits.Add($"{storage}/{nodeContext.Path} in snapshot {i} of {snapshots.Count}");

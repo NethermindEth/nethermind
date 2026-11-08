@@ -282,7 +282,7 @@ public sealed class ReadOnlySnapshotBundle(
         TryFindStorageNodes((address, path), out node);
 
     /// <remarks>
-    /// Only the newest snapshot that changed the account's storage is probed, as <see cref="TryFindStateNodes(HashedKey{TreePath}, out TrieNode?)"/>
+    /// Only the newest snapshot holding a storage root entry for the account (0 when the storage was cleared) is probed, as <see cref="TryFindStateNodes(HashedKey{TreePath}, out TrieNode?)"/>
     /// probes only the newest one: it holds the root of the current storage trie, and older snapshots hold older versions of it.
     /// </remarks>
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
