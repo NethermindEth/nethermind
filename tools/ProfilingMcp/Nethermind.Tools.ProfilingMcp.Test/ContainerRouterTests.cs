@@ -70,6 +70,18 @@ public class ContainerRouterTests
     [TestCase("", ExpectedResult = false)]
     public bool Tells_servers_from_the_idle_process_and_the_target(string cmdline) => ContainerSidecar.IsServer(cmdline);
 
+    [TestCase("/tmp", ExpectedResult = null)]
+    [TestCase("/tmp/dotnet", ExpectedResult = null)]
+    [TestCase("/var/tmp", ExpectedResult = null)]
+    [TestCase("/nethermind/tmp", ExpectedResult = null)]
+    [TestCase("/etc/ld.so.preload", ExpectedResult = "is under /etc, a system folder of the sidecar, so it is not linked")]
+    [TestCase("/usr/local/sbin/perf", ExpectedResult = "is under /usr, a system folder of the sidecar, so it is not linked")]
+    [TestCase("/var/lib/tmp", ExpectedResult = "is under /var, a system folder of the sidecar, so it is not linked")]
+    [TestCase("/tmp/../etc/ld.so.preload", ExpectedResult = "is not a normalized path")]
+    [TestCase("tmp", ExpectedResult = "is not an absolute path")]
+    [TestCase("/", ExpectedResult = "is the root folder")]
+    public string? Links_a_target_temp_folder_only_outside_sidecar_system_folders(string tmpdir) => ContainerSidecar.CheckTargetTempFolder(tmpdir);
+
     [TestCase(null, ExpectedResult = 30)]
     [TestCase("", ExpectedResult = 30)]
     [TestCase("5", ExpectedResult = 5)]

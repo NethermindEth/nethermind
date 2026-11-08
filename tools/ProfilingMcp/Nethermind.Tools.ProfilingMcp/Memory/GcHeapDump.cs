@@ -31,8 +31,19 @@ internal static class GcHeapDump
     /// <summary>Same size as <c>dotnet-gcdump</c>'s; the events of a heap of a few GB pass through it while the reader keeps up.</summary>
     private const int BufferMB = 256;
 
+    /// <summary>How long no heap event may arrive after the walk began before the session is stopped, which flushes the rest.</summary>
+    private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long to wait for another session's heap read of the same process.</summary>
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(5);
+
+    /// <remarks>
+    /// Reads of one process are serialized across sessions: the runtime sends a heap walk to every session listening, so a second read
+    /// started during the first would count its objects twice and leave the other without type names.
+    /// </remarks>
     public static async Task<GcHeapDumpResult> CollectAsync(int pid, bool withReferences, CancellationToken cancellationToken)
     {
+        using IDisposable exclusive = await ProcessLock.AcquireAsync("heap", pid, LockTimeout, cancellationToken);
         Stopwatch elapsed = Stopwatch.StartNew();
         EventPipeSessionConfiguration configuration = new(
             [new EventPipeProvider(ClrTraceEventParser.ProviderName, EventLevel.Verbose, (long)ClrTraceEventParser.Keywords.GCHeapSnapshot)],
@@ -60,7 +71,10 @@ internal static class GcHeapDump
             Task processing = Task.Run(source.Process, CancellationToken.None);
             try
             {
-                await Task.WhenAny(dumpGc.Task, processing).WaitAsync(cancellationToken);
+                // The runtime may hold the last events, the GC's end among them, in its buffers while the process is idle;
+                // stopping the session flushes them, so a walk that has gone quiet is stopped rather than waited on.
+                while (!dumpGc.Task.IsCompleted && !processing.IsCompleted && !(builder.HasNodes && builder.QuietFor >= Quiet))
+                    await Task.WhenAny(dumpGc.Task, processing, Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken)).WaitAsync(cancellationToken);
             }
             finally
             {
@@ -72,7 +86,13 @@ internal static class GcHeapDump
         }
 
         if (!dumpGc.Task.IsCompletedSuccessfully)
-            throw new InvalidOperationException("The process ended the session before reporting its heap.");
+            throw new InvalidOperationException(builder.HasNodes
+                ? "The heap walk did not finish: the runtime never reported the end of its GC."
+                : "The process ended the session before reporting its heap.");
+
+        if (builder.UnnamedObjects is > 0 and var unnamed)
+            throw new InvalidOperationException($"The heap read is incomplete: {unnamed:N0} objects arrived without their type's name, which happens when " +
+                                                "another tool such as dotnet-gcdump reads the heap at the same time. Try again.");
 
         TraceGC gc = await dumpGc.Task;
         return new GcHeapDumpResult(builder.ToSnapshot(pid, gc), builder.ToGraph(), gc.PauseDurationMSec, elapsed.Elapsed, eventsLost);
@@ -131,13 +151,36 @@ internal static class GcHeapDump
         private readonly List<(ulong Address, string Kind)> _roots = [];
         private readonly List<(ulong Key, ulong Value)> _dependentHandles = [];
         private long _objects;
+        private long _lastEvent = Environment.TickCount64;
 
         public bool HasNodes => _objects > 0;
+
+        public TimeSpan QuietFor => TimeSpan.FromMilliseconds(Environment.TickCount64 - Interlocked.Read(ref _lastEvent));
+
+        public long UnnamedObjects
+        {
+            get
+            {
+                long unnamed = 0;
+                for (int i = 0; i < _types.Count; i++)
+                {
+                    if (_types[i].StartsWith(UnknownPrefix, StringComparison.Ordinal))
+                        unnamed += _typeStats[i].Count;
+                }
+
+                return unnamed;
+            }
+        }
+
+        private const string UnknownPrefix = "<unknown 0x";
+
+        private void Heard() => Interlocked.Exchange(ref _lastEvent, Environment.TickCount64);
 
         public void Subscribe(ClrTraceEventParser clr)
         {
             clr.TypeBulkType += data =>
             {
+                Heard();
                 for (int i = 0; i < data.Count; i++)
                 {
                     GCBulkTypeValues type = data.Values(i);
@@ -147,6 +190,7 @@ internal static class GcHeapDump
 
             clr.GCBulkNode += data =>
             {
+                Heard();
                 for (int i = 0; i < data.Count; i++)
                 {
                     GCBulkNodeValues node = data.Values(i);
@@ -171,6 +215,7 @@ internal static class GcHeapDump
             // Edges arrive in node order: the first EdgeCount of them belong to the first node, and so on.
             clr.GCBulkEdge += data =>
             {
+                Heard();
                 for (int i = 0; i < data.Count; i++)
                     _edges.Add(data.Values(i).Target);
             };
@@ -238,7 +283,7 @@ internal static class GcHeapDump
             if (!_typeIndexes.TryGetValue(typeId, out int index))
             {
                 _typeIndexes[typeId] = index = _types.Count;
-                _types.Add($"<unknown 0x{typeId:x}>");
+                _types.Add($"{UnknownPrefix}{typeId:x}>");
                 _typeStats.Add((0, 0, 0));
             }
 

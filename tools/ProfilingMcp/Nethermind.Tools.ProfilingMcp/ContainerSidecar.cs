@@ -109,7 +109,7 @@ internal static class ContainerSidecar
                 "--env", "DOTNET_EnableDiagnostics=0",
                 "--env", "PROFILING_MCP_HOME=/profmcp-home",
                 "--env", $"{NameVariable}={name}",
-                "--env", $"{TargetTempVariable}={target.TempFolder}",
+                .. (string[])(target.ExplicitTempFolder ? ["--env", $"{TargetTempVariable}={target.TempFolder}"] : []),
                 "--env", $"{DockerCommandVariable}={string.Join(' ', ["docker", .. engine])}",
                 "--env", $"{IdleMinutesVariable}={IdleLimit(Environment.GetEnvironmentVariable(IdleMinutesVariable)).TotalMinutes.ToString(CultureInfo.InvariantCulture)}",
                 image,
@@ -171,8 +171,13 @@ internal static class ContainerSidecar
     internal static TimeSpan IdleLimit(string? minutes) =>
         TimeSpan.FromMinutes(double.TryParse(minutes, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) && value >= 0 ? value : DefaultIdleMinutes);
 
+    /// <remarks>
+    /// Every sidecar of a target shares its process namespace, so servers of another sidecar, such as a newer version's, are visible too.
+    /// Only the ones <c>docker exec</c> started in this container count, told apart by sharing this process's mount namespace.
+    /// </remarks>
     private static bool ServerRunning()
     {
+        string? ownMounts = new FileInfo("/proc/self/ns/mnt").LinkTarget;
         foreach (string process in Directory.EnumerateDirectories("/proc"))
         {
             if (!int.TryParse(Path.GetFileName(process), out int pid) || pid == Environment.ProcessId)
@@ -180,7 +185,7 @@ internal static class ContainerSidecar
 
             try
             {
-                if (IsServer(File.ReadAllText(Path.Combine(process, "cmdline"))))
+                if (IsServer(File.ReadAllText(Path.Combine(process, "cmdline"))) && new FileInfo(Path.Combine(process, "ns", "mnt")).LinkTarget == ownMounts)
                     return true;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -201,28 +206,71 @@ internal static class ContainerSidecar
 
     /// <summary>Run inside the sidecar: makes a target's own temp folder resolve at the same path in the sidecar.</summary>
     /// <remarks>
-    /// When the target's environment sets TMPDIR, the diagnostics client looks for its socket at that path instead of in its own
-    /// temp folder, so the path is linked to the target's folder.
+    /// When the target's environment sets TMPDIR, the diagnostics client looks for its socket at that literal path instead of in its own
+    /// temp folder, so the path is linked to the target's folder. An explicit <c>/tmp</c> or <c>/var/tmp</c> replaces the sidecar's own empty
+    /// folder. The path comes from the target, so <see cref="CheckTargetTempFolder"/> keeps the link away from the sidecar's system folders.
     /// </remarks>
     public static void LinkTargetTempFolder()
     {
-        if (Environment.GetEnvironmentVariable(TargetTempVariable) is not { } temp || temp == "/tmp" || Path.Exists(temp))
+        if (Environment.GetEnvironmentVariable(TargetTempVariable) is not { Length: > 0 } temp)
             return;
+
+        if (CheckTargetTempFolder(temp) is { } problem)
+            throw new InvalidOperationException($"The target's TMPDIR {temp} {problem}.");
+
+        string target = TargetRoot + temp;
+        if (Path.Exists(temp))
+        {
+            if (new FileInfo(temp).LinkTarget == target)
+                return;
+            if (temp is not ("/tmp" or "/var/tmp") || Directory.EnumerateFileSystemEntries(temp).GetEnumerator().MoveNext())
+                throw new InvalidOperationException($"The target's TMPDIR {temp} already exists in the sidecar.");
+            Directory.Delete(temp);
+        }
 
         Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
         try
         {
-            File.CreateSymbolicLink(temp, TargetRoot + temp);
+            File.CreateSymbolicLink(temp, target);
         }
-        catch (IOException) when (Path.Exists(temp))
+        catch (IOException) when (new FileInfo(temp).LinkTarget == target)
         {
             // Another server in the sidecar linked it first.
         }
     }
 
+    /// <summary>Top-level folders of the sidecar image that a target's TMPDIR must not be linked into.</summary>
+    private static readonly HashSet<string> SidecarSystemFolders =
+        ["bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64", "libx32", "media", "mnt", "opt", "proc", "profmcp", "profmcp-home", "root", "run", "sbin", "srv", "sys", "usr", "var"];
+
+    /// <summary>Says why a target's TMPDIR cannot be linked into the sidecar, or returns null when it can.</summary>
+    /// <remarks>
+    /// The path comes from the target's configuration, and the link is created as root in the sidecar, so it is limited to the temp folders
+    /// and to folders that do not exist in the sidecar image; a path such as <c>/etc/ld.so.preload</c> would otherwise plant target-controlled
+    /// configuration in the sidecar.
+    /// </remarks>
+    internal static string? CheckTargetTempFolder(string tmpdir)
+    {
+        if (!tmpdir.StartsWith('/'))
+            return "is not an absolute path";
+
+        string[] segments = tmpdir.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            return "is the root folder";
+        foreach (string segment in segments)
+        {
+            if (segment is "." or "..")
+                return "is not a normalized path";
+        }
+
+        bool inTempFolder = segments[0] == "tmp" || segments is ["var", "tmp", ..];
+        return inTempFolder || !SidecarSystemFolders.Contains(segments[0]) ? null : $"is under /{segments[0]}, a system folder of the sidecar, so it is not linked";
+    }
+
     /// <param name="Name">The container's name, whichever of its name or IDs it was given by, so they all share one sidecar and volume.</param>
     /// <param name="TempFolder">Where the target's .NET runtime creates its diagnostic socket.</param>
-    private sealed record Target(string Name, string Image, string TempFolder);
+    /// <param name="ExplicitTempFolder">Whether the target sets TMPDIR, so the diagnostics client looks for the socket at that literal path.</param>
+    private sealed record Target(string Name, string Image, string TempFolder, bool ExplicitTempFolder);
 
     private static async Task<Target> InspectAsync(string[] engine, string container)
     {
@@ -247,7 +295,11 @@ internal static class ContainerSidecar
         if (environment.GetValueOrDefault("DOTNET_EnableDiagnostics") == "0" || environment.GetValueOrDefault("DOTNET_EnableDiagnostics_IPC") == "0")
             throw new InvalidOperationException($"Container '{container}' disables the .NET diagnostics port (DOTNET_EnableDiagnostics=0), so it cannot be profiled.");
 
-        return new Target(ContainerName(root.GetProperty("Name").GetString()), config.GetProperty("Image").GetString()!, TempFolder(environment.GetValueOrDefault("TMPDIR")));
+        string? tmpdir = environment.GetValueOrDefault("TMPDIR") is { Length: > 0 } set ? set : null;
+        if (tmpdir is not null && CheckTargetTempFolder(TempFolder(tmpdir)) is { } problem)
+            throw new InvalidOperationException($"Container '{container}' sets TMPDIR={tmpdir}, which {problem}; the sidecar cannot reach its diagnostics socket there.");
+
+        return new Target(ContainerName(root.GetProperty("Name").GetString()), config.GetProperty("Image").GetString()!, TempFolder(tmpdir), tmpdir is not null);
     }
 
     /// <summary>Turns the <c>.Name</c> docker inspect reports, such as <c>/nethermind-hoodi</c>, into the name the CLI takes.</summary>

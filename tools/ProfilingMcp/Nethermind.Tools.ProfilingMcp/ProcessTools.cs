@@ -33,7 +33,7 @@ public sealed class ProcessTools
 
                 table.Add(pid.ToString(CultureInfo.InvariantCulture), $"{process.WorkingSet64 >> 20:N0} MB", process.ProcessName, path);
             }
-            catch (ArgumentException)
+            catch (Exception e) when (e is ArgumentException or InvalidOperationException)
             {
                 // Exited between enumeration and inspection.
             }

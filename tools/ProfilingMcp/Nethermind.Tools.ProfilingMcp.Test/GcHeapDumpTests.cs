@@ -78,6 +78,48 @@ public class GcHeapDumpTests
         }
     }
 
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Overlapping_reads_of_one_process_both_see_the_whole_heap(CancellationToken cancellationToken)
+    {
+        Allocate();
+        try
+        {
+            Task<GcHeapDumpResult> first = GcHeapDump.CollectAsync(Environment.ProcessId, withReferences: false, cancellationToken);
+            Task<GcHeapDumpResult> second = GcHeapDump.CollectAsync(Environment.ProcessId, withReferences: false, cancellationToken);
+            GcHeapDumpResult[] results = await Task.WhenAll(first, second);
+
+            Assert.That(results.Select(static r => r.Snapshot.Types.FirstOrDefault(static t => t.Name == nameof(Retained))?.Count), Is.All.EqualTo(Instances));
+        }
+        finally
+        {
+            RetainedByStatic.Clear();
+        }
+    }
+
+    [Test]
+    public void Finds_matching_objects_held_through_other_matching_objects()
+    {
+        // root -> Retained -> Retained -> Retained
+        HeapGraph graph = new(
+            typeNames: [nameof(Retained)],
+            nodeTypes: [0, 0, 0],
+            addresses: [0x100, 0x200, 0x300],
+            sizes: [24, 24, 24],
+            edgeStarts: [0, 1, 2, 2],
+            edgeTargets: [0x200, 0x300],
+            roots: [(0x100UL, "static")],
+            dependentHandles: []);
+
+        RetentionReport report = RetentionAnalyzer.Analyze(graph, new Regex($"^{nameof(Retained)}$"), maxPaths: 5, maxVisited: long.MaxValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.SearchComplete, Is.True);
+            Assert.That(report.Paths.Sum(static p => p.Instances), Is.EqualTo(report.InstanceCount));
+        }
+    }
+
     [TestCase("System.Collections.Generic.Dictionary`2[System.String,System.Int32]", ExpectedResult = "System.Collections.Generic.Dictionary<System.String, System.Int32>")]
     [TestCase("Entry[System.String,System.Collections.Generic.List`1[System.Int32[]]][]", ExpectedResult = "Entry<System.String, System.Collections.Generic.List<System.Int32[]>>[]")]
     [TestCase("System.Byte[,]", ExpectedResult = "System.Byte[,]")]

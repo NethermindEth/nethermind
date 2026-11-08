@@ -133,14 +133,11 @@ internal static class RetentionAnalyzer
         while (queue.Count > 0)
         {
             int node = queue.Dequeue();
-            if (isTarget[node])
+            // A matching object's own references are still followed: matching objects held only through it have their own paths.
+            if (isTarget[node] && groups.Add(BuildPath(graph, node, parents, rootKinds)))
             {
-                if (groups.Add(BuildPath(graph, node, parents, rootKinds)))
-                {
-                    complete = false;
-                    break;
-                }
-                continue;
+                complete = false;
+                break;
             }
 
             foreach (int child in graph.References(node))
@@ -277,14 +274,10 @@ internal static class RetentionAnalyzer
         while (queue.Count > 0)
         {
             ulong address = queue.Dequeue();
-            if (targets.Contains(address))
+            if (targets.Contains(address) && groups.Add(BuildPath(heap, address, parents, rootKinds, statics)))
             {
-                if (groups.Add(BuildPath(heap, address, parents, rootKinds, statics)))
-                {
-                    complete = false;
-                    break;
-                }
-                continue;
+                complete = false;
+                break;
             }
 
             ClrObject obj = heap.GetObject(address);

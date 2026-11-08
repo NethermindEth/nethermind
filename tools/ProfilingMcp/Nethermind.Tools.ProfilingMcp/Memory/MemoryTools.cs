@@ -48,7 +48,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         sb.Append($"{Count(snapshot.ObjectCount)} objects, {Size(snapshot.TotalBytes)} live, {Size(snapshot.FreeBytes)} free ({Percent(snapshot.FreeBytes, snapshot.TotalBytes + snapshot.FreeBytes)} fragmentation)\n");
         sb.Append("By generation: ").AppendJoin(", ", snapshot.GenerationBytes.OrderBy(static g => g.Key).Select(static g => $"{g.Key} {Size(g.Value)}")).Append('\n');
 
-        Regex? filter = include is null ? null : new Regex(include, RegexOptions.CultureInvariant);
+        Regex? filter = ToolArguments.OptionalPattern(include);
         TextTable table = new("bytes", "% heap", "count", "LOH bytes", "type");
         foreach (TypeStat type in snapshot.Types.Where(t => filter?.IsMatch(t.Name) ?? true).Take(top))
             table.Add(Size(type.Bytes), Percent(type.Bytes, snapshot.TotalBytes), Count(type.Count), type.LargeObjectBytes > 0 ? Size(type.LargeObjectBytes) : "", type.Name);
@@ -89,7 +89,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         [Description("Stop the root search after visiting this many objects, to bound time and memory on huge heaps.")] long maxVisited = 20_000_000,
         CancellationToken cancellationToken = default)
     {
-        Regex pattern = new(typePattern, RegexOptions.CultureInvariant);
+        Regex pattern = ToolArguments.Pattern(typePattern);
         RetentionReport report;
         StringBuilder sb = new();
         if (HeapTarget.IsProcess(target, out int pid))
@@ -140,15 +140,15 @@ public sealed class MemoryTools(WorkspacePaths paths)
                  "Use it to find allocation hotspots that drive GC pressure; include narrows it to the allocations of one component.")]
     public async Task<string> AllocSampleAsync(
         [Description("Process ID.")] int pid,
-        [Description("Seconds to sample.")] int seconds = 10,
+        [Description(ToolArguments.SecondsDescription)] int seconds = 10,
         [Description("Number of rows per table.")] int top = 20,
         [Description("Only count allocations with a call-stack frame matching this regex, e.g. Kademlia or ^Nethermind\\.Network\\.")] string? include = null,
         [Description("Number of heaviest call stacks to show.")] int stacks = 5,
         CancellationToken cancellationToken = default)
     {
         string trace = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-alloc", ".nettrace"));
-        await AllocationSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), trace, cancellationToken);
-        AllocationProfile profile = AllocationSampler.Read(trace, include is null ? null : new Regex(include, RegexOptions.CultureInvariant));
+        await AllocationSampler.CollectAsync(pid, ToolArguments.Window(seconds), trace, cancellationToken);
+        AllocationProfile profile = AllocationSampler.Read(trace, ToolArguments.OptionalPattern(include));
 
         long total = profile.ByType.Sum(static s => s.SampledBytes);
         long perSecond = total / Math.Max(seconds, 1);
@@ -179,10 +179,10 @@ public sealed class MemoryTools(WorkspacePaths paths)
                  "A quick first check of whether a problem is CPU, GC, or contention.")]
     public async Task<string> RuntimeCountersAsync(
         [Description("Process ID.")] int pid,
-        [Description("Seconds to observe.")] int seconds = 10,
+        [Description("Seconds to observe, 1 to 600.")] int seconds = 10,
         CancellationToken cancellationToken = default)
     {
-        (IReadOnlyList<CounterSummary> counters, GcSummary gc) = await EventPipeCollector.CollectCountersAsync(pid, TimeSpan.FromSeconds(seconds), intervalSeconds: 1, cancellationToken);
+        (IReadOnlyList<CounterSummary> counters, GcSummary gc) = await EventPipeCollector.CollectCountersAsync(pid, ToolArguments.Window(seconds), intervalSeconds: 1, cancellationToken);
 
         StringBuilder sb = new();
         int gcCount = gc.CountsByGeneration.Values.Sum();

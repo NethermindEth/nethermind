@@ -24,12 +24,12 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
                  "Native threads and native code are not sampled; time a thread spends in native code shows as own time of the managed method that called it.")]
     public async Task<string> CpuSampleAsync(
         [Description("Process ID.")] int pid,
-        [Description("Seconds to sample.")] int seconds = 30,
+        [Description(ToolArguments.SecondsDescription)] int seconds = 30,
         [Description("Number of hotspot rows in the summary.")] int top = 15,
         CancellationToken cancellationToken = default)
     {
         string trace = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}", ".nettrace"));
-        await CpuSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), trace, cancellationToken);
+        await CpuSampler.CollectAsync(pid, ToolArguments.Window(seconds), trace, cancellationToken);
 
         NetTraceProfile profile = netTrace.Read(trace);
         StringBuilder sb = new();
@@ -65,12 +65,12 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
                  "Linux only, so on Windows pass a container.")]
     public async Task<string> NativeSampleAsync(
         [Description("Process ID; in a container, a PID from list_dotnet_processes or docker top.")] int pid,
-        [Description("Seconds to sample.")] int seconds = 30,
+        [Description(ToolArguments.SecondsDescription)] int seconds = 30,
         [Description("Number of hotspot rows in the summary.")] int top = 25,
         CancellationToken cancellationToken = default)
     {
         string stacks = Path.Combine(paths.Snapshots, WorkspacePaths.NewFileName($"pid{pid}-native", NativeSampler.Extension));
-        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, TimeSpan.FromSeconds(seconds), stacks, cancellationToken);
+        (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(pid, ToolArguments.Window(seconds), stacks, cancellationToken);
         IReadOnlyList<FunctionStat> functions = FoldedStacks.Read(File.ReadLines(stacks));
 
         StringBuilder sb = new();
@@ -210,7 +210,7 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
 
     private IReadOnlyList<FunctionStat> GetCallStacks(string snapshot, string methodPattern)
     {
-        Regex pattern = new(methodPattern, RegexOptions.CultureInvariant);
+        Regex pattern = ToolArguments.Pattern(methodPattern);
         return [.. ReadSampled(snapshot).Where(f => pattern.IsMatch(f.Name))];
     }
 
@@ -238,8 +238,8 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
 
     private static IEnumerable<FunctionStat> Filter(IEnumerable<FunctionStat> functions, string? include, string? exclude)
     {
-        Regex? includeRegex = include is null ? null : new Regex(include, RegexOptions.CultureInvariant);
-        Regex? excludeRegex = exclude is null ? null : new Regex(exclude, RegexOptions.CultureInvariant);
+        Regex? includeRegex = ToolArguments.OptionalPattern(include);
+        Regex? excludeRegex = ToolArguments.OptionalPattern(exclude);
         return functions.Where(f => (includeRegex?.IsMatch(f.Name) ?? true) && !(excludeRegex?.IsMatch(f.Name) ?? false));
     }
 

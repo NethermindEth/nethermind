@@ -196,6 +196,9 @@ public sealed class PerfScriptFolder(JitMap jit)
 /// <summary>Reads folded stacks written by <see cref="NativeSampler"/> as per-method times with every call path.</summary>
 public static class FoldedStacks
 {
+    /// <summary>Frames kept per stack; perf records at most 127 by default, and a file passed in may hold anything.</summary>
+    internal const int MaxFrames = 512;
+
     /// <param name="millisecondsPerSample">CPU time one sample stands for.</param>
     public static IReadOnlyList<FunctionStat> Read(IEnumerable<string> lines, double millisecondsPerSample = 1000.0 / NativeSampler.Hz)
     {
@@ -207,8 +210,13 @@ public static class FoldedStacks
                 continue;
 
             NetTraceReader.PathNode node = root;
-            foreach (string frame in line[..space].Split(';'))
-                node = node.Child(frame);
+            string[] frames = line[..space].Split(';');
+            // The innermost frames, which carry the time, are kept; the cut is marked so the stack does not look complete.
+            int first = frames.Length > MaxFrames ? frames.Length - MaxFrames + 1 : 0;
+            if (first > 0)
+                node = node.Child($"[{first:N0} outer frames]");
+            for (int i = first; i < frames.Length; i++)
+                node = node.Child(frames[i]);
             node.Own += samples * millisecondsPerSample;
             node.Samples += samples;
         }

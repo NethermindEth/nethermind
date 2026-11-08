@@ -89,6 +89,37 @@ public class NativeSamplerTests
     [TestCase("memcpy", ExpectedResult = "memcpy")]
     public string Drops_native_parameter_lists(string symbol) => PerfScriptFolder.NativeName(symbol);
 
+    [TestCase(null, null, false, ExpectedResult = false)]
+    [TestCase("DOTNET_PerfMapEnabled", "1", false, ExpectedResult = true)]
+    [TestCase("COMPlus_PerfMapEnabled", "3", false, ExpectedResult = true)]
+    [TestCase("DOTNET_PerfMapEnabled", "0", false, ExpectedResult = false)]
+    [TestCase(null, null, true, ExpectedResult = true)]
+    public bool Leaves_a_perf_map_alone_that_was_on_before(string? variable, string? value, bool mapExists) =>
+        NativeSampler.PerfMapAlreadyOn(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, mapExists);
+
+    [TestCase(null, ExpectedResult = "/proc/7/root/tmp/perf-7.map")]
+    [TestCase("/data/maps/", ExpectedResult = "/proc/7/root/data/maps/perf-7.map")]
+    public string Finds_the_perf_map_where_the_runtime_writes_it(string? jitDumpPath) =>
+        NativeSampler.PerfMapPath(7, jitDumpPath is null
+            ? new Dictionary<string, string> { ["TMPDIR"] = "/elsewhere" }
+            : new Dictionary<string, string> { ["TMPDIR"] = "/elsewhere", ["DOTNET_PerfMapJitDumpPath"] = jitDumpPath });
+
+    [Test]
+    public void Keeps_the_innermost_frames_of_a_deep_stack()
+    {
+        string stack = string.Join(";", Enumerable.Range(0, FoldedStacks.MaxFrames + 100).Select(static i => $"f{i}"));
+
+        IReadOnlyList<FunctionStat> functions = FoldedStacks.Read([$"{stack} 3"]);
+        CallStackStat inner = functions.Single(static f => f.Name == $"f{FoldedStacks.MaxFrames + 99}").CallStacks.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.Frames, Has.Count.EqualTo(FoldedStacks.MaxFrames));
+            Assert.That(inner.Frames[0], Is.EqualTo("[101 outer frames]"));
+            Assert.That(inner.OwnTime, Is.EqualTo(3));
+        }
+    }
+
     [TestCase("6.6.87.2-microsoft-standard-WSL2", ExpectedResult = true)]
     [TestCase("5.8.0", ExpectedResult = true)]
     [TestCase("5.4.0-150-generic", ExpectedResult = false)]

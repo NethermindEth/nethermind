@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text;
+
 namespace Nethermind.Tools.ProfilingMcp;
 
 /// <summary>
@@ -33,8 +35,34 @@ public sealed class WorkspacePaths
     public string ForPerson(string path) =>
         Sidecar is null ? path : WithCopyCommand(path, Sidecar, Environment.GetEnvironmentVariable(ContainerSidecar.DockerCommandVariable) ?? "docker");
 
-    internal static string WithCopyCommand(string path, string sidecar, string docker) =>
-        $"{path} in the sidecar container; copy it to this machine while the session runs with: {docker} cp {sidecar}:{path} .";
+    /// <remarks>
+    /// Each word is quoted for a POSIX shell or PowerShell when it needs it; a path that cannot be quoted the same way for both, because it holds a
+    /// single quote, gets no command, so a person or agent that runs the suggestion never runs a different command.
+    /// </remarks>
+    internal static string WithCopyCommand(string path, string sidecar, string docker)
+    {
+        string[] words = [.. docker.Split(' ', StringSplitOptions.RemoveEmptyEntries), "cp", $"{sidecar}:{path}", "."];
+        StringBuilder command = new();
+        foreach (string word in words)
+        {
+            if (word.Contains('\''))
+                return $"{path} in the sidecar container {sidecar}; copy it to this machine with docker cp while the session runs.";
+            command.Append(command.Length > 0 ? " " : "").Append(IsPlain(word) ? word : $"'{word}'");
+        }
+
+        return $"{path} in the sidecar container; copy it to this machine while the session runs with: {command}";
+    }
+
+    private static bool IsPlain(string word)
+    {
+        foreach (char c in word)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('/' or '.' or '_' or '-' or ':' or '@' or '+' or '=' or ','))
+                return false;
+        }
+
+        return word.Length > 0;
+    }
 
     public static WorkspacePaths FromEnvironment()
     {
