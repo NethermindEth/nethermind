@@ -43,6 +43,23 @@ internal static class BulkFillStorageCleanup
         }
     }
 
+    /// <summary>Cleans the accounts whose storage the replayed blocks cleared. Point reads find their markers, so the
+    /// cleanup does not walk the tombstones that earlier cleanups left across the column; an account cleared twice, or
+    /// already cleaned, has no marker left and is skipped.</summary>
+    public static void Run(IColumnsDb<Columns> db, IReadOnlyList<ValueHash256> addresses, CancellationToken token)
+    {
+        IDb clears = db.GetColumnDb(Columns.Clears);
+        for (int i = 0; i < addresses.Count; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            ValueHash256 address = addresses[i];
+            byte[]? marker = clears[address.Bytes];
+            if (marker is null) continue;
+            if (marker.Length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
+            CleanAccount(db, address, BinaryPrimitives.ReadUInt64BigEndian(marker), token);
+        }
+    }
+
     private static void CleanAccount(IColumnsDb<Columns> db, in ValueHash256 address, ulong clearedAt, CancellationToken token)
     {
         byte[]? account = db.GetColumnDb(Columns.Accounts)[address.Bytes];
