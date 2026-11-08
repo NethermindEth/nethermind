@@ -289,6 +289,17 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("", 4_712_388UL)]
+    [TestCase("\"gasLimit\": null,", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x0\",", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x1000\",", 0x1000UL)]
+    public void Defaults_zero_or_missing_gas_limit_to_geth_genesis_gas_limit(string genesisExtra, ulong expectedGasLimit)
+    {
+        string json = $$"""{ "config": { "chainId": 1 }, {{genesisExtra}} "difficulty": "0x1", "alloc": {} }""";
+
+        Assert.That(LoadFromString(json).Genesis!.Header.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
     [TestCase("", null)]
     [TestCase("\"daoForkBlock\": null", null)]
     [TestCase("\"daoForkBlock\": 0", 0UL)]

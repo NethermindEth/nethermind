@@ -268,6 +268,9 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             [nameof(Bogota)] = new(9),
         };
 
+    /// <summary>Geth's <c>params.GenesisGasLimit</c>, which geth uses for a genesis gas limit of zero.</summary>
+    private const ulong DefaultGenesisGasLimit = 4_712_388;
+
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)
     {
         ulong nonce = gethGenesisJson.Nonce;
@@ -275,7 +278,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         ulong timestamp = gethGenesisJson.Timestamp ?? 0;
         UInt256 difficulty = gethGenesisJson.Difficulty;
         byte[] extraData = gethGenesisJson.ExtraData ?? [];
-        ulong gasLimit = gethGenesisJson.GasLimit ?? 0;
+        ulong gasLimit = gethGenesisJson.GasLimit is { } limit and not 0 ? limit : DefaultGenesisGasLimit;
         Address beneficiary = gethGenesisJson.Coinbase ?? Address.Zero;
         UInt256 baseFee = config.LondonBlock switch
         {
