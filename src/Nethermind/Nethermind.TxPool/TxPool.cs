@@ -3228,16 +3228,15 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address) => Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    n =>
-                    {
-                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
-                        foreach (AddressAsKey a in n)
-                        {
-                            cache.Delete(a);
-                        }
-                    }
-                );
+            // Runs under the new-head write lock, which every submission waits on. Each delete is a short lock and a
+            // dictionary remove, so a plain loop is cheaper than grouping the addresses and fanning out to the thread pool.
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> addresses)
+            {
+                foreach (AddressAsKey address in addresses.AsSpan())
+                {
+                    _caches[GetCacheIndex(address.Value)].Delete(address);
+                }
+            }
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 
