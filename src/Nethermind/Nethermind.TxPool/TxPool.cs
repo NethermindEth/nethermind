@@ -35,6 +35,7 @@ using System.Threading.Tasks;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
@@ -3191,7 +3192,7 @@ namespace Nethermind.TxPool
 
         private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
 
-        private sealed class AccountCache : IAccountStateProvider
+        internal sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
             private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
