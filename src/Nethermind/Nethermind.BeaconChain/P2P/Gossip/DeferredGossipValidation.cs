@@ -25,10 +25,11 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
-/// A peer none of whose votes was accepted yet gets a smaller fraction of that bound, and all such peers together a quarter of it:
-/// a new peer id costs nothing, so a fraction per peer alone grows with the ids one host makes.
-/// A peer with no accepted vote that sent a rejected vote has its new votes throttled for the rest of the wall slot, or until one of its
-/// votes already being checked is accepted. Its votes already deferred are still checked, and nothing unchecked counts against it.
+/// A peer none of whose votes was accepted since it joined or since its last rejected vote gets a smaller fraction of that bound, and all such
+/// peers together a quarter of it: a new peer id costs nothing, so a fraction per peer alone grows with the ids one host makes, and one
+/// relayed valid vote must not keep an id's forgeries admitted. A peer whose vote is rejected has its new votes throttled for the rest of the
+/// wall slot, or until one of its votes already being checked is accepted. Its votes already deferred are still checked, and nothing unchecked
+/// counts against it.
 /// Columns have a separate count and byte budget of the same size as the main budget; a column parked for its unseen block leaves it,
 /// held to the parking bounds of <see cref="ColumnGossipRouter"/> instead.
 /// A verdict not given within <paramref name="timeout"/> is abandoned, which the router treats the same way.
@@ -63,7 +64,7 @@ internal sealed class DeferredGossipValidation(
     private readonly int _maxPendingVotesPerNewSource = Math.Max(1, maxPendingVotes / 512);
     private readonly int _maxPendingNewSourceVotes = Math.Max(1, maxPendingVotes / 4);
     private readonly ConcurrentDictionary<(PeerId Source, bool Vote, bool Column), int> _pendingBySource = new();
-    // Only a verified vote adds a peer, so peer id churn alone cannot evict the peers that sent one.
+    // Only a verified vote adds a peer, so peer id churn alone cannot evict the peers that sent one; its next rejected vote removes it.
     private readonly LruKeyCache<PeerId> _voteAcceptedSources = new(1024, "beacon gossip vote-accepted peers");
     private int _pending;
     private long _pendingBytes;
@@ -71,7 +72,7 @@ internal sealed class DeferredGossipValidation(
     private int _pendingColumns;
     private long _pendingColumnBytes;
     private int _pendingNewSourceVotes;
-    // Guards the rejected set and its slot, and orders a peer's promotion against its rejection mark and the admissions that read it.
+    // Guards the rejected set and its slot, and orders a peer's promotion and demotion against its rejection mark and the admissions that read it.
     private readonly Lock _rejectedVoteSourcesLock = new();
     private readonly HashSet<PeerId> _rejectedVoteSources = [];
     private ulong _rejectedVoteSourcesSlot;
@@ -88,9 +89,9 @@ internal sealed class DeferredGossipValidation(
     internal int PendingColumns => Volatile.Read(ref _pendingColumns);
     /// <summary>The most messages other than votes and columns from one delivering peer that may await a verdict at once.</summary>
     internal int MaxPendingPerSource => _maxPendingPerSource;
-    /// <summary>The most votes from one delivering peer none of whose votes was accepted yet that may await a verdict at once.</summary>
+    /// <summary>The most votes from one delivering peer with no accepted vote since it joined or since its last rejected one that may await a verdict at once.</summary>
     internal int MaxPendingVotesPerNewSource => _maxPendingVotesPerNewSource;
-    /// <summary>The most votes from all delivering peers none of whose votes was accepted yet that may await a verdict at once.</summary>
+    /// <summary>The most votes from all delivering peers with no accepted vote since they joined or since their last rejected one that may await a verdict at once.</summary>
     internal int MaxPendingNewSourceVotes => _maxPendingNewSourceVotes;
 
     /// <summary>The router's synchronous hook: drops a message on a topic this node does not handle, and reserves room for the others or throttles them.</summary>
@@ -222,17 +223,13 @@ internal sealed class DeferredGossipValidation(
         }
     }
 
-    // As GossipRouter's payload attestation rule, but for every vote: the cap bounds the set against peer id churn.
+    // As GossipRouter's payload attestation rule, but for every vote: the cap bounds the set against peer id churn. A peer with an accepted vote
+    // loses that standing too, so it is held to a new peer's share until its next vote is accepted.
     private void MarkVoteSourceRejected(PeerId source)
     {
         lock (_rejectedVoteSourcesLock)
         {
-            // An honest relay may forward one forged vote it could not check; a peer that delivered a valid vote keeps having its votes admitted.
-            if (_voteAcceptedSources.Get(source))
-            {
-                return;
-            }
-
+            _voteAcceptedSources.Delete(source);
             HashSet<PeerId> sources = RejectedVoteSourcesOfThisSlot();
             if (sources.Count < maxPendingVotes)
             {
