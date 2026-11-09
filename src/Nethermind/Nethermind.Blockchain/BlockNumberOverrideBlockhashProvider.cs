@@ -33,12 +33,18 @@ public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inne
         return anchor.Ancestor is null ? null : inner.GetBlockhash(anchor.Ancestor, number, spec);
     }
 
-    public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => inner.Prefetch(currentBlock, token);
+    public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => GetAnchor(currentBlock) switch
+    {
+        { Base: null } => inner.Prefetch(currentBlock, token),
+        { Ancestor: { } ancestor } => inner.Prefetch(ancestor, token),
+        _ => Task.CompletedTask
+    };
 
     private Anchor GetAnchor(BlockHeader currentBlock)
     {
         Anchor? anchor = _anchor;
-        if (anchor is null || !ReferenceEquals(anchor.Current, currentBlock))
+        // The override may be applied in place to a header that already served the transactions before the call.
+        if (anchor is null || !ReferenceEquals(anchor.Current, currentBlock) || anchor.Number != currentBlock.Number)
         {
             _anchor = anchor = CreateAnchor(currentBlock);
         }
@@ -50,8 +56,8 @@ public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inne
     {
         BlockHeader? @base = currentBlock.Hash is null ? null : blockFinder.FindHeader(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         return @base is null || @base.Number == currentBlock.Number
-            ? new Anchor(currentBlock, null, null)
-            : new Anchor(currentBlock, @base, @base.Number < currentBlock.Number ? @base : FindAncestor(@base, currentBlock.Number));
+            ? new Anchor(currentBlock, currentBlock.Number, null, null)
+            : new Anchor(currentBlock, currentBlock.Number, @base, @base.Number < currentBlock.Number ? @base : FindAncestor(@base, currentBlock.Number));
     }
 
     /// <summary>Finds the ancestor of <paramref name="header"/> at <paramref name="number"/>, from which the inner provider reaches the whole window.</summary>
@@ -66,7 +72,8 @@ public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inne
     }
 
     /// <param name="Current">The header the call runs on.</param>
+    /// <param name="Number">The number of <paramref name="Current"/> when the anchor was created.</param>
     /// <param name="Base">The block <paramref name="Current"/> was cloned from, or <c>null</c> when its number is not overridden.</param>
     /// <param name="Ancestor">The header of the base block's ancestry the inner provider serves the window from.</param>
-    private sealed record Anchor(BlockHeader Current, BlockHeader? Base, BlockHeader? Ancestor);
+    private sealed record Anchor(BlockHeader Current, ulong Number, BlockHeader? Base, BlockHeader? Ancestor);
 }
