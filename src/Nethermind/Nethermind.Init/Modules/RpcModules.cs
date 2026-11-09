@@ -114,9 +114,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
-            // Each instance holds two block-processing scopes for the life of the process. The lazy pool creates all
-            // configured instances and its shared instance on first access, so lower the capacity where memory is short.
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
+            // Each instance holds two block-processing scopes for the life of the process. Exclusive instances are
+            // created on demand up to the capacity, or all at startup with JsonRpc.PreloadRpcModules.
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(GetTraceModuleCapacity(jsonRpcConfig.TraceModuleConcurrentInstances, Environment.ProcessorCount), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
@@ -128,6 +128,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             ;
     }
+
+    internal static int GetTraceModuleCapacity(int? configured, int processorCount) => configured ?? processorCount;
 
     /// <summary>The one budget every parallel block trace on this node draws on, whichever seed the block takes. The
     /// deprecated FlatDb key keeps its published <c>int</c> shape, so its default <c>0</c> stands for "not set"; any other

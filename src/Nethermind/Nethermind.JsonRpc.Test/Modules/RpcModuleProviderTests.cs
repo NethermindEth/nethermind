@@ -432,6 +432,7 @@ public class RpcModuleProviderTests
 
         IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
         Assert.That(container.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), Is.SameAs(factory));
+        Assert.That(createdModules, Is.Empty);
 
         int expectedCapacity = configuredCapacity ?? Environment.ProcessorCount;
         List<IRpcModule> rentedModules = [];

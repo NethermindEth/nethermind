@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -210,5 +212,72 @@ public class BoundedModulePoolTests
             IEthRpcModule ethRpcModule = await _modulePool.GetModule(canBeShared);
             _modulePool.ReturnModule(ethRpcModule);
         }
+    }
+
+    [Test]
+    public async Task Exclusive_modules_are_created_on_demand_up_to_capacity()
+    {
+        const int capacity = 3;
+        (BoundedModulePool<IEthRpcModule> pool, List<IEthRpcModule> created) = CreateCountingPool(capacity, timeout: 0);
+        Assert.That(created, Has.Count.EqualTo(1), "only the shared instance is built up front");
+
+        IEthRpcModule first = await pool.GetModule(false);
+        Assert.That(created, Has.Count.EqualTo(2));
+        pool.ReturnModule(first);
+        Assert.That(await pool.GetModule(false), Is.SameAs(first));
+        pool.ReturnModule(first);
+        Assert.That(created, Has.Count.EqualTo(2));
+
+        IEthRpcModule[] rented = await Task.WhenAll(Enumerable.Range(0, capacity).Select(_ => Task.Run(() => pool.GetModule(false))));
+        Assert.That(rented, Is.Unique);
+        Assert.That(created, Has.Count.EqualTo(capacity + 1));
+
+        await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => pool.GetModule(false));
+        Assert.That(created, Has.Count.EqualTo(capacity + 1));
+    }
+
+    [Test]
+    public async Task Preload_creates_all_exclusive_modules()
+    {
+        const int capacity = 3;
+        (BoundedModulePool<IEthRpcModule> pool, List<IEthRpcModule> created) = CreateCountingPool(capacity, timeout: 0);
+
+        pool.Preload();
+        Assert.That(created, Has.Count.EqualTo(capacity + 1));
+
+        for (int i = 0; i < capacity; i++)
+        {
+            await pool.GetModule(false);
+        }
+
+        await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => pool.GetModule(false));
+        Assert.That(created, Has.Count.EqualTo(capacity + 1));
+    }
+
+    [Test]
+    public async Task Failed_module_creation_releases_its_slot()
+    {
+        IRpcModuleFactory<IEthRpcModule> factory = Substitute.For<IRpcModuleFactory<IEthRpcModule>>();
+        factory.Create().Returns(
+            _ => Substitute.For<IEthRpcModule>(),
+            _ => throw new InvalidOperationException(),
+            _ => Substitute.For<IEthRpcModule>());
+        BoundedModulePool<IEthRpcModule> pool = new(factory, 1, 0, new RpcLimits());
+
+        Assert.Throws<InvalidOperationException>(() => pool.GetModule(false));
+        Assert.That(await pool.GetModule(false), Is.Not.Null);
+    }
+
+    private static (BoundedModulePool<IEthRpcModule> Pool, List<IEthRpcModule> Created) CreateCountingPool(int capacity, int timeout)
+    {
+        List<IEthRpcModule> created = [];
+        IRpcModuleFactory<IEthRpcModule> factory = Substitute.For<IRpcModuleFactory<IEthRpcModule>>();
+        factory.Create().Returns(_ =>
+        {
+            IEthRpcModule module = Substitute.For<IEthRpcModule>();
+            lock (created) created.Add(module);
+            return module;
+        });
+        return (new BoundedModulePool<IEthRpcModule>(factory, capacity, timeout, new RpcLimits()), created);
     }
 }

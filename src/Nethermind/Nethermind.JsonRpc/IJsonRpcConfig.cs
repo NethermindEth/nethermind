@@ -152,11 +152,11 @@ public interface IJsonRpcConfig : IConfig
     public long MaxBufferedTraceLogSize { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
+        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap wait up to `Timeout`, then fail with `ModuleTimeout`. Defaults to the number of logical processors capped at 16.")]
     public int? DebugModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap return `LimitExceeded`. Each instance holds block-processing environments for the life of the process. The pool is created on first access and then constructs all configured instances plus one shared instance, so lower this value where memory is short. Defaults to the number of logical processors.")]
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap wait up to `Timeout`, then fail with `ModuleTimeout`. Each instance holds block-processing environments for the life of the process. Instances are created on demand up to this cap, or all at startup with `PreloadRpcModules`, even if the Trace module is not enabled. Defaults to the number of logical processors.")]
     public int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
