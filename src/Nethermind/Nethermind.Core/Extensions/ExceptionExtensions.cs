@@ -12,8 +12,11 @@ public static class ExceptionExtensions
     /// Returns the type and message of <paramref name="exception"/> and of each inner exception, joined by
     /// <c> ---&gt; </c>, for at most <paramref name="maxDepth"/> exceptions; a longer chain ends with <c> ---&gt; ...</c>.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxDepth"/> is zero or negative.</exception>
     public static string DescribeChain(this Exception exception, int maxDepth)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxDepth);
+
         StringBuilder text = new();
         Exception? current = exception;
         for (int depth = 0; current is not null && depth < maxDepth; current = current.InnerException, depth++)
