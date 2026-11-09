@@ -145,14 +145,7 @@ async Task<int> ConfigureAsync(string[] args)
 
     // The default error action follows the errors with the help for every config option, which buries them.
     if (parseResult.Action is ParseErrorAction)
-    {
-        foreach (ParseError error in parseResult.Errors)
-            logger.Error(error.Message);
-
-        logger.Error("Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes.");
-
-        return ExitCodes.GeneralError;
-    }
+        return BasicOptions.ReportParseErrors(parseResult, logger);
 
     try
     {
@@ -569,6 +562,40 @@ static class BasicOptions
             }
         }
     };
+
+    /// <summary>Logs the errors of a command line that failed to parse.</summary>
+    /// <remarks>
+    /// An unrecognized option is logged before the other errors because the value that follows it
+    /// is reported as an unrecognized argument.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="ExitCodes.UnrecognizedOption"/> if an option or argument was not recognized;
+    /// otherwise, <see cref="ExitCodes.GeneralError"/>.
+    /// </returns>
+    public static int ReportParseErrors(ParseResult parseResult, ILogger logger)
+    {
+        List<string> messages = [];
+        int unrecognizedOptions = 0;
+
+        foreach (ParseError error in parseResult.Errors)
+        {
+            if (error.SymbolResult is ArgumentResult result && result.Argument == Command)
+                messages.Insert(unrecognizedOptions++, error.Message);
+            else
+                messages.Add(error.Message);
+        }
+
+        foreach (string message in messages)
+            logger.Error(message);
+
+        bool unrecognized = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Count > 0;
+
+        logger.Error(unrecognized
+            ? "Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes."
+            : "Run with --help to list the available options.");
+
+        return unrecognized ? ExitCodes.UnrecognizedOption : ExitCodes.GeneralError;
+    }
 
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
