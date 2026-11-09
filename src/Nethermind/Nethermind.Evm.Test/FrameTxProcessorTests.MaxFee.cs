@@ -187,6 +187,7 @@ public partial class FrameTxProcessorTests
     [TestCase(false, false, TestName = "Execute_GasPrice_TipCovered_IsTheBaseFeePlusTheTip")]
     [TestCase(true, false, TestName = "Execute_GasPrice_TipCappedByTheBudget_IsTheBaseFeePlusTheBudgetedTipPerGas")]
     [TestCase(false, true, TestName = "Execute_GasPrice_LeavesOutTheBlobFee")]
+    [TestCase(true, true, TestName = "Execute_GasPrice_BlobCarrierTipCappedByTheBudget_LeavesOutTheBlobFee")]
     public void Execute_GasPrice_IsTheBaseFeePlusTheMaxPriorityFeePerMaxGas(bool tipCapped, bool blobs)
     {
         const ulong tip = 100;
@@ -202,22 +203,24 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Default, target: Observer, stateGasLimit: 0), Frame(FrameMode.Default, target: Recipient, stateGasLimit: 0));
         if (blobs) tx.BlobVersionedHashes = [new byte[32]];
         ulong maxGas = MaxGas(tx);
-        UInt256 blobFee = blobs ? ExpectedBlobFee(excessBlobGas: 0, blobCount: 1) : UInt256.Zero;
+        ulong excessBlobGas = blobs ? 50_000_000ul : 0ul;
+        UInt256 blobFee = blobs ? ExpectedBlobFee(excessBlobGas, blobCount: 1) : UInt256.Zero;
         UInt256 requiredMaxFee = (UInt256)maxGas * BudgetBaseFee + blobFee;
         // Capped: 3.5 wei of headroom per gas, so max_priority_fee // max_gas is 3 where the tip asks for 100.
         UInt256 maxFee = requiredMaxFee + (tipCapped ? (UInt256)maxGas * 3 + maxGas / 2 : (UInt256)maxGas * tip);
         WithMaxFee(tx, maxFee, tip);
 
         TransactionResult result = blobs
-            ? ProcessWithBlobHeader(tx, excessBlobGas: 0, baseFeePerGas: BudgetBaseFee)
+            ? ProcessWithBlobHeader(tx, excessBlobGas, baseFeePerGas: BudgetBaseFee)
             : Process(tx, baseFeePerGas: BudgetBaseFee);
 
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
         UInt256 expected = BudgetBaseFee + (tipCapped ? 3ul : tip);
-        BlockHeader header = Build.A.BlockHeader.WithBaseFee(BudgetBaseFee).WithExcessBlobGas(0).TestObject;
-        TransactionForRpcContext context = new(1, TestItem.KeccakA, 1, 0, 1, BudgetBaseFee, spec: Spec);
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(BudgetBaseFee).WithExcessBlobGas(excessBlobGas).TestObject;
+        TransactionForRpcContext context = new(1, TestItem.KeccakA, 1, 0, 1, BudgetBaseFee, spec: Spec, excessBlobGas: excessBlobGas);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(FeePerBlobGas(excessBlobGas), blobs ? Is.GreaterThan(UInt256.One) : Is.EqualTo(UInt256.One));
             AssertStorage(Observer, 0, expected);
             AssertStorage(Recipient, 0, expected);
             Assert.That(tx.GetGasInfo(Spec, header).EffectiveGasPrice, Is.EqualTo(expected));

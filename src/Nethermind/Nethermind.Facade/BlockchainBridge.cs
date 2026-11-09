@@ -205,7 +205,8 @@ namespace Nethermind.Facade
                     blockTimestamp: header.Timestamp,
                     baseFee: header.BaseFeePerGas,
                     receipt: txReceipt,
-                    spec: specProvider.GetSpec(header));
+                    spec: specProvider.GetSpec(header),
+                    excessBlobGas: header.ExcessBlobGas);
 
 
                 result = new TransactionLookupResult(tx, extraData);

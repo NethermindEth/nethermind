@@ -42,6 +42,7 @@ public sealed class BlockTransactions
     private readonly ulong _blockTimestamp;
     private readonly UInt256 _baseFee;
     private readonly IReleaseSpec? _spec;
+    private readonly ulong? _excessBlobGas;
 
     private BlockTransactions(Hash256[]? hashes, TransactionForRpc[]? full)
     {
@@ -60,6 +61,7 @@ public sealed class BlockTransactions
         _blockTimestamp = block.Timestamp;
         _baseFee = block.BaseFeePerGas;
         _spec = spec;
+        _excessBlobGas = block.Header.ExcessBlobGas;
     }
 
     /// <summary>The transaction hashes, or <see langword="null"/> for a block carrying full transactions.</summary>
@@ -108,7 +110,7 @@ public sealed class BlockTransactions
     /// <param name="reuse">An instance of the right type to refill instead of creating one, or <see langword="null"/>.</param>
     internal TransactionForRpc GetViewTransaction(int index, TransactionForRpc? reuse)
     {
-        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, spec: _spec);
+        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, spec: _spec, excessBlobGas: _excessBlobGas);
         Transaction transaction = _source![index];
         if (reuse is null) return TransactionForRpc.FromTransaction(transaction, context);
 
