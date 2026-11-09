@@ -127,7 +127,7 @@ public readonly ref struct TransactionSubstate
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
-                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
+                return $"unknown panic code: {panicCode.ToHexString(skipLeadingZeros: true)}";
             }
 
             return panicReason;
