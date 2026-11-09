@@ -23,6 +23,8 @@ public sealed class NodeRecordVisitorAdapter<TNodeContext>(INodeRecordVisitor<TN
 
     public bool IsFullDbScan => visitor.IsFullDbScan;
 
+    public bool IsRangeScan => visitor.IsRangeScan;
+
     public bool ExpectAccounts => visitor.ExpectAccounts;
 
     public ReadFlags ExtraReadFlag => visitor.ExtraReadFlag;

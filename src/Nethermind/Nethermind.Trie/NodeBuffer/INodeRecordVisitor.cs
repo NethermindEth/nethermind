@@ -17,6 +17,9 @@ public interface INodeRecordVisitor<TNodeContext>
     /// <inheritdoc cref="ITreeVisitor{TNodeContext}.IsFullDbScan"/>
     bool IsFullDbScan { get; }
 
+    /// <inheritdoc cref="ITreeVisitor{TNodeContext}.IsRangeScan"/>
+    bool IsRangeScan { get; }
+
     /// <inheritdoc cref="ITreeVisitor{TNodeContext}.ExpectAccounts"/>
     bool ExpectAccounts => true;
 
