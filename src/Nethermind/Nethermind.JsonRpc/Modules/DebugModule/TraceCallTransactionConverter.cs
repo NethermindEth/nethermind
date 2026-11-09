@@ -20,28 +20,22 @@ internal sealed class TraceCallTransactionConverter : JsonConverter<TransactionF
     {
         Utf8JsonReader original = reader;
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        bool hasInput = false;
-        bool hasData = false;
-        if (document.RootElement.ValueKind == JsonValueKind.Object)
-        {
-            foreach (JsonProperty property in document.RootElement.EnumerateObject())
-            {
-                hasInput |= property.Name.Equals("input", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind != JsonValueKind.Null;
-                hasData |= property.Name.Equals("data", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind != JsonValueKind.Null;
-            }
-        }
-
-        if (!hasInput || !hasData)
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
             return _transactionConverter.Read(ref original, typeToConvert, options);
 
-        // Geth's TraceCall uses CallDefaults, not setDefaults: input wins, but both aliases must still decode.
+        JsonElement input = default;
+        JsonElement data = default;
+
+        // Geth's TraceCall uses CallDefaults, not setDefaults: a non-null effective input wins over data.
+        // A final null resets its alias; every occurrence must still decode, even when superseded.
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {
             writer.WriteStartObject();
             foreach (JsonProperty property in document.RootElement.EnumerateObject())
             {
-                if (property.Name.Equals("data", StringComparison.OrdinalIgnoreCase))
+                bool isInput = property.Name.Equals("input", StringComparison.OrdinalIgnoreCase);
+                if (isInput || property.Name.Equals("data", StringComparison.OrdinalIgnoreCase))
                 {
                     if (property.Value.ValueKind != JsonValueKind.Null)
                     {
@@ -49,11 +43,19 @@ internal sealed class TraceCallTransactionConverter : JsonConverter<TransactionF
                         dataReader.Read();
                         _dataConverter.Read(ref dataReader, typeof(byte[]), options);
                     }
+                    if (isInput) input = property.Value;
+                    else data = property.Value;
                 }
                 else
                 {
                     property.WriteTo(writer);
                 }
+            }
+            JsonElement calldata = input.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null) ? input : data;
+            if (calldata.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+            {
+                writer.WritePropertyName("input");
+                calldata.WriteTo(writer);
             }
             writer.WriteEndObject();
         }

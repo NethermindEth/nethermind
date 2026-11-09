@@ -77,10 +77,20 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData("\"input\":\"0x2a\",\"data\":\"0x2a\"", "2a");
         yield return new TestCaseData("\"data\":null,\"input\":null", "");
         yield return new TestCaseData("\"value\":\"0x0\"", "");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x01\",\"INPUT\":null", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":null,\"INPUT\":\"0x01\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":null,\"input\":null", "");
+        yield return new TestCaseData("\"data\":null,\"DATA\":\"0x2a\",\"input\":null", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":\"0x03\",\"input\":\"0x01\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"DATA\":null", "");
+        yield return new TestCaseData("\"data\":\"0x1\",\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"data\":\"0xzz\",\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"data\":1,\"input\":\"0x01\"", null);
+        yield return new TestCaseData("\"input\":\"0xzz\",\"input\":\"0x01\",\"data\":\"0x2a\"", null);
     }
 
     [TestCaseSource(nameof(TraceCallCalldataCases))]
-    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string expected, string mode)
+    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string? expected, string mode)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = mode == "streamed" })
@@ -98,6 +108,12 @@ public partial class DebugRpcModuleTests
                 }
             });
         JToken json = JToken.Parse(response);
+        if (expected is null)
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(json["result"], Is.Null, response);
+            return;
+        }
         Assert.That(json["error"], Is.Null, response);
         JToken result = json["result"]!;
         if (mode == "callTracer")
