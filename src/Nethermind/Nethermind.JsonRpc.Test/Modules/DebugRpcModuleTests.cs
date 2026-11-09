@@ -1773,7 +1773,7 @@ public partial class DebugRpcModuleTests
         }
         string expected = scenario switch
         {
-            "source-before-destination" => $"Account {source} is not a precompile",
+            "source-before-destination" => $"account {source} is not a precompile",
             "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
             _ => $"account {destination} is already overridden"
         };
@@ -1785,9 +1785,10 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_uses_the_trace_repository_for_custom_precompile_preflight(
-        [Values] bool streaming, [Values] bool indexed)
+        [Values] bool streaming, [Values] bool indexed,
+        [Values("0x0000000000000000000000000000000000010001", "0x000000000000000000000000000000000000dead")] string sourceAddress)
     {
-        Address source = new("0x0000000000000000000000000000000000010001");
+        Address source = new(sourceAddress);
         Address destination = new("0x0000000000000000000000000000000000020000");
         TestSpecProvider specs = new(Berlin.Instance)
         {
@@ -1841,7 +1842,9 @@ public partial class DebugRpcModuleTests
         };
         string inactive = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest",
             new { stateOverrides = collision });
-        AssertTraceCallInputError(inactive, $"Account {source} is not a precompile");
+        string expectedSource = sourceAddress.EndsWith("dead", StringComparison.Ordinal)
+            ? "0x000000000000000000000000000000000000dEaD" : sourceAddress;
+        AssertTraceCallInputError(inactive, $"account {expectedSource} is not a precompile");
         object collisionOptions = new
         {
             txIndex = indexed ? "0x0" : null,
