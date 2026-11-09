@@ -150,6 +150,7 @@ public class DebugRpcModule(
 
     private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
     {
+        call = LegacyTransactionForRpc.WithEmptyCreationAllowed(call);
         if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
             return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
 

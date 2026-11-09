@@ -37,6 +37,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -700,6 +701,8 @@ public partial class DebugRpcModuleTests
     [TestCase("""{"to":null,"data":"0x"}""", false, null, 53000)]
     [TestCase("""{"to":null,"input":"0x"}""", false, "callTracer", 53000)]
     [TestCase("""{"data":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"accessList":[],"input":"0x"}""", false, null, 53000)]
+    [TestCase("""{"maxFeePerGas":"0x0","input":"0x"}""", true, "callTracer", 53000)]
     [TestCase("""{"input":"0x00"}""", false, null, 53006)]
     [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53006)]
     public async Task Debug_traceCall_executes_contract_creation(string fields, bool streaming, string? tracer, long expectedGas)
@@ -730,6 +733,52 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo($"0x{expectedGas:x}"), response);
             }
         }
+    }
+
+    [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
+    [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
+    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
+    [TestCase("""{"authorizationList":[]}""", RpcTransactionErrors.ContractCreationWithoutData)]
+    public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["gas"] = "0x186a0";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_contract_creation_does_not_change_original_request()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(new TestSpecProvider(Prague.Instance));
+        LegacyTransactionForRpc call = new() { From = TestItem.AddressA, Gas = 100_000 };
+        ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.IsError, Is.False);
+            Assert.That(call.To, Is.Null);
+            Assert.That(call.Input, Is.Null);
+            Assert.That(call.ToTransaction(validateUserInput: true).IsError, Is.True,
+                "debug-only empty-creation permission must not leak into the original request");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_contract_creation_keeps_sibling_validation(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        string response = await ctx.Blockchain.TestEthRpc(method, new { gas = "0x186a0" }, "latest");
+        Assert.That((string?)JToken.Parse(response)["error"]?["message"],
+            Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData), response);
     }
 
     [Test]

@@ -133,9 +133,24 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         }
     }
 
+    private bool _allowEmptyCreation;
+
+    internal static TransactionForRpc WithEmptyCreationAllowed(TransactionForRpc call)
+    {
+        if (call is not LegacyTransactionForRpc { To: null, Input: null or { Length: 0 } } creation
+            || (call.GetType() != typeof(LegacyTransactionForRpc)
+                && call.GetType() != typeof(AccessListTransactionForRpc)
+                && call.GetType() != typeof(EIP1559TransactionForRpc)))
+            return call;
+
+        LegacyTransactionForRpc copy = (LegacyTransactionForRpc)creation.MemberwiseClone();
+        copy._allowEmptyCreation = true;
+        return copy;
+    }
+
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
+        if (validateUserInput && !_allowEmptyCreation && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
