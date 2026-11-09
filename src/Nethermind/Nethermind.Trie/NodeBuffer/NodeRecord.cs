@@ -43,7 +43,7 @@ public readonly struct NodeRecord
     internal NodeRecordRef View => new(Span);
 
     /// <summary>A leaf record's value, in place.</summary>
-    internal ReadOnlyMemory<byte> LeafValue
+    public ReadOnlyMemory<byte> LeafValue
     {
         get
         {
@@ -52,6 +52,28 @@ public readonly struct NodeRecord
             int valueOffset = (int)Unsafe.ByteOffset(ref MemoryMarshal.GetReference(record), ref MemoryMarshal.GetReference(value));
             return _buffer.Slice(_offset + valueOffset, value.Length);
         }
+    }
+
+    /// <summary>Number of key nibbles of a leaf or extension record; 0 for a branch.</summary>
+    public int KeyLength => View.KeyLength(0);
+
+    /// <summary>Copies the key nibbles of a leaf or extension record, one nibble per byte.</summary>
+    /// <param name="nibbles">At least <see cref="KeyLength"/> bytes.</param>
+    public void CopyKey(Span<byte> nibbles) => View.CopyKey(0, nibbles);
+
+    /// <summary>Gets the hash of child <paramref name="index"/> of a branch record, or of an extension record's child at index 0.</summary>
+    /// <returns>False when there is no such child, or it is embedded rather than referenced by hash.</returns>
+    public bool TryGetChildHash(int index, out ValueHash256 hash)
+    {
+        ChildRef child = Kind switch
+        {
+            NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch => View.Child(index),
+            NodeRecordKind.Extension when index == 0 => View.Child(0),
+            _ => default,
+        };
+        bool isHash = child.Kind == ChildRefKind.Hash;
+        hash = isHash ? child.Data : default;
+        return isHash;
     }
 
     /// <summary>Creates an unresolved <see cref="TrieNode"/> over a copy of the record's RLP, for consumers that still need one.</summary>

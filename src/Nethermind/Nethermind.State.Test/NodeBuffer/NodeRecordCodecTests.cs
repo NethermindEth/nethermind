@@ -66,6 +66,7 @@ internal class NodeRecordCodecTests
             Assert.That(ReEncode(record.View), Is.EqualTo(rlp));
             AssertChildren(record.View, node);
             AssertKeyAndValue(record.View, node);
+            AssertPublicAccessors(record, node);
         }
     }
 
@@ -156,5 +157,24 @@ internal class NodeRecordCodecTests
         }
 
         if (node.IsLeaf) Assert.That(view.LeafValue.ToArray(), Is.EqualTo(node.Value.ToArray()), "value");
+    }
+
+    private static void AssertPublicAccessors(NodeRecord record, TrieNode node)
+    {
+        byte[] key = new byte[record.KeyLength];
+        record.CopyKey(key);
+        int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key, Is.EqualTo(node.IsBranch ? Array.Empty<byte>() : node.Key), "public key");
+            if (node.IsLeaf) Assert.That(record.LeafValue.ToArray(), Is.EqualTo(node.Value.ToArray()), "public value");
+            for (int i = 0; i < 16; i++)
+            {
+                ValueHash256 expectedHash = default;
+                bool hasHash = i < childCount && node.GetChildHashAsValueKeccak(i, out expectedHash);
+                Assert.That(record.TryGetChildHash(i, out ValueHash256 hash), Is.EqualTo(hasHash), $"child {i} has a public hash");
+                Assert.That(hash, Is.EqualTo(hasHash ? expectedHash : default), $"child {i} public hash");
+            }
+        }
     }
 }

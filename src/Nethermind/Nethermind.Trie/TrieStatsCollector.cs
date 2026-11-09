@@ -7,10 +7,11 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.Trie
 {
-    public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
+    public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>, INodeRecordVisitor<TrieStatsCollector.Context>
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
@@ -90,57 +91,73 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitBranch(in Context nodeContext, TrieNode node)
+        public void VisitBranch(in Context nodeContext, TrieNode node) => CountBranch(nodeContext, node.FullRlp.Length);
+
+        public void VisitBranch(in Context nodeContext, in NodeRecord node) => CountBranch(nodeContext, node.Rlp.Length);
+
+        private void CountBranch(in Context nodeContext, int rlpLength)
         {
             _cancellationToken.ThrowIfCancellationRequested();
 
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, rlpLength);
                 Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, rlpLength);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitExtension(in Context nodeContext, TrieNode node)
+        public void VisitExtension(in Context nodeContext, TrieNode node) => CountExtension(nodeContext, node.FullRlp.Length);
+
+        public void VisitExtension(in Context nodeContext, in NodeRecord node) => CountExtension(nodeContext, node.Rlp.Length);
+
+        private void CountExtension(in Context nodeContext, int rlpLength)
         {
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, rlpLength);
                 Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, rlpLength);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public virtual void VisitLeaf(in Context nodeContext, TrieNode node)
+        public virtual void VisitLeaf(in Context nodeContext, TrieNode node) => CountLeaf(nodeContext, node.FullRlp.Length);
+
+        public virtual void VisitLeaf(in Context nodeContext, in NodeRecord node) => CountLeaf(nodeContext, node.Rlp.Length);
+
+        private void CountLeaf(in Context nodeContext, int rlpLength)
         {
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, rlpLength);
                 Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, rlpLength);
                 Interlocked.Increment(ref Stats._accountCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: true);
         }
 
-        public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account)
+        public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account) => CountCode(nodeContext, account);
+
+        public void VisitAccount(in Context nodeContext, in NodeRecord node, in AccountStruct account) => CountCode(nodeContext, account);
+
+        private void CountCode(in Context nodeContext, in AccountStruct account)
         {
             if (!account.HasCode) return;
             ValueHash256 key = account.CodeHash;

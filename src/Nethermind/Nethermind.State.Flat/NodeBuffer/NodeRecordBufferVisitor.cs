@@ -9,7 +9,6 @@ using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
@@ -56,15 +55,6 @@ internal abstract class NodeRecordBufferVisitor(
     protected static NodeRecord InlineRecord(in ChildRef child) =>
         DecodeRecord(child.InlineRlp, default) ?? throw new TrieException("Invalid embedded trie node RLP.");
 
-    /// <summary>Decodes the node a visitor callback takes from its record.</summary>
-    /// <param name="inline">Whether the node is embedded in its parent, which leaves it without a hash.</param>
-    protected static TrieNode ToTrieNode(NodeRecord record, bool inline, in TreePath path)
-    {
-        TrieNode node = inline ? new TrieNode(NodeType.Unknown, record.Rlp.ToArray()) : record.ToTrieNode();
-        node.ResolveNode(NullTrieNodeResolver.Instance, path);
-        return node;
-    }
-
     protected void RecordLookup(in TreePath path)
     {
         diagnostics?.RecordLookup();
@@ -98,15 +88,14 @@ internal abstract class NodeRecordBufferVisitor(
 /// <remarks>
 /// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record the state's snapshot
 /// finds by hash, as block processing does, and each child at the record its parent points at. A node no pointer resolves, and every node
-/// below it, is loaded by path from the persisted snapshots and persistence instead. The walk reads only records: a <see cref="TrieNode"/>
-/// is decoded just to hand a node to the visitor.
+/// below it, is loaded by path from the persisted snapshots and persistence instead. The walk reads only records, and hands them to the visitor.
 /// Records are borrowed under the caller's pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
 /// <param name="stateSnapshot">The in-memory snapshot of the visited state, whose buffer holds its records; null when the state is persisted.</param>
 internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     ReadOnlySnapshotBundle bundle,
     Snapshot? stateSnapshot,
-    ITreeVisitor<TNodeContext> visitor,
+    INodeRecordVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
     : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
@@ -131,7 +120,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         }
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
-        Visit(root, inline: false, default, null, TreePath.Empty, long.MaxValue);
+        Visit(root, default, null, TreePath.Empty, long.MaxValue);
     }
 
     /// <summary>Whether the visitor descends into <paramref name="child"/>, counting a lookup of it when it is referenced by hash.</summary>
@@ -145,32 +134,31 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 
     private long Descend(in ChildRef child, in TNodeContext context, Hash256? address, in TreePath path, long sizeHint)
     {
-        if (child.Kind == ChildRefKind.Inline) return Visit(InlineRecord(child), inline: true, context, address, path, sizeHint);
-        if (TryLoad(address, path, child.Data, child.Pointer, out NodeRecord record)) return Visit(record, inline: false, context, address, path, sizeHint);
+        if (child.Kind == ChildRefKind.Inline) return Visit(InlineRecord(child), context, address, path, sizeHint);
+        if (TryLoad(address, path, child.Data, child.Pointer, out NodeRecord record)) return Visit(record, context, address, path, sizeHint);
 
         visitor.VisitMissingNode(context, child.Data);
         return 1;
     }
 
-    private long Visit(NodeRecord record, bool inline, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
+    private long Visit(NodeRecord record, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
     {
-        TrieNode node = ToTrieNode(record, inline, path);
         long size = 1;
         sizeHint--;
         switch (record.Kind)
         {
             case NodeRecordKind.HashedBranch:
             case NodeRecordKind.InlineBranch:
-                visitor.VisitBranch(context, node);
+                visitor.VisitBranch(context, record);
                 size += VisitBranch(record, context, address, path, sizeHint);
                 break;
             case NodeRecordKind.Extension:
-                visitor.VisitExtension(context, node);
+                visitor.VisitExtension(context, record);
                 size += VisitExtension(record, context, address, path, sizeHint);
                 break;
             case NodeRecordKind.Leaf:
-                visitor.VisitLeaf(context, node);
-                if (address is null && visitor.ExpectAccounts) size += VisitAccount(record, node, context, path, sizeHint);
+                visitor.VisitLeaf(context, record);
+                if (address is null && visitor.ExpectAccounts) size += VisitAccount(record, context, path, sizeHint);
                 break;
             default:
                 throw new TrieException($"An attempt was made to visit a {record.Kind} record");
@@ -189,7 +177,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         return ShouldVisit(child, childContext, path) ? Descend(child, childContext, address, path, sizeHint) : 0;
     }
 
-    private long VisitAccount(NodeRecord leaf, TrieNode node, in TNodeContext context, TreePath path, long sizeHint)
+    private long VisitAccount(NodeRecord leaf, in TNodeContext context, TreePath path, long sizeHint)
     {
         RlpReader reader = new(leaf.LeafValue.Span);
         if (!AccountDecoder.Instance.TryDecodeStruct(ref reader, out AccountStruct account))
@@ -199,13 +187,13 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         Span<byte> key = stackalloc byte[view.KeyLength(0)];
         view.CopyKey(0, key);
         TNodeContext leafContext = context.Add(key);
-        visitor.VisitAccount(leafContext, node, account);
+        visitor.VisitAccount(leafContext, leaf, account);
         if (!account.HasStorage || !visitor.ShouldVisit(leafContext, account.StorageRoot)) return 0;
 
         path.AppendMut(key);
         Hash256 address = path.Path.ToCommitment();
         if (TryLoadRoot(address, account.StorageRoot, out NodeRecord storageRoot))
-            return Visit(storageRoot, inline: false, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint);
+            return Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint);
 
         visitor.VisitMissingNode(leafContext, account.StorageRoot);
         return 0;

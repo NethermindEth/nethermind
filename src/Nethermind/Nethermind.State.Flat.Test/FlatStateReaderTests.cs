@@ -133,8 +133,11 @@ public class FlatStateReaderTests
 
         reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics);
 
+        TrieStats expected = trieReader.CollectStats();
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(collector.Stats.StateSize, Is.EqualTo(expected.StateSize));
+            Assert.That(collector.Stats.StorageSize, Is.EqualTo(expected.StorageSize));
             Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
             Assert.That(collector.Stats.AccountCount, Is.EqualTo(2));
             Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(2));
@@ -246,6 +249,14 @@ public class FlatStateReaderTests
 
             stateRoot = stateTree.RootHash;
             return new CountingTrieReader(stateTree, storageTrees);
+        }
+
+        /// <summary>The stats of the tries as <see cref="PatriciaTree.Accept{TNodeContext}"/> hands their nodes to <see cref="TrieStatsCollector"/>.</summary>
+        public TrieStats CollectStats()
+        {
+            TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
+            stateTree.Accept(collector, stateTree.RootHash);
+            return collector.Stats;
         }
 
         /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>, indexing both roots as block processing publishes them.</summary>

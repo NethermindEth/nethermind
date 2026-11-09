@@ -74,7 +74,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, TreeVisitorAdapter<TCtx>.For(treeVisitor), visitingOptions ?? VisitingOptions.Default, diagnostics);
             visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }

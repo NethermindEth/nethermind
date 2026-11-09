@@ -237,7 +237,7 @@ public sealed class SnapshotBundle : IDisposable
         where TCtx : struct, INodeContext<TCtx>
     {
         GuardDispose();
-        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, visitor, options, diagnostics).Accept(rootHash);
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, TreeVisitorAdapter<TCtx>.For(visitor), options, diagnostics).Accept(rootHash);
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>

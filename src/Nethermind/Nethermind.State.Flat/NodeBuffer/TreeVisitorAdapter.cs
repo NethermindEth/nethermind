@@ -1,0 +1,49 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
+using Nethermind.Trie.Pruning;
+
+namespace Nethermind.State.Flat.NodeBuffer;
+
+/// <summary>Runs an <see cref="ITreeVisitor{TNodeContext}"/> as an <see cref="INodeRecordVisitor{TNodeContext}"/>, decoding a <see cref="TrieNode"/> from each record it is handed.</summary>
+internal sealed class TreeVisitorAdapter<TNodeContext>(ITreeVisitor<TNodeContext> visitor) : INodeRecordVisitor<TNodeContext>
+    where TNodeContext : struct, INodeContext<TNodeContext>
+{
+    /// <summary>The visitor itself when it takes records, otherwise an adapter over it.</summary>
+    public static INodeRecordVisitor<TNodeContext> For(ITreeVisitor<TNodeContext> visitor) =>
+        visitor as INodeRecordVisitor<TNodeContext> ?? new TreeVisitorAdapter<TNodeContext>(visitor);
+
+    public bool IsFullDbScan => visitor.IsFullDbScan;
+
+    public bool ExpectAccounts => visitor.ExpectAccounts;
+
+    public ReadFlags ExtraReadFlag => visitor.ExtraReadFlag;
+
+    public bool ShouldVisit(in TNodeContext nodeContext, in ValueHash256 nextNode) => visitor.ShouldVisit(nodeContext, nextNode);
+
+    public void VisitTree(in TNodeContext nodeContext, in ValueHash256 rootHash) => visitor.VisitTree(nodeContext, rootHash);
+
+    public void VisitMissingNode(in TNodeContext nodeContext, in ValueHash256 nodeHash) => visitor.VisitMissingNode(nodeContext, nodeHash);
+
+    public void VisitBranch(in TNodeContext nodeContext, in NodeRecord node) => visitor.VisitBranch(nodeContext, ToTrieNode(node));
+
+    public void VisitExtension(in TNodeContext nodeContext, in NodeRecord node) => visitor.VisitExtension(nodeContext, ToTrieNode(node));
+
+    public void VisitLeaf(in TNodeContext nodeContext, in NodeRecord node) => visitor.VisitLeaf(nodeContext, ToTrieNode(node));
+
+    public void VisitAccount(in TNodeContext nodeContext, in NodeRecord node, in AccountStruct account) =>
+        visitor.VisitAccount(nodeContext, ToTrieNode(node), account);
+
+    /// <remarks>An embedded node has no hash, as in <see cref="PatriciaTree.Accept{TNodeContext}"/>.</remarks>
+    private static TrieNode ToTrieNode(in NodeRecord record)
+    {
+        TrieNode node = record.Hash == ValueKeccak.Zero ? new TrieNode(NodeType.Unknown, record.Rlp.ToArray()) : record.ToTrieNode();
+        // The node holds its RLP, so resolving it loads nothing by path.
+        node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        return node;
+    }
+}
