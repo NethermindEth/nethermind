@@ -93,7 +93,7 @@ namespace Nethermind.Trie
 
         public void VisitBranch(in Context nodeContext, TrieNode node) => CountBranch(nodeContext, node.FullRlp.Length);
 
-        public void VisitBranch(in Context nodeContext, in NodeRecord node) => CountBranch(nodeContext, node.Rlp.Length);
+        public void VisitBranch(in Context nodeContext, NodeRecordRef node) => CountBranch(nodeContext, node.Rlp.Length);
 
         private void CountBranch(in Context nodeContext, int rlpLength)
         {
@@ -115,7 +115,7 @@ namespace Nethermind.Trie
 
         public void VisitExtension(in Context nodeContext, TrieNode node) => CountExtension(nodeContext, node.FullRlp.Length);
 
-        public void VisitExtension(in Context nodeContext, in NodeRecord node) => CountExtension(nodeContext, node.Rlp.Length);
+        public void VisitExtension(in Context nodeContext, NodeRecordRef node) => CountExtension(nodeContext, node.Rlp.Length);
 
         private void CountExtension(in Context nodeContext, int rlpLength)
         {
@@ -135,7 +135,7 @@ namespace Nethermind.Trie
 
         public virtual void VisitLeaf(in Context nodeContext, TrieNode node) => CountLeaf(nodeContext, node.FullRlp.Length);
 
-        public virtual void VisitLeaf(in Context nodeContext, in NodeRecord node) => CountLeaf(nodeContext, node.Rlp.Length);
+        public virtual void VisitLeaf(in Context nodeContext, NodeRecordRef node) => CountLeaf(nodeContext, node.Rlp.Length);
 
         private void CountLeaf(in Context nodeContext, int rlpLength)
         {
@@ -155,7 +155,7 @@ namespace Nethermind.Trie
 
         public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account) => CountCode(nodeContext, account);
 
-        public void VisitAccount(in Context nodeContext, in NodeRecord node, in AccountStruct account) => CountCode(nodeContext, account);
+        public void VisitAccount(in Context nodeContext, NodeRecordRef node, in AccountStruct account) => CountCode(nodeContext, account);
 
         private void CountCode(in Context nodeContext, in AccountStruct account)
         {

@@ -6,10 +6,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
 
-/// <summary>A tree visitor that takes each node as its <see cref="NodeRecord"/> rather than as a <see cref="TrieNode"/>.</summary>
+/// <summary>A tree visitor that reads each node in place, as a <see cref="NodeRecordRef"/>, rather than as a <see cref="TrieNode"/>.</summary>
 /// <remarks>
 /// A walk over node records calls it as <see cref="ITreeVisitor{TNodeContext}"/> is called, so a visitor can implement both.
-/// A record is readable only during the callback that takes it. A node embedded in its parent has a zero <see cref="NodeRecord.Hash"/>.
+/// A node embedded in its parent has a zero <see cref="NodeRecordRef.Hash"/>.
 /// </remarks>
 public interface INodeRecordVisitor<TNodeContext>
     where TNodeContext : struct, INodeContext<TNodeContext>
@@ -29,12 +29,12 @@ public interface INodeRecordVisitor<TNodeContext>
 
     void VisitMissingNode(in TNodeContext nodeContext, in ValueHash256 nodeHash);
 
-    void VisitBranch(in TNodeContext nodeContext, in NodeRecord node);
+    void VisitBranch(in TNodeContext nodeContext, NodeRecordRef node);
 
-    void VisitExtension(in TNodeContext nodeContext, in NodeRecord node);
+    void VisitExtension(in TNodeContext nodeContext, NodeRecordRef node);
 
-    void VisitLeaf(in TNodeContext nodeContext, in NodeRecord node);
+    void VisitLeaf(in TNodeContext nodeContext, NodeRecordRef node);
 
     /// <inheritdoc cref="ITreeVisitor{TNodeContext}.VisitAccount"/>
-    void VisitAccount(in TNodeContext nodeContext, in NodeRecord node, in AccountStruct account);
+    void VisitAccount(in TNodeContext nodeContext, NodeRecordRef node, in AccountStruct account);
 }

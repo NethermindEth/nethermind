@@ -149,15 +149,15 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         {
             case NodeRecordKind.HashedBranch:
             case NodeRecordKind.InlineBranch:
-                visitor.VisitBranch(context, record);
+                visitor.VisitBranch(context, record.View);
                 size += VisitBranch(record, context, address, path, sizeHint);
                 break;
             case NodeRecordKind.Extension:
-                visitor.VisitExtension(context, record);
+                visitor.VisitExtension(context, record.View);
                 size += VisitExtension(record, context, address, path, sizeHint);
                 break;
             case NodeRecordKind.Leaf:
-                visitor.VisitLeaf(context, record);
+                visitor.VisitLeaf(context, record.View);
                 if (address is null && visitor.ExpectAccounts) size += VisitAccount(record, context, path, sizeHint);
                 break;
             default:
@@ -187,7 +187,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         Span<byte> key = stackalloc byte[view.KeyLength(0)];
         view.CopyKey(0, key);
         TNodeContext leafContext = context.Add(key);
-        visitor.VisitAccount(leafContext, leaf, account);
+        visitor.VisitAccount(leafContext, view, account);
         if (!account.HasStorage || !visitor.ShouldVisit(leafContext, account.StorageRoot)) return 0;
 
         path.AppendMut(key);

@@ -27,7 +27,7 @@ internal class TreeVisitorAdapterTests
         LeafCollector collector = new();
         TrieStatsCollector recordVisitor = new(new MemDb(), LimboLogs.Instance);
 
-        TreeVisitorAdapter<EmptyContext>.For(collector).VisitLeaf(default, record);
+        TreeVisitorAdapter<EmptyContext>.For(collector).VisitLeaf(default, record.View);
 
         TrieNode leaf = collector.Leaves.Single();
         using (Assert.EnterMultipleScope())

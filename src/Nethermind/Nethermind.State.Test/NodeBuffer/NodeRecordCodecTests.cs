@@ -61,12 +61,13 @@ internal class NodeRecordCodecTests
             Assert.That(hashMask, Is.EqualTo(expectedMask));
             Assert.That(record.Span.Length, Is.EqualTo(buffer.Length));
             Assert.That(record.Hash, Is.EqualTo(expectedHash.ValueHash256));
+            Assert.That(record.View.Hash, Is.EqualTo(expectedHash.ValueHash256));
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
             Assert.That(record.ToTrieNode().FullRlp.ToArray(), Is.EqualTo(rlp));
             Assert.That(ReEncode(record.View), Is.EqualTo(rlp));
             AssertChildren(record.View, node);
             AssertKeyAndValue(record.View, node);
-            AssertPublicAccessors(record, node);
+            AssertChildHashes(record.View, node);
         }
     }
 
@@ -159,21 +160,17 @@ internal class NodeRecordCodecTests
         if (node.IsLeaf) Assert.That(view.LeafValue.ToArray(), Is.EqualTo(node.Value.ToArray()), "value");
     }
 
-    private static void AssertPublicAccessors(NodeRecord record, TrieNode node)
+    private static void AssertChildHashes(NodeRecordRef view, TrieNode node)
     {
-        byte[] key = new byte[record.KeyLength];
-        record.CopyKey(key);
         int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(key, Is.EqualTo(node.IsBranch ? Array.Empty<byte>() : node.Key), "public key");
-            if (node.IsLeaf) Assert.That(record.LeafValue.ToArray(), Is.EqualTo(node.Value.ToArray()), "public value");
             for (int i = 0; i < 16; i++)
             {
                 ValueHash256 expectedHash = default;
                 bool hasHash = i < childCount && node.GetChildHashAsValueKeccak(i, out expectedHash);
-                Assert.That(record.TryGetChildHash(i, out ValueHash256 hash), Is.EqualTo(hasHash), $"child {i} has a public hash");
-                Assert.That(hash, Is.EqualTo(hasHash ? expectedHash : default), $"child {i} public hash");
+                Assert.That(view.TryGetChildHash(i, out ValueHash256 hash), Is.EqualTo(hasHash), $"child {i} has a hash");
+                Assert.That(hash, Is.EqualTo(hasHash ? expectedHash : default), $"child {i} hash");
             }
         }
     }
