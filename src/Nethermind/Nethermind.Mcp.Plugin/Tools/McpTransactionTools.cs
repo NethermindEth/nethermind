@@ -695,7 +695,7 @@ internal sealed class McpTransactionTools(
         // The native tracer is bounded only by JsonRpc.Timeout, so it runs on its own task and the answer stops waiting for it
         // after the trace budget; an abandoned trace keeps its debug module and the call's concurrency slot until it finishes
         // and stays tracked for shutdown.
-        Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash), CancellationToken.None);
+        Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash, context.Request), CancellationToken.None);
         using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
         {
@@ -731,7 +731,7 @@ internal sealed class McpTransactionTools(
         }
     }
 
-    private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash)
+    private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash, long request)
     {
         using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction));
         if (debug.Module is null)
@@ -739,6 +739,7 @@ internal sealed class McpTransactionTools(
             return (false, null, null);
         }
 
+        using ExternalRequest.Scope scope = ExternalRequest.Enter(request);
         (TraceFacts? facts, IResultWrapper? failure) = McpTxCallTree.Run(debug.Module, hash, _timeout, static root =>
         {
             if (root is null)
@@ -2110,6 +2111,9 @@ internal sealed class McpTransactionTools(
         public UInt256? FeePaid { get; set; }
 
         public Stopwatch Clock { get; } = Stopwatch.StartNew();
+
+        // Captured before the tool body first yields, so the call trace it runs on another task can enter it.
+        public long Request { get; } = ExternalRequest.Current;
     }
 
     private sealed record TraceFacts(List<McpValueTransfer> Transfers, int TransfersTotal, McpFailingFrame? FailingFrame, string? RootError, bool Complete);

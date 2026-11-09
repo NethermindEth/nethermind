@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -818,6 +819,22 @@ public class McpTxTokensTests
             Assert.That(found[TestItem.AddressA].Symbol, Is.EqualTo("SLOW"));
             Assert.That(skipped, Is.Zero);
         }
+    }
+
+    [Test]
+    public void Detached_token_lookup_runs_for_the_request_that_created_it()
+    {
+        long request = ExternalRequest.NewId();
+        ConcurrentBag<long> seen = [];
+        IEthRpcModule worker = SlowToken(out _, () => seen.Add(ExternalRequest.Current));
+        McpDetachedEth detached;
+        using (ExternalRequest.Enter(request))
+            detached = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((worker, null)), static _ => Assert.Fail("nothing is abandoned"));
+
+        McpTxTokens.LookUp(new McpTokenMetadata(), Substitute.For<IEthRpcModule>(), [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10,
+            CancellationToken.None, static () => false, detached);
+
+        Assert.That(seen, Is.Not.Empty.And.All.EqualTo(request));
     }
 
     // A token whose every eth_call runs `duringCall` first; `calls` counts the eth_calls made.
