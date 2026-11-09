@@ -121,7 +121,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             WriteValue(writer, value.Error, options);
         }
 
-        if (value.RevertReason is not null)
+        if (!string.IsNullOrEmpty(value.RevertReason))
         {
             writer.WritePropertyName("revertReason"u8);
             WriteValue(writer, value.RevertReason, options);
