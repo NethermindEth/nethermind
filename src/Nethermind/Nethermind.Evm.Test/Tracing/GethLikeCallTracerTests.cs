@@ -60,6 +60,27 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
 
+    [TestCase("99", "unknown panic code: 0x99")]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000")]
+    [TestCase("22", "invalid encoded storage byte array accessed")]
+    public void Call_tracer_decodes_panic_reason(string code, string expected)
+    {
+        byte[] output = Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0'));
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(json.RootElement.GetProperty("revertReason").GetString(), Is.EqualTo(expected));
+            Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+        }
+    }
+
     [Test]
     public void Call_tracer_records_insufficient_balance_attempt(
         [Values(null, WithLog, OnlyTopCall)] string? config,
