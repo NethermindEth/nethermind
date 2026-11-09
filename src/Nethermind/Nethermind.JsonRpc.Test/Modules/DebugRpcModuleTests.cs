@@ -603,6 +603,51 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_missing_body_retains_header_selection(
+        [Values("number", "hash", "canonical-hash")] string selectorKind,
+        [Values] bool streaming, [Values(null, "0x0")] string? txIndex)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Block block = await AddTraceCallPrefixTransfers(chain, 2);
+        await chain.AddBlock();
+        chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.IsMainChain(block.Header), Is.True);
+            Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+            Assert.That(chain.Bridge.HasStateForBlock(block.Header), Is.True);
+        }
+
+        object selector = selectorKind switch
+        {
+            "number" => $"0x{block.Number:x}",
+            "hash" => block.Hash!.ToString(),
+            _ => new { blockHash = block.Hash!.ToString(), requireCanonical = true }
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, selector, new { txIndex });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (txIndex is not null)
+            {
+                string expected = selectorKind == "number" ? $"block #{block.Number} not found" : $"block {block.Hash} not found";
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
+            }
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCall_missing_block_preserves_temporary_status(
         [Values] bool byHash, [Values] bool indexed, [Values] bool temporary)
     {
