@@ -56,6 +56,22 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Specified_block_empty_tracer_uses_default_opcode_logger(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        JToken baseline = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode }));
+        Assert.That(baseline["error"], Is.Null, baseline.ToString());
+        JArray traces = (JArray)baseline["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+        foreach (JToken entry in traces) Assert.That((JArray)entry["result"]!["structLogs"]!, Is.Not.Empty);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { tracer = "", streamMode });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response), baseline), Is.True, response);
+    }
+
+    [Test]
     public async Task JavaScript_immediate_deadline_does_not_reclassify_setup_failure(
         [Values] bool interrupt, [Values(0, -1)] int timeout)
     {
@@ -2191,10 +2207,10 @@ public partial class DebugRpcModuleTests
 
     private const string JavaScriptResultDepthError = "JavaScript tracer result exceeds the maximum depth of 4096 (possibly cyclic)";
 
-    [TestCase("throw Error('result failure');", "Error: result failure", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
-    [TestCase("var o={};o.self=o;return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_cyclic")]
-    [TestCase("var o=1;for(var i=0;i<5000;i++)o={a:o};return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_deep")]
-    public async Task Debug_traceCall_fails_on_a_javascript_result_failure(string resultBody, string expected)
+    [TestCase("throw Error('result failure');", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
+    [TestCase("var o={};o.self=o;return o;", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_cyclic")]
+    [TestCase("var o=1;for(var i=0;i<5000;i++)o={a:o};return o;", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_deep")]
+    public async Task Debug_traceCall_fails_on_a_javascript_result_failure(string resultBody)
     {
         using Context ctx = await Context.Create();
         object call = new { to = TestItem.AddressC.ToString() };
@@ -2209,7 +2225,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["result"], Is.Null, response);
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
-            Assert.That((string?)json["error"]?["data"], Does.Contain(expected), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
         }
     }
@@ -2883,27 +2899,41 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    public Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool historyPruned) =>
+        AssertGenesisBodyLookup("debug_traceBlockByHash", streaming, bodyAvailable, historyPruned);
+
+    [Test]
+    public Task Debug_traceBlockByNumber_checks_genesis_body_before_rejecting_replay(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool historyPruned, [Values] bool earliest) =>
+        AssertGenesisBodyLookup("debug_traceBlockByNumber", streaming, bodyAvailable, historyPruned, earliest);
+
+    private static async Task AssertGenesisBodyLookup(string method, bool streaming, bool bodyAvailable, bool historyPruned, bool earliest = false)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         BlockHeader genesis = chain.BlockTree.Genesis!;
+        chain.BlockTree.NewOldestBlock(0);
+        chain.BlockTree.UpdateLowestServedBlock(historyPruned ? 1UL : 0UL);
         if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chain.BlockTree.GetLowestBlock(), Is.EqualTo(1));
-            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(1));
+            Assert.That(chain.BlockTree.GetLowestBlock(), Is.Zero);
+            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(historyPruned ? 1UL : 0UL));
             Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
             Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
         }
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", genesis.Hash!);
-        JToken actual = JToken.Parse(response);
+        object selector = method == "debug_traceBlockByHash" ? genesis.Hash! : earliest ? "earliest" : (object)genesis.Number;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, selector);
+        JObject actual = JObject.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual["result"], Is.Null);
-            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.PrunedHistoryUnavailable));
-            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
-                ? "genesis is not traceable" : ErrorMessages.PrunedHistoryUnavailable));
+            Assert.That(actual.Property("result"), Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput
+                : historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable ? "genesis is not traceable"
+                : historyPruned ? ErrorMessages.PrunedHistoryUnavailable
+                : method == "debug_traceBlockByHash" ? $"block {genesis.Hash} not found" : "block #0 not found"));
         }
     }
 

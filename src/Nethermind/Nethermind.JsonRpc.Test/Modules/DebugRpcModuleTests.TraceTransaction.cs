@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -274,7 +275,7 @@ public partial class DebugRpcModuleTests
             expected = JsonSerializer.Serialize(new
             {
                 jsonrpc = "2.0",
-                error = new { code = ErrorCodes.InvalidParams, message = error.Message, data = $"{error.GetType()}: {error.Message}" },
+                error = new { code = ErrorCodes.InvalidParams, message = error.Message },
                 id = 67
             });
         }
@@ -300,6 +301,65 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(JToken.Parse(validDuration)["error"], Is.Not.Null, validDuration);
             Assert.That(badDuration, Is.EqualTo(validDuration));
+        }
+    }
+
+    [TestCase("debug_traceCall", "expression", ErrorCodes.Timeout)]
+    [TestCase("debug_traceCall", "setup", ErrorCodes.Timeout)]
+    [TestCase("debug_traceCall indexed", "setup", ErrorCodes.Timeout)]
+    [TestCase("debug_traceTransaction", "expression", ErrorCodes.Timeout)]
+    [TestCase("debug_traceTransaction", "setup", ErrorCodes.Timeout)]
+    [TestCase("debug_simulateV1", "setup", ErrorCodes.InternalError)]
+    [TestCase("debug_traceCallMany", "setup", null)]
+    public async Task Debug_javascript_tracer_creation_stops_at_the_request_timeout(string method, string phase, int? expectedError)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        const string valid = "{fault:function(){},result:function(){return 1;}}";
+        // The script ends on its own after 6 s, so a tracer the request timeout cannot stop fails the bound instead of hanging.
+        const string busy = "var end=Date.now()+6000;while(Date.now()<end){}throw Error('creation-escape');";
+        string tracer = phase == "expression"
+            ? "{fault:function(){},result:(function(){" + busy + "})()}"
+            : "{fault:function(){},result:function(){return 1;},setup:function(){" + busy + "}}";
+        string warm = await Send(valid);
+        Assert.That(JToken.Parse(warm)["error"], Is.Null, warm);
+
+        int timeout = config.Timeout;
+        config.Timeout = 500;
+        Stopwatch elapsed = Stopwatch.StartNew();
+        string response = await Send(tracer);
+        elapsed.Stop();
+        config.Timeout = timeout;
+        string after = await Send(valid);
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)), response);
+            if (expectedError == ErrorCodes.Timeout)
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"{method.Split(' ')[0]} request was canceled due to enabled timeout."), response);
+            else if (expectedError is not null)
+                Assert.That((string?)json["error"]?["message"], Does.Contain("canceled"), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError), response);
+            if (expectedError is null) Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.True, response);
+            Assert.That(JToken.Parse(after)["error"], Is.Null, after);
+        }
+
+        Task<string> Send(string script)
+        {
+            object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" };
+            object options = new { tracer = script, timeout = "30s" };
+            return method switch
+            {
+                "debug_traceCall" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, call, "latest", options),
+                "debug_traceCall indexed" => RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall", call, "latest",
+                    new { tracer = script, timeout = "30s", txIndex = "0x0" }),
+                "debug_traceTransaction" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, transaction.Hash!, options),
+                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                    new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "latest", options),
+                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, new[] { new { transactions = new[] { call } } }, "latest", options)
+            };
         }
     }
 
