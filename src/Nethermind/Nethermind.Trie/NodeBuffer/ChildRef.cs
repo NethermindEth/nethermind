@@ -34,7 +34,7 @@ internal struct ChildRef
 
     public static ChildRef ForInline(ReadOnlySpan<byte> rlp)
     {
-        Debug.Assert(rlp.Length < ValueHash256.MemorySize && NodeRecordCodec.IsInlineLeaf(rlp));
+        Debug.Assert(rlp.Length < ValueHash256.MemorySize && NodeRecordCodec.TryDecode(rlp, out _, out _));
         ChildRef child = new() { Kind = ChildRefKind.Inline, InlineLength = (byte)rlp.Length };
         rlp.CopyTo(child.Data.BytesAsSpan);
         return child;
