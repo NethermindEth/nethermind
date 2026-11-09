@@ -168,12 +168,12 @@ public partial class FrameTxProcessorTests
                 Assert.That(frame.CallType, Is.EqualTo(isStatic ? "staticcall" : "call"), $"frame {i} call type");
                 Assert.That(frame.From, Is.EqualTo(frames[i].Mode == FrameMode.Sender ? Sender : Eip8141Constants.EntryPointAddress), $"frame {i} from");
                 Assert.That(frame.To, Is.EqualTo(frames[i].Target ?? Sender), $"frame {i} to");
-                Assert.That(frame.Gas, Is.EqualTo(frames[i].GasLimit), $"frame {i} gas");
+                Assert.That(frame.Gas, Is.EqualTo(frames[i].ExecutionGasLimit), $"frame {i} gas");
                 switch (frameReceipts[i].Status)
                 {
                     case TxFrameReceipt.StatusSuccess:
                         Assert.That(frame.Error, Is.Null, $"frame {i} error");
-                        Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].GasUsed), $"frame {i} gasUsed");
+                        Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].ExecutionGasUsed), $"frame {i} gasUsed");
                         break;
                     case TxFrameReceipt.StatusSkipped:
                         Assert.That(frame.Error, Is.EqualTo("frame skipped"), $"frame {i} error");
@@ -182,7 +182,7 @@ public partial class FrameTxProcessorTests
                         Assert.That(frame.Error, Is.Not.Null, $"frame {i} error");
                         if (frame.Error == "Reverted")
                         {
-                            Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].GasUsed), $"frame {i} reverted gasUsed");
+                            Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].ExecutionGasUsed), $"frame {i} reverted gasUsed");
                             Assert.That(frame.Result?.Output?.ToHexString(true), Is.EqualTo(RevertOutput), $"frame {i} revert output");
                         }
                         else
@@ -201,9 +201,9 @@ public partial class FrameTxProcessorTests
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
             // Per the execution-apis frame transaction trace profile: the frame's gas limit, less its receipt's gasUsed.
-            Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit)), "root operation cost");
+            Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit)), "root operation cost");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Used),
-                Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit - frameReceipts[i].GasUsed)), "root operation ex.used");
+                Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit - frameReceipts[i].ExecutionGasUsed)), "root operation ex.used");
             Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
             using JsonDocument vmTrace = JsonDocument.Parse(JsonSerializer.Serialize(trace.VmTrace, EthereumJsonSerializer.JsonOptions));
             JsonElement[] rootOperations = [.. vmTrace.RootElement.GetProperty("ops").EnumerateArray()];
@@ -429,7 +429,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False, "a reverted VERIFY frame invalidates the transaction");
             Assert.That(frame.Error, Is.EqualTo("Reverted"));
-            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].GasLimit), "cost");
+            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].ExecutionGasLimit), "cost");
             Assert.That(operation.Used, Is.EqualTo(frame.Gas - frame.Result!.GasUsed).And.GreaterThan(0UL), "ex.used");
         }
     }

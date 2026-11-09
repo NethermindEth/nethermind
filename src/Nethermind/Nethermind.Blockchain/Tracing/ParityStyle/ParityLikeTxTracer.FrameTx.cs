@@ -136,7 +136,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (_lastFrameOperation is not null)
             {
                 _lastFrameOperation.Pc = frameIndex;
-                _lastFrameOperation.Cost = _frames[frameIndex].GasLimit;
+                _lastFrameOperation.Cost = _frames[frameIndex].ExecutionGasLimit;
                 _frameOperations ??= new ParityVmOperationTrace?[_frames.Length];
                 _frameOperations[frameIndex] = _lastFrameOperation;
                 _lastFrameOperation = null;
@@ -157,11 +157,11 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             for (int i = 0; i < frameCount; i++)
             {
                 ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(_frames[i], frameReceipts[i], _frameErrors?[i]);
-                action.Gas = _frames[i].GasLimit;
-                action.Result?.GasUsed = frameReceipts[i].GasUsed;
+                action.Gas = _frames[i].ExecutionGasLimit;
+                action.Result?.GasUsed = frameReceipts[i].ExecutionGasUsed;
                 if (_frameOperations?[i] is { } operation)
                 {
-                    operation.Used = operation.Cost > frameReceipts[i].GasUsed ? operation.Cost - frameReceipts[i].GasUsed : 0;
+                    operation.Used = operation.Cost > frameReceipts[i].ExecutionGasUsed ? operation.Cost - frameReceipts[i].ExecutionGasUsed : 0;
                 }
 
                 MoveToFramePosition(action, i);
