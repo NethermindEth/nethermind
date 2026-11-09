@@ -248,9 +248,43 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
         CurrentTraceEntry = null;
         AddTraceEntry(entry);
+        if (entry.OpcodeRaw == Instruction.REVERT)
+            ApplyExecutedRevert(entry);
         entry.Error = error;
         entry.ReturnData = null;
         AddTraceEntry(entry);
+    }
+
+    /// <summary>
+    /// Updates a REVERT record to the frame state after the opcode ran: its offset and size are popped, and the memory
+    /// they cover is allocated.
+    /// </summary>
+    /// <remarks>
+    /// Geth's JSON logger reads the stack and memory again when it writes the fault record, after the interpreter
+    /// expanded the memory and executed the opcode.
+    /// </remarks>
+    private void ApplyExecutedRevert(GethTxFileTraceEntry entry)
+    {
+        const int OperandsLength = 2 * EvmStack.WordSize;
+        if (entry.Stack is not { Length: >= OperandsLength } stack)
+            return;
+
+        ReadOnlySpan<byte> operands = stack.Span[^OperandsLength..];
+        UInt256 size = new(operands[..EvmStack.WordSize], isBigEndian: true);
+        UInt256 offset = new(operands[EvmStack.WordSize..], isBigEndian: true);
+        entry.Stack = stack[..^OperandsLength];
+        if (size.IsZero)
+            return;
+
+        // A REVERT that ran had the gas to expand memory to its end, so the end fits in a ulong.
+        ulong memorySize = Math.Max(entry.MemorySize ?? 0, (offset.u0 + size.u0 + EvmStack.WordSize - 1) / EvmStack.WordSize * EvmStack.WordSize);
+        entry.MemorySize = memorySize;
+        if (IsTracingFullMemory && entry.Memory is { } memory && (ulong)memory.Length < memorySize)
+        {
+            byte[] expanded = new byte[memorySize];
+            memory.Span.CopyTo(expanded);
+            entry.Memory = expanded;
+        }
     }
 
     private void CompleteAction(ulong gas, ReadOnlyMemory<byte> output, string? error = null)

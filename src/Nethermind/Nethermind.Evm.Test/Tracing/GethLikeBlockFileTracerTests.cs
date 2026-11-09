@@ -129,11 +129,37 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string step = records[2];
         string errorField = error is null ? "" : $",\"error\":\"{error}\"";
         string summary = $"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\"{errorField}}}";
-        string[] expected = error is null ? [summary] : [step[..^1] + errorField + "}", summary];
+        string fault = exit == Instruction.REVERT ? step.Replace("\"stack\":[\"0x0\",\"0x0\"]", "\"stack\":[]") : step;
+        string[] expected = error is null ? [summary] : [fault[..^1] + errorField + "}", summary];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(step, Does.Contain($"\"gasCost\":\"0x0\",").And.Contain($"\"opName\":\"{exit}\"").And.Not.Contain("\"error\""));
             Assert.That(records[3..], Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Revert_fault_record_shows_popped_operands_and_expanded_memory([Values] bool enableMemory)
+    {
+        byte[] code = Prepare.EvmCode.PushData(7).PushData(32).PushData(64).Op(Instruction.REVERT).Done;
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = enableMemory }, fileSystem, Spec);
+        ExecuteBlock(tracer, code);
+        string[] records = fileSystem.File.ReadAllLines(tracer.FileNames.Single());
+        using JsonDocument step = JsonDocument.Parse(records[3]);
+        using JsonDocument fault = JsonDocument.Parse(records[4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(step.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7", "0x20", "0x40" }));
+            Assert.That(step.RootElement.GetProperty("memSize").GetInt32(), Is.Zero);
+            Assert.That(fault.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(fault.RootElement.GetProperty("stack").EnumerateArray().Select(item => item.GetString()), Is.EqualTo(new[] { "0x7" }));
+            Assert.That(fault.RootElement.GetProperty("memSize").GetInt32(), Is.EqualTo(96));
+            if (enableMemory)
+                Assert.That(fault.RootElement.GetProperty("memory").GetString(), Is.EqualTo("0x" + new string('0', 192)));
+            else
+                Assert.That(fault.RootElement.TryGetProperty("memory", out _), Is.False);
         }
     }
 
