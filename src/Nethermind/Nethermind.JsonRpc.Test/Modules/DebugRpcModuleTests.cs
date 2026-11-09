@@ -694,6 +694,44 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [TestCase("{}", false, null, 53000)]
+    [TestCase("""{"to":null}""", true, null, 53000)]
+    [TestCase("""{"input":"0x"}""", true, null, 53000)]
+    [TestCase("""{"to":null,"data":"0x"}""", false, null, 53000)]
+    [TestCase("""{"to":null,"input":"0x"}""", false, "callTracer", 53000)]
+    [TestCase("""{"data":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"input":"0x00"}""", false, null, 53004)]
+    [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53004)]
+    public async Task Debug_traceCall_executes_contract_creation(string fields, bool streaming, string? tracer, long expectedGas)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["from"] = TestItem.AddressA.ToString();
+        call["gas"] = "0x186a0";
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(json["result"]?["error"], Is.Null, response);
+            if (tracer is null)
+            {
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(expectedGas), response);
+                Assert.That(json["result"]?["structLogs"]?.Count(), Is.EqualTo(expectedGas == 53000 ? 0 : 1), response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"]?["type"], Is.EqualTo("CREATE"), response);
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo($"0x{expectedGas:x}"), response);
+            }
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
     {
