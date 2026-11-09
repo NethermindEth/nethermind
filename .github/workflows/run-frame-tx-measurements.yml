@@ -194,6 +194,8 @@ jobs:
           # The GCE runner service sets invariant globalization, under which the culture-bound [GeneratedRegex] in
           # Nethermind.Core fails to compile. Unset, the compiler uses ICU and the test hosts keep their invariant runtimeconfig.
           unset DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+          # The cost suite's fetch step started the compiler server under the inherited value; do not reuse it.
+          dotnet build-server shutdown || true
 
           projects=()
           case "${SUITE}" in
