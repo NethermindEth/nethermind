@@ -1379,11 +1379,8 @@ public class JsonRpcServiceTests
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
 
-    [TestCase("{\"a\":1}")]
-    [TestCase("\"bar\"")]
-    [TestCase("1")]
-    [TestCase("true")]
-    public void Non_array_params_are_rejected(string rawParams)
+    [Test]
+    public void Non_array_params_are_rejected([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)
     {
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
         using JsonDocument parameters = JsonDocument.Parse(rawParams);
