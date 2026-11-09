@@ -34,6 +34,7 @@ public class BulkFillStorageCleanupBenchmarks
     private static readonly Account Contract = Build.An.Account.WithBalance(1).TestObject;
 
     private string _path = null!;
+    private HyperClockCacheWrapper _blockCache = null!;
     private BulkFillSession _session = null!;
     private BlockHeader _head = null!;
     private ulong _contracts;
@@ -48,7 +49,8 @@ public class BulkFillStorageCleanupBenchmarks
         Directory.CreateDirectory(_path);
         DbConfig dbConfig = new();
         RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
-        RocksDbFactory factory = new(configFactory, dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), NullLogManager.Instance, _path);
+        _blockCache = new HyperClockCacheWrapper();
+        RocksDbFactory factory = new(configFactory, dbConfig, _blockCache, new RealFileSystem(), NullLogManager.Instance, _path);
 
         _head = Build.A.BlockHeader.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
         _session = new BulkFillSession(factory, new MemDb(), Keccak.Compute(_path), _head, rlpWrappedSlots: false);
@@ -60,6 +62,8 @@ public class BulkFillStorageCleanupBenchmarks
     public void Cleanup()
     {
         _session.Dispose();
+        // The native block cache is released here, not by its finalizer.
+        _blockCache.Dispose();
         Directory.Delete(_path, recursive: true);
     }
 
