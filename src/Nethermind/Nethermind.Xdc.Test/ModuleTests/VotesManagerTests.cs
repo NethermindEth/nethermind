@@ -580,6 +580,23 @@ public class VotesManagerTests
         }
     }
 
+    [Test]
+    public async Task OnReceiveVote_VoteWithoutSignature_IsRejected()
+    {
+        PrivateKey[] keys = MakeKeys(1);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        Vote unsigned = new(blockInfo, 450);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address]);
+
+        await voteManager.OnReceiveVote(unsigned);
+
+        using (Assert.EnterMultipleScope())
+        {
+            snapshotManager.DidNotReceive().GetSnapshotByGapNumber(Arg.Any<ulong>());
+            Assert.That(voteManager.GetVotesCount(unsigned), Is.EqualTo(0L));
+        }
+    }
+
     private const ulong ReceiveRound = 14;
     private const long ReceiveHead = 100;
 

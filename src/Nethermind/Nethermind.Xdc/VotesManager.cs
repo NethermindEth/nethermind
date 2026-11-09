@@ -301,6 +301,13 @@ internal class VotesManager : IVotesManager, IDisposable
 
     private bool IsVerified(Vote vote)
     {
+        // The hash encodes the signature, so a vote without one is rejected before it is hashed.
+        if (vote.Signature is null)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: missing or malleable signature.");
+            return false;
+        }
+
         ValueHash256 hash = vote.Hash.ValueHash256;
         if (_verifiedVoteSigners.TryGet(hash, out Address? signer))
         {
