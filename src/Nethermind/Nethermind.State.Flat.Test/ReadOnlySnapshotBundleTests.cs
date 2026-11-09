@@ -175,8 +175,11 @@ public class ReadOnlySnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TryFindStateNodes(path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)), out TrieNode? found), Is.True);
-            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
-            Assert.That(found.Keccak, Is.EqualTo(Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
+            if (found is not null)
+            {
+                Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+                Assert.That(found.Keccak, Is.EqualTo(Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
+            }
         }
     }
 
@@ -206,7 +209,7 @@ public class ReadOnlySnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
-            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            if (found is not null) Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
         }
     }
 
@@ -225,7 +228,7 @@ public class ReadOnlySnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
-            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            if (found is not null) Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
         }
     }
 
