@@ -55,6 +55,26 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase("0xdeadbeef", "rlp: value size exceeds available input length")]
+    [TestCase("0xc1", "rlp: value size exceeds available input length")]
+    [TestCase("0xf864", "rlp: value size exceeds available input length")]
+    [TestCase("0xc0", "rlp: too few elements for types.extblock")]
+    [TestCase("0x", "EOF")]
+    public async Task Debug_traceBlock_preserves_decode_diagnostic(string payload, string diagnostic, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", payload,
+            new { streamMode, tracer = "noopTracer" });
+        JToken json = JToken.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"could not decode block: {diagnostic}"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     [Test]
     public async Task Specified_block_empty_tracer_uses_default_opcode_logger(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool streamMode)
@@ -1044,7 +1064,7 @@ public partial class DebugRpcModuleTests
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
                 if (invalidRlp)
-                    Assert.That((string?)json["error"]?["message"], Does.Contain("Error decoding block RLP"), response);
+                    Assert.That((string?)json["error"]?["message"], Does.Contain("could not decode block:"), response);
             }
         }
         else
