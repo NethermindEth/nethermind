@@ -637,9 +637,9 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
-        catch (RlpException)
+        catch (RlpException exception)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Error decoding block RLP: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
+            return GetRlpDecodingFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(exception.Message);
         }
         catch (ArgumentNullException)
         {
@@ -1384,8 +1384,8 @@ public class DebugRpcModule(
     private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
-    private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
-        ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
+    private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(string diagnostic) =>
+        ResultWrapper<TResult>.Fail($"could not decode block: {diagnostic}", ErrorCodes.InvalidInput);
 
     /// <summary>
     /// Resolves the header for <paramref name="blockParameter"/>, without checking state availability.
@@ -1519,14 +1519,24 @@ public class DebugRpcModule(
     private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error, bool requireCompleteInput = false)
     {
         Block? block;
+        bool decodingBlock = false;
 
         try
         {
+            if (blockRlp.Bytes.Length == 0)
+            {
+                error = GetRlpDecodingFailureResult<TResult>("EOF");
+                return null;
+            }
+
             RlpReader context = new(blockRlp.Bytes);
+            if (context.PeekNextRlpLength() > blockRlp.Bytes.Length)
+                throw new RlpException("rlp: value size exceeds available input length");
+            decodingBlock = true;
             block = requireCompleteInput ? _blockDecoder.DecodeComplete(ref context) : _blockDecoder.Decode(ref context);
             if (block is null)
             {
-                error = GetRlpDecodingFailureResult<TResult>(blockRlp);
+                error = GetRlpDecodingFailureResult<TResult>("rlp: too few elements for types.extblock");
                 return null;
             }
 
@@ -1535,9 +1545,11 @@ public class DebugRpcModule(
                 block.Header.TotalDifficulty = 1;
             }
         }
-        catch (RlpException)
+        catch (RlpException exception)
         {
-            error = GetRlpDecodingFailureResult<TResult>(blockRlp);
+            string diagnostic = !decodingBlock && exception.Message == "RLP data is truncated: not enough bytes for the declared length prefix"
+                ? "rlp: value size exceeds available input length" : exception.Message;
+            error = GetRlpDecodingFailureResult<TResult>(diagnostic);
             return null;
         }
 
