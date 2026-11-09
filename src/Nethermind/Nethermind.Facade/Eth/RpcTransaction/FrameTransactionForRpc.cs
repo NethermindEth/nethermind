@@ -66,6 +66,12 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // The per-gas cap the base reported is derived, not signed.
         MaxFee = transaction.MaxFee;
         MaxFeePerGas = null;
+        if (!transaction.CarriesBlobs
+            && extraData is { BaseFee: { } baseFee, Spec: { } spec }
+            && FrameTxValidation.TryCalculateGasPrice(transaction, spec, in baseFee, UInt256.Zero, out UInt256 gasPrice))
+        {
+            GasPrice = gasPrice;
+        }
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 

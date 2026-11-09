@@ -680,6 +680,24 @@ public static class FrameTxValidation
             && maxFee >= requiredMaxFee;
     }
 
+    /// <summary>What <c>GASPRICE</c> reads for <paramref name="transaction"/> in a block with the given base fees;
+    /// see <see cref="FrameTxFeeBudget.GasPrice"/>.</summary>
+    /// <returns><c>false</c> when the transaction cannot be priced; <paramref name="gasPrice"/> is then 0.</returns>
+    public static bool TryCalculateGasPrice(Transaction transaction, IReleaseSpec spec, in UInt256 baseFee, in UInt256 feePerBlobGas, out UInt256 gasPrice)
+    {
+        gasPrice = UInt256.Zero;
+        UInt256 maxFee = transaction.MaxFee;
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
+            || UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
+            || !FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out UInt256 maxCost))
+        {
+            return false;
+        }
+
+        gasPrice = FrameTxFeeBudget.GasPrice(in baseFee, maxCost > requiredMaxFee ? maxCost - requiredMaxFee : UInt256.Zero, maxGas);
+        return true;
+    }
+
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
         intrinsicGas = 0;

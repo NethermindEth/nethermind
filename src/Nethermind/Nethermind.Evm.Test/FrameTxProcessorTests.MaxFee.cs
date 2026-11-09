@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -213,10 +214,14 @@ public partial class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
         UInt256 expected = BudgetBaseFee + (tipCapped ? 3ul : tip);
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(BudgetBaseFee).WithExcessBlobGas(0).TestObject;
+        TransactionForRpcContext context = new(1, TestItem.KeccakA, 1, 0, 1, BudgetBaseFee, spec: Spec);
         using (Assert.EnterMultipleScope())
         {
             AssertStorage(Observer, 0, expected);
             AssertStorage(Recipient, 0, expected);
+            Assert.That(tx.GetGasInfo(Spec, header).EffectiveGasPrice, Is.EqualTo(expected));
+            Assert.That(((FrameTransactionForRpc)TransactionForRpc.FromTransaction(tx, context)).GasPrice, Is.EqualTo(expected));
         }
     }
 
