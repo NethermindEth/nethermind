@@ -90,17 +90,31 @@ public class BulkFillStorageCleanupTests
         }
     }
 
-    [TestCase(0, TestName = "CleanStorage_rejects_an_empty_marker")]
-    [TestCase(sizeof(ulong) + 1, TestName = "CleanStorage_rejects_an_oversized_marker")]
-    public void CleanStorage_rejects_a_malformed_marker_as_the_full_scan_does(int length)
+    [TestCase(sizeof(ulong) - 1, typeof(InvalidDataException), TestName = "CleanStorage_rejects_a_short_marker")]
+    [TestCase(sizeof(ulong) + 1, typeof(ArgumentException), TestName = "CleanStorage_rejects_an_oversized_marker")]
+    public void CleanStorage_rejects_a_malformed_marker(int length, Type exception)
     {
-        using Fixture fixture = new();
+        using Fixture fixture = CleanedFixtureWithMarker(length);
+
+        Assert.That(() => fixture.Session.CleanStorage(CancellationToken.None), Throws.InstanceOf(exception));
+    }
+
+    [Test]
+    public void CleanStorage_reads_an_empty_marker_as_absent()
+    {
+        using Fixture fixture = CleanedFixtureWithMarker(0);
+
+        Assert.That(() => fixture.Session.CleanStorage(CancellationToken.None), Throws.Nothing);
+    }
+
+    private static Fixture CleanedFixtureWithMarker(int length)
+    {
+        Fixture fixture = new();
         fixture.Replay(writer => SetSlots(writer, TestItem.AddressA, 1));
         fixture.Session.CleanStorage(CancellationToken.None);
         fixture.Replay(writer => ClearAndSetSlots(writer, TestItem.AddressA, 2));
         fixture.Scratch.GetColumnDb(Columns.Clears).PutSpan(TestItem.AddressA.ToAccountPath.Bytes, new byte[length]);
-
-        Assert.That(() => fixture.Session.CleanStorage(CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
+        return fixture;
     }
 
     [Test]

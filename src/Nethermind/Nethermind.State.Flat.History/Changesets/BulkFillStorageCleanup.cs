@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
@@ -50,23 +49,17 @@ internal static class BulkFillStorageCleanup
     public static void Run(IColumnsDb<Columns> db, IReadOnlyList<ValueHash256> addresses, CancellationToken token)
     {
         IDb clears = db.GetColumnDb(Columns.Clears);
+        Span<byte> marker = stackalloc byte[sizeof(ulong)];
         for (int i = 0; i < addresses.Count; i++)
         {
             token.ThrowIfCancellationRequested();
             ValueHash256 address = addresses[i];
-            ulong clearedAt;
-            Span<byte> marker = clears.GetSpan(address.Bytes);
-            try
-            {
-                if (marker.IsNull()) continue;
-                if (marker.Length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
-                clearedAt = BinaryPrimitives.ReadUInt64BigEndian(marker);
-            }
-            finally
-            {
-                clears.DangerousReleaseMemory(marker);
-            }
-            CleanAccount(db, address, clearedAt, token);
+            // A marker is always written with eight bytes and only ever removed, so a read of zero bytes means it is
+            // gone. A longer value does not fit the buffer and the read throws.
+            int length = clears.Get(address.Bytes, marker);
+            if (length == 0) continue;
+            if (length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
+            CleanAccount(db, address, BinaryPrimitives.ReadUInt64BigEndian(marker), token);
         }
     }
 
