@@ -11,25 +11,24 @@ using Paprika.Store.PageManagers;
 namespace Nethermind.State.Flat.Persistence.PaprikaFlat;
 
 /// <summary>
-/// Bounds the resident memory of the memory-mapped PaprikaFlat file: tracks the windows of the mapping that are read and
+/// Bounds the resident memory of the memory-mapped PaprikaFlat file: tracks the pages of the mapping that are read and
 /// releases the least recently used beyond its capacity with <c>madvise(MADV_DONTNEED)</c>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Ported from the persisted-snapshot arena's residency advisor. The unit is a 64 KiB window, or the OS page where that is
-/// larger, rather than a page: a read fault also maps the neighbours already in the page cache within its window
-/// (fault-around, assumed to be at most 64 KiB), and a released page stays in the page cache, so tracking pages would
-/// leave those neighbours resident and untracked. Windows are aligned on the virtual address, as fault-around is. A
-/// window overlapping a root page is never tracked, so never released.
+/// Ported from the persisted-snapshot arena's residency advisor. The unit is a Paprika page, or the OS page where that is
+/// larger, as <c>madvise</c> releases whole OS pages. A read fault can also map neighbours already in the page cache
+/// (fault-around); they stay resident untracked until read, so the mapping can exceed the budget by them. A unit
+/// overlapping a root page is never tracked, so never released.
 /// </para>
 /// <para>
-/// A window evicted from the tracker is queued for a drain thread, which keeps it if it was read again since; when the
+/// A unit evicted from the tracker is queued for a drain thread, which keeps it if it was read again since; when the
 /// queue is full, the reader releases it itself. Released dirty pages keep their data, as the mapping is shared. Nothing
 /// refreshes the resident pages in the kernel's LRU: the mapping is advised <c>MADV_RANDOM</c>, under which reclaim
 /// ignores their accessed bits since Linux 6.3.
 /// </para>
 /// </remarks>
-/// <param name="tracker">The tracker of the resident windows, which the advisor owns.</param>
+/// <param name="tracker">The tracker of the resident units, which the advisor owns.</param>
 /// <param name="historyDepth">The number of root pages of the store, which are never released.</param>
 /// <param name="unitBytes">The tracking unit: a power of two, at least <see cref="Page.PageSize"/>.</param>
 /// <param name="ringCapacity">The capacity of the drain queue: a power of two.</param>
@@ -38,7 +37,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
     : IPageAccessObserver
 {
     /// <summary>The tracking unit, in bytes.</summary>
-    public static readonly int UnitBytes = Math.Max(Environment.SystemPageSize, 64 * 1024);
+    public static readonly int UnitBytes = Math.Max(Environment.SystemPageSize, Page.PageSize);
 
     private const int MinCapacity = 8;
     private const int MinRingCapacity = 8192;
@@ -57,10 +56,10 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
     private byte* _unitBase;
     private byte* _mapEnd;
     private uint _skewPages;
-    // No window is tracked until the mapping is known.
+    // No unit is tracked until the mapping is known.
     private uint _firstTrackedUnit = uint.MaxValue;
     private bool _disposed;
-    // 0 = the drain may sleep, 1 = a window was queued since it last looked. Producers flip it to 1 and wake the drain;
+    // 0 = the drain may sleep, 1 = a unit was queued since it last looked. Producers flip it to 1 and wake the drain;
     // the drain resets it, fenced against its reads of the queue, before draining and re-checks it after, so no wake-up
     // is lost.
     private int _signal;
@@ -73,7 +72,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
     private long _publishedDispatched;
 
     /// <summary>Creates an advisor that keeps at most <paramref name="budgetBytes"/> of a mapping resident.</summary>
-    /// <param name="budgetBytes">The budget; the windows it holds are rounded down to a power of two, with a minimum of 8.</param>
+    /// <param name="budgetBytes">The budget; the units it holds are rounded down to a power of two, with a minimum of 8.</param>
     /// <param name="historyDepth">The number of root pages of the store, which are never released.</param>
     /// <param name="logManager">The log manager.</param>
     /// <returns><c>null</c> when <paramref name="budgetBytes"/> is not positive, or off Linux, where releasing pages does nothing.</returns>
@@ -84,11 +83,11 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
         int capacity = 1 << BitOperations.Log2((ulong)Math.Clamp(budgetBytes / UnitBytes, MinCapacity, int.MaxValue));
         int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(MinRingCapacity, capacity / 8));
         ILogger logger = logManager.GetClassLogger<PaprikaPageResidencyAdvisor>();
-        if (logger.IsInfo) logger.Info($"PaprikaFlat resident memory budget is {budgetBytes} bytes: {capacity} windows of {UnitBytes} bytes");
+        if (logger.IsInfo) logger.Info($"PaprikaFlat resident memory budget is {budgetBytes} bytes: {capacity} units of {UnitBytes} bytes");
         return new PaprikaPageResidencyAdvisor(new PageResidencyTracker(capacity), historyDepth, UnitBytes, ringCapacity, logger);
     }
 
-    /// <summary>The tracker of the resident windows, keyed by window index under id 0.</summary>
+    /// <summary>The tracker of the resident units, keyed by unit index under id 0.</summary>
     public PageResidencyTracker Tracker => tracker;
 
     /// <summary>The capacity of the drain queue.</summary>
@@ -97,19 +96,19 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
     /// <summary>Whether the drain thread is not running: never started, or stopped by <see cref="Dispose"/>.</summary>
     public bool DrainStopped => _drainTask?.IsCompleted ?? true;
 
-    /// <summary>The bytes of the windows tracked as resident.</summary>
+    /// <summary>The bytes of the units tracked as resident.</summary>
     public long ResidentBytes => tracker.ResidentBytes / Environment.SystemPageSize * unitBytes;
 
-    /// <summary>The evicted windows queued for the drain.</summary>
+    /// <summary>The evicted units queued for the drain.</summary>
     public long Queued => Volatile.Read(ref _queued);
 
-    /// <summary>The evicted windows a reader released itself, as the drain queue was full.</summary>
+    /// <summary>The evicted units a reader released itself, as the drain queue was full.</summary>
     public long InlineFallback => Volatile.Read(ref _inlineFallback);
 
-    /// <summary>The queued windows the drain kept, as they were read again since.</summary>
+    /// <summary>The queued units the drain kept, as they were read again since.</summary>
     public long SkippedRetouched => Volatile.Read(ref _skippedRetouched);
 
-    /// <summary>The queued windows the drain released.</summary>
+    /// <summary>The queued units the drain released.</summary>
     public long Dispatched => Volatile.Read(ref _dispatched);
 
     /// <inheritdoc/>
@@ -137,7 +136,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
         if (tracker.TryTouch(0, unit, out _, out uint victim) == PageResidencyTracker.TouchOutcome.Evicted) Queue(victim);
     }
 
-    /// <summary>Stops releasing windows and frees the tracker; a second call does nothing.</summary>
+    /// <summary>Stops releasing units and frees the tracker; a second call does nothing.</summary>
     /// <remarks>No <see cref="OnAccess"/> may run meanwhile, as the tracker it reads is freed; later ones do nothing.</remarks>
     public void Dispose()
     {
@@ -159,7 +158,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
             if (logger.IsError) logger.Error("Stopping the PaprikaFlat page residency drain failed", exception);
         }
 
-        // The windows still queued are left: the mapping is unmapped next.
+        // The units still queued are left: the mapping is unmapped next.
         PublishCounters();
         Metrics.PaprikaPageTrackerResidentBytes = 0;
         Metrics.PaprikaPageTrackerMetadataBytes = 0;
@@ -204,7 +203,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
 
     private void DispatchOne(uint unit)
     {
-        // Released now, a window read again since it was queued would only fault back in.
+        // Released now, a unit read again since it was queued would only fault back in.
         if (tracker.ContainsPage(0, unit))
         {
             Interlocked.Increment(ref _skippedRetouched);
@@ -217,7 +216,7 @@ internal sealed unsafe partial class PaprikaPageResidencyAdvisor(PageResidencyTr
 
     private void Release(uint unit)
     {
-        // Tracked windows start after the root pages, so within the mapping; only the last can extend past its end.
+        // Tracked units start after the root pages, so within the mapping; only the last can extend past its end.
         byte* start = _unitBase + (nuint)unit * (uint)unitBytes;
         if (start < _mapEnd) Madvise(start, (nuint)Math.Min(unitBytes, _mapEnd - start), MADV_DONTNEED);
     }

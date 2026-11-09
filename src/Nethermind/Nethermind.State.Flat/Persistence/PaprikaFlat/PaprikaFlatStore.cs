@@ -116,8 +116,8 @@ public sealed class PaprikaFlatStore : IFlatMetadataStore, IDisposable
     /// resident memory of its mapping by <paramref name="pageCacheBytes"/> on Linux, or not at all when that is 0.
     /// </summary>
     /// <remarks>
-    /// The file is sparse; a larger size later grows it. The bound keeps at least 8 windows of 64 KiB, besides the windows
-    /// of the root pages, which are never released.
+    /// The file is sparse; a larger size later grows it. The bound keeps at least 8 pages, besides the root pages, which
+    /// are never released.
     /// </remarks>
     /// <exception cref="InvalidConfigurationException">The file is larger than <paramref name="sizeBytes"/>.</exception>
     public static PagedDb OpenFile(string directory, long sizeBytes, long pageCacheBytes, ILogManager logManager)

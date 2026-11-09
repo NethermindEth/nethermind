@@ -592,7 +592,7 @@ public static class Metrics
     public static long PaprikaFlatGroupedCommits { get; set; }
 
     [GaugeMetric]
-    [Description("Bytes of the PaprikaFlat file's windows tracked as resident under its page cache budget")]
+    [Description("Bytes of the PaprikaFlat file's pages tracked as resident under its page cache budget")]
     public static long PaprikaPageTrackerResidentBytes { get; set; }
 
     [GaugeMetric]
@@ -601,14 +601,14 @@ public static class Metrics
 
     [DetailedMetric]
     [GaugeMetric]
-    [Description("PaprikaFlat windows evicted from the page-residency tracker and queued for release")]
+    [Description("PaprikaFlat pages evicted from the page-residency tracker and queued for release")]
     public static long PaprikaPageTrackerEvictionQueueDepth { get; set; }
 
     internal static long _paprikaPageTrackerEvictionsDispatched;
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("PaprikaFlat windows released off the drain queue (madvise issued)")]
+    [Description("PaprikaFlat pages released off the drain queue (madvise issued)")]
     public static long PaprikaPageTrackerEvictionsDispatched
     {
         get => Volatile.Read(ref _paprikaPageTrackerEvictionsDispatched);
@@ -619,7 +619,7 @@ public static class Metrics
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("PaprikaFlat windows released inline by a reader because the drain queue was full")]
+    [Description("PaprikaFlat pages released inline by a reader because the drain queue was full")]
     public static long PaprikaPageTrackerEvictionsInlineFallback
     {
         get => Volatile.Read(ref _paprikaPageTrackerEvictionsInlineFallback);
@@ -630,7 +630,7 @@ public static class Metrics
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("PaprikaFlat windows the drain kept because they were read again after their eviction")]
+    [Description("PaprikaFlat pages the drain kept because they were read again after their eviction")]
     public static long PaprikaPageTrackerEvictionsSkippedRetouched
     {
         get => Volatile.Read(ref _paprikaPageTrackerEvictionsSkippedRetouched);

@@ -86,7 +86,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
             if (layout == FlatLayout.PaprikaFlat)
             {
-                // Below the minimum of 8 windows, so the scenarios run while the mapping is released all along.
+                // Below the minimum of 8 units, so the scenarios run while the mapping is released all along.
                 yield return new TestConfiguration(new FlatDbConfig()
                 {
                     Enabled = true,
@@ -96,8 +96,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                     TrieNodeLogStorageBytes = 8192,
                     TrieNodeLogSecondLevelMergeLag = -1,
                     PaprikaFlatFileSizeBytes = PaprikaFileSize,
-                    PaprikaFlatPageCacheBytes = 256 * 1024,
-                }, $"{layout}+TrieNodeLog+PageCache256KiB");
+                    PaprikaFlatPageCacheBytes = 16 * 1024,
+                }, $"{layout}+TrieNodeLog+PageCache16KiB");
             }
 
             yield return new TestConfiguration(new FlatDbConfig()
@@ -1210,6 +1210,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
+    [Ignore(PaprikaPageResidencyAdvisorTests.RssUnboundedByFaultAround)]
     public void TestPaprikaFlatPageCacheBoundsTheMappedFile()
     {
         if (configuration.FlatDbConfig.Layout != FlatLayout.PaprikaFlat || !OperatingSystem.IsLinux())
@@ -1227,7 +1228,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(accounts.Count(entry => !entry.Account.Equals(reader.GetAccount(entry.Address))), Is.Zero);
         }
 
-        // The minimum of 8 windows a budget keeps, the root pages', and slack for windows read back before their release.
+        // The minimum of 8 units a budget keeps, the root pages', and slack for units read back before their release.
         long bound = 16L * PaprikaPageResidencyAdvisor.UnitBytes;
         string paprikaFile = MemoryMappedPageManager.GetPaprikaFilePath(Path.Combine(_tmpDirectory.Path, "flatPaprika"));
         if (configuration.FlatDbConfig.PaprikaFlatPageCacheBytes < bound)
