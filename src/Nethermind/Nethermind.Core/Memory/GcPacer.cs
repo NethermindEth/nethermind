@@ -16,14 +16,19 @@ namespace Nethermind.Core.Memory;
 /// rare multi-second ones.
 /// </summary>
 /// <remarks>
-/// Gen1 and gen2 collections go through <see cref="GCScheduler"/> without native memory trimming, so they
-/// honour its exclusion gate and a paced gen2 restarts its sustained-sweep allocation budget. Gen0 collections
-/// bypass that gate because it is held for the whole <c>engine_newPayload</c> call, and splitting a payload's
-/// promotion is what they are for; they still skip while a no-GC region is active.
+/// <see cref="GCScheduler"/> has two gates: the <see cref="GCScheduler.MarkGCPaused"/> flag, held by every scheduler
+/// collection and for the whole <c>engine_newPayload</c> call, and the forced-GC exclusion that
+/// <see cref="GCScheduler.ExcludeForcedGC"/> holds while pruning. Gen1 and gen2 collections go through the scheduler
+/// without native memory trimming, so they honour both gates and a paced gen2 restarts its sustained-sweep allocation
+/// budget. Gen0 collections honour only the pruning exclusion: they bypass the payload gate because splitting a
+/// payload's promotion is what they are for. All paced collections skip while a no-GC region is active.
+/// Gen0 pacing must be disabled while <c>Init.DisableGcOnNewPayload</c> is on: nothing serialises the no-GC-region
+/// check with region entry, so a gen0 collection could end a region entered in between.
 /// Every paced gen1 or gen2 restarts the scheduler's blocks-without-GC countdown, so while the gen1 interval is
 /// shorter than the time to process that many blocks, the full GC the scheduler runs during backlog catch-up does
 /// not fire. A paced tick that holds the scheduler gate when <c>engine_newPayload</c> arrives leaves the gate
-/// reopened while that payload runs, so the sustained sweep can collect mid-payload.
+/// reopened while that payload runs; the sustained sweep and the paced gen1 and gen2 skip an active no-GC region, but
+/// a region entered between that check and the collection is still ended by it.
 /// </remarks>
 public sealed class GcPacer : IDisposable
 {
@@ -70,10 +75,10 @@ public sealed class GcPacer : IDisposable
 
     /// <summary>Starts the pacer threads for the configured cadences; only the first call wins.</summary>
     /// <returns><c>true</c> when this call started the pacer, <c>false</c> when pacing is disabled by
-    /// configuration or was already started.</returns>
+    /// configuration, was already started or the pacer is disposed.</returns>
     public bool TryStart()
     {
-        if (_gen1IntervalMs <= 0 && _gen0IntervalMs <= 0) return false;
+        if (Volatile.Read(ref _disposed) != 0 || (_gen1IntervalMs <= 0 && _gen0IntervalMs <= 0)) return false;
         if (Interlocked.CompareExchange(ref _started, 1, 0) != 0) return false;
 
         CancellationToken token = _cancellation.Token;
@@ -139,6 +144,13 @@ public sealed class GcPacer : IDisposable
         !IsNoGCRegionActive() &&
         _scheduler.GCCollect(generation, GCCollectionMode.Forced, blocking: false, compacting: false, trimNativeMemory: false);
 
+    internal bool TryCollectGen0()
+    {
+        if (IsNoGCRegionActive() || _scheduler.IsForcedGCExcluded) return false;
+        GC.Collect(0, GCCollectionMode.Forced);
+        return true;
+    }
+
     private static bool IsNoGCRegionActive() => GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
 
     private void RunGen0(long intervalMs, CancellationToken token)
@@ -152,9 +164,9 @@ public sealed class GcPacer : IDisposable
                 if (token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(intervalMs))) return;
 
                 long allocated = GC.GetTotalAllocatedBytes(precise: false);
-                if (IsGen0Due(GC.CollectionCount(0) != lastGen0Count, allocated - lastAllocated) && !IsNoGCRegionActive())
+                if (IsGen0Due(GC.CollectionCount(0) != lastGen0Count, allocated - lastAllocated))
                 {
-                    GC.Collect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    TryCollectGen0();
                 }
 
                 lastGen0Count = GC.CollectionCount(0);

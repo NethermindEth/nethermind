@@ -57,7 +57,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
             .AddSingleton<GCKeeper>()
             .AddSingleton<GcPacer, IInitConfig, ILogManager>((initConfig, logManager) => new GcPacer(
-                initConfig.GcPaceGen0IntervalMs,
+                initConfig.DisableGcOnNewPayload ? 0 : initConfig.GcPaceGen0IntervalMs,
                 initConfig.GcPaceGen1IntervalMs,
                 initConfig.GcPaceGen2IntervalMs,
                 initConfig.GcPaceWarmupSeconds,

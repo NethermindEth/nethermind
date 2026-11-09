@@ -15,10 +15,15 @@ public sealed class StartGcPacer(GcPacer gcPacer, IInitConfig initConfig, ILogMa
 {
     public Task Execute(CancellationToken cancellationToken)
     {
+        ILogger logger = logManager.GetClassLogger<StartGcPacer>();
         if (initConfig.GcPaceGen1IntervalMs <= 0 && (initConfig.GcPaceGen2IntervalMs > 0 || initConfig.GcPaceWarmupSeconds > 0))
         {
-            ILogger logger = logManager.GetClassLogger<StartGcPacer>();
             if (logger.IsWarn) logger.Warn($"Init.{nameof(IInitConfig.GcPaceGen2IntervalMs)} and Init.{nameof(IInitConfig.GcPaceWarmupSeconds)} have no effect unless Init.{nameof(IInitConfig.GcPaceGen1IntervalMs)} is set.");
+        }
+
+        if (initConfig.GcPaceGen0IntervalMs > 0 && initConfig.DisableGcOnNewPayload)
+        {
+            if (logger.IsWarn) logger.Warn($"Init.{nameof(IInitConfig.GcPaceGen0IntervalMs)} has no effect while Init.{nameof(IInitConfig.DisableGcOnNewPayload)} is enabled.");
         }
 
         gcPacer.TryStart();
