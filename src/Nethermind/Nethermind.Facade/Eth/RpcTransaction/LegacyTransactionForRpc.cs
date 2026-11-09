@@ -135,6 +135,11 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     private bool _allowEmptyCreation;
 
+    /// <summary>Allows empty creation on a copy of an ordinary built-in call request.</summary>
+    /// <remarks>
+    /// Geth's CallDefaults permits empty initcode. Exact types keep blob, set-code, frame and plugin-specific
+    /// creation validation unchanged.
+    /// </remarks>
     internal static TransactionForRpc WithEmptyCreationAllowed(TransactionForRpc call)
     {
         if (call is not LegacyTransactionForRpc { To: null, Input: null or { Length: 0 } } creation
