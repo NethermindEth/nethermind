@@ -90,6 +90,8 @@ public class BulkFillStorageCleanupTests
         }
     }
 
+    // The in-memory store reads an empty value as a non-null span. RocksDB reads it as null, so there the targeted
+    // cleanup skips an empty marker and the full scan of the next session rejects it.
     [TestCase(0, TestName = "CleanStorage_rejects_an_empty_marker")]
     [TestCase(sizeof(ulong) + 1, TestName = "CleanStorage_rejects_an_oversized_marker")]
     public void CleanStorage_rejects_a_malformed_marker_as_the_full_scan_does(int length)
