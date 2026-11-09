@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 internal sealed class TraceCallOptionsConverter : JsonConverter<GethTraceOptions>
 {
-    private readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> _options = new();
+    private readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> _options = [];
 
     public override GethTraceOptions? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize<GethTraceOptions>(ref reader, GetOptions(options));
