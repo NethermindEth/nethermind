@@ -54,6 +54,49 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> TraceCallCalldataCases()
+    {
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x01\"", "01");
+        yield return new TestCaseData("\"input\":\"0x01\",\"data\":\"0x2a\"", "01");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x\"", "");
+        yield return new TestCaseData("\"input\":\"0x\",\"data\":\"0x2a\"", "");
+        yield return new TestCaseData("\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":null", "2a");
+        yield return new TestCaseData("\"input\":null,\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\",\"data\":null", "2a");
+        yield return new TestCaseData("\"data\":null,\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"input\":\"0x2a\",\"data\":\"0x2a\"", "2a");
+        yield return new TestCaseData("\"data\":null,\"input\":null", "");
+        yield return new TestCaseData("\"value\":\"0x0\"", "");
+    }
+
+    [TestCaseSource(nameof(TraceCallCalldataCases))]
+    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string expected,
+        [Values("buffered", "streamed", "callTracer")] string mode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = mode == "streamed" })
+            .Build();
+        using JsonDocument call = JsonDocument.Parse($$"""
+            {"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressD}}","gas":"0x186a0",{{calldata}}}
+            """);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call.RootElement, "latest",
+            new
+            {
+                tracer = mode == "callTracer" ? "callTracer" : null,
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressD.ToString()] = new { code = "0x366000600037366000f3" }
+                }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]![mode == "callTracer" ? "output" : "returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+    }
+
     private static IEnumerable<TestCaseData> TransactionIndexingCases()
     {
         foreach (string scenario in new[]
