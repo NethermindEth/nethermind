@@ -570,7 +570,8 @@ public sealed class KademliaAdapter(
                 }
 
                 // PacketCodec verified the ENR signature and handshake identity. Preserve its
-                // sequence even when this listener cannot use the record's endpoint.
+                // sequence even when this listener cannot use the record's endpoint or the record
+                // does not advertise the packet source.
                 observedEnrSequence = nodeRecord.EnrSequence;
                 if (TryGetAcceptableNode(
                     nodeRecord,
@@ -950,13 +951,28 @@ public sealed class KademliaAdapter(
         [NotNullWhen(true)] out Node? node)
         => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint: null, out node);
 
+    /// <summary>
+    /// Creates a node from a record received from <paramref name="sourceEndpoint"/>, only when the record advertises that endpoint.
+    /// </summary>
+    /// <remarks>
+    /// A signed record proves the node identity, not the endpoint. Accepting a record that advertises a different
+    /// endpoint would let a peer place arbitrary addresses in the routing table and have them relayed in NODES responses.
+    /// </remarks>
     internal static bool TryGetAcceptableNode(
         NodeRecord record,
         bool allowNonRoutable,
         IPAddress localIp,
-        IPEndPoint preferredEndpoint,
+        IPEndPoint sourceEndpoint,
         [NotNullWhen(true)] out Node? node)
-        => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint, out node);
+    {
+        if (!HasDiscoveryEndpoint(record, sourceEndpoint))
+        {
+            node = null;
+            return false;
+        }
+
+        return TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, sourceEndpoint, out node);
+    }
 
     private static bool TryGetAcceptableNodeCore(
         NodeRecord record,
