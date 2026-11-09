@@ -700,8 +700,8 @@ public partial class DebugRpcModuleTests
     [TestCase("""{"to":null,"data":"0x"}""", false, null, 53000)]
     [TestCase("""{"to":null,"input":"0x"}""", false, "callTracer", 53000)]
     [TestCase("""{"data":"0x"}""", true, "callTracer", 53000)]
-    [TestCase("""{"input":"0x00"}""", false, null, 53004)]
-    [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53004)]
+    [TestCase("""{"input":"0x00"}""", false, null, 53006)]
+    [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53006)]
     public async Task Debug_traceCall_executes_contract_creation(string fields, bool streaming, string? tracer, long expectedGas)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
