@@ -3,6 +3,7 @@
 
 using System.Diagnostics.Tracing;
 using System.Globalization;
+using System.Text;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -24,7 +25,38 @@ public sealed record GcSummary(
     double TotalPauseMs,
     double MaxPauseMs,
     IReadOnlyDictionary<string, long>? LastHeapBytes,
-    long LastPromotedBytes);
+    long LastPromotedBytes)
+{
+    internal int TotalCount()
+    {
+        int total = 0;
+        foreach (int count in CountsByGeneration.Values)
+            total = checked(total + count);
+        return total;
+    }
+
+    /// <summary>Counts by generation, lowest first, such as <c>gen0 12, gen2 1</c>.</summary>
+    internal string FormatByGeneration()
+    {
+        List<KeyValuePair<int, int>> generations = [.. CountsByGeneration];
+        generations.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+        StringBuilder sb = new();
+        foreach ((int generation, int count) in generations)
+            sb.Append(sb.Length == 0 ? "" : ", ").Append($"gen{generation} {count}");
+        return sb.ToString();
+    }
+
+    /// <summary>Counts by reason, most first, such as <c>AllocSmall 12, Induced 1</c>.</summary>
+    internal string FormatByReason()
+    {
+        List<KeyValuePair<string, int>> reasons = [.. CountsByReason];
+        Sorting.SortDescending(reasons, static r => r.Value);
+        StringBuilder sb = new();
+        foreach ((string reason, int count) in reasons)
+            sb.Append(sb.Length == 0 ? "" : ", ").Append($"{reason} {count}");
+        return sb.ToString();
+    }
+}
 
 /// <summary>
 /// Collects runtime diagnostics from a live .NET process over EventPipe.
@@ -70,8 +102,23 @@ internal static class EventPipeCollector
         List<CounterSummary> summaries = [];
         foreach ((string name, (string displayName, string units, bool isRate, List<double> values)) in samples)
         {
-            if (values.Count > 0)
-                summaries.Add(new CounterSummary(name, displayName, units, isRate, values.Min(), values.Average(), values.Max(), values[^1]));
+            if (values.Count == 0)
+                continue;
+
+            double min = values[0];
+            double max = values[0];
+            double sum = 0;
+            foreach (double value in values)
+            {
+                // As Enumerable.Min and Max do: a NaN sample makes the minimum NaN, and the maximum skips NaNs.
+                if (value < min || double.IsNaN(value))
+                    min = value;
+                if (value > max || double.IsNaN(max))
+                    max = value;
+                sum += value;
+            }
+
+            summaries.Add(new CounterSummary(name, displayName, units, isRate, min, sum / values.Count, max, values[^1]));
         }
 
         summaries.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));

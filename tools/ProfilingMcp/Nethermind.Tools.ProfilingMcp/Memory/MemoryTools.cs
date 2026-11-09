@@ -46,12 +46,26 @@ public sealed class MemoryTools(WorkspacePaths paths)
 
         sb.Insert(0, $"Heap snapshot id: {id}\n");
         sb.Append($"{Count(snapshot.ObjectCount)} objects, {Size(snapshot.TotalBytes)} live, {Size(snapshot.FreeBytes)} free ({Percent(snapshot.FreeBytes, snapshot.TotalBytes + snapshot.FreeBytes)} fragmentation)\n");
-        sb.Append("By generation: ").AppendJoin(", ", snapshot.GenerationBytes.OrderBy(static g => g.Key).Select(static g => $"{g.Key} {Size(g.Value)}")).Append('\n');
+        List<KeyValuePair<string, long>> generations = [.. snapshot.GenerationBytes];
+        generations.Sort(static (a, b) => Comparer<string>.Default.Compare(a.Key, b.Key));
+        sb.Append("By generation: ");
+        for (int i = 0; i < generations.Count; i++)
+            sb.Append(i == 0 ? "" : ", ").Append($"{generations[i].Key} {Size(generations[i].Value)}");
+        sb.Append('\n');
 
         Regex? filter = ToolArguments.OptionalPattern(include);
         TextTable table = new("bytes", "% heap", "count", "LOH bytes", "type");
-        foreach (TypeStat type in snapshot.Types.Where(t => filter?.IsMatch(t.Name) ?? true).Take(top))
+        int shown = 0;
+        foreach (TypeStat type in snapshot.Types)
+        {
+            if (shown >= top)
+                break;
+            if (!(filter?.IsMatch(type.Name) ?? true))
+                continue;
+
             table.Add(Size(type.Bytes), Percent(type.Bytes, snapshot.TotalBytes), Count(type.Count), type.LargeObjectBytes > 0 ? Size(type.LargeObjectBytes) : "", type.Name);
+            shown++;
+        }
 
         return sb.Append(table).ToString();
     }
@@ -72,8 +86,12 @@ public sealed class MemoryTools(WorkspacePaths paths)
         sb.Append($"Live: {Size(before.TotalBytes)} -> {Size(after.TotalBytes)} ({SignedSize(after.TotalBytes - before.TotalBytes)}); objects {SignedCount(after.ObjectCount - before.ObjectCount)}\n");
 
         TextTable table = new("bytes Δ", "count Δ", "bytes now", "count now", "type");
-        foreach (TypeDelta delta in HeapSnapshot.Diff(before, after).Take(top))
+        IReadOnlyList<TypeDelta> deltas = HeapSnapshot.Diff(before, after);
+        for (int i = 0; i < deltas.Count && i < top; i++)
+        {
+            TypeDelta delta = deltas[i];
             table.Add(SignedSize(delta.BytesDelta), SignedCount(delta.CountDelta), Size(delta.Bytes), Count(delta.Count), delta.Name);
+        }
 
         return sb.Append(table).ToString();
     }
@@ -108,11 +126,14 @@ public sealed class MemoryTools(WorkspacePaths paths)
         if (report.InstanceCount == 0)
             return sb.Append($"No live instances of types matching '{typePattern}'.").ToString();
 
-        sb.Append($"{Count(report.InstanceCount)} instances, {Size(report.InstanceBytes)} (shallow) of: ").AppendJoin(", ", report.MatchedTypes.Take(10)).Append('\n');
+        sb.Append($"{Count(report.InstanceCount)} instances, {Size(report.InstanceBytes)} (shallow) of: ");
+        for (int i = 0; i < report.MatchedTypes.Count && i < 10; i++)
+            sb.Append(i == 0 ? "" : ", ").Append(report.MatchedTypes[i]);
+        sb.Append('\n');
         sb.Append("\nReferenced by (includes unreachable referrers the GC has not collected yet):\n");
         TextTable referrers = new("references", "from type");
-        foreach (KeyValuePair<string, long> referrer in report.Referrers.Take(15))
-            referrers.Add(Count(referrer.Value), referrer.Key);
+        for (int i = 0; i < report.Referrers.Count && i < 15; i++)
+            referrers.Add(Count(report.Referrers[i].Value), report.Referrers[i].Key);
         sb.Append(referrers);
 
         sb.Append(report.SearchComplete ? "\nShortest paths from GC roots:\n" : "\nShortest paths from GC roots (search stopped early; counts are partial):\n");
@@ -150,7 +171,9 @@ public sealed class MemoryTools(WorkspacePaths paths)
         await AllocationSampler.CollectAsync(pid, ToolArguments.Window(seconds), trace, cancellationToken);
         AllocationProfile profile = AllocationSampler.Read(trace, ToolArguments.OptionalPattern(include));
 
-        long total = profile.ByType.Sum(static s => s.SampledBytes);
+        long total = 0;
+        foreach (AllocationStat stat in profile.ByType)
+            total = checked(total + stat.SampledBytes);
         long perSecond = total / Math.Max(seconds, 1);
         StringBuilder sb = new();
         sb.Append($"Trace saved: {paths.ForPerson(trace)}\n");
@@ -160,15 +183,21 @@ public sealed class MemoryTools(WorkspacePaths paths)
 
         sb.Append("\nBy type:\n").Append(Table(profile.ByType, "type", "mostly allocated in"));
         sb.Append("\nBy allocating method:\n").Append(Table(profile.BySite, "method", "mostly of type"));
-        foreach ((IReadOnlyList<string> frames, long events, long bytes) in profile.Stacks.Take(stacks))
+        for (int i = 0; i < profile.Stacks.Count && i < stacks; i++)
+        {
+            (IReadOnlyList<string> frames, long events, long bytes) = profile.Stacks[i];
             sb.Append($"\n~{Size(bytes)} ({Percent(bytes, total)}, {Count(events)} events):\n  {string.Join("\n  ", frames)}\n");
+        }
         return sb.ToString();
 
         TextTable Table(IReadOnlyList<AllocationStat> stats, string name, string topHeader)
         {
             TextTable table = new("~bytes", "% allocs", "~bytes/s", "events", name, topHeader);
-            foreach (AllocationStat stat in stats.Take(top))
+            for (int i = 0; i < stats.Count && i < top; i++)
+            {
+                AllocationStat stat = stats[i];
                 table.Add(Size(stat.SampledBytes), Percent(stat.SampledBytes, total), Size(stat.SampledBytes / Math.Max(seconds, 1)), Count(stat.Events), stat.Name, stat.Top);
+            }
             return table;
         }
     }
@@ -185,15 +214,25 @@ public sealed class MemoryTools(WorkspacePaths paths)
         (IReadOnlyList<CounterSummary> counters, GcSummary gc) = await EventPipeCollector.CollectCountersAsync(pid, ToolArguments.Window(seconds), intervalSeconds: 1, cancellationToken);
 
         StringBuilder sb = new();
-        int gcCount = gc.CountsByGeneration.Values.Sum();
-        sb.Append($"GCs in {seconds} s: {gcCount} (").AppendJoin(", ", gc.CountsByGeneration.OrderBy(static g => g.Key).Select(static g => $"gen{g.Key} {g.Value}")).Append(")\n");
+        int gcCount = gc.TotalCount();
+        sb.Append($"GCs in {seconds} s: {gcCount} ({gc.FormatByGeneration()})\n");
         if (gcCount > 0)
         {
-            sb.Append("Reasons: ").AppendJoin(", ", gc.CountsByReason.OrderByDescending(static r => r.Value).Select(static r => $"{r.Key} {r.Value}")).Append('\n');
+            sb.Append($"Reasons: {gc.FormatByReason()}\n");
             sb.Append($"Pauses: total {Number(gc.TotalPauseMs)} ms ({Number(gc.TotalPauseMs / (seconds * 10.0))} % of wall time), max {Number(gc.MaxPauseMs)} ms\n");
         }
         if (gc.LastHeapBytes is { } heap)
-            sb.Append("Heap after last GC: ").AppendJoin(", ", heap.Select(static g => $"{g.Key} {Size(g.Value)}")).Append($"; promoted {Size(gc.LastPromotedBytes)}\n");
+        {
+            sb.Append("Heap after last GC: ");
+            string separator = "";
+            foreach ((string generation, long bytes) in heap)
+            {
+                sb.Append(separator).Append($"{generation} {Size(bytes)}");
+                separator = ", ";
+            }
+
+            sb.Append($"; promoted {Size(gc.LastPromotedBytes)}\n");
+        }
 
         if (counters.Count == 0)
             return sb.Append("\nNo System.Runtime counters: the app disables EventSource (System.Diagnostics.Tracing.EventSource.IsSupported=false) or the window was under 1 s. Use alloc_sample for allocation rates.").ToString();
@@ -257,15 +296,29 @@ public sealed class MemoryTools(WorkspacePaths paths)
         string report = Path.Combine(paths.Heap, WorkspacePaths.NewFileName($"pid{pid}-memory", ".html"));
         File.WriteAllText(report, MemoryReport.Render($"PID {pid}", shares, runtime?.GcCommitted));
 
-        long rss = mappings.Sum(static m => m.Rss);
-        long swap = mappings.Sum(static m => m.Swap);
+        long rss = 0;
+        long swap = 0;
+        foreach (Mapping mapping in mappings)
+        {
+            rss = checked(rss + mapping.Rss);
+            swap = checked(swap + mapping.Swap);
+        }
+
         StringBuilder sb = new($"Report written: {paths.ForPerson(report)}\nRSS {Size(rss)}" + (swap > 0 ? $", swapped out {Size(swap)}" : "") + $", {Count(mappings.Count)} mappings.\n");
         sb.Append(runtime is { } clr
             ? $"GC heap committed: {Size(clr.GcCommitted)}. GC regions, runtime heaps and managed thread stacks are located through the runtime.\n"
             : "Not read as .NET (not a .NET process, or ClrMD could not read it): the GC heap shows as anonymous memory.\n");
 
-        long managed = categories.Where(static c => c.Name.StartsWith(Native.NativeMemory.GcPrefix, StringComparison.Ordinal)).Sum(static c => c.Rss);
-        long nativeHeap = categories.Where(static c => c.Name is Native.NativeMemory.MallocArenas or Native.NativeMemory.MallocMain or Native.NativeMemory.MallocMmapped or Native.NativeMemory.OtherAnonymous).Sum(static c => c.Rss);
+        long managed = 0;
+        long nativeHeap = 0;
+        foreach (MemoryCategory category in categories)
+        {
+            if (category.Name.StartsWith(Native.NativeMemory.GcPrefix, StringComparison.Ordinal))
+                managed = checked(managed + category.Rss);
+            if (category.Name is Native.NativeMemory.MallocArenas or Native.NativeMemory.MallocMain or Native.NativeMemory.MallocMmapped or Native.NativeMemory.OtherAnonymous)
+                nativeHeap = checked(nativeHeap + category.Rss);
+        }
+
         sb.Append($"Managed (GC heap) {Size(managed)} ({Percent(managed, rss)}); native heap and mmaps {Size(nativeHeap)} ({Percent(nativeHeap, rss)}).\n");
 
         TextTable table = new("rss", "% rss", "swap", "mappings", "category");
@@ -273,10 +326,25 @@ public sealed class MemoryTools(WorkspacePaths paths)
             table.Add(Size(category.Rss), Percent(category.Rss, rss), category.Swap > 0 ? Size(category.Swap) : "", Count(category.Mappings), category.Name);
         sb.Append(table);
 
+        Dictionary<string, int> fileIndexes = new(StringComparer.Ordinal);
+        List<(string Name, long Rss)> fileRss = [];
+        foreach (Mapping mapping in mappings)
+        {
+            if (!mapping.Name.StartsWith('/') || mapping.Name.StartsWith("/memfd:", StringComparison.Ordinal))
+                continue;
+            if (!fileIndexes.TryGetValue(mapping.Name, out int index))
+            {
+                fileIndexes[mapping.Name] = index = fileRss.Count;
+                fileRss.Add((mapping.Name, 0));
+            }
+
+            fileRss[index] = (mapping.Name, checked(fileRss[index].Rss + mapping.Rss));
+        }
+
+        Sorting.SortDescending(fileRss, static f => f.Rss);
         TextTable files = new("rss", "file");
-        foreach (IGrouping<string, Mapping> file in mappings.Where(static m => m.Name.StartsWith('/') && !m.Name.StartsWith("/memfd:", StringComparison.Ordinal)).GroupBy(static m => m.Name)
-                     .OrderByDescending(static f => f.Sum(static m => m.Rss)).Take(topFiles))
-            files.Add(Size(file.Sum(static m => m.Rss)), file.Key);
+        for (int i = 0; i < fileRss.Count && i < topFiles; i++)
+            files.Add(Size(fileRss[i].Rss), fileRss[i].Name);
         sb.Append("\nLargest mapped files:\n").Append(files);
 
         return sb.Append("\nAnonymous mappings are split by address; one that is only partly a known range is split in proportion to its bytes, so small categories are estimates. " +

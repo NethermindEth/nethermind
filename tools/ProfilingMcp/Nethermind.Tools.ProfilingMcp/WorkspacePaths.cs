@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Text;
 
 namespace Nethermind.Tools.ProfilingMcp;
@@ -37,7 +38,8 @@ public sealed class WorkspacePaths
 
     /// <remarks>
     /// Each word is quoted for a POSIX shell or PowerShell when it needs it; a path that cannot be quoted the same way for both, because it holds a
-    /// single quote, gets no command, so a person or agent that runs the suggestion never runs a different command.
+    /// single quote, gets no command, so a person or agent that runs the suggestion never runs a different command. PowerShell also ends a quoted
+    /// string at the typographic single quotes U+2018 to U+201B, so those count as single quotes too.
     /// </remarks>
     internal static string WithCopyCommand(string path, string sidecar, string docker)
     {
@@ -45,13 +47,15 @@ public sealed class WorkspacePaths
         StringBuilder command = new();
         foreach (string word in words)
         {
-            if (word.Contains('\''))
+            if (word.AsSpan().IndexOfAny(SingleQuotes) >= 0)
                 return $"{path} in the sidecar container {sidecar}; copy it to this machine with docker cp while the session runs.";
             command.Append(command.Length > 0 ? " " : "").Append(IsPlain(word) ? word : $"'{word}'");
         }
 
         return $"{path} in the sidecar container; copy it to this machine while the session runs with: {command}";
     }
+
+    private static readonly SearchValues<char> SingleQuotes = SearchValues.Create("'‘’‚‛");
 
     private static bool IsPlain(string word)
     {

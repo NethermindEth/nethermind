@@ -46,8 +46,11 @@ internal static class HtmlReport
             WriteNode(json, tree, Id);
 
             json.WriteStartArray("functions");
-            foreach (FunctionStat f in functions.OrderByDescending(static f => f.OwnTime).Take(MaxTableRows))
+            List<FunctionStat> byOwnTime = [.. functions];
+            Sorting.SortDescending(byOwnTime, static f => f.OwnTime);
+            for (int i = 0; i < byOwnTime.Count && i < MaxTableRows; i++)
             {
+                FunctionStat f = byOwnTime[i];
                 json.WriteStartArray();
                 json.WriteNumberValue(Id(f.Name));
                 json.WriteNumberValue(f.OwnTime);
@@ -88,7 +91,9 @@ internal static class HtmlReport
         json.WriteNumberValue(node.WaitTime);
         json.WriteNumberValue(node.Samples ?? 0);
         json.WriteStartArray();
-        foreach (CallTreeNode child in node.Children.OrderByDescending(static c => c.TotalTime))
+        List<CallTreeNode> children = [.. node.Children];
+        Sorting.SortDescending(children, static c => c.TotalTime);
+        foreach (CallTreeNode child in children)
             WriteNode(json, child, id);
         json.WriteEndArray();
         json.WriteEndArray();
@@ -182,15 +187,14 @@ internal static class HtmlReport
         // Tree node: [name, total, own, wait, samples, children]; parent links are added for breadcrumbs.
         (function link(n, p) { n.parent = p; for (const c of n[5]) link(c, n); })(D.tree, null);
 
-        // n.x is the part of a node's time that the blocking-wait filter hides.
+        // n.x is the part of a node's time that the blocking-wait filter hides. It is the node's wait time from before the tree was pruned,
+        // so waits in call paths too small to draw stay hidden too.
         const waitIds = new Set(D.waits);
         let hideWaits = true, search = null, zoom = D.tree;
         function recompute() {
           (function hidden(n) {
-            let x = 0;
-            for (const c of n[5]) x += hidden(c);
-            if (hideWaits && waitIds.has(n[0])) x = n[1];
-            return n.x = x;
+            n.x = hideWaits ? n[3] : 0;
+            for (const c of n[5]) hidden(c);
           })(D.tree);
         }
         const value = n => n[1] - n.x;

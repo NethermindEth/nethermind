@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using Microsoft.Diagnostics.NETCore.Client;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Nethermind.Tools.ProfilingMcp.Memory;
@@ -94,6 +96,54 @@ public class GcHeapDumpTests
         finally
         {
             RetainedByStatic.Clear();
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Reads_the_heap_of_an_idle_process(CancellationToken cancellationToken)
+    {
+        // The server's sidecar mode with no idle limit is a .NET process that does nothing at all.
+        string server = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Nethermind.Tools.ProfilingMcp.exe" : "Nethermind.Tools.ProfilingMcp");
+        ProcessStartInfo info = new(server, ContainerSidecar.IdleOption) { UseShellExecute = false };
+        info.Environment[ContainerSidecar.IdleMinutesVariable] = "0";
+        using Process idle = Process.Start(info)!;
+        try
+        {
+            while (!DiagnosticsClient.GetPublishedProcesses().Contains(idle.Id))
+                await Task.Delay(100, cancellationToken);
+
+            GcHeapDumpResult dump = await GcHeapDump.CollectAsync(idle.Id, withReferences: true, cancellationToken);
+
+            Assert.That(dump.Snapshot.ObjectCount, Is.GreaterThan(0));
+        }
+        finally
+        {
+            idle.Kill();
+        }
+    }
+
+    [Test]
+    public void Takes_in_no_more_objects_than_the_visit_limit()
+    {
+        // One root array that references 1,000 objects.
+        const int Children = 1_000;
+        HeapGraph graph = new(
+            typeNames: ["Holder[]", nameof(Retained)],
+            nodeTypes: [0, .. Enumerable.Repeat(1, Children)],
+            addresses: [.. Enumerable.Range(0, Children + 1).Select(static i => (ulong)(0x1000 + i * 0x20))],
+            sizes: [.. Enumerable.Repeat(24L, Children + 1)],
+            edgeStarts: [0, .. Enumerable.Repeat(Children, Children + 1)],
+            edgeTargets: [.. Enumerable.Range(1, Children).Select(static i => (ulong)(0x1000 + i * 0x20))],
+            roots: [(0x1000UL, "static")],
+            dependentHandles: []);
+
+        RetentionReport report = RetentionAnalyzer.Analyze(graph, new Regex($"^{nameof(Retained)}$"), maxPaths: 5, maxVisited: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.Visited, Is.EqualTo(10));
+            Assert.That(report.SearchComplete, Is.False);
         }
     }
 

@@ -45,11 +45,10 @@ internal static class HeapTarget
 
         ClrInfo clr = dataTarget.ClrVersions[0];
 
-        // ClrMD reads the runtime's version from the file at the recorded path, which a sidecar cannot see, so it reports 0.0.
-        // The DAC shipped next to the target's runtime is the matching one, so the version check is skipped for it.
-        string targetDac = $"{ContainerSidecar.TargetRoot}{Path.GetDirectoryName(clr.ModuleInfo.FileName)}/libmscordaccore.so";
-        ClrRuntime runtime = dataTarget.FileLocator is TargetRootLocator && File.Exists(targetDac)
-            ? clr.CreateRuntime(targetDac, ignoreMismatch: true)
+        // In a sidecar, ClrMD would load the DAC next to the target's runtime, a native library the target controls, into a root process;
+        // a trusted copy for that version is loaded instead. ClrMD reads the runtime's version as 0.0 there, so its version check is skipped.
+        ClrRuntime runtime = dataTarget.FileLocator is TargetRootLocator
+            ? clr.CreateRuntime(DebuggingLibraries.TrustedDac(clr.ModuleInfo.FileName), ignoreMismatch: true)
             : clr.CreateRuntime();
         if (requireWalkableHeap && !runtime.Heap.CanWalkHeap)
             throw new InvalidOperationException("The heap cannot be walked right now (the process is probably in the middle of a GC). Try again.");

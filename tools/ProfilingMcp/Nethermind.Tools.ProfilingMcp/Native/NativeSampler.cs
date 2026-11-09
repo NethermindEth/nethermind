@@ -62,11 +62,9 @@ public static class NativeSampler
     }
 
     /// <summary>Whether the runtime writes its perf map without being asked: its environment enables it, or the map exists already.</summary>
+    /// <remarks><c>PerfMapEnabled</c> 1 writes the map and jit dumps, 3 the map only, and 2 jit dumps only, which needs the map turned on.</remarks>
     internal static bool PerfMapAlreadyOn(IReadOnlyDictionary<string, string> environment, bool mapExists) =>
-        mapExists || IsSetNonZero(environment, "PerfMapEnabled");
-
-    private static bool IsSetNonZero(IReadOnlyDictionary<string, string> environment, string setting) =>
-        Setting(environment, setting) is { } value && value.Trim() is { Length: > 0 } trimmed && trimmed != "0";
+        mapExists || Setting(environment, "PerfMapEnabled")?.Trim() is "1" or "3";
 
     /// <summary>A runtime setting from the environment, under the <c>DOTNET_</c> prefix or the older <c>COMPlus_</c> one.</summary>
     private static string? Setting(IReadOnlyDictionary<string, string> environment, string setting) =>
@@ -107,11 +105,12 @@ public static class NativeSampler
         File.Delete(Path.Combine(Path.GetDirectoryName(perfMap)!, Path.GetFileName(perfMap).Replace("perf-", "perfinfo-", StringComparison.Ordinal)));
     }
 
-    /// <summary>Where the runtime writes the perf map, seen through the process's root: <c>PerfMapJitDumpPath</c>, or <c>/tmp</c>.</summary>
+    /// <summary>Where the runtime writes the perf map, as this process sees it: <c>PerfMapJitDumpPath</c>, or <c>/tmp</c>.</summary>
+    /// <remarks>An absolute folder is in the target's file system, reached through its root; a relative one is relative to its working directory.</remarks>
     internal static string PerfMapPath(int pid, IReadOnlyDictionary<string, string> environment)
     {
         string folder = Setting(environment, "PerfMapJitDumpPath") is { Length: > 0 } configured ? configured.TrimEnd('/') : "/tmp";
-        return $"/proc/{pid}/root{folder}/perf-{pid}.map";
+        return folder.StartsWith('/') ? $"/proc/{pid}/root{folder}/perf-{pid}.map" : $"/proc/{pid}/cwd/{folder}/perf-{pid}.map";
     }
 
     private static IReadOnlyDictionary<string, string> ReadEnvironment(int pid)

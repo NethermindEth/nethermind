@@ -127,7 +127,15 @@ public sealed class PerfScriptFolder(JitMap jit)
     public IEnumerable<string> Fold()
     {
         Complete();
-        return _stacks.OrderByDescending(static s => s.Value).Select(static s => $"{s.Key} {s.Value.ToString(CultureInfo.InvariantCulture)}");
+        List<KeyValuePair<string, long>> stacks = [.. _stacks];
+        Sorting.SortDescending(stacks, static s => s.Value);
+        return Lines(stacks);
+
+        static IEnumerable<string> Lines(List<KeyValuePair<string, long>> stacks)
+        {
+            foreach ((string stack, long count) in stacks)
+                yield return $"{stack} {count.ToString(CultureInfo.InvariantCulture)}";
+        }
     }
 
     private void Complete()
@@ -155,12 +163,13 @@ public sealed class PerfScriptFolder(JitMap jit)
         string symbol = module > 0 ? rest[..module].TrimEnd() : rest;
         string library = module > 0 ? rest[(module + 1)..^1] : "";
 
-        if (symbol != "[unknown]" && symbol.Length > 0)
-            return $"{Path.GetFileName(library)}!{NativeName(symbol)}".Replace(';', ',');
-
+        // perf names JIT-compiled frames itself when it finds the runtime's perf map, but in the map's raw form; they are looked up first so
+        // every managed frame gets the same clean name.
         ulong ip = ulong.Parse(address, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         if (jit.Find(ip) is { } method)
             return method;
+        if (symbol != "[unknown]" && symbol.Length > 0)
+            return $"{Path.GetFileName(library)}!{NativeName(symbol)}".Replace(';', ',');
         if (ip >= KernelAddresses)
             return "[kernel]";
         return library is "" or "[unknown]" ? "[unknown]" : $"[{Path.GetFileName(library.Replace(" (deleted)", "", StringComparison.Ordinal))}]";

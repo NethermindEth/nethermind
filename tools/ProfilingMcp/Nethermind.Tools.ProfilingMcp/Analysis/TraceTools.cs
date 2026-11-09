@@ -37,20 +37,24 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         sb.Append($"{profile.Threads} managed threads over {profile.DurationMs / 1000:N1} s.\n");
 
         GcSummary gc = profile.Gc;
-        int gcCount = gc.CountsByGeneration.Values.Sum();
-        sb.Append($"GCs: {gcCount} (").AppendJoin(", ", gc.CountsByGeneration.OrderBy(static g => g.Key).Select(static g => $"gen{g.Key} {g.Value}"))
-            .Append($"), pauses total {Ms(gc.TotalPauseMs)} ms, max {Ms(gc.MaxPauseMs)} ms");
+        int gcCount = gc.TotalCount();
+        sb.Append($"GCs: {gcCount} ({gc.FormatByGeneration()}), pauses total {Ms(gc.TotalPauseMs)} ms, max {Ms(gc.MaxPauseMs)} ms");
         if (gcCount > 0)
-            sb.Append("; reasons: ").AppendJoin(", ", gc.CountsByReason.OrderByDescending(static r => r.Value).Select(static r => $"{r.Key} {r.Value}"));
+            sb.Append("; reasons: ").Append(gc.FormatByReason());
         sb.Append('\n');
 
-        int thrown = profile.Exceptions.Sum(static e => e.Count);
+        int thrown = 0;
+        foreach (ExceptionStat e in profile.Exceptions)
+            thrown = checked(thrown + e.Count);
         sb.Append($"Exceptions thrown: {thrown}\n");
         if (thrown > 0)
         {
             TextTable exceptions = new("count", "type: message", "thrown in");
-            foreach (ExceptionStat e in profile.Exceptions.Take(8))
-                exceptions.Add(Count(e.Count), $"{e.Type}: {Truncate(e.Message, 80)}", e.ThrowSite);
+            for (int i = 0; i < profile.Exceptions.Count && i < 8; i++)
+            {
+                ExceptionStat e = profile.Exceptions[i];
+                exceptions.Add(Count(e.Count), $"{e.Type}: {Quoted(Truncate(e.Message, 80))}", e.ThrowSite);
+            }
             sb.Append(exceptions);
         }
 
@@ -82,12 +86,21 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
             (_, int methods) => $"JIT-compiled code is named from the runtime's perf map ({methods:N0} methods).\n",
         });
 
-        FunctionStat[] threads = [.. functions.Where(static f => f.Name.StartsWith("[thread ", StringComparison.Ordinal)).OrderByDescending(static f => f.TotalTime)];
-        double cpu = threads.Sum(static f => f.TotalTime);
+        List<FunctionStat> threads = [];
+        foreach (FunctionStat f in functions)
+        {
+            if (f.Name.StartsWith("[thread ", StringComparison.Ordinal))
+                threads.Add(f);
+        }
+
+        Sorting.SortDescending(threads, static f => f.TotalTime);
+        double cpu = 0;
+        foreach (FunctionStat thread in threads)
+            cpu += thread.TotalTime;
         sb.Append($"CPU time: {Ms(cpu)} ms over {seconds} s ({cpu / 10 / seconds:N0} % of one core). By thread name:\n");
         TextTable byThread = new("cpu ms", "cpu %", "threads");
-        foreach (FunctionStat thread in threads.Take(10))
-            byThread.Add(Ms(thread.TotalTime), Percent(thread.TotalTime, cpu), thread.Name["[thread ".Length..^1]);
+        for (int i = 0; i < threads.Count && i < 10; i++)
+            byThread.Add(Ms(threads[i].TotalTime), Percent(threads[i].TotalTime, cpu), threads[i].Name["[thread ".Length..^1]);
         sb.Append(byThread).Append('\n');
 
         return sb.Append(Hotspots(stacks, top: top, exclude: @"^\[thread ", hideWaits: false)).ToString();
@@ -116,15 +129,18 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         }
 
         bool byTotal = sortBy.Equals("total", StringComparison.OrdinalIgnoreCase);
-        IEnumerable<FunctionStat> rows = Filter(functions, include, exclude)
-            .Where(f => !hideWaits || !BlockingWait.IsMatch(f.Name))
-            .OrderByDescending(f => byTotal ? f.TotalTime : f.OwnTime)
-            .Take(top);
+        List<FunctionStat> rows = Filter(functions, include, exclude);
+        if (hideWaits)
+            rows.RemoveAll(static f => BlockingWait.IsMatch(f.Name));
+        Sorting.SortDescending(rows, f => byTotal ? f.TotalTime : f.OwnTime);
 
         double basis = hideWaits ? totalOwn - waitOwn : totalOwn;
         TextTable table = new("own ms", "own %", "total ms", "samples", "method");
-        foreach (FunctionStat f in rows)
+        for (int i = 0; i < rows.Count && i < top; i++)
+        {
+            FunctionStat f = rows[i];
             table.Add(Ms(f.OwnTime), Percent(f.OwnTime, basis), Ms(f.TotalTime), Count(f.Samples), f.Name);
+        }
 
         string waits = hideWaits
             ? $" Hidden: {Ms(waitOwn)} ms ({Percent(waitOwn, totalOwn)}) blocked in waits; own % is relative to the remaining {Ms(basis)} ms."
@@ -152,29 +168,35 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
             return $"No method matches '{methodPattern}'. Use trace_hotspots to find exact names.";
 
         StringBuilder sb = new();
-        foreach (FunctionStat f in functions.OrderByDescending(f => f.TotalTime).Take(10))
+        List<FunctionStat> byTotal = [.. functions];
+        Sorting.SortDescending(byTotal, static f => f.TotalTime);
+        for (int i = 0; i < byTotal.Count && i < 10; i++)
         {
+            FunctionStat f = byTotal[i];
             sb.Append($"{f.Name}: total {Ms(f.TotalTime)} ms, own {Ms(f.OwnTime)} ms, {f.CallStacks.Count} distinct stacks\n");
-            foreach (CallStackStat stack in f.CallStacks.OrderByDescending(s => s.TotalTime).Take(maxStacks))
+            List<CallStackStat> stacks = [.. f.CallStacks];
+            Sorting.SortDescending(stacks, static s => s.TotalTime);
+            for (int j = 0; j < stacks.Count && j < maxStacks; j++)
             {
+                CallStackStat stack = stacks[j];
                 sb.Append($"  total {Ms(stack.TotalTime)} ms, own {Ms(stack.OwnTime)} ms, samples {Count(stack.Samples)}\n");
                 int skipped = Math.Max(0, stack.Frames.Count - maxFrames);
                 if (skipped > 0)
                     sb.Append($"    ... {skipped} outer frames\n");
-                for (int i = skipped; i < stack.Frames.Count; i++)
-                    sb.Append("    ").Append(stack.Frames[i]).Append('\n');
+                for (int k = skipped; k < stack.Frames.Count; k++)
+                    sb.Append("    ").Append(stack.Frames[k]).Append('\n');
             }
         }
 
         return sb.ToString();
     }
 
-    [McpServerTool(Name = "trace_report", Title = "Write an HTML report of a CPU trace", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "trace_report", Title = "Write an HTML report of a CPU trace", Destructive = false, OpenWorld = false)]
     [Description("Writes a self-contained HTML page for a person to explore a trace or snapshot in a browser: an interactive flame graph of the call tree and a sortable hotspot table, " +
                  "both with search and a blocking-wait filter. Use it when someone asks to see the results; read them yourself with trace_hotspots and trace_callstacks.")]
     public async Task<string> ReportAsync(
         [Description(SnapshotDescription)] string snapshot,
-        [Description("Where to write the page. Defaults to the snapshot path with .html appended.")] string? output = null,
+        [Description("File name for the page, written to the server's snapshots folder; an existing file is not overwritten. Defaults to a new name after the trace.")] string? output = null,
         [Description("Maximum call-tree nodes in the flame graph; the smallest call paths are dropped to fit.")] int maxNodes = 5000,
         CancellationToken cancellationToken = default)
     {
@@ -183,8 +205,10 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         int nodesBeforePruning = CallTree.Count(tree);
         int kept = CallTree.Prune(tree, maxNodes);
 
-        output ??= snapshot + ".html";
-        await File.WriteAllTextAsync(output, HtmlReport.Render(snapshot, functions, tree, nodesBeforePruning, BlockingWait.IsMatch), cancellationToken);
+        output = Path.Combine(paths.Snapshots, ReportFileName(output) ?? WorkspacePaths.NewFileName(Path.GetFileNameWithoutExtension(snapshot), ".html"));
+        await using (FileStream file = new(output, FileMode.CreateNew, FileAccess.Write))
+        await using (StreamWriter writer = new(file))
+            await writer.WriteAsync(HtmlReport.Render(snapshot, functions, tree, nodesBeforePruning, BlockingWait.IsMatch).AsMemory(), cancellationToken);
         return $"Report written: {paths.ForPerson(output)}\nFlame graph shows {kept:N0} of {nodesBeforePruning:N0} call paths; {Percent(tree.WaitTime, tree.TotalTime)} of sampled time is in blocking waits (hidden by default on the page).";
     }
 
@@ -202,8 +226,11 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
 
         IReadOnlyList<FunctionStat> deltas = Diff(ReadSampled(baseline), ReadSampled(current));
         TextTable table = new("own Δ ms", "total Δ ms", "method");
-        foreach (FunctionStat f in Filter(deltas, include, exclude: null).Where(static f => f.OwnTime != 0 || f.TotalTime != 0).OrderByDescending(static f => Math.Abs(f.OwnTime)).Take(top))
-            table.Add(SignedMs(f.OwnTime), SignedMs(f.TotalTime), f.Name);
+        List<FunctionStat> changed = Filter(deltas, include, exclude: null);
+        changed.RemoveAll(static f => f.OwnTime == 0 && f.TotalTime == 0);
+        Sorting.SortDescending(changed, static f => Math.Abs(f.OwnTime));
+        for (int i = 0; i < changed.Count && i < top; i++)
+            table.Add(SignedMs(changed[i].OwnTime), SignedMs(changed[i].TotalTime), changed[i].Name);
 
         return table.Count == 0 ? "No differences." : $"Current minus baseline, sorted by |own Δ|. Negative is faster.\n{table}";
     }
@@ -211,7 +238,14 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
     private IReadOnlyList<FunctionStat> GetCallStacks(string snapshot, string methodPattern)
     {
         Regex pattern = ToolArguments.Pattern(methodPattern);
-        return [.. ReadSampled(snapshot).Where(f => pattern.IsMatch(f.Name))];
+        List<FunctionStat> matching = [];
+        foreach (FunctionStat f in ReadSampled(snapshot))
+        {
+            if (pattern.IsMatch(f.Name))
+                matching.Add(f);
+        }
+
+        return matching;
     }
 
     private IReadOnlyList<FunctionStat> ReadSampled(string path) =>
@@ -231,16 +265,46 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
             deltas[f.Name] = (total - f.TotalTime, own - f.OwnTime);
         }
 
-        return [.. deltas.Select(static d => new FunctionStat(d.Key, d.Value.Total, d.Value.Own, null, []))];
+        List<FunctionStat> functions = new(deltas.Count);
+        foreach ((string name, (double total, double own)) in deltas)
+            functions.Add(new FunctionStat(name, total, own, null, []));
+        return functions;
     }
 
     private static string Truncate(string value, int length) => value.Length <= length ? value : value[..(length - 1)] + "…";
 
-    private static IEnumerable<FunctionStat> Filter(IEnumerable<FunctionStat> functions, string? include, string? exclude)
+    /// <summary>Checks a report name from the caller: a plain file name, so a page cannot be written anywhere else, such as into a target through a sidecar.</summary>
+    internal static string? ReportFileName(string? output)
+    {
+        if (output is null)
+            return null;
+        if (output.Length == 0 || output is "." or ".." || Path.GetFileName(output) != output || output.IndexOfAny(['/', '\\']) >= 0 || output.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new ArgumentException($"'{output}' is not a plain file name; reports are written to the server's snapshots folder.", nameof(output));
+        return output;
+    }
+
+    /// <summary>Text from the profiled process, such as an exception message, quoted and without control characters, so it reads as data.</summary>
+    internal static string Quoted(string text)
+    {
+        StringBuilder quoted = new(text.Length + 2);
+        quoted.Append('"');
+        foreach (char c in text)
+            quoted.Append(char.IsControl(c) ? ' ' : c);
+        return quoted.Append('"').ToString();
+    }
+
+    private static List<FunctionStat> Filter(IReadOnlyList<FunctionStat> functions, string? include, string? exclude)
     {
         Regex? includeRegex = ToolArguments.OptionalPattern(include);
         Regex? excludeRegex = ToolArguments.OptionalPattern(exclude);
-        return functions.Where(f => (includeRegex?.IsMatch(f.Name) ?? true) && !(excludeRegex?.IsMatch(f.Name) ?? false));
+        List<FunctionStat> filtered = [];
+        foreach (FunctionStat f in functions)
+        {
+            if ((includeRegex?.IsMatch(f.Name) ?? true) && !(excludeRegex?.IsMatch(f.Name) ?? false))
+                filtered.Add(f);
+        }
+
+        return filtered;
     }
 
     private static string Ms(double value) => value.ToString("N1", CultureInfo.InvariantCulture);

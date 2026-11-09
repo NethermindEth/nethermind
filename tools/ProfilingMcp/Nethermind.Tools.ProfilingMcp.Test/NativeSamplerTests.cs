@@ -18,7 +18,7 @@ public class NativeSamplerTests
         	    ffffffffaa1ff0f8 [unknown] ([unknown])
 
         .NET TP Worker   19856
-        	    7f0000001010 [unknown] (/memfd:doublemapper (deleted))
+        	    7f0000001010 instance void [Nethermind.Db.Rocks] Nethermind.Db.Rocks.DbOnTheRocks::GetNativeSlice()[OptimizedTier1] (/tmp/perf-19855.map)
         	    7f0000002020 rocksdb::DBImpl::GetImpl(rocksdb::ReadOptions const&, rocksdb::Slice const&) (/nethermind/librocksdb.so)
         	    7f0000003030 [unknown] (/usr/share/dotnet/libcoreclr.so)
         	    7f0000003040 [unknown] (/usr/share/dotnet/libcoreclr.so)
@@ -93,12 +93,14 @@ public class NativeSamplerTests
     [TestCase("DOTNET_PerfMapEnabled", "1", false, ExpectedResult = true)]
     [TestCase("COMPlus_PerfMapEnabled", "3", false, ExpectedResult = true)]
     [TestCase("DOTNET_PerfMapEnabled", "0", false, ExpectedResult = false)]
+    [TestCase("DOTNET_PerfMapEnabled", "2", false, ExpectedResult = false)]
     [TestCase(null, null, true, ExpectedResult = true)]
     public bool Leaves_a_perf_map_alone_that_was_on_before(string? variable, string? value, bool mapExists) =>
         NativeSampler.PerfMapAlreadyOn(variable is null ? [] : new Dictionary<string, string> { [variable] = value! }, mapExists);
 
     [TestCase(null, ExpectedResult = "/proc/7/root/tmp/perf-7.map")]
     [TestCase("/data/maps/", ExpectedResult = "/proc/7/root/data/maps/perf-7.map")]
+    [TestCase("maps", ExpectedResult = "/proc/7/cwd/maps/perf-7.map")]
     public string Finds_the_perf_map_where_the_runtime_writes_it(string? jitDumpPath) =>
         NativeSampler.PerfMapPath(7, jitDumpPath is null
             ? new Dictionary<string, string> { ["TMPDIR"] = "/elsewhere" }

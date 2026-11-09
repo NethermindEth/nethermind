@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Nethermind.Tools.ProfilingMcp.Memory;
 
 namespace Nethermind.Tools.ProfilingMcp;
 
@@ -36,13 +37,25 @@ internal sealed class ContainerRouter : IAsyncDisposable
 
     private readonly ConcurrentDictionary<(string? DockerHost, string Container), Lazy<Task<McpClient>>> _sidecars = new();
     private readonly Func<string?, string, Task<McpClient>> _start;
+    private readonly Func<string?, string, CancellationToken, Task> _provideDebuggingLibraries;
+    private readonly Func<string?, string, Task<string>> _identify;
 
-    public ContainerRouter() : this(ContainerSidecar.StartAsync)
+    public ContainerRouter() : this(ContainerSidecar.StartAsync, ContainerSidecar.ProvideDebuggingLibrariesAsync, ContainerSidecar.ContainerIdAsync)
     {
     }
 
     /// <param name="start">Starts a sidecar for an engine and container and connects to it.</param>
-    internal ContainerRouter(Func<string?, string, Task<McpClient>> start) => _start = start;
+    /// <param name="provideDebuggingLibraries">Supplies a sidecar with the trusted DACs ClrMD needs for its target.</param>
+    /// <param name="identify">Resolves a container given by name or ID to its full ID.</param>
+    internal ContainerRouter(
+        Func<string?, string, Task<McpClient>> start,
+        Func<string?, string, CancellationToken, Task>? provideDebuggingLibraries = null,
+        Func<string?, string, Task<string>>? identify = null)
+    {
+        _start = start;
+        _provideDebuggingLibraries = provideDebuggingLibraries ?? (static (_, _, _) => Task.CompletedTask);
+        _identify = identify ?? (static (_, container) => Task.FromResult(container));
+    }
 
     /// <summary>Adds the container and engine arguments to the tools' input schemas.</summary>
     public static McpRequestHandler<ListToolsRequestParams, ListToolsResult> AddTargetArguments(McpRequestHandler<ListToolsRequestParams, ListToolsResult> next) =>
@@ -76,11 +89,14 @@ internal sealed class ContainerRouter : IAsyncDisposable
             if (request.Params is not { } call || !TryTakeTarget(call.Arguments, out string? dockerHost, out string? container, out Dictionary<string, JsonElement> arguments))
                 return await next(request, cancellationToken);
 
-            (string?, string) key = (dockerHost, container!);
+            // Connections are kept per container ID: a name can move to another container while a session runs.
+            (string?, string) key = (dockerHost, await _identify(dockerHost, container!));
             Lazy<Task<McpClient>> sidecar = await LiveSidecarAsync(key);
             try
             {
                 McpClient client = await sidecar.Value.WaitAsync(cancellationToken);
+                if (DebuggingLibraries.AreNeededBy(call.Name, arguments))
+                    await _provideDebuggingLibraries(dockerHost, key.Item2, cancellationToken);
                 return await client.CallToolAsync(new CallToolRequestParams { Name = call.Name, Arguments = arguments }, cancellationToken);
             }
             catch (Exception e) when (e is not OperationCanceledException && IsGone(sidecar.Value))

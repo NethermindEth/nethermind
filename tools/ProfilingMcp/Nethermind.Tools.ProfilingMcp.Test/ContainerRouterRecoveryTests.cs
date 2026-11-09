@@ -21,6 +21,7 @@ public class ContainerRouterRecoveryTests
     {
         foreach (Sidecar sidecar in _sidecars)
             await sidecar.DisposeAsync();
+        _sidecars.Clear();
     }
 
     [Test]
@@ -59,9 +60,31 @@ public class ContainerRouterRecoveryTests
         }
     }
 
-    private RequestContext<CallToolRequestParams> Call(string tool) =>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Keeps_connections_per_container_id(CancellationToken cancellationToken)
+    {
+        // "node" and "node-alias" name the first container; then "node" is taken by a new container.
+        string nodeId = "id-1";
+        ContainerRouter router = new((_, _) => StartSidecarAsync(), identify: (_, container) => Task.FromResult(container == "node" ? nodeId : "id-1"));
+        McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
+
+        await route(Call("echo", "node"), cancellationToken);
+        await route(Call("echo", "node-alias"), cancellationToken);
+        int afterAlias = _sidecars.Count;
+        nodeId = "id-2";
+        await route(Call("echo", "node"), cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterAlias, Is.EqualTo(1), "a name and an alias of one container share its connection");
+            Assert.That(_sidecars, Has.Count.EqualTo(2), "a name now held by another container gets that container's sidecar");
+        }
+    }
+
+    private RequestContext<CallToolRequestParams> Call(string tool, string container = "node") =>
         new(_sidecars.FirstOrDefault()?.Server ?? Sidecar.Placeholder, new JsonRpcRequest { Method = RequestMethods.ToolsCall },
-            new CallToolRequestParams { Name = tool, Arguments = new Dictionary<string, JsonElement> { [ContainerRouter.ContainerArgument] = JsonSerializer.SerializeToElement("node") } });
+            new CallToolRequestParams { Name = tool, Arguments = new Dictionary<string, JsonElement> { [ContainerRouter.ContainerArgument] = JsonSerializer.SerializeToElement(container) } });
 
     private async Task<McpClient> StartSidecarAsync()
     {

@@ -15,6 +15,8 @@ public class WorkspacePathsTests
     [TestCase("/profmcp-home/my report.html", ExpectedResult = "docker cp 'profmcp-node-42:/profmcp-home/my report.html' .")]
     [TestCase("/profmcp-home/a;rm -rf ~.html", ExpectedResult = "docker cp 'profmcp-node-42:/profmcp-home/a;rm -rf ~.html' .")]
     [TestCase("/profmcp-home/it's.html", ExpectedResult = null)]
+    [TestCase("/profmcp-home/a’; Write-Output INJECTED; #.html", ExpectedResult = null)]
+    [TestCase("/profmcp-home/a‛.html", ExpectedResult = null)]
     public string? Quotes_the_copy_command_or_leaves_it_out(string path)
     {
         string text = WorkspacePaths.WithCopyCommand(path, "profmcp-node-42", "docker");

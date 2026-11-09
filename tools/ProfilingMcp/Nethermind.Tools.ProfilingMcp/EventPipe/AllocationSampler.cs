@@ -48,7 +48,7 @@ internal static class AllocationSampler
             source.Clr.GCAllocationTick += (GCAllocationTickTraceData data) =>
             {
                 string[] frames = NetTraceReader.Frames(data.CallStack());
-                if (include is not null && !frames.Any(include.IsMatch))
+                if (include is not null && !Array.Exists(frames, include.IsMatch))
                     return;
 
                 string type = string.IsNullOrEmpty(data.TypeName) ? "?" : data.TypeName;
@@ -69,10 +69,13 @@ internal static class AllocationSampler
             File.Delete(etlx);
         }
 
-        return new AllocationProfile(
-            Sorted(byType),
-            Sorted(bySite),
-            [.. byStack.Values.OrderByDescending(static s => s.Bytes).Select(static s => ((IReadOnlyList<string>)s.Frames, s.Events, s.Bytes))]);
+        List<(string[] Frames, long Events, long Bytes)> sortedStacks = [.. byStack.Values];
+        Sorting.SortDescending(sortedStacks, static s => s.Bytes);
+        List<(IReadOnlyList<string> Frames, long Events, long SampledBytes)> stacks = new(sortedStacks.Count);
+        foreach ((string[] frames, long events, long bytes) in sortedStacks)
+            stacks.Add((frames, events, bytes));
+
+        return new AllocationProfile(Sorted(byType), Sorted(bySite), stacks);
     }
 
     private static void Add(Dictionary<string, Group> groups, string name, string other, long bytes)
@@ -84,10 +87,25 @@ internal static class AllocationSampler
         group.ByOther[other] = group.ByOther.GetValueOrDefault(other) + bytes;
     }
 
-    private static List<AllocationStat> Sorted(Dictionary<string, Group> groups) =>
-        [.. groups
-            .Select(static g => new AllocationStat(g.Key, g.Value.Events, g.Value.Bytes, g.Value.ByOther.MaxBy(static o => o.Value).Key))
-            .OrderByDescending(static s => s.SampledBytes)];
+    private static List<AllocationStat> Sorted(Dictionary<string, Group> groups)
+    {
+        List<AllocationStat> stats = new(groups.Count);
+        foreach ((string name, Group group) in groups)
+        {
+            string? top = null;
+            long topBytes = 0;
+            foreach ((string other, long bytes) in group.ByOther)
+            {
+                if (top is null || bytes > topBytes)
+                    (top, topBytes) = (other, bytes);
+            }
+
+            stats.Add(new AllocationStat(name, group.Events, group.Bytes, top!));
+        }
+
+        Sorting.SortDescending(stats, static s => s.SampledBytes);
+        return stats;
+    }
 
     private sealed class Group
     {

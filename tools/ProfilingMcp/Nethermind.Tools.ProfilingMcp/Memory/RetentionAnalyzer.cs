@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Diagnostics.Runtime;
 
@@ -17,6 +18,7 @@ public sealed record RetentionPath(string RootKind, IReadOnlyList<PathStep> Step
 
 /// <param name="Referrers">Count of references to target instances, by referencing type ("[root: kind]" for direct GC roots).</param>
 /// <param name="SearchComplete">False when the visit limit stopped the root search before every reachable object was seen.</param>
+/// <param name="Visited">Objects the root search took in, at most the visit limit.</param>
 public sealed record RetentionReport(
     IReadOnlyList<string> MatchedTypes,
     long InstanceCount,
@@ -24,7 +26,8 @@ public sealed record RetentionReport(
     IReadOnlyList<KeyValuePair<string, long>> Referrers,
     IReadOnlyList<RetentionPath> Paths,
     bool SearchComplete,
-    string Timings = "");
+    string Timings = "",
+    long Visited = 0);
 
 /// <summary>
 /// Explains why instances of a type stay alive: which types reference them and the shortest reference chains from GC roots.
@@ -73,7 +76,9 @@ internal static class RetentionAnalyzer
     public static RetentionReport Analyze(HeapGraph graph, Regex typePattern, int maxPaths, long maxVisited)
     {
         Stopwatch phase = Stopwatch.StartNew();
-        bool[] matchingTypes = [.. graph.TypeNames.Select(name => typePattern.IsMatch(name))];
+        bool[] matchingTypes = new bool[graph.TypeNames.Length];
+        for (int type = 0; type < matchingTypes.Length; type++)
+            matchingTypes[type] = typePattern.IsMatch(graph.TypeNames[type]);
         bool[] isTarget = new bool[graph.NodeCount];
         HashSet<string> matchedTypes = [];
         long targetCount = 0;
@@ -118,18 +123,27 @@ internal static class RetentionAnalyzer
         Array.Fill(parents, Unvisited);
         Dictionary<int, string> rootKinds = [];
         Queue<int> queue = new();
+        bool complete = true;
+        long visited = 0;
+        // The visit limit applies as objects are taken in, roots included, so one large array cannot push the search past it;
+        // objects already taken in are still searched.
         foreach ((int node, string kind) in graph.Roots)
         {
+            if (visited >= maxVisited)
+            {
+                complete = false;
+                break;
+            }
+
             if (rootKinds.TryAdd(node, kind))
             {
                 parents[node] = Root;
                 queue.Enqueue(node);
+                visited++;
             }
         }
 
         PathGroups groups = new(maxPaths);
-        bool complete = true;
-        long visited = queue.Count;
         while (queue.Count > 0)
         {
             int node = queue.Dequeue();
@@ -144,15 +158,15 @@ internal static class RetentionAnalyzer
             {
                 if (parents[child] != Unvisited)
                     continue;
+                if (visited >= maxVisited)
+                {
+                    complete = false;
+                    break;
+                }
+
                 parents[child] = node;
                 queue.Enqueue(child);
                 visited++;
-            }
-
-            if (visited >= maxVisited)
-            {
-                complete = false;
-                break;
             }
         }
 
@@ -163,7 +177,8 @@ internal static class RetentionAnalyzer
             sortedReferrers,
             groups.Top(),
             complete,
-            $"referrers {referrerScan.TotalSeconds:F1} s, root paths {(phase.Elapsed - referrerScan).TotalSeconds:F1} s");
+            $"referrers {referrerScan.TotalSeconds:F1} s, root paths {(phase.Elapsed - referrerScan).TotalSeconds:F1} s",
+            visited);
     }
 
     private static RetentionPath BuildPath(HeapGraph graph, int target, int[] parents, Dictionary<int, string> rootKinds)
@@ -234,7 +249,8 @@ internal static class RetentionAnalyzer
             if (obj.IsFree || obj.Type is null)
                 continue;
 
-            foreach (ulong reference in obj.EnumerateReferenceAddresses(carefully: false, considerDependantHandles: false))
+            // Dependent handles count as references here too, as they do in the path search and in a live process's graph.
+            foreach (ulong reference in obj.EnumerateReferenceAddresses(carefully: false, considerDependantHandles: true))
             {
                 if (targets.Contains(reference))
                     Increment(referrers, obj.Type.Name ?? "?");
@@ -258,8 +274,15 @@ internal static class RetentionAnalyzer
         Dictionary<ulong, string> rootKinds = [];
         Queue<ulong> queue = new();
 
+        complete = true;
         foreach (ClrRoot root in heap.EnumerateRoots())
         {
+            if (parents.Count >= maxVisited)
+            {
+                complete = false;
+                break;
+            }
+
             ulong address = root.Object.Address;
             if (address != 0 && rootKinds.TryAdd(address, root.RootKind.ToString()))
             {
@@ -269,7 +292,6 @@ internal static class RetentionAnalyzer
         }
 
         PathGroups groups = new(maxPaths);
-        complete = true;
 
         while (queue.Count > 0)
         {
@@ -286,14 +308,16 @@ internal static class RetentionAnalyzer
 
             foreach (ulong child in obj.EnumerateReferenceAddresses(carefully: false, considerDependantHandles: true))
             {
-                if (child != 0 && parents.TryAdd(child, address))
-                    queue.Enqueue(child);
-            }
+                if (child == 0 || parents.ContainsKey(child))
+                    continue;
+                if (parents.Count >= maxVisited)
+                {
+                    complete = false;
+                    break;
+                }
 
-            if (parents.Count >= maxVisited)
-            {
-                complete = false;
-                break;
+                parents[child] = address;
+                queue.Enqueue(child);
             }
         }
 
@@ -357,7 +381,15 @@ internal static class RetentionAnalyzer
         /// <summary>Adds a path and returns true once enough instances were seen to stop searching.</summary>
         public bool Add(RetentionPath path)
         {
-            string signature = path.RootKind + "|" + string.Join("|", path.Steps.Select(static s => $"{s.Field}>{s.TypeName}"));
+            StringBuilder builder = new StringBuilder(path.RootKind).Append('|');
+            for (int i = 0; i < path.Steps.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append('|');
+                builder.Append(path.Steps[i].Field).Append('>').Append(path.Steps[i].TypeName);
+            }
+
+            string signature = builder.ToString();
             _bySignature[signature] = _bySignature.TryGetValue(signature, out RetentionPath? existing)
                 ? existing with { Instances = existing.Instances + path.Instances, Bytes = existing.Bytes + path.Bytes }
                 : path;

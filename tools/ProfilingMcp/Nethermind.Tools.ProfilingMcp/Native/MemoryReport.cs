@@ -29,13 +29,26 @@ internal static class MemoryReport
 
     public static string Render(string title, IReadOnlyList<MemoryShare> shares, long? gcCommitted)
     {
+        double rss = 0;
+        double swap = 0;
+        List<MemoryShare>?[] byGroup = new List<MemoryShare>?[Groups.Length];
+        double[] groupRss = new double[Groups.Length];
+        foreach (MemoryShare share in shares)
+        {
+            rss += share.Rss;
+            swap += share.Swap;
+            int group = GroupOf(share.Category);
+            (byGroup[group] ??= []).Add(share);
+            groupRss[group] += share.Rss;
+        }
+
         using MemoryStream body = new();
         using (Utf8JsonWriter json = new(body))
         {
             json.WriteStartObject();
             json.WriteString("title", title);
             json.WriteString("generated", DateTime.UtcNow.ToString("u"));
-            json.WriteNumber("swap", (long)shares.Sum(static s => s.Swap));
+            json.WriteNumber("swap", (long)swap);
             if (gcCommitted is { } committed)
                 json.WriteNumber("gcCommitted", committed);
 
@@ -48,15 +61,20 @@ internal static class MemoryReport
             json.WritePropertyName("tree");
             json.WriteStartArray();
             json.WriteStringValue("Resident memory");
-            json.WriteNumberValue((long)shares.Sum(static s => s.Rss));
+            json.WriteNumberValue((long)rss);
             json.WriteNumberValue(-1);
             json.WriteStartArray();
-            foreach (IGrouping<int, MemoryShare> group in shares.GroupBy(static s => GroupOf(s.Category)).OrderBy(static g => g.Key))
+            for (int group = 0; group < byGroup.Length; group++)
             {
-                WriteNode(json, Groups[group.Key].Name, group.Sum(static s => s.Rss), group.Key, () =>
+                if (byGroup[group] is not { } groupShares)
+                    continue;
+
+                WriteNode(json, Groups[group].Name, groupRss[group], group, () =>
                 {
-                    foreach (IGrouping<string, MemoryShare> category in group.GroupBy(static s => s.Category).OrderByDescending(static c => c.Sum(static s => s.Rss)))
-                        WriteNode(json, category.Key, category.Sum(static s => s.Rss), group.Key, () => WriteItems(json, category, group.Key));
+                    List<(string Key, List<MemoryShare> Shares, double Rss)> categories = TotalBy(groupShares, static s => s.Category);
+                    Sorting.SortDescending(categories, static c => c.Rss);
+                    foreach ((string category, List<MemoryShare> categoryShares, double categoryRss) in categories)
+                        WriteNode(json, category, categoryRss, group, () => WriteItems(json, categoryShares, group));
                 });
             }
             json.WriteEndArray();
@@ -71,16 +89,45 @@ internal static class MemoryReport
 
     internal static int GroupOf(string category) => Array.FindIndex(Groups, g => g.Contains(category));
 
-    private static void WriteItems(Utf8JsonWriter json, IEnumerable<MemoryShare> shares, int group)
+    private static void WriteItems(Utf8JsonWriter json, List<MemoryShare> shares, int group)
     {
-        (string Item, double Rss)[] items = [.. shares.GroupBy(static s => s.Item).Select(static i => (i.Key, i.Sum(static s => s.Rss))).Where(static i => i.Item2 >= 1).OrderByDescending(static i => i.Item2)];
-        if (items.Length <= 1)
+        List<(string Key, List<MemoryShare> Shares, double Rss)> items = TotalBy(shares, static s => s.Item);
+        items.RemoveAll(static i => i.Rss < 1);
+        if (items.Count <= 1)
             return;
 
-        foreach ((string item, double rss) in items.Take(MaxItems))
-            WriteNode(json, item, rss, group, null);
-        if (items.Length > MaxItems)
-            WriteNode(json, $"{items.Length - MaxItems:N0} smaller items", items.Skip(MaxItems).Sum(static i => i.Rss), group, null);
+        Sorting.SortDescending(items, static i => i.Rss);
+        for (int i = 0; i < items.Count && i < MaxItems; i++)
+            WriteNode(json, items[i].Key, items[i].Rss, group, null);
+        if (items.Count > MaxItems)
+        {
+            double smaller = 0;
+            for (int i = MaxItems; i < items.Count; i++)
+                smaller += items[i].Rss;
+            WriteNode(json, $"{items.Count - MaxItems:N0} smaller items", smaller, group, null);
+        }
+    }
+
+    /// <summary>Groups <paramref name="shares"/> by key and sums their resident bytes, in the order each key first appears.</summary>
+    private static List<(string Key, List<MemoryShare> Shares, double Rss)> TotalBy(List<MemoryShare> shares, Func<MemoryShare, string> key)
+    {
+        Dictionary<string, int> indexes = new(StringComparer.Ordinal);
+        List<(string Key, List<MemoryShare> Shares, double Rss)> totals = [];
+        foreach (MemoryShare share in shares)
+        {
+            string name = key(share);
+            if (!indexes.TryGetValue(name, out int index))
+            {
+                indexes[name] = index = totals.Count;
+                totals.Add((name, [], 0));
+            }
+
+            (string Key, List<MemoryShare> Shares, double Rss) total = totals[index];
+            total.Shares.Add(share);
+            totals[index] = (total.Key, total.Shares, total.Rss + share.Rss);
+        }
+
+        return totals;
     }
 
     private static void WriteNode(Utf8JsonWriter json, string name, double bytes, int group, Action? children)

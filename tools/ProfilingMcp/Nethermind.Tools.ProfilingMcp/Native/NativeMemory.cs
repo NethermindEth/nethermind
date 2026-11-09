@@ -129,10 +129,28 @@ public static class NativeMemory
     }
 
     /// <summary>Totals shares by category, largest first.</summary>
-    public static IReadOnlyList<MemoryCategory> Categorize(IReadOnlyList<MemoryShare> shares) =>
-        [.. shares.GroupBy(static s => s.Category)
-            .Select(static g => new MemoryCategory(g.Key, (long)g.Sum(static s => s.Rss), (long)g.Sum(static s => s.Swap), g.Count()))
-            .OrderByDescending(static c => c.Rss + c.Swap)];
+    public static IReadOnlyList<MemoryCategory> Categorize(IReadOnlyList<MemoryShare> shares)
+    {
+        Dictionary<string, int> indexes = new(StringComparer.Ordinal);
+        List<(string Name, double Rss, double Swap, int Mappings)> totals = [];
+        foreach (MemoryShare share in shares)
+        {
+            if (!indexes.TryGetValue(share.Category, out int index))
+            {
+                indexes[share.Category] = index = totals.Count;
+                totals.Add((share.Category, 0, 0, 0));
+            }
+
+            (string name, double rss, double swap, int mappings) = totals[index];
+            totals[index] = (name, rss + share.Rss, swap + share.Swap, mappings + 1);
+        }
+
+        List<MemoryCategory> categories = new(totals.Count);
+        foreach ((string name, double rss, double swap, int mappings) in totals)
+            categories.Add(new MemoryCategory(name, (long)rss, (long)swap, mappings));
+        Sorting.SortDescending(categories, static c => c.Rss + c.Swap);
+        return categories;
+    }
 
     private static string Describe(Mapping mapping) =>
         $"mapping at {mapping.Start:x}, {(mapping.End - mapping.Start) / (1024.0 * 1024):N1} MB";

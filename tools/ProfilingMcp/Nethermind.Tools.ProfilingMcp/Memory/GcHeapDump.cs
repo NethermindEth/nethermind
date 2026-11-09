@@ -34,6 +34,12 @@ internal static class GcHeapDump
     /// <summary>How long no heap event may arrive after the walk began before the session is stopped, which flushes the rest.</summary>
     private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(2);
 
+    /// <summary>How long the session may stay silent before any heap event; an idle runtime can hold back even the first ones.</summary>
+    private static readonly TimeSpan QuietBeforeHeap = TimeSpan.FromSeconds(5);
+
+    /// <summary>The longest a read waits for the runtime before stopping the session and judging what arrived.</summary>
+    private static readonly TimeSpan Deadline = TimeSpan.FromMinutes(10);
+
     /// <summary>How long to wait for another session's heap read of the same process.</summary>
     private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(5);
 
@@ -71,9 +77,10 @@ internal static class GcHeapDump
             Task processing = Task.Run(source.Process, CancellationToken.None);
             try
             {
-                // The runtime may hold the last events, the GC's end among them, in its buffers while the process is idle;
-                // stopping the session flushes them, so a walk that has gone quiet is stopped rather than waited on.
-                while (!dumpGc.Task.IsCompleted && !processing.IsCompleted && !(builder.HasNodes && builder.QuietFor >= Quiet))
+                // An idle runtime may hold heap events, from the first object to the GC's end, in its buffers; stopping the session flushes
+                // them, so a session that has gone quiet is stopped rather than waited on. Whether the heap arrived whole is checked after.
+                while (!dumpGc.Task.IsCompleted && !processing.IsCompleted && elapsed.Elapsed < Deadline
+                       && builder.QuietFor < (builder.HasNodes ? Quiet : QuietBeforeHeap))
                     await Task.WhenAny(dumpGc.Task, processing, Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken)).WaitAsync(cancellationToken);
             }
             finally
@@ -87,8 +94,8 @@ internal static class GcHeapDump
 
         if (!dumpGc.Task.IsCompletedSuccessfully)
             throw new InvalidOperationException(builder.HasNodes
-                ? "The heap walk did not finish: the runtime never reported the end of its GC."
-                : "The process ended the session before reporting its heap.");
+                ? "The heap walk did not finish: the runtime never reported the end of its GC. Try again."
+                : $"The runtime reported no heap within {elapsed.Elapsed.TotalSeconds:N0} s: the process ended, or its heap walk was slow to start. Try again.");
 
         if (builder.UnnamedObjects is > 0 and var unnamed)
             throw new InvalidOperationException($"The heap read is incomplete: {unnamed:N0} objects arrived without their type's name, which happens when " +

@@ -27,8 +27,11 @@ public sealed class CallTreeNode(string name)
 
     internal void RemoveChildren(Func<CallTreeNode, bool> predicate)
     {
-        foreach (CallTreeNode child in _children.Values.Where(predicate).ToList())
-            _children.Remove(child.Name);
+        foreach (CallTreeNode child in _children.Values)
+        {
+            if (predicate(child))
+                _children.Remove(child.Name);
+        }
     }
 }
 
@@ -57,8 +60,16 @@ internal static class CallTree
         }
 
         Complete(root, isWait);
-        root.TotalTime = root.Children.Sum(static c => c.TotalTime);
-        root.WaitTime = root.Children.Sum(static c => c.WaitTime);
+        double totalTime = 0;
+        double waitTime = 0;
+        foreach (CallTreeNode child in root.Children)
+        {
+            totalTime += child.TotalTime;
+            waitTime += child.WaitTime;
+        }
+
+        root.TotalTime = totalTime;
+        root.WaitTime = waitTime;
         root.Samples = null;
         return root;
     }

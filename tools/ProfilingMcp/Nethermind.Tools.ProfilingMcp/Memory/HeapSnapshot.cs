@@ -63,7 +63,10 @@ public sealed record HeapSnapshot(
             }
         }
 
-        IReadOnlyList<TypeStat> types = MergeByName(byMethodTable.Values.Select(static t => new TypeStat(t.Name, t.Count, t.Bytes, t.LargeBytes)));
+        List<TypeStat> typeStats = new(byMethodTable.Count);
+        foreach ((string name, long count, long bytes, long largeBytes) in byMethodTable.Values)
+            typeStats.Add(new TypeStat(name, count, bytes, largeBytes));
+        IReadOnlyList<TypeStat> types = MergeByName(typeStats);
         return new HeapSnapshot(target, DateTime.UtcNow, objectCount, totalBytes, freeBytes, generations, types);
     }
 

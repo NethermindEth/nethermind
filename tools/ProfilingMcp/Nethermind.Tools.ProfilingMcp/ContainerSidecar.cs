@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using Nethermind.Tools.ProfilingMcp.Memory;
 
 namespace Nethermind.Tools.ProfilingMcp;
 
@@ -82,12 +83,22 @@ internal static class ContainerSidecar
         return await McpClient.CreateAsync(transport, cancellationToken: timeout.Token);
     }
 
+    /// <summary>Copies trusted DACs for the target's .NET runtimes into its sidecar, for the tools that load one (<see cref="DebuggingLibraries"/>).</summary>
+    public static async Task ProvideDebuggingLibrariesAsync(string? dockerHost, string container, CancellationToken cancellationToken)
+    {
+        string[] engine = EngineArguments(dockerHost);
+        string sidecar = await EnsureSidecarAsync(engine, container);
+        string architecture = await DockerAsync(engine, "version", "--format", "{{.Server.Arch}}");
+        await DebuggingLibraries.ProvideAsync(engine, sidecar, architecture, WorkspacePaths.FromEnvironment().Root, cancellationToken);
+    }
+
     private static async Task<string> EnsureSidecarAsync(string[] engine, string container)
     {
         Target target = await InspectAsync(engine, container);
-        string image = await SidecarImageAsync(engine, target.Image);
+        string image = await SidecarImageAsync(engine);
         string imageId = await DockerAsync(engine, "image", "inspect", "--format", "{{.Id}}", image);
-        string name = $"profmcp-{target.Name}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
+        // The name carries the target's ID, which never changes, so a container that later takes the target's name gets its own sidecar.
+        string name = $"profmcp-{target.Name}-{target.Id[..12]}-{imageId.Replace("sha256:", "", StringComparison.Ordinal)[..12]}";
         if (await IsRunningAsync(engine, name))
             return name;
 
@@ -98,8 +109,8 @@ internal static class ContainerSidecar
             await DockerAsync(engine,
             [
                 "run", "--detach", "--rm", "--network", "none", "--name", name,
-                "--label", $"{TargetLabel}={target.Name}",
-                "--pid", $"container:{target.Name}",
+                "--label", $"{TargetLabel}={target.Id}",
+                "--pid", $"container:{target.Id}",
                 // Reaching the target's files through /proc/1/root needs it when the target runs as another user than root.
                 "--cap-add", "SYS_PTRACE",
                 .. perfmon,
@@ -219,24 +230,29 @@ internal static class ContainerSidecar
             throw new InvalidOperationException($"The target's TMPDIR {temp} {problem}.");
 
         string target = TargetRoot + temp;
-        if (Path.Exists(temp))
-        {
-            if (new FileInfo(temp).LinkTarget == target)
-                return;
-            if (temp is not ("/tmp" or "/var/tmp") || Directory.EnumerateFileSystemEntries(temp).GetEnumerator().MoveNext())
-                throw new InvalidOperationException($"The target's TMPDIR {temp} already exists in the sidecar.");
-            Directory.Delete(temp);
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
+        // Servers starting together race to replace the folder; whatever one of them did, the link is what must be there afterwards.
         try
         {
-            File.CreateSymbolicLink(temp, target);
+            if (Path.Exists(temp) && new FileInfo(temp).LinkTarget != target)
+            {
+                if (temp is not ("/tmp" or "/var/tmp") || Directory.EnumerateFileSystemEntries(temp).GetEnumerator().MoveNext())
+                    throw new InvalidOperationException($"The target's TMPDIR {temp} already exists in the sidecar.");
+                Directory.Delete(temp);
+            }
+
+            if (!Path.Exists(temp))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
+                File.CreateSymbolicLink(temp, target);
+            }
         }
         catch (IOException) when (new FileInfo(temp).LinkTarget == target)
         {
-            // Another server in the sidecar linked it first.
+            // Another server in the sidecar replaced it first.
         }
+
+        if (new FileInfo(temp).LinkTarget != target)
+            throw new InvalidOperationException($"Could not link the target's TMPDIR {temp} in the sidecar.");
     }
 
     /// <summary>Top-level folders of the sidecar image that a target's TMPDIR must not be linked into.</summary>
@@ -270,7 +286,8 @@ internal static class ContainerSidecar
     /// <param name="Name">The container's name, whichever of its name or IDs it was given by, so they all share one sidecar and volume.</param>
     /// <param name="TempFolder">Where the target's .NET runtime creates its diagnostic socket.</param>
     /// <param name="ExplicitTempFolder">Whether the target sets TMPDIR, so the diagnostics client looks for the socket at that literal path.</param>
-    private sealed record Target(string Name, string Image, string TempFolder, bool ExplicitTempFolder);
+    /// <param name="Id">The container's full ID, which identifies it for the sidecar's lifetime even if it is renamed.</param>
+    private sealed record Target(string Id, string Name, string Image, string TempFolder, bool ExplicitTempFolder);
 
     private static async Task<Target> InspectAsync(string[] engine, string container)
     {
@@ -299,7 +316,7 @@ internal static class ContainerSidecar
         if (tmpdir is not null && CheckTargetTempFolder(TempFolder(tmpdir)) is { } problem)
             throw new InvalidOperationException($"Container '{container}' sets TMPDIR={tmpdir}, which {problem}; the sidecar cannot reach its diagnostics socket there.");
 
-        return new Target(ContainerName(root.GetProperty("Name").GetString()), config.GetProperty("Image").GetString()!, TempFolder(tmpdir), tmpdir is not null);
+        return new Target(root.GetProperty("Id").GetString()!, ContainerName(root.GetProperty("Name").GetString()), config.GetProperty("Image").GetString()!, TempFolder(tmpdir), tmpdir is not null);
     }
 
     /// <summary>Turns the <c>.Name</c> docker inspect reports, such as <c>/nethermind-hoodi</c>, into the name the CLI takes.</summary>
@@ -311,7 +328,7 @@ internal static class ContainerSidecar
 
     /// <summary>Returns the sidecar image for this server: the image named by <see cref="ImageVariable"/>, or one built from this server's Linux build.</summary>
     /// <remarks>The build for the engine's architecture is used, so amd64 and arm64 engines both work.</remarks>
-    private static async Task<string> SidecarImageAsync(string[] engine, string targetImage)
+    private static async Task<string> SidecarImageAsync(string[] engine)
     {
         string? choice = Environment.GetEnvironmentVariable(ImageVariable);
         if (choice is { Length: > 0 })
@@ -327,7 +344,7 @@ internal static class ContainerSidecar
         if (await SucceedsAsync(engine, "image", "inspect", local))
             return local;
 
-        await DockerAsync(engine, "build", "--quiet", "--tag", local, "--build-arg", $"BASE={await BaseImageAsync(engine, targetImage)}",
+        await DockerAsync(engine, "build", "--quiet", "--tag", local, "--build-arg", $"BASE={await BaseImageAsync(engine)}",
             "--file", Path.Combine(AppContext.BaseDirectory, Dockerfile), build);
         return local;
     }
@@ -343,19 +360,19 @@ internal static class ContainerSidecar
     private static async Task<bool> IsPresentOrPulledAsync(string[] engine, string image) =>
         await SucceedsAsync(engine, "image", "inspect", image) || await SucceedsAsync(engine, "pull", "--quiet", image);
 
-    /// <summary>Returns the image to build the sidecar image on: .NET's runtime-deps image, or the target's when that cannot be pulled.</summary>
+    /// <summary>Returns the image to build the sidecar image on: .NET's runtime-deps image.</summary>
     /// <remarks>
-    /// The sidecar needs only the native libraries of a self-contained .NET app. Using a fixed image keeps it independent of the target's,
-    /// which may lack them (Alpine, distroless). An engine without access to the registry falls back to the target's image.
+    /// The sidecar needs only the native libraries of a self-contained .NET app. A fixed image keeps it independent of the target's, which may
+    /// lack them (Alpine, distroless) and is never trusted: the sidecar runs as root with ptrace and perf access to the target.
     /// </remarks>
-    private static async Task<string> BaseImageAsync(string[] engine, string targetImage)
-    {
-        if (await IsPresentOrPulledAsync(engine, RuntimeImage))
-            return RuntimeImage;
+    private static async Task<string> BaseImageAsync(string[] engine) =>
+        await IsPresentOrPulledAsync(engine, RuntimeImage)
+            ? RuntimeImage
+            : throw new InvalidOperationException($"Could not pull {RuntimeImage} to build the sidecar image on. Pull it on the engine, or set {ImageVariable} to an image to use.");
 
-        await Console.Error.WriteLineAsync($"Could not pull {RuntimeImage}; building the sidecar image on the target's image {targetImage}.");
-        return targetImage;
-    }
+    /// <summary>Returns the full ID of a container given by name or ID, which stays the same if the container is renamed.</summary>
+    public static Task<string> ContainerIdAsync(string? dockerHost, string container) =>
+        DockerAsync(EngineArguments(dockerHost), "inspect", "--type", "container", "--format", "{{.Id}}", container);
 
     /// <summary>Identifies a Linux build and the Dockerfile by a hash, or returns null when the server was published without that build.</summary>
     private static string? BuildVersion(string build)
@@ -372,7 +389,7 @@ internal static class ContainerSidecar
         return Convert.ToHexStringLower(hash.GetHashAndReset())[..12];
     }
 
-    private static async Task<bool> SucceedsAsync(string[] engine, params string[] arguments)
+    internal static async Task<bool> SucceedsAsync(string[] engine, params string[] arguments)
     {
         try
         {

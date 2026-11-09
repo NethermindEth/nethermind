@@ -128,6 +128,10 @@ public sealed partial class NetTraceReader
             threads.Add(frame);
             node = caller;
         }
+        else if (IsProcessFrame(frame))
+        {
+            node = caller;
+        }
         else
         {
             string name = CleanFrameName(frame);
@@ -140,8 +144,13 @@ public sealed partial class NetTraceReader
 
     private static bool IsGrouping(string frame) =>
         frame is "CPU_TIME" or "UNMANAGED_CODE_TIME" or "BLOCKED_TIME" or "?" or "Threads" or "(Non-Activities)" or "(Activities)" ||
-        frame.StartsWith("Activity ", StringComparison.Ordinal) ||
-        frame.StartsWith("Process", StringComparison.Ordinal);
+        frame.StartsWith("Activity ", StringComparison.Ordinal);
+
+    /// <summary>Whether a raw frame is TraceEvent's grouping frame for a process, e.g. <c>Process64 dotnet (1234)</c>, rather than a method such as <c>Processor.Run</c>.</summary>
+    internal static bool IsProcessFrame(string frame) => ProcessFrame().IsMatch(frame);
+
+    [GeneratedRegex(@"^Process(32|64)?[ (].*\(\d+\)$", RegexOptions.CultureInvariant)]
+    private static partial Regex ProcessFrame();
 
     /// <summary>Turns <c>module!Namespace.Type`1[Arg].Method(args)</c> into <c>Namespace.Type`1.Method</c>, the form every trace analysis uses.</summary>
     internal static string CleanFrameName(string frame)
