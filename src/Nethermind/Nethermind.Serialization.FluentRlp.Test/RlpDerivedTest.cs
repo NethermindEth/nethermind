@@ -519,6 +519,8 @@ public class RlpDerivedTest
     [TestCase("public record Account(int Nonce) { public readonly int Balance = Nonce * 2; public Account(string nonce) : this(int.Parse(nonce)) { } }", null, TestName = "Derived field with delegating constructor")]
     [TestCase("public record Account(int Nonce) { public int Balance => Nonce * 2; }", null, TestName = "Computed property without storage")]
     [TestCase("public record Account(int Nonce) { public readonly int Balance = 0; public Account(int nonce, int balance) : this(nonce) { (Balance, Nonce) = (balance, nonce); } }", "RLP0002", TestName = "Readonly field assigned by deconstruction")]
+    [TestCase("public record Account(int Nonce) { private readonly int _balance = 0; public int Balance { get => _balance; init => _balance = value; } }", "RLP0002", TestName = "Readonly field assigned by an init accessor")]
+    [TestCase("public partial record Account(int Nonce) { private readonly int _balance = 0; } public partial record Account { public int Balance { get => _balance; init => _balance = value; } }", "RLP0002", TestName = "Readonly field assigned by an init accessor in another part")]
     public void GeneratorDiagnostics(string declaration, string? expectedId)
     {
         string source = $"""

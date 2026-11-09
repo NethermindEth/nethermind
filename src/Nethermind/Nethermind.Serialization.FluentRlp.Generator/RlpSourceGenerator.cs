@@ -192,7 +192,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         switch (member, syntax)
         {
             case (IFieldSymbol field, VariableDeclaratorSyntax declarator):
-                return !field.IsReadOnly || declarator.Initializer is null || IsWrittenInConstructor(member, compilation, ct);
+                return !field.IsReadOnly || declarator.Initializer is null || IsWrittenOnInitialization(member, compilation, ct);
             case (IPropertySymbol property, PropertyDeclarationSyntax declaration):
                 foreach (IParameterSymbol parameter in parameters)
                 {
@@ -201,7 +201,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                         return !IsAutoProperty(declaration) || declaration.Initializer?.Value is not IdentifierNameSyntax identifier || identifier.Identifier.ValueText != property.Name;
                 }
 
-                return HasBackingStorage(declaration) && (property.SetMethod is not null || declaration.Initializer is null || IsWrittenInConstructor(member, compilation, ct));
+                return HasBackingStorage(declaration) && (property.SetMethod is not null || declaration.Initializer is null || IsWrittenOnInitialization(member, compilation, ct));
             default:
                 return false;
         }
@@ -229,13 +229,16 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         return false;
     }
 
-    private static bool IsWrittenInConstructor(ISymbol member, Compilation compilation, CancellationToken ct)
+    private static bool IsWrittenOnInitialization(ISymbol member, Compilation compilation, CancellationToken ct)
     {
-        foreach (IMethodSymbol constructor in member.ContainingType.InstanceConstructors)
+        IEnumerable<IMethodSymbol> initAccessors = member.ContainingType.GetMembers().OfType<IPropertySymbol>()
+            .Select(static property => property.SetMethod).OfType<IMethodSymbol>().Where(static setter => setter.IsInitOnly);
+        foreach (IMethodSymbol initializer in member.ContainingType.InstanceConstructors.Concat(initAccessors))
         {
-            foreach (SyntaxReference reference in constructor.DeclaringSyntaxReferences)
+            foreach (SyntaxReference reference in initializer.DeclaringSyntaxReferences)
             {
-                if (reference.GetSyntax(ct) is not ConstructorDeclarationSyntax declaration) continue;
+                SyntaxNode declaration = reference.GetSyntax(ct);
+                if (declaration is not (ConstructorDeclarationSyntax or AccessorDeclarationSyntax)) continue;
                 SemanticModel model = compilation.GetSemanticModel(declaration.SyntaxTree);
                 foreach (SyntaxNode node in declaration.DescendantNodes())
                 {
