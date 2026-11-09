@@ -19,8 +19,7 @@ public class ExceptionExtensionsTests
     public void DescribeChain_lists_at_most_max_depth_exceptions(int maxDepth, string expected) =>
         Assert.That(Chain.DescribeChain(maxDepth), Is.EqualTo(expected));
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    public void DescribeChain_rejects_a_max_depth_below_one(int maxDepth) =>
+    [Test]
+    public void DescribeChain_rejects_a_max_depth_below_one([Range(-1, 0)] int maxDepth) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => Chain.DescribeChain(maxDepth));
 }
