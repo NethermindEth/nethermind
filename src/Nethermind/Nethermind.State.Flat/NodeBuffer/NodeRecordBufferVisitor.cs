@@ -231,12 +231,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
                 if (parallel && handledChildren < childCount && sizeHint > SubtreeSizeThreshold && _workers.TryTakeSlot(out ConcurrencyController.Slot slot))
                 {
                     tasks ??= [];
-                    long childSizeHint = sizeHint;
-                    tasks.Add(Task.Run(() =>
-                    {
-                        using ConcurrencyController.Slot worker = slot;
-                        return Descend(child, childContext, address, childPath, childSizeHint);
-                    }));
+                    tasks.Add(DescendInWorker(slot, child, childContext, address, childPath, sizeHint));
                 }
                 else
                 {
@@ -263,4 +258,13 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         }
         return size;
     }
+
+    /// <summary>Descends into <paramref name="child"/> on a worker, which releases <paramref name="slot"/> when done.</summary>
+    /// <remarks>Kept out of <see cref="VisitBranch"/> so that its closure is allocated only when a worker starts, not for every child.</remarks>
+    private Task<long> DescendInWorker(ConcurrencyController.Slot slot, ChildRef child, TNodeContext context, Hash256? address, TreePath path, long sizeHint) =>
+        Task.Run(() =>
+        {
+            using ConcurrencyController.Slot worker = slot;
+            return Descend(child, context, address, path, sizeHint);
+        });
 }
