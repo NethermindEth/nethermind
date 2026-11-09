@@ -369,6 +369,7 @@ public class OptimismEthRpcModule(
                 TxReceipt[] receipts = _receiptFinder.Get(block);
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
@@ -382,7 +383,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
-                            spec: _specProvider.GetSpec(block.Header),
+                            spec: spec,
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

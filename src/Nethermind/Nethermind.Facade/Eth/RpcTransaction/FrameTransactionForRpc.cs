@@ -26,8 +26,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public UInt256[]? NonceKeys { get; set; }
 
     /// <summary>EIP-8141 <c>frames</c>, in execution order; the field that discriminates this envelope.</summary>
-    /// <remarks>The transaction's <c>gas</c> is the intrinsic gas plus their summed limits, so a frame's own budget is
-    /// read here rather than from that total.</remarks>
+    /// <remarks>For an included transaction, <c>gas</c> is the intrinsic gas plus their summed limits; for a pending one,
+    /// only the summed limits. A frame's own budget is read here rather than from that total.</remarks>
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
