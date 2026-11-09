@@ -334,10 +334,11 @@ public class KademliaAdapterTests
         }
     }
 
-    [TestCase("[2606:4700:4700::1111]:30304", "2606:4700:4700::1111")]
+    [TestCase("[fe80::1]:30304", "fe80::1")]
+    [TestCase("[fe80::1%3]:30304", "fe80::1")]
     [TestCase("8.8.8.8:30304", "8.8.8.8")]
     [TestCase("[::ffff:8.8.8.8]:30304", "8.8.8.8")]
-    [TestCase("[2606:4700:4700::1111]:40404", null)]
+    [TestCase("[fe80::1]:40404", null)]
     [TestCase("1.1.1.1:30304", null)]
     public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(string source, string? expectedHost)
     {
@@ -346,11 +347,11 @@ public class KademliaAdapterTests
             IPAddress.Parse("8.8.8.8"),
             tcpPort: 30303,
             udpPort: 30304,
-            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111"))));
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse("fe80::1"))));
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: false,
+            allowNonRoutable: true,
             localIp: IPAddress.IPv6Any,
             sourceEndpoint: IPEndPoint.Parse(source),
             node: out Node? node);
