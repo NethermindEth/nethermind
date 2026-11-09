@@ -117,6 +117,24 @@ public class BulkFillStorageCleanupTests
         Assert.That(fixture.Count(Columns.Storage), Is.EqualTo(2), "with no marker, the old slot 1 is not dropped");
     }
 
+    [Test]
+    public void CleanStorage_after_the_first_leaves_markers_no_block_of_the_session_wrote()
+    {
+        using Fixture fixture = new();
+        fixture.Replay(writer => SetSlots(writer, TestItem.AddressA, 1));
+        fixture.Session.CleanStorage(CancellationToken.None);
+        fixture.Replay(writer => ClearAndSetSlots(writer, TestItem.AddressA, 2));
+        // Only a full scan finds this marker, because no block of this session cleared the account.
+        fixture.Scratch.GetColumnDb(Columns.Clears).PutSpan(TestItem.AddressB.ToAccountPath.Bytes, new byte[sizeof(ulong)]);
+
+        fixture.Session.CleanStorage(CancellationToken.None);
+        Assert.That(fixture.Count(Columns.Clears), Is.EqualTo(1), "the targeted cleanup reads only the accounts of this session");
+
+        fixture.Reopen();
+        fixture.Session.CleanStorage(CancellationToken.None);
+        Assert.That(fixture.Count(Columns.Clears), Is.Zero, "the full scan of a reopened session drops the marker");
+    }
+
     private static void SetSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writer, Address address, params ulong[] slots)
     {
         writer.Set(address, Contract);
