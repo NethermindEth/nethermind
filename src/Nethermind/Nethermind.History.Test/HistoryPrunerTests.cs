@@ -859,7 +859,6 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
-        await scheduler.WaitForIdle();
         int initialCompletedCalls = scheduler.CompletedCalls;
         scheduler.Hold();
         for (int i = 0; i < additionalBlocks; i++)
@@ -869,7 +868,7 @@ public class HistoryPrunerTests
         Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks)));
         await scheduler.WaitForPending();
         scheduler.Release();
-        await scheduler.WaitForIdle();
+        await scheduler.WaitForCompletedCalls(initialCompletedCalls + 1);
         Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
         ulong boundary = historyPruner.CutoffBlockNumber!.Value;
 
@@ -901,7 +900,7 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
-        await scheduler.WaitForIdle();
+        int initialCompletedCalls = scheduler.CompletedCalls;
         scheduler.Hold();
 
         historyPruner.SchedulePruneHistory();
@@ -913,9 +912,9 @@ public class HistoryPrunerTests
         await testBlockchain.AddBlock();
 
         scheduler.Release();
-        await scheduler.WaitForIdle();
+        await scheduler.WaitForCompletedCalls(initialCompletedCalls + 1);
         await testBlockchain.AddBlock();
-        await scheduler.WaitForIdle();
+        await scheduler.WaitForCompletedCalls(initialCompletedCalls + 2);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1018,7 +1017,6 @@ public class HistoryPrunerTests
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.TryPruneHistory(CancellationToken.None);
-        await scheduler.WaitForIdle();
         int initialCompletedCalls = scheduler.CompletedCalls;
         scheduler.Hold();
         for (int i = 0; i < additionalBlocks; i++)
@@ -1028,7 +1026,7 @@ public class HistoryPrunerTests
         Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks)));
         await scheduler.WaitForPending();
         scheduler.Release();
-        await scheduler.WaitForIdle();
+        await scheduler.WaitForCompletedCalls(initialCompletedCalls + 1);
         Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
         ulong boundary = historyPruner.CutoffBlockNumber!.Value;
 
@@ -2165,13 +2163,11 @@ public class HistoryPrunerTests
     {
         private readonly object _gate = new();
         private readonly List<Action> _pending = [];
-        private int _calls;
-        private int _activeCalls;
         private int _completedCalls;
         private bool _hold;
+        private TaskCompletionSource _completionChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _pendingAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public int Calls => Volatile.Read(ref _calls);
-        public int ActiveCalls => Volatile.Read(ref _activeCalls);
         public int CompletedCalls => Volatile.Read(ref _completedCalls);
 
         public void Hold()
@@ -2185,18 +2181,22 @@ public class HistoryPrunerTests
         public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
             where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
-            Interlocked.Increment(ref _calls);
             Action execute = () =>
             {
-                Interlocked.Increment(ref _activeCalls);
                 try
                 {
                     fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
                 }
                 finally
                 {
-                    Interlocked.Decrement(ref _activeCalls);
-                    Interlocked.Increment(ref _completedCalls);
+                    TaskCompletionSource changed;
+                    lock (_gate)
+                    {
+                        Interlocked.Increment(ref _completedCalls);
+                        changed = _completionChanged;
+                        _completionChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    }
+                    changed.TrySetResult();
                 }
             };
 
@@ -2205,6 +2205,7 @@ public class HistoryPrunerTests
                 if (_hold)
                 {
                     _pending.Add(execute);
+                    _pendingAdded.TrySetResult();
                     return true;
                 }
             }
@@ -2213,21 +2214,7 @@ public class HistoryPrunerTests
             return true;
         }
 
-        public async Task WaitForPending()
-        {
-            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-            while (DateTime.UtcNow < deadline)
-            {
-                lock (_gate)
-                {
-                    if (_pending.Count > 0) return;
-                }
-
-                await Task.Delay(10);
-            }
-
-            Assert.Fail("No scheduled pruning task was held while processing the head jump.");
-        }
+        public Task WaitForPending() => _pendingAdded.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         public void Release()
         {
@@ -2243,24 +2230,21 @@ public class HistoryPrunerTests
                 execute();
         }
 
-        public async Task WaitForIdle()
+        /// <summary>Waits until at least <paramref name="expected"/> scheduled pruning passes have completed.</summary>
+        public async Task WaitForCompletedCalls(int expected)
         {
-            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-            int observedCalls = Calls;
-            while (ActiveCalls != 0 && DateTime.UtcNow < deadline)
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+            while (true)
             {
-                await Task.Delay(10);
+                Task changed;
+                lock (_gate)
+                {
+                    if (CompletedCalls >= expected) return;
+                    changed = _completionChanged.Task;
+                }
+
+                await changed.WaitAsync(timeout.Token);
             }
-
-            while (DateTime.UtcNow < deadline)
-            {
-                await Task.Delay(10);
-                if (ActiveCalls == 0 && Calls == observedCalls) return;
-
-                observedCalls = Calls;
-            }
-
-            Assert.That(ActiveCalls, Is.Zero);
         }
     }
 
