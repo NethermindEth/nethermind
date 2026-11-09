@@ -26,6 +26,9 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
     private const string WrongPosException = "BlockException.IMPORT_IMPOSSIBLE_PARIS_WRONG_POS";
     private const string WrongPosBlockHash = "0x4c655cdc61ae3d4619e2e17fde7ba217ee475b8d27657b1ff3ded66630d63283";
     private const string PosOnNonTerminalParentError = "A proof-of-stake block cannot follow a non-terminal proof-of-work parent.";
+    private const string WrongPowException = "BlockException.IMPORT_IMPOSSIBLE_PARIS_WRONG_POW";
+    private const string WrongPowBlockHash = "0x7066598dab52684e5afa7bdffa60775287ee1b32a75fa97af9970a54c519b60e";
+    private const string PowOnTerminalParentError = "A proof-of-work block cannot follow a terminal or proof-of-stake parent.";
 
     private static string BlockRejectionFixture =>
         Path.Combine(AppContext.BaseDirectory, "Tests", "bcArrowGlacierToParis", "powToPosBlockRejection.json");
@@ -48,7 +51,7 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
 
     [TestCase("ArrowGlacierToParisAtDiff")]
     [TestCase("ArrowGlacierToParisAtDiffC000G")]
-    [TestCase("ArrowGlacierToParisAtDiff0xC0000")]
+    [TestCase("ArrowGlacierToParisAtDiff0xC00000")]
     public void Network_at_a_total_difficulty_without_hex_digits_does_not_load(string network) =>
         Assert.Throws<FormatException>(() => Load(network));
 
@@ -78,9 +81,10 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
         }
     }
 
-    [TestCase("BerlinToLondonAtDiffC0000", Description = "ends before the merge")]
-    [TestCase("ParisToShanghaiAtDiffC0000", Description = "starts after the merge")]
-    public void Spec_provider_refuses_a_total_difficulty_transition_other_than_to_Paris(string network)
+    [TestCase("LondonToArrowGlacierAtDiffC0000", Description = "ends before the merge")]
+    [TestCase("ShanghaiToParisAtDiffC0000", Description = "starts after the merge")]
+    [TestCase("BerlinToParisAtDiffC0000", Description = "starts without EIP-1559")]
+    public void Spec_provider_refuses_a_total_difficulty_transition_other_than_from_a_pre_merge_fork_with_EIP_1559_to_Paris(string network)
     {
         BlockchainTest test = Load(network);
 
@@ -88,28 +92,29 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
     }
 
     /// <remarks>
-    /// The fixture's PoS block before the terminal total difficulty never reaches the main chain either way. With
-    /// its expected exception removed, the run fails only if pre-validation rejects it: the block tree would
-    /// otherwise keep it unprocessed and the run would still end at the expected last block. The header is
-    /// validated as decoded, without a total difficulty, so the rejection comes from the merge header rule that a
-    /// PoS block needs a terminal or PoS parent.
+    /// Neither of these fixture blocks reaches the main chain either way. With its expected exception removed, the run
+    /// fails only if pre-validation rejects it: if it passed, the block tree would leave it unprocessed and the run
+    /// would still end at the expected last block. The header is validated as decoded, without a total difficulty, so
+    /// the rejection comes from the merge header rules on its parent: a PoS block needs a terminal or PoS parent, and a
+    /// PoW block cannot follow one.
     /// </remarks>
-    [Test]
-    public async Task Proof_of_stake_block_before_the_terminal_total_difficulty_is_rejected_by_pre_validation()
+    [TestCase(WrongPosException, WrongPosBlockHash, PosOnNonTerminalParentError, TestName = "{m}(PoS block before the terminal total difficulty)")]
+    [TestCase(WrongPowException, WrongPowBlockHash, PowOnTerminalParentError, TestName = "{m}(PoW block after the terminal block)")]
+    public async Task Block_on_the_wrong_side_of_the_transition_is_rejected_by_pre_validation(
+        string expectedException, string blockHash, string error)
     {
         JsonNode fixture = JsonNode.Parse(await File.ReadAllTextAsync(BlockRejectionFixture))!;
         JsonObject testJson = fixture.AsObject().Single().Value!.AsObject();
-        JsonObject wrongPos = testJson["blocks"]!.AsArray()
-            .Single(static b => b!["expectException"]?.GetValue<string>() == WrongPosException)!.AsObject();
-        wrongPos.Remove("expectException");
+        JsonObject block = testJson["blocks"]!.AsArray()
+            .Single(b => b!["expectException"]?.GetValue<string>() == expectedException)!.AsObject();
+        block.Remove("expectException");
 
         BlockchainTest test = JsonToEthereumTest.ConvertToBlockchainTests(fixture.ToJsonString()).Single();
         test.Name = BlockRejectionFixture;
 
         AssertionException exception = await Assert.CatchAsync<AssertionException>(() => RunTest(test));
 
-        Assert.That(exception.Message,
-            Does.Contain($"Unexpected invalid block {WrongPosBlockHash}: {PosOnNonTerminalParentError}"));
+        Assert.That(exception.Message, Does.Contain($"Unexpected invalid block {blockHash}: {error}"));
     }
 
     private static BlockchainTest Load(string network) =>

@@ -132,7 +132,8 @@ public abstract class BlockchainTestBase
             // A total-difficulty transition has no block or timestamp to activate at. The pre-merge fork's rules stay
             // in force, and PoSSwitcher (from the merge module, see RunTest) classifies each block against the
             // terminal total difficulty: that decides the PoW/PoS header rules, block rewards and PREVRANDAO, which
-            // is everything Paris changes over the forks it can follow.
+            // is everything Paris changes over the forks it can follow apart from difficulty-bomb delays, which only
+            // PoW blocks use.
             EnsureTotalDifficultyTransitionIsSupported(test);
             CustomSpecProvider provider = new(test.ChainId, test.ChainId, transitions.ToArray());
             provider.UpdateMergeTransitionInfo(null, terminalTotalDifficulty);
@@ -164,17 +165,23 @@ public abstract class BlockchainTestBase
             : after;
 
     /// <summary>
-    /// Refuses a total-difficulty transition whose forks differ in more than the merge, which a provider keyed on
-    /// block numbers cannot switch to at a total difficulty.
+    /// Refuses a total-difficulty transition other than one from a pre-merge fork with EIP-1559 (London, Arrow Glacier
+    /// or Gray Glacier) to Paris.
     /// </summary>
-    /// <exception cref="NotSupportedException">The transition starts post-merge or does not end at Paris.</exception>
+    /// <remarks>
+    /// The provider keeps the source fork's rules after the merge. Over these forks, Paris adds only the merge and
+    /// difficulty-bomb delays, so the post-merge blocks get Paris's rules; from any other fork they would not.
+    /// </remarks>
+    /// <exception cref="NotSupportedException">
+    /// The transition starts post-merge, starts from a fork without EIP-1559 or does not end at Paris.
+    /// </exception>
     private static void EnsureTotalDifficultyTransitionIsSupported(BlockchainTest test)
     {
-        if (IsPostMergeSpec(test.Network!) || test.NetworkAfterTransition is not Paris)
+        if (IsPostMergeSpec(test.Network!) || !test.Network!.IsEip1559Enabled || test.NetworkAfterTransition is not Paris)
         {
             throw new NotSupportedException(
                 $"Total-difficulty transition from {test.Network!.Name} to {test.NetworkAfterTransition?.Name} is not supported: " +
-                "only a pre-merge fork to Paris is.");
+                "only one from a pre-merge fork with EIP-1559 to Paris is.");
         }
     }
 
