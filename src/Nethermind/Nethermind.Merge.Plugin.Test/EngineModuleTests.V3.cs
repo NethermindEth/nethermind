@@ -909,6 +909,49 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkChoiceUpdated_rejects_null_or_missing_forkchoice_state_hash_without_applying_it(
+        [Values(EngineApiVersions.Fcu.V3, EngineApiVersions.Fcu.V4, EngineApiVersions.Fcu.V5)] int version,
+        [Values("headBlockHash", "safeBlockHash", "finalizedBlockHash")] string field,
+        [Values] bool omit)
+    {
+        IReleaseSpec releaseSpec = version switch { EngineApiVersions.Fcu.V3 => Cancun.Instance, EngineApiVersions.Fcu.V4 => Amsterdam.Instance, _ => Bogota.Instance };
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, _, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(releaseSpec);
+        using MergeTestBlockchain disposeChain = chain;
+        IBlockCacheService blockCacheService = chain.Container.Resolve<IBlockCacheService>();
+        Hash256? cachedHead = blockCacheService.HeadBlockHash;
+        Hash256? safe = chain.BlockTree.SafeHash;
+        Hash256? finalized = chain.BlockTree.FinalizedHash;
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        // Unknown hashes take the syncing path, which would record whatever forkchoice state got through.
+        JsonObject forkchoiceState = new()
+        {
+            ["headBlockHash"] = TestItem.KeccakA.ToString(),
+            ["safeBlockHash"] = TestItem.KeccakB.ToString(),
+            ["finalizedBlockHash"] = TestItem.KeccakC.ToString()
+        };
+        if (omit)
+            forkchoiceState.Remove(field);
+        else
+            forkchoiceState[field] = null;
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(
+            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context);
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(cachedHead));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(safe));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(finalized));
+            Assert.That(forkChoiceUpdatedCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);

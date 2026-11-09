@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Trie;
@@ -56,6 +57,9 @@ public class JsonRpcProcessorTests
         ["9223372036854775807", new JsonRpcId(long.MaxValue)],
         ["\";\\\\\\\"\"", new JsonRpcId(";\\\"")],
         ["null", JsonRpcId.Null],
+        ["1.5", JsonRpcId.FromValidatedRawNumberToken("1.5"u8)],
+        ["1.0", JsonRpcId.FromValidatedRawNumberToken("1.0"u8)],
+        ["1e40", JsonRpcId.FromValidatedRawNumberToken("1e40"u8)],
     ];
 
     static JsonRpcProcessorTests()
@@ -277,7 +281,7 @@ public class JsonRpcProcessorTests
             {
                 Assert.That(error.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
                 Assert.That(error.Message, Is.EqualTo(secret));
-                Assert.That(error.Data?.ToString(), Does.Contain(secret));
+                Assert.That(error.Data, Is.Null);
                 Assert.That(logger.LogList, Has.Some.Contains("Missing trie node during eth_getLogs"));
                 Assert.That(logger.LogList, Has.Some.Contains("Error response handling JsonRpc Id:1"));
                 Assert.That(logger.LogList, Has.Some.Contains("Error when handling Id:1"));
@@ -522,6 +526,96 @@ public class JsonRpcProcessorTests
 
         await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode));
         return sink.Responses;
+    }
+
+    private static IEnumerable<TestCaseData> NotificationCases()
+    {
+        const string notification = """{"jsonrpc":"2.0","method":"eth_chainId","params":[]}""";
+        string request = CreateRequest("1", "eth_chainId");
+        (string name, string body, int dispatched, string answer)[] cases =
+        [
+            ("Single notification", notification, 1, ""),
+            ("Batch of notifications", CreateBatchRequest(notification, notification), 2, ""),
+            ("Notification before request", CreateBatchRequest(notification, request), 2, "[1]"),
+            ("Request between notifications", CreateBatchRequest(notification, request, notification), 3, "[1]"),
+            ("Null id is a request", CreateRequest("null", "eth_chainId"), 1, "null"),
+            ("Null id in batch is a request", CreateBatchRequest(notification, CreateRequest("null", "eth_chainId")), 2, "[null]"),
+            ("Object without id or method is answered", """{"jsonrpc":"2.0"}""", 1, "<missing>"),
+            ("Batch item without id or method is answered", CreateBatchRequest(notification, """{"jsonrpc":"2.0"}"""), 2, "[<missing>]"),
+        ];
+
+        foreach ((string name, string body, int dispatched, string answer) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(body, transport, dispatched, answer).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// JSON-RPC 2.0 sections 4.1 and 6: a notification is executed but never answered, also inside a batch, and a
+    /// batch of notifications only is answered with nothing. <paramref name="answer"/> lists the answered ids, with
+    /// brackets for a batch.
+    /// </remarks>
+    [TestCaseSource(nameof(NotificationCases))]
+    public async Task Notifications_are_executed_but_not_answered(string body, RequestTransport transport, int dispatched, string answer)
+    {
+        int calls = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            Interlocked.Increment(ref calls);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service), Encoding.UTF8.GetBytes(body), transport);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(dispatched));
+            Assert.That(string.Join(" ", result.Select(static r => r.IsCollection
+                ? $"[{string.Join(",", r.BatchItems!.Select(static item => item.Id.ToString()))}]"
+                : r.Response!.Id.ToString())), Is.EqualTo(answer));
+        }
+    }
+
+    /// <remarks>
+    /// The socket sink is shared by every batch of one WS/IPC message and resets its stop flag only when a batch
+    /// response starts, which a leading notification defers.
+    /// </remarks>
+    [TestCase("eth_chainId", 1, TestName = "Response limit stop of a previous batch does not leak (sequential)")]
+    [TestCase("eth_call", 4, TestName = "Response limit stop of a previous batch does not leak (concurrent)")]
+    public async Task Response_limit_stop_of_a_previous_batch_does_not_leak(string method, int concurrency)
+    {
+        List<string> dispatched = [];
+        IJsonRpcService service = CreateService(request =>
+        {
+            lock (dispatched) dispatched.Add(request.Id.ToString());
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = concurrency, EthModuleConcurrentInstances = concurrency });
+        JsonRpcContext context = new(RpcEndpoint.Ws);
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize: 1, sendLock, context);
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{method}}","params":[]}""";
+
+        await processor.ProcessAsync(
+            CreateReader(CreateBatchRequest(CreateRequest("1", method), CreateRequest("2", method)) + CreateBatchRequest(notification, CreateRequest("3", method))),
+            context,
+            sink,
+            new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments));
+
+        string[] messages = Encoding.UTF8.GetString(stream.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument secondBatch = JsonDocument.Parse(messages[^1]);
+        JsonElement answer = secondBatch.RootElement.EnumerateArray().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(messages, Has.Length.EqualTo(2));
+            Assert.That(dispatched, Does.Contain("3"));
+            Assert.That(answer.GetProperty("id").GetInt32(), Is.EqualTo(3));
+            Assert.That(answer.TryGetProperty("error", out _), Is.False, answer.GetRawText());
+        }
     }
 
     [Test]
@@ -936,6 +1030,27 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public void JsonRpcEnvelopeReader_echoes_non_integral_numeric_id_token([Values("1.5", "1.0", "-0.0", "1e40", "1E-7")] string idJson)
+    {
+        JsonRpcEnvelope envelope = ReadEnvelope($"{{\"id\":{idJson},\"method\":\"eth_blockNumber\"}}", out byte[] body);
+        using JsonDocument document = JsonDocument.Parse(body);
+        JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out _);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            envelope.Id.WriteTo(writer);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo(idJson));
+            Assert.That(elementEnvelope.Id, Is.EqualTo(envelope.Id));
+            Assert.That(elementEnvelope.Id.GetHashCode(), Is.EqualTo(envelope.Id.GetHashCode()));
+        }
+    }
+
+    [Test]
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
         JsonRpcEnvelopeReader reader = new(Encoding.UTF8.GetBytes("[{\"id\":1}]"));
@@ -944,14 +1059,6 @@ public class JsonRpcProcessorTests
             Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.False);
             Assert.That(envelope, Is.EqualTo(default(JsonRpcEnvelope)));
         }
-    }
-
-    [Test]
-    public void JsonRpcEnvelopeReader_rejects_fractional_numeric_ids()
-    {
-        Action read = () => ReadEnvelope("{\"id\":1.1,\"method\":\"eth_blockNumber\"}", out _);
-
-        Assert.That(read, Throws.TypeOf<JsonException>());
     }
 
     private static JsonRpcEnvelope ReadEnvelope(string request, out byte[] body)
@@ -1337,7 +1444,8 @@ public class JsonRpcProcessorTests
             ("First request invalid", "{aaa}" + first),
             ("Garbage after request", first + " garbage"),
             ("Primitives between requests", first + " 1 \"x\" null " + second),
-            ("Undecodable envelope between requests", first + """{"jsonrpc":"2.0","id":1.5,"method":"eth_chainId","params":[]}""" + second),
+            ("Fractional id between requests", first + """{"jsonrpc":"2.0","id":1.5,"method":"eth_chainId","params":[]}""" + second),
+            ("Object id between requests", first + """{"jsonrpc":"2.0","id":{"a":1},"method":"eth_chainId","params":[]}""" + second),
             ("Empty batch between requests", first + "[]" + second),
             ("Batch with malformed item", CreateBatchRequest(first, "1", second) + first),
             ("Empty object", "{}" + first),
@@ -1622,8 +1730,8 @@ public class JsonRpcProcessorTests
             ("String element", "[\"x\"]"u8.ToArray(), 1, -1),
             ("Null element followed by valid request", "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Object element with invalid UTF-8 method", [(byte)'[', .. CreateRequestWithRawMethodTail(0xC3), (byte)']'], 1, -1),
-            ("Object element with fractional id", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
-            ("Object element with fractional id before nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[[1],{\"a\":[2]}]},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Object element with array id", "[{\"jsonrpc\":\"2.0\",\"id\":[1],\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
+            ("Object element with object id before nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"id\":{\"a\":[1]},\"method\":\"eth_chainId\",\"params\":[[1],{\"a\":[2]}]},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Object element with boolean id after nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[{\"a\":[1]}],\"id\":true},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Nested array element followed by valid request", "[[{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]},[1]],{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Whitespace around elements", " \r\n[ null ,\t{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[ ]} \n] \r\n"u8.ToArray(), 2, 1),
@@ -1817,6 +1925,8 @@ public class JsonRpcProcessorTests
         "[" + CreateRequest("1", "eth_blockNumber"),
         "[" + CreateRequest("1", "eth_blockNumber") + ",]",
         CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), "{\"id\":2 \"method\":\"eth_chainId\"}"),
+        CreateRequest("true", "eth_blockNumber") + " garbage",
+        CreateRequest("{\"a\":1}", "eth_blockNumber") + "]",
     ];
 
     /// <remarks>
@@ -1845,6 +1955,33 @@ public class JsonRpcProcessorTests
             Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
             Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
             Assert.That(dispatched, Is.False, "a body that is not one document must not be dispatched");
+        }
+    }
+
+    /// <remarks>
+    /// JSON-RPC 2.0 section 5.1: valid JSON that is not a valid Request object is -32600, not -32700, as it already is
+    /// for the same object inside a batch.
+    /// </remarks>
+    [Test]
+    public async Task Single_request_with_unsupported_id_type_is_an_invalid_request(
+        [Values("true", "false", "{\"a\":1}", "[1]")] string idJson,
+        [Values] RequestTransport transport)
+    {
+        bool dispatched = false;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched = true;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, Encoding.UTF8.GetBytes(CreateRequest(idJson, "eth_chainId")), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((response as JsonRpcErrorResponse)?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(dispatched, Is.False);
         }
     }
 
@@ -2075,6 +2212,33 @@ public class JsonRpcProcessorTests
         {
             Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
             Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
+        }
+    }
+
+    [Test]
+    public async Task Disabled_namespace_is_method_not_found_and_keeps_its_report_label([Values] bool inBatch)
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = "Debug";
+                callInfo[3] = null;
+                return ModuleResolution.Disabled;
+            });
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig(), gcKeeper));
+        string request = CreateRequest("1", "debug_traceCall");
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, inBatch ? CreateBatchRequest(request) : request, CreateHttpContext());
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Error? error = ((inBatch ? only.BatchItems!.Single() : only.Response) as JsonRpcErrorResponse)?.Error;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?.Code, Is.EqualTo(ErrorCodes.MethodNotFound));
+            Assert.That(error?.Message, Does.Contain("namespace 'Debug' is disabled"));
+            if (!inBatch) Assert.That(only.Report?.Method, Is.EqualTo("debug_traceCall"));
         }
     }
 

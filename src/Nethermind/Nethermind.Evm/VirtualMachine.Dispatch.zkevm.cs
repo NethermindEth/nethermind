@@ -193,7 +193,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.Head = head;
                 Instruction instruction = (Instruction)Unsafe.Add(ref code, pc);
                 state.Vm.StartInstructionTrace(instruction, gas, (int)pc, in stack,
-                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
+                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.TraceStackInputs ?? TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
             pc++;

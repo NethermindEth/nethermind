@@ -16,7 +16,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUNS: 20
   PROTECTED: '^(\.github|\.agents|\.claude|scripts)/|^(AGENTS|CLAUDE)\.md$|\.(props|targets|csproj|rsp)$|(^|/)(global\.json|nuget\.config)$|^\.gitmodules$|^src/(tests|bench_precompiles)$'
 
 defaults:
@@ -99,7 +98,7 @@ jobs:
 
             Do not commit or push. Write two files to `${{ runner.temp }}/claude/`:
             - `test.txt`: line 1 is the test project path from the repository root, `src/Nethermind/<project>/<project>.csproj`,
-              and line 2 is the `--filter` value. A separate job runs this test ${{ env.RUNS }} times before and after the fix
+              and line 2 is the `--filter` value. A separate job runs this test repeatedly before and after the fix
               and adds the results to the PR.
             - `pr.md`: line 1 is the PR title `fix: stabilize <test name>`. The rest is the PR body in the format of
               .github/pull_request_template.md, with the failed run link, the flakiness evidence (which runs and commits
@@ -145,52 +144,11 @@ jobs:
   verify:
     needs: fix
     if: needs.fix.outputs.changed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
     permissions:
       contents: read
-    outputs:
-      before: ${{ steps.run.outputs.before }}
-      after: ${{ steps.run.outputs.after }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          persist-credentials: false
-
-      - uses: ./.github/actions/fetch-submodules
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/setup-dotnet
-
-      - uses: ./.github/actions/download-artifact
-        with:
-          name: flaky-fix
-          path: ${{ runner.temp }}/fix
-
-      - name: Run the test before and after the fix
-        id: run
-        run: |
-          project=$(sed -n 1p "$RUNNER_TEMP/fix/test.txt")
-          filter=$(sed -n 2p "$RUNNER_TEMP/fix/test.txt")
-          count_failures() {
-            dotnet build "$project" -c release >&2 || { echo "n/a (build failed)"; return; }
-            local failed=0 not_run=0 rc
-            for _ in $(seq "$RUNS"); do
-              rc=0
-              dotnet test --project "$project" -c release --no-build -- --filter "$filter" >&2 || rc=$?
-              if [ "$rc" -eq 8 ]; then not_run=$((not_run + 1)); elif [ "$rc" -ne 0 ]; then failed=$((failed + 1)); fi
-            done
-            if [ "$not_run" -gt 0 ]; then echo "n/a (no matching test in $not_run runs)"; else echo "$failed"; fi
-          }
-          before=$(count_failures)
-          git apply --binary "$RUNNER_TEMP/fix/fix.patch"
-          after=$(count_failures)
-          echo "before=$before" >> "$GITHUB_OUTPUT"
-          echo "after=$after" >> "$GITHUB_OUTPUT"
-          echo "Failed runs out of $RUNS: $before before the fix, $after after it"
-          [ "$after" = 0 ] || { echo "::error::The test still fails with the fix"; exit 1; }
+    uses: ./.github/workflows/flaky-test-verify.yml
+    with:
+      ref: ${{ github.event.workflow_run.head_sha }}
 
   publish:
     needs: [fix, verify]
@@ -200,6 +158,7 @@ jobs:
     permissions:
       contents: read
     env:
+      RUNS: ${{ needs.verify.outputs.runs }}
       BEFORE: ${{ needs.verify.outputs.before }}
       AFTER: ${{ needs.verify.outputs.after }}
       BRANCH: test/flaky-${{ github.run_id }}-${{ github.run_attempt }}
@@ -223,7 +182,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Open a draft PR
+      - name: Open a PR
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
@@ -242,4 +201,4 @@ jobs:
           git checkout -b "$BRANCH"
           git -c core.hooksPath=/dev/null commit -m "$title"
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
-          gh pr create --draft --base master --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          gh pr create --base master --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"

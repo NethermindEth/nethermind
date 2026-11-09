@@ -705,7 +705,7 @@ public class JsonRpcServiceTests
             : JsonSerializer.Serialize(new
             {
                 jsonrpc = "2.0",
-                error = new { code = ErrorCodes.InternalError, message = "Internal error", data = $"{cause.GetType()}: {cause.Message}" },
+                error = new { code = ErrorCodes.InternalError, message = "Internal error" },
                 id = 67
             });
         using (Assert.EnterMultipleScope())
@@ -1511,43 +1511,32 @@ public class JsonRpcServiceTests
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
-        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError);
-        // Covers the second error.data producer, JsonRpcService.ReturnErrorResponse, which the module-invocation
-        // path in Error_data_does_not_leak_stack_trace_or_build_paths never reaches.
-        AssertErrorDataWithoutStackTrace(errorResponse);
+        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError, "Internal error");
+        Assert.That(errorResponse.Error!.Data, Is.Null);
     }
 
-    // error.data reaches unauthenticated callers, so it must not carry the stack trace: our release builds
-    // render frames with the build machine's absolute source paths and expose the internal call graph.
-    [TestCase(ErrorCodes.InternalError, TestName = "InternalErrorArm")]
-    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParamsArm")]
-    public void Error_data_does_not_leak_stack_trace_or_build_paths(int expectedCode)
+    [TestCase("internal", ErrorCodes.InternalError, "Internal error", TestName = "InternalErrorArm")]
+    [TestCase("argument", ErrorCodes.InvalidParams, "bad argument", TestName = "InvalidParamsArm")]
+    [TestCase("json", ErrorCodes.InvalidParams, "Invalid params", TestName = "JsonExceptionArm")]
+    [TestCase("notFound", ErrorCodes.PrunedHistoryUnavailable, null, TestName = "ResourceNotFoundArm")]
+    [TestCase("balance", ErrorCodes.InvalidInput, null, TestName = "InsufficientBalanceArm")]
+    public void Exception_error_has_no_error_data(string kind, int expectedCode, string? expectedMessage)
     {
-        Exception thrown = expectedCode == ErrorCodes.InternalError
-            ? new InvalidOperationException("Stack empty.")
-            : new ArgumentException("bad argument");
+        Exception thrown = kind switch
+        {
+            "internal" => new InvalidOperationException("Stack empty."),
+            "argument" => new ArgumentException("bad argument"),
+            "notFound" => new ResourceNotFoundException("History pruned"),
+            "balance" => new InsufficientBalanceException(TestItem.AddressA),
+            _ => new JsonException("bad json")
+        };
 
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
 
-        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode);
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
 
-        AssertErrorDataWithoutStackTrace(response, thrown.GetType(), thrown.Message);
-    }
-
-    private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
-    {
-        string data = response.Error!.Data?.ToString() ?? string.Empty;
-        using (Assert.EnterMultipleScope())
-        {
-            // Still actionable: the caller learns what went wrong.
-            if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
-            if (expectedMessage is not null) Assert.That(data, Does.Contain(expectedMessage), data);
-            // But nothing about where our source lives or how the call got there.
-            Assert.That(data, Does.Not.Contain("   at "), data);
-            Assert.That(data, Does.Not.Contain(".cs:line"), data);
-            Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
-        }
+        Assert.That(response.Error!.Data, Is.Null);
     }
 
     private static IEnumerable<TestCaseData> OutOfMemoryPools()
@@ -1589,16 +1578,16 @@ public class JsonRpcServiceTests
         }
     }
 
-    // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
-    // required") and for a namespace this node has disabled, whose message is a remediation instruction for the
-    // operator. Only the first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
-    [TestCase(ModuleResolution.Disabled, true, RpcEndpoint.Http)]
-    [TestCase(ModuleResolution.Disabled, true, RpcEndpoint.IPC)]
-    [TestCase(ModuleResolution.EndpointDisabled, true, RpcEndpoint.Http)]
-    [TestCase(ModuleResolution.EndpointDisabled, true, RpcEndpoint.IPC)]
-    [TestCase(ModuleResolution.NotAuthenticated, false, RpcEndpoint.Http)]
-    [TestCase(ModuleResolution.NotAuthenticated, false, RpcEndpoint.IPC)]
-    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable,
+    // #13156 follow-up: -32601 is overloaded. It is returned both for a method the caller got wrong and for a
+    // namespace this node has disabled, whose message is a remediation instruction for the operator. Only the
+    // first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
+    [TestCase(ModuleResolution.Disabled, ErrorCodes.MethodNotFound, true, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.Disabled, ErrorCodes.MethodNotFound, true, RpcEndpoint.IPC)]
+    [TestCase(ModuleResolution.EndpointDisabled, ErrorCodes.MethodNotFound, true, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.EndpointDisabled, ErrorCodes.MethodNotFound, true, RpcEndpoint.IPC)]
+    [TestCase(ModuleResolution.NotAuthenticated, ErrorCodes.InvalidRequest, false, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.NotAuthenticated, ErrorCodes.InvalidRequest, false, RpcEndpoint.IPC)]
+    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, int expectedCode, bool expectedOperatorActionable,
         RpcEndpoint endpoint)
     {
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
@@ -1617,7 +1606,7 @@ public class JsonRpcServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(response.Error!.Code, Is.EqualTo(expectedCode));
             Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
             Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
             if (resolution == ModuleResolution.Disabled)
@@ -1734,6 +1723,7 @@ public class JsonRpcServiceTests
             {
                 Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
                 Assert.That(warning, Does.Not.Contain("Node missing"));
+                Assert.That(response.Error!.Data, Is.Null);
             }
         }
         finally
@@ -1754,6 +1744,7 @@ public class JsonRpcServiceTests
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
 
+        Assert.That(response.Error!.Data, Is.Null);
         logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(static text => text.StartsWith("Missing trie node during eth_getLogs")));
     }
 
