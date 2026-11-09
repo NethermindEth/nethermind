@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,6 +35,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParitySponsor = TestItem.AddressD;
     private static readonly Address ParityReverter = TestItem.AddressF;
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
+    private static readonly Address ParityCodeless = new("0x000000000000000000000000000000000000beef");
     private const string RevertOutput = "0x00";
 
     /// <summary>Reverts with one byte of untouched memory, so its output is not empty.</summary>
@@ -103,6 +105,10 @@ public partial class FrameTxProcessorTests
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), UndispatchedFrame(PreDispatchExit.EntryAccessCharge, out _), Frame(FrameMode.Default, target: Observer)];
                 break;
+            case "codelessTarget":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityCodeless, value: 7), Frame(FrameMode.Default, target: Observer)];
+                break;
             default:
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: Recipient)];
@@ -130,6 +136,7 @@ public partial class FrameTxProcessorTests
     [TestCase("nested", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("skipped", new[] { 0, 1, 3 }, new[] { 3, 0 })]
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
+    [TestCase("codelessTarget", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("assertReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
@@ -282,6 +289,42 @@ public partial class FrameTxProcessorTests
             Assert.That(trace.StateChanges.TryGetValue(Beneficiary, out ParityAccountStateChange? beneficiary), Is.True, "beneficiary");
             Assert.That((beneficiary?.Balance?.After ?? 0) - (beneficiary?.Balance?.Before ?? 0), Is.EqualTo(fee), "beneficiary credit");
             Assert.That(trace.StateChanges[Sender].Nonce?.After, Is.EqualTo((UInt256?)1), "sender nonce");
+        }
+    }
+
+    /// <summary>A frame whose target has no code runs default code, so it does not enter the EVM: callTracer renders
+    /// it from the transaction with no <c>output</c> and no <c>calls</c>, and structLogs has no step of it.</summary>
+    [Test]
+    public void GethTraces_FrameTx_CodelessTargetFrameDoesNotEnterTheEvm()
+    {
+        Transaction tx = ParityScenarioTx("codelessTarget");
+        (JsonDocument trace, _) = TraceCall(tx);
+        using (trace)
+        {
+            JsonElement frame = trace.RootElement.GetProperty("calls")[1];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.GetProperty("to").GetString(), Is.EqualTo(ParityCodeless.ToString()), "frame target");
+                Assert.That(frame.TryGetProperty("error", out _), Is.False, "frame error");
+                Assert.That(frame.TryGetProperty("output", out _), Is.False, "frame output");
+                Assert.That(frame.TryGetProperty("calls", out _), Is.False, "frame calls");
+            }
+        }
+    }
+
+    [Test]
+    public void StructLogs_FrameTx_CodelessTargetFrameAddsNoSteps()
+    {
+        Transaction tx = ParityScenarioTx("codelessTarget");
+        GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
+        GethTxTraceEntry[] frameStarts = [.. trace.Entries.Where(static e => e.Depth == 1 && e.ProgramCounter == 0)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts!.Select(static r => r.Status), Is.All.EqualTo(TxFrameReceipt.StatusSuccess), "frame statuses");
+            Assert.That(frameStarts, Has.Length.EqualTo(2), "only the VERIFY and DEFAULT frames add steps");
         }
     }
 

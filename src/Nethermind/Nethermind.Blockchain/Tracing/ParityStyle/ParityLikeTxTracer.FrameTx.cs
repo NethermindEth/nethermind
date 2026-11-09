@@ -110,12 +110,31 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             // A frame is not an operation of its caller, so no call's gas carries over to the next frame's first one.
             tracer._treatGasParityStyle = false;
+            if (RanDefaultCode(action))
+            {
+                DropLastFrameOperation();
+                return;
+            }
+
             // The gas the VM left until a receipt reports the frame's spend: a frame that halted exceptionally has no
             // result and consumed all its gas; a reverted one keeps its result.
             _lastFrameOperation?.Used = action.Result is null ? 0 : action.Gas - action.Result.GasUsed;
         }
 
         private bool IsFrame(ParityTraceAction action) => _root is not null && action.TraceAddress.Length == 1;
+
+        /// <summary>A frame whose target has no code runs default code, so it does not enter the EVM and has no
+        /// operation; a precompile frame dispatches, so it keeps its operation.</summary>
+        private bool RanDefaultCode(ParityTraceAction frame) =>
+            !frame.IsPrecompiled && _lastFrameOperation?.Sub?.Operations is { Count: 0 };
+
+        private void DropLastFrameOperation()
+        {
+            List<ParityVmOperationTrace> ops = tracer._currentVmTrace.Ops;
+            ops.Remove(_lastFrameOperation!);
+            _lastFrameOperation = null;
+            tracer._currentOperation = ops.Count == 0 ? null : ops[^1];
+        }
 
         private void AddFrameOperation(ParityTraceAction frame)
         {
