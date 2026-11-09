@@ -2042,7 +2042,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // the gas GAS reads remains, and with gas for the opcodes either way the fused step needs no other test.
                 ulong readGas = pushGas + BaseGasCost.GasCost;
                 ulong fallGas = readGas + 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-                if (gas >= (nuint)(fallGas + JumpDestGasCost.GasCost))
+                if (Covers(gas, fallGas + JumpDestGasCost.GasCost))
                 {
                     if (gas - (nuint)readGas >= value)
                     {
