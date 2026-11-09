@@ -4,11 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,9 +24,9 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -30,6 +34,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
@@ -451,9 +456,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void FindBlockHash_empty_rocksdb_index_falls_back_to_the_obsolete_receipt([Values] bool legacyReceipt)
     {
         using TempPath path = TempPath.GetTempDirectory();
-        DbConfig config = new();
-        RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-        using ColumnsDb<ReceiptsColumns> columns = new(path.Path, new DbSettings("Receipts", "receipts"), config, configFactory, LimboLogs.Instance, [ReceiptsColumns.Transactions]);
+        using IContainer container = CreateRocksDbContainer(path.Path);
+        using IColumnsDb<ReceiptsColumns> columns = container.Resolve<IDbFactory>().CreateColumnsDb<ReceiptsColumns>(new DbSettings("Receipts", "receipts"));
         IDb index = columns.GetColumnDb(ReceiptsColumns.Transactions);
         index.Set(TestItem.KeccakA.Bytes, Array.Empty<byte>());
         if (legacyReceipt)
@@ -498,11 +502,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void FindBlockHash_preserves_oversized_values_with_a_valid_rlp_prefix([Values] bool rocksDb)
     {
         using TempPath path = TempPath.GetTempDirectory();
-        DbConfig config = new();
-        RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-        using ColumnsDb<ReceiptsColumns>? columns = rocksDb
-            ? new(path.Path, new DbSettings("Receipts", "receipts"), config, configFactory, LimboLogs.Instance, [ReceiptsColumns.Transactions])
-            : null;
+        using IContainer? container = rocksDb ? CreateRocksDbContainer(path.Path) : null;
+        using IColumnsDb<ReceiptsColumns>? columns = container?.Resolve<IDbFactory>().CreateColumnsDb<ReceiptsColumns>(new DbSettings("Receipts", "receipts"));
         IndexReadDb trackedIndex = new();
         IDb index = columns?.GetColumnDb(ReceiptsColumns.Transactions) ?? trackedIndex;
         byte[] value = new byte[Hash256.Size + 1];
@@ -577,6 +578,20 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(index.Releases, Is.Zero);
             Assert.That(index.ArrayReads, Is.Zero);
         }
+    }
+
+    private static IContainer CreateRocksDbContainer(string path)
+    {
+        InitConfig initConfig = new() { BaseDbPath = path };
+        return new ContainerBuilder()
+            .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<IPruningConfig>(new PruningConfig())
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+            .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
     }
 
     private PersistentReceiptStorage CreateStorageWithIndex(IDb index, IDeferredBlockDataWriter? writer = null, IStatePersistenceBarrier? barrier = null)
