@@ -12,6 +12,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.History;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -56,7 +61,12 @@ public class DebugRpcModule(
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
     IBlockForRpcFactory blockForRpcFactory,
-    ICodeInfoRepository codeInfoRepository)
+    ICodeInfoRepository codeInfoRepository,
+    IReceiptConfig receiptConfig,
+    ISyncPointers syncPointers,
+    ISyncProgressResolver syncProgressResolver,
+    ISyncConfig syncConfig,
+    IHistoryPruner historyPruner)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -88,7 +98,10 @@ public class DebugRpcModule(
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
+            const string indexingMessage = "transaction indexing is in progress";
+            return IsTransactionIndexingInProgress()
+                ? ResultWrapper<GethLikeTxTrace, string>.Fail(indexingMessage, ErrorCodes.ResourceNotFound, indexingMessage)
+                : ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -148,6 +161,28 @@ public class DebugRpcModule(
         Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
         return result;
+    }
+
+    private bool IsTransactionIndexingInProgress()
+    {
+        if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
+
+        ulong pivotNumber = syncProgressResolver.SyncPivot.BlockNumber;
+        // The feed's cached barrier is unset until activation, unlike persisted receipt progress.
+        ulong barrier = Math.Max(1UL, Math.Min(pivotNumber, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier)));
+        barrier = Math.Max(barrier, historyPruner.CutoffBlockNumber ?? 0);
+        ulong highestPendingBlock = pivotNumber;
+        if (syncPointers.LowestInsertedReceiptBlockNumber is { } lowestInserted)
+        {
+            if (lowestInserted <= barrier) return false;
+            // The cursor can still name the block in an outstanding receipt request.
+            highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted);
+        }
+        if (highestPendingBlock < barrier) return false;
+
+        ulong lastBlock = blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+        return receiptConfig.TxLookupLimit is not > 0 || lastBlock < receiptConfig.TxLookupLimit.Value
+            || highestPendingBlock > lastBlock - receiptConfig.TxLookupLimit.Value;
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
@@ -380,9 +415,10 @@ public class DebugRpcModule(
         Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number);
         if (resolvedBlock is null)
         {
-            return MissingTraceBlockBody(header,
+            return MissingTraceBlock(
                 missingBodyHash is not null ? $"block {missingBodyHash} not found"
-                    : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}");
+                    : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
+                header.Number, missingBodyHash is not null && debugBridge.HaveNotSyncedHeadersYet());
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -401,10 +437,10 @@ public class DebugRpcModule(
             (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter)));
     }
 
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> MissingTraceBlockBody(BlockHeader header, string message) =>
-        header.Number < blockFinder.LowestServedBlock
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> MissingTraceBlock(string message, ulong? number, bool isTemporary = false) =>
+        number < blockFinder.LowestServedBlock
             ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
-            : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound);
+            : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, isTemporary);
 
     private GethLikeTxTraceStreamingBlockResult BuildStreamingBlockResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runBlockTrace)
@@ -644,27 +680,42 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
+        // The block tree's pending hash aliases the head, not a next-block candidate.
+        if (blockNumber.Type == BlockParameterType.Pending)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("pending block is not available", ErrorCodes.InvalidInput);
+
         BlockHeader? header = TryGetHeader(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
-                && blockNumber.Type == BlockParameterType.BlockNumber)
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+            {
+                string? message = blockNumber.Type switch
+                {
+                    BlockParameterType.BlockNumber => $"block #{blockNumber.BlockNumber} not found",
+                    BlockParameterType.Safe => "safe block not found",
+                    BlockParameterType.Finalized => "finalized block not found",
+                    _ => null
+                };
+                if (message is not null)
+                    return blockNumber.Type == BlockParameterType.BlockNumber
+                        ? MissingTraceBlock(message, blockNumber.BlockNumber, headerError.IsTemporary)
+                        : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+            }
             return headerError;
+        }
+
+        // HasBlock excludes cache-only bodies that FindBlock can still serve.
+        if ((blockNumber.Type == BlockParameterType.BlockNumber || header.Number == 0)
+            && !blockFinder.HasBlock(header.Number, header.Hash!)
+            && blockFinder.FindBlock(header.Hash!, header.Number) is null)
+        {
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber ?? header.Number} not found", header.Number);
         }
 
         if (header.Number == 0)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
-        }
-
-        // HasBlock excludes cache-only bodies that FindBlock can still serve.
-        if (blockNumber.Type == BlockParameterType.BlockNumber
-            && !blockFinder.HasBlock(header.Number, header.Hash!)
-            && blockFinder.FindBlock(header.Hash!, header.Number) is null)
-        {
-            return MissingTraceBlockBody(header, $"block #{blockNumber.BlockNumber} not found");
         }
 
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
@@ -680,7 +731,7 @@ public class DebugRpcModule(
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
-            return MissingTraceBlockBody(header, $"block #{blockNumber.BlockNumber} not found");
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", header.Number);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -724,7 +775,7 @@ public class DebugRpcModule(
         }
 
         if (blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number) is null)
-            return MissingTraceBlockBody(header, $"block {blockHash} not found");
+            return MissingTraceBlock($"block {blockHash} not found", header.Number, debugBridge.HaveNotSyncedHeadersYet());
 
         if (header.Number == 0)
         {
@@ -1170,6 +1221,9 @@ public class DebugRpcModule(
             return headerError;
         }
 
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(overrideError, ErrorCodes.InvalidInput);
+
         if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
@@ -1257,6 +1311,19 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
+        // Bundle overrides run the bundles as one cumulative simulation, which has no place for options applied
+        // afresh to every call, so reject the mix rather than silently drop the options.
+        if (options?.StateOverrides is { Count: > 0 } || options?.BlockOverrides is { } blockOverrides && BlockchainBridge.HasBlockOverrides(blockOverrides))
+        {
+            foreach (TransactionBundle bundle in bundles)
+            {
+                if (StateOverrideValidation.GetStorageConflictError(bundle.StateOverrides) is { } storageError)
+                    return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("options.stateOverrides and options.blockOverrides cannot be combined with bundle blockOverride or stateOverrides", ErrorCodes.InvalidInput);
+        }
+
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>

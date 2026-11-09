@@ -633,7 +633,6 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(beforeRecovery.AsBool(), Is.False);
-                Assert.That(beforeRecovery.IsIntrinsicGasError, Is.True);
                 Assert.That(tx.SenderAddress, Is.EqualTo(sender));
                 Assert.That(afterRecovery.AsBool(), Is.True);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));

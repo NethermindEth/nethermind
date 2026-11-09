@@ -62,6 +62,8 @@ public sealed class FlatTestContainer : IDisposable
         IStateHeaderProvider? finalizedStateProvider = null)
     {
         Config = config ?? new FlatDbConfig();
+        // Resolving Auto needs the hardware info and records the layout on disk.
+        if (Config.Layout == FlatLayout.Auto) Config.Layout = FlatLayout.Flat;
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
         Config.PersistedSnapshotArenaPageCacheBytes = arenaPageCacheBytes;
 

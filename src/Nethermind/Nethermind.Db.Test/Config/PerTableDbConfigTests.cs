@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
@@ -109,6 +110,28 @@ public class PerTableDbConfigTests
         // Code is cached above as CodeInfo; a row cache copies every loaded contract, up to 64 KiB, again.
         PerTableDbConfig config = new(new DbConfig(), DbNames.Code);
         Assert.That(config.RowCacheSize ?? 0, Is.Zero);
+    }
+
+    [Test]
+    public void Trace_address_index_options_are_declared_and_resolved_for_every_column(
+        [Values(null, nameof(LogIndexColumns.Meta), nameof(LogIndexColumns.Addresses), nameof(LogIndexColumns.Topics0),
+            nameof(LogIndexColumns.Topics1), nameof(LogIndexColumns.Topics2), nameof(LogIndexColumns.Topics3))] string? column)
+    {
+        DbConfig dbConfig = new();
+        foreach (string propertyName in new[] { nameof(IRocksDbConfig.RocksDbOptions), nameof(IRocksDbConfig.AdditionalRocksDbOptions) })
+        {
+            string name = $"TraceAddressIndex{column}Db{propertyName}";
+            PropertyInfo? property = typeof(IDbConfig).GetProperty(name);
+            Assert.That(property, Is.Not.Null, $"{name} is missing in {nameof(IDbConfig)}");
+            property!.SetValue(dbConfig, "some_option=1;");
+        }
+
+        PerTableDbConfig config = new(dbConfig, "TraceAddressIndex", column);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + "some_option=1;"));
+            Assert.That(config.AdditionalRocksDbOptions, Is.EqualTo(dbConfig.AdditionalRocksDbOptions + "some_option=1;"));
+        }
     }
 
     [Test]
