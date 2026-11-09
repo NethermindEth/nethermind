@@ -52,6 +52,11 @@ internal class VotesManager : IVotesManager, IDisposable
     // current one, with room for competing blocks.
     private const int VerifiedVoteCapacity = 4096;
     private readonly ClockCache<ValueHash256, Address> _verifiedVoteSigners = new(VerifiedVoteCapacity);
+
+    // An honest masternode votes once per round, so one cached vote per signer and round covers every honest copy.
+    // A masternode that votes for many blocks in a round gets its other votes verified on every copy, as before this
+    // cache, and cannot push the votes of the other masternodes out of it.
+    private readonly ClockCache<(Address Signer, ulong Round), ValueHash256> _cachedVoteBySignerRound = new(VerifiedVoteCapacity);
     private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
     private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
 
@@ -318,6 +323,11 @@ internal class VotesManager : IVotesManager, IDisposable
         if (!VerifyVote(vote))
             return false;
 
+        (Address Signer, ulong Round) signerRound = (vote.Signer!, vote.ProposedBlockInfo.Round);
+        if (_cachedVoteBySignerRound.TryGet(signerRound, out ValueHash256 cachedHash) && cachedHash != hash)
+            return true;
+
+        _cachedVoteBySignerRound.Set(signerRound, hash);
         _verifiedVoteSigners.Set(hash, vote.Signer!);
         return true;
     }

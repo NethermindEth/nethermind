@@ -597,6 +597,30 @@ public class VotesManagerTests
         }
     }
 
+    [Test]
+    public async Task OnReceiveVote_SecondVoteOfASignerInARound_IsNotCached()
+    {
+        PrivateKey[] keys = MakeKeys(2);
+        BlockRoundInfo firstBlock = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        BlockRoundInfo secondBlock = new(TestItem.KeccakA, ReceiveRound, ReceiveHead);
+        Vote first = XdcTestHelper.BuildSignedVote(firstBlock, 450, keys[0]);
+        Vote second = XdcTestHelper.BuildSignedVote(secondBlock, 450, keys[0]);
+        Vote other = XdcTestHelper.BuildSignedVote(firstBlock, 450, keys[1]);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address, keys[1].Address]);
+
+        // Each copy is decoded from a different peer, so it carries the signature but no signer yet.
+        Task Receive(Vote vote) => voteManager.OnReceiveVote(new Vote(vote.ProposedBlockInfo, vote.GapNumber, vote.Signature!));
+
+        await Receive(first);
+        for (int i = 0; i < 3; i++) await Receive(second);
+        await Receive(first);
+        await Receive(other);
+        await Receive(other);
+
+        // The first vote and the other signer's vote are verified once each; the second vote on every copy.
+        snapshotManager.Received(5).GetSnapshotByGapNumber(450);
+    }
+
     private const ulong ReceiveRound = 14;
     private const long ReceiveHead = 100;
 
