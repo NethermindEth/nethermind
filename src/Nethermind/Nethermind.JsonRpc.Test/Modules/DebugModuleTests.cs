@@ -843,9 +843,11 @@ public class DebugModuleTests
                 _ => TestItem.KeccakA
             }
         };
-        using ResultWrapper<IEnumerable<string>> result = isBadBlock
-            ? CreateModule().debug_standardTraceBadBlockToFile(block.Hash!, options)
-            : CreateModule().debug_standardTraceBlockToFile(block.Hash!, options);
+        DebugRpcModule module = CreateModule();
+        using ResultWrapper<IEnumerable<string>> result = options is null
+            ? StandardTraceToFile(module, isBadBlock, block.Hash!)
+            : isBadBlock ? module.debug_standardTraceBadBlockToFile(block.Hash!, options)
+                : module.debug_standardTraceBlockToFile(block.Hash!, options);
 
         using (Assert.EnterMultipleScope())
         {
