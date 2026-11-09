@@ -39,8 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// </remarks>
         internal static ResultWrapper<string>? ValidateArgs(string? args) =>
             args is { Length: > JsonRpcLimits.MaxJsonStringArgLength }
-                ? ResultWrapper<string>.Fail("Invalid params", ErrorCodes.InvalidParams,
-                    $"subscription args string length {args.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}")
+                ? ResultWrapper<string>.Fail($"subscription args string length {args.Length} exceeds maximum allowed length of {JsonRpcLimits.MaxJsonStringArgLength}", ErrorCodes.InvalidParams)
                 : null;
 
         public string Id { get; }

@@ -560,7 +560,7 @@ namespace Nethermind.Db.Test
         private IContainer CreateRocksDbContainer(DbConfig config, FlatDbConfig? flatConfig = null)
         {
             InitConfig initConfig = new() { BaseDbPath = DbPath };
-            flatConfig ??= new FlatDbConfig();
+            flatConfig ??= new FlatDbConfig { Layout = FlatLayout.Flat };
             return new ContainerBuilder()
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
                 .AddModule(new FlatWorldStateModule(flatConfig))
