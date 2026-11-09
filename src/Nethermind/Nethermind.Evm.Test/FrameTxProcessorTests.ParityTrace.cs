@@ -200,7 +200,6 @@ public partial class FrameTxProcessorTests
             Assert.That(flat.Count(t => t.TraceAddress.ToArray().SequenceEqual(nestedCall) && t.Action.To == Recipient), Is.EqualTo(1), "nested call");
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
-            // Per the execution-apis frame transaction trace profile: the frame's gas limit, less its receipt's gasUsed.
             Assert.That(trace.VmTrace.Operations.Select(o => o.Cost), Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit)), "root operation cost");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Used),
                 Is.EqualTo(framesInVm.Select(i => frames[i].ExecutionGasLimit - frameReceipts[i].ExecutionGasUsed)), "root operation ex.used");
