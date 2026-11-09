@@ -1380,18 +1380,18 @@ public class JsonRpcServiceTests
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
 
     [Test]
-    public void Non_array_params_are_rejected([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)
+    public async Task Non_array_params_are_rejected_before_module_rental([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)
     {
-        INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
+        IRpcModulePool<INetRpcModule> pool = Substitute.For<IRpcModulePool<INetRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Throws(new LimitExceededException("Too many requests"));
         using JsonDocument parameters = JsonDocument.Parse(rawParams);
         JsonRpcRequest request = new() { JsonRpc = "2.0", Method = "net_version", Params = parameters.RootElement, Id = 67 };
 
-        using JsonRpcResponse response = SendRequestWithPool(
-            new SingletonModulePool<INetRpcModule>(new SingletonFactory<INetRpcModule>(netRpcModule), true),
-            request);
+        using JsonRpcResponse response = SendRequestWithPool(pool, request);
 
         AssertInvalidParamsWithoutData(response, "non-array args");
-        netRpcModule.DidNotReceive().net_version();
+        await pool.DidNotReceive().GetModule(Arg.Any<bool>());
+        pool.DidNotReceive().ReturnModule(Arg.Any<INetRpcModule>());
     }
 
     [Test]

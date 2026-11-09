@@ -670,7 +670,7 @@ public class JsonRpcProcessorTests
             Assert.That(items[0], Is.TypeOf<JsonRpcErrorResponse>());
             Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(((JsonRpcErrorResponse)items[0]).Error?.Message, Is.EqualTo("non-array args"));
-            Assert.That(items[1], Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(RpcTest.AssertSuccess<ulong>(items[1]), Is.EqualTo(1));
         }
         module.Received(1).eth_chainId();
     }
