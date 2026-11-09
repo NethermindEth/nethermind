@@ -56,6 +56,13 @@ public partial class DebugRpcModuleTests
 {
     private static IEnumerable<TestCaseData> TraceCallCalldataCases()
     {
+        foreach (TestCaseData calldata in TraceCallCalldataRows())
+            foreach (string mode in new[] { "buffered", "streamed", "callTracer" })
+                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], mode);
+    }
+
+    private static IEnumerable<TestCaseData> TraceCallCalldataRows()
+    {
         yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x01\"", "01");
         yield return new TestCaseData("\"input\":\"0x01\",\"data\":\"0x2a\"", "01");
         yield return new TestCaseData("\"data\":\"0x2a\",\"input\":\"0x\"", "");
@@ -73,8 +80,7 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(TraceCallCalldataCases))]
-    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string expected,
-        [Values("buffered", "streamed", "callTracer")] string mode)
+    public async Task Debug_traceCall_prefers_input_over_data(string calldata, string expected, string mode)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = mode == "streamed" })
