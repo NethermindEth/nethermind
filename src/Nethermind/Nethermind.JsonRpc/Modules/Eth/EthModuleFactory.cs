@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -38,7 +39,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IEthCapabilitiesProvider capabilitiesProvider,
         IBlockForRpcFactory blockForRpcFactory,
         HashesOnlyBlockReader hashesOnlyBlockReader,
-        IReceiptStorage receiptStorage)
+        IReceiptStorage receiptStorage,
+        ProofWrapperService? proofWrapperService = null)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -67,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 capabilitiesProvider,
                 blockForRpcFactory,
                 hashesOnlyBlockReader,
-                receiptStorage);
+                receiptStorage,
+                proofWrapperService);
     }
 }

@@ -3,13 +3,16 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -21,6 +24,74 @@ namespace Nethermind.Consensus.Test;
 
 public class InclusionListBlockProducerTxSourceFactoryTests
 {
+    [Test]
+    public void Proven_frames_and_legacy_inclusion_entries_share_the_existing_pipeline()
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8288Enabled = true,
+            IsEip8250Enabled = true,
+            IsEip8272Enabled = true,
+            IsEip7906Enabled = true
+        };
+        Transaction legacy = Build.A.Transaction.WithNonce(3).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction mempool = Build.A.Transaction.WithNonce(7).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+        dependency[31] = Eip8288Constants.LeanSphincsScheme;
+        TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency),
+            new(FrameMode.Assert, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
+        Transaction frame = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = MainnetSpecProvider.Instance.ChainId,
+            SenderAddress = TestItem.PrivateKeyA.Address,
+            NonceKeys = [0],
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1
+        };
+        FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
+        // The list carries a proof covering the frame transaction's dependencies.
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
+        FakeLeanProofVerifier verifier = new(true);
+        InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, new InclusionListProofService(verifier));
+        PayloadAttributes attributes = new()
+        {
+            InclusionLists = [new InclusionListV1
+            {
+                Transactions = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
+                    TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes],
+                RecursiveStark = new RecursiveStarkV1
+                {
+                    StarkProof = [1],
+                    ProofDeps = [.. dependencies.Select(static dependency => Eip8288Dependencies.Serialize([dependency]))]
+                }
+            }]
+        };
+        source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
+        ITxSource mempoolSource = Substitute.For<ITxSource>();
+        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns([mempool]);
+        IBlockProducerTxSourceFactory baseFactory = Substitute.For<IBlockProducerTxSourceFactory>();
+        baseFactory.Create().Returns(mempoolSource);
+        ITxSource combined = new InclusionListBlockProducerTxSourceFactory(baseFactory, source).Create();
+        Transaction[] selected = [.. combined.GetTransactions(Build.A.BlockHeader.WithNumber(0).TestObject,
+            Build.A.BlockHeader.WithNumber(1).TestObject, 30_000_000, attributes)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(selected.Select(tx => tx.SenderAddress), Is.EqualTo([
+                TestItem.PrivateKeyB.Address, TestItem.PrivateKeyA.Address, TestItem.PrivateKeyC.Address]));
+            Assert.That(selected[1].NonceKeys, Is.EqualTo((UInt256[])[0]));
+            Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.Assert));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
+    }
+
     [Test]
     public void IL_transactions_precede_mempool_transactions_in_pipeline()
     {

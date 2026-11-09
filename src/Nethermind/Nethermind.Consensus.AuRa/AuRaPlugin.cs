@@ -28,6 +28,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -165,6 +166,7 @@ namespace Nethermind.Consensus.AuRa
                 [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
                 txPriorityContract is not null || localDataSource is not null,
                 frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                leanProofStore: ctx.Resolve<LeanProofStore>(),
                 stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
         }
 

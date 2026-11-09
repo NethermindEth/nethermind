@@ -17,6 +17,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
@@ -328,6 +329,71 @@ namespace Nethermind.Blockchain.Test
             Assert.That(
                 selectedTransactions.Select(static transaction => transaction.Hash),
                 Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
+        }
+
+        [TestCase(0UL, true)]
+        [TestCase(1UL, false)]
+        public void BlockProductionTransactionPicker_fits_recursive_stark_gas_inside_the_transaction_reservation(ulong shortfall, bool expectedToFit)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            tx.Type = TxType.FrameTx;
+            tx.Frames = [dependencyFrame];
+            FrameTxValidation.TryCalculateBlockGasReservations(tx, Eip8288Prototype.Instance, out ulong executionReservation, out _);
+            Block block = Build.A.Block.WithGasLimit(executionReservation - shortfall).TestObject;
+            LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+            proofs.AddVerified(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), [[1]], null);
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+
+            BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+
+            Assert.That(args.Action, Is.EqualTo(expectedToFit ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+        }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_skips_uncovered_dependencies_before_execution()
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+            Block block = Build.A.Block.WithGasLimit(1_000_000).WithTransactions([transaction]).TestObject;
+            BlockToProduce producing = new(block.Header, block.Transactions, block.Uncles);
+            ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+            IWorldState state = Substitute.For<IWorldState>();
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new(FrameTxSigHash.ComputeValue));
+            BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, state, picker, LimboLogs.Instance,
+                NullBlockAccessListManager.Instance, NullTxPool.Instance);
+
+            TxReceipt[] receipts = executor.ProcessTransactions(producing, ProcessingOptions.ProducingBlock, new());
+
+            adapter.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(producing.Transactions, Is.Empty);
+                Assert.That(receipts, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void BlockProductionTransactionPicker_caps_generic_stark_verification_work([Values(16, 17)] int count)
+        {
+            FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
+                new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.NonceKeys = [UInt256.Zero];
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
+            LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+            proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;
+            BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, transaction, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+            Assert.That(result.Action, Is.EqualTo(count == 16 ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+            if (count == 17) Assert.That(result.Reason, Is.EqualTo("Generic STARK proof count limit exceeded"));
         }
 
         [Test]

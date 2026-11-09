@@ -3,15 +3,15 @@
 
 namespace Nethermind.Core
 {
-    public class BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null)
+    public class BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, byte[]? starkProof = null)
     {
         public BlockBody() : this(null, null, null) { }
 
-        public BlockBody WithChangedTransactions(Transaction[] transactions) => new(transactions, Uncles, Withdrawals);
+        public BlockBody WithChangedTransactions(Transaction[] transactions) => new(transactions, Uncles, Withdrawals, StarkProof);
 
-        public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals);
+        public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals, StarkProof);
 
-        public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals);
+        public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals, StarkProof);
 
         public static BlockBody WithOneTransactionOnly(Transaction tx) => new([tx], null);
 
@@ -21,6 +21,9 @@ namespace Nethermind.Core
 
         public Withdrawal[]? Withdrawals { get; } = withdrawals;
 
-        public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
+        /// <summary>The EIP-8288 proof bytes; null before activation, empty for an empty dependency set.</summary>
+        public byte[]? StarkProof { get; set; } = starkProof;
+
+        public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0 && StarkProof is null;
     }
 }

@@ -63,6 +63,7 @@ public static class BlockHeaderMembers
             return bloom;
         }
         if (type == typeof(byte[])) return new[] { (byte)seed };
+        if (type == typeof(RecursiveStarkCommitment)) return new RecursiveStarkCommitment(Keccak.Compute(seed.ToString()), Keccak.Compute((seed + 1).ToString()));
         if (type == typeof(long)) return (long)seed;
         if (type == typeof(ulong)) return (ulong)seed;
         if (type == typeof(UInt256)) return (UInt256)seed;

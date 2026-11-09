@@ -2970,6 +2970,7 @@ namespace Nethermind.TxPool.Test
         private async Task AddEmptyBlock()
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
+            bh.SlotNumber = _blockTree.Head.Header.SlotNumber is { } slot ? slot + 1 : null;
             _blockTree.BestSuggestedHeader = bh;
             Block block = new(bh, new BlockBody([], []));
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
@@ -6333,6 +6334,25 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            }
+        }
+
+        // EIP-8437: on eth/73 EIP-8070 applies to blob-carrying frame transactions, which arrive with their blob data elided
+        // and are sampled like type-3 ones; their announced size is the elided network size.
+        [Test]
+        public void Blob_carrying_frame_tx_in_elided_form_passes_sampling_validation()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [] };
+            tx.ClearLengthCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.ValidateTxForBlobSampling(tx), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(tx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetLength()));
+                Assert.That(new LightTransaction(tx).PersistedDependencyBearing, Is.False);
             }
         }
 

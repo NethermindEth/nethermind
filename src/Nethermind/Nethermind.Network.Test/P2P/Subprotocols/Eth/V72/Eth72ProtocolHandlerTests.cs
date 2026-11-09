@@ -3642,7 +3642,7 @@ public class Eth72ProtocolHandlerTests
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>()).Returns(true);
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>()).Returns(true);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -3672,8 +3672,8 @@ public class Eth72ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
-            registry.DidNotReceive().RecordAnnouncement(_handler, tx.Hash!, cellMask);
+            registry.Received(1).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
+            registry.DidNotReceive().RestoreAnnouncement(_handler, tx.Hash!, cellMask, Arg.Any<TxType?>());
             registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
         }
     }
@@ -3685,7 +3685,7 @@ public class Eth72ProtocolHandlerTests
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>()).Returns(true);
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>()).Returns(true);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -3703,9 +3703,41 @@ public class Eth72ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+            registry.Received(1).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
             registry.Received(2).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
         }
+    }
+
+    // The restored announcement carries the type the peer announced, so tracked state that expired during the backoff does
+    // not take it for a type-3 claim; once the handler no longer holds the type, it is restored as unknown.
+    [Test]
+    public void should_restore_announcement_with_its_announced_type([Values] bool typeKnown)
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>()).Returns(true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        _transactionPool.IsKnown(tx.Hash!).Returns(true);
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+
+        HandleIncomingStatusMessage();
+        if (typeKnown)
+        {
+            using NewPooledTransactionHashesMessage72 announcement = new([(byte)TxType.Blob], [1024], [tx.Hash!], BlobCellMask.Full.ToBytes());
+            HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        }
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
+
+        registry.ClearReceivedCalls();
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+
+        registry.Received(1).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, typeKnown ? TxType.Blob : null);
     }
 
     // A peer that announces full custody but never answers cells requests must not be restored as a
@@ -3716,7 +3748,7 @@ public class Eth72ProtocolHandlerTests
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>()).Returns(true);
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>()).Returns(true);
         registry.RecordCells(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(true);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
@@ -3736,7 +3768,7 @@ public class Eth72ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             registry.Received(Eth72ProtocolHandler.MaxUnansweredCellRequestRestores + 1).RemoveAnnouncement(_handler, tx.Hash!);
-            registry.Received(Eth72ProtocolHandler.MaxUnansweredCellRequestRestores).RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+            registry.Received(Eth72ProtocolHandler.MaxUnansweredCellRequestRestores).RestoreAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<TxType?>());
         }
 
         // A delivery resets the count, so the next miss restores the announcement again.
@@ -3746,7 +3778,7 @@ public class Eth72ProtocolHandlerTests
         registry.ClearReceivedCalls();
         MissCellsRequest(tx.Hash!, cellMask, timedOut);
 
-        registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+        registry.Received(1).RestoreAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<TxType?>());
     }
 
     // Local scheduler saturation is our fault: the retry is still throttled, but the peer keeps the
@@ -3796,7 +3828,7 @@ public class Eth72ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
-            registry.DidNotReceive().RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+            registry.DidNotReceive().RestoreAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>(), Arg.Any<TxType?>());
         }
     }
 
@@ -3815,7 +3847,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
         bool reParked = false;
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>())
             .Returns(_ =>
             {
                 if (!reParked)
@@ -3842,7 +3874,7 @@ public class Eth72ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reParked, Is.True);
-            registry.Received(2).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+            registry.Received(2).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
         }
     }
 
@@ -3886,7 +3918,7 @@ public class Eth72ProtocolHandlerTests
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>())
             .Returns(false);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
@@ -3903,7 +3935,7 @@ public class Eth72ProtocolHandlerTests
         // Past the 15s pending-request TTL, so the entry is dropped on this tick.
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(16));
 
-        registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+        registry.Received(1).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
     }
 
     // Placing the parked cells with another provider removes the pending entry; if the announcement
@@ -3914,7 +3946,7 @@ public class Eth72ProtocolHandlerTests
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
         registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>())
             .Returns(false, true);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
@@ -3934,7 +3966,7 @@ public class Eth72ProtocolHandlerTests
 
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(7));
 
-        registry.Received(2).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+        registry.Received(2).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
     }
 
     // The symptom behind the mask fix, against the real registry: restoring the narrow request mask
@@ -3979,7 +4011,7 @@ public class Eth72ProtocolHandlerTests
     {
         ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
         registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
-        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+        registry.RestoreAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>())
             .Returns(false, true);
         RecreateHandler(sparseBlobPoolPeerRegistry: registry);
         Transaction tx = Build.A.Transaction
@@ -3998,7 +4030,7 @@ public class Eth72ProtocolHandlerTests
         // The third tick must not restore again now that the second one was accepted.
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(8));
 
-        registry.Received(2).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+        registry.Received(2).RestoreAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, Arg.Any<TxType?>());
     }
 
     [Test]

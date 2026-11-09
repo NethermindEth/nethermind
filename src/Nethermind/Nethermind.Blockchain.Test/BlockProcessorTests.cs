@@ -2336,7 +2336,8 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         BranchProcessor branchProcessor = new(
             processor,
@@ -2579,7 +2580,8 @@ public partial class BlockProcessorTests
             new OneLoggerLogManager(new(logger)),
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         // The BAL is bound to the block hash, so a BAL failure makes the block invalid just as a tx failure does;
@@ -4415,7 +4417,8 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,

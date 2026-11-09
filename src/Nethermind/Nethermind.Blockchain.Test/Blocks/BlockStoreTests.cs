@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -150,6 +152,54 @@ public class BlockStoreTests
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    // Root proofs are hundreds of KB, so a proof-carrying block is cached; one beyond any valid proof is not.
+    [TestCase(320 * 1024, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
+    public void Proof_carrying_block_is_cached_up_to_the_aggregate_proof_bound(int proofBytes, bool cached)
+    {
+        using TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        block.StarkProof = new byte[proofBytes];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
+        store.Cache(block);
+
+        Assert.That(store.Get(block.Number, block.Hash!), cached ? Is.Not.Null : Is.Null);
+    }
+
+    [Test, NonParallelizable]
+    public void Body_cache_retains_a_bounded_number_of_maximal_proofs()
+    {
+        using TestMemDb db = new();
+        BlockStore store = new(db);
+        WeakReference<byte[]>[] proofs = CacheLargeProofs(store);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        int retained = 0;
+        foreach (WeakReference<byte[]> proof in proofs)
+            if (proof.TryGetTarget(out _)) retained++;
+        Assert.That(retained, Is.LessThanOrEqualTo(BlockStore.ProofCacheSize));
+        GC.KeepAlive(store);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference<byte[]>[] CacheLargeProofs(BlockStore store)
+    {
+        WeakReference<byte[]>[] proofs = new WeakReference<byte[]>[BlockStore.CacheSize];
+        for (int i = 0; i < proofs.Length; i++)
+        {
+            Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
+            byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
+            proofs[i] = new(proof);
+            block.StarkProof = proof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
+            store.Cache(block);
+        }
+        return proofs;
     }
 
     [Test]

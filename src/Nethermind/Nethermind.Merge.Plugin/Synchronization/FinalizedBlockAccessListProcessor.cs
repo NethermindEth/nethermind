@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -45,7 +46,8 @@ public sealed class FinalizedBlockAccessListProcessor(
         // EIP-8037 dimensions are not recoverable from a BAL or the header's combined gas total.
         bool needsGasDimensions = spec.IsEip8037Enabled && block.InclusionListTransactions is { Length: > 0 }
             && block.GasUsed != 0 && block.Header.GasUsedPerDimension is null;
-        if ((options & excluded) != 0 || needsGasDimensions || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
+        bool needsFrameSimulation = spec.IsEip8288Enabled && InclusionListValidator.OmitsFrameEntry(block);
+        if ((options & excluded) != 0 || needsGasDimensions || needsFrameSimulation || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
         // Queued processing attaches a stored list only when it matches the header's commitment.

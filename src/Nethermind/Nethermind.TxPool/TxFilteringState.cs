@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -42,6 +44,9 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
 
+    internal IDisposable? ProofReservation;
+    internal IDisposable? SenderProofReservation;
+    internal List<FrameDependency>? ProofDependencies;
     /// <summary>Whether a filter has recorded this transaction's code dependencies (EIP-8298, EIP-8151) and still owes their release.</summary>
     internal bool CodeDependenciesReserved;
 

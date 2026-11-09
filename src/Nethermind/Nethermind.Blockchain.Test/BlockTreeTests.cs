@@ -3383,6 +3383,21 @@ public class BlockTreeTests
     }
 
     [Test]
+    public void Oversized_invalid_proof_is_not_retained_but_its_hash_is_rejected()
+    {
+        BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
+        Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
+        invalid.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
+        invalid.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid.StarkProof), TestItem.KeccakA);
+        tree.ReportBadBlock(invalid);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
+            Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));
+        }
+    }
+
+    [Test]
     public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {
         TestMemDb blocksDb = new();

@@ -76,7 +76,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             Always.Valid,
             Spec.BuildFor(block.Header),
             Spec.Instance,
-            TestLogManager.Instance);
+            TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
@@ -108,7 +108,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             Always.Valid,
             Spec.BuildFor(block.Header),
             Spec.Instance,
-            TestLogManager.Instance);
+            TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
@@ -139,7 +139,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             Always.Valid,
             Spec.BuildFor(block.Header),
             Spec.Instance,
-            TestLogManager.Instance);
+            TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),
@@ -173,7 +173,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             Always.Valid,
             specProvider,
             Spec.Instance,
-            TestLogManager.Instance);
+            TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Assert.That(
             validator.ValidateSuggestedBlock(block, parentHeader, out string? error),

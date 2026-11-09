@@ -91,12 +91,19 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     {
         using (result)
         {
-            await (result switch
+            try
             {
-                { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error", result.ErrorCode),
-                { Data: null } => SetNoContent(ctx),
-                { Data: var data } => WriteSszAsync(ctx, data, encode)
-            });
+                await (result switch
+                {
+                    { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error", result.ErrorCode),
+                    { Data: null } => SetNoContent(ctx),
+                    { Data: var data } => WriteSszAsync(ctx, data, encode)
+                });
+            }
+            catch (NotSupportedException exception) when (!ctx.Response.HasStarted)
+            {
+                await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, exception.Message, MergeErrorCodes.UnsupportedFork);
+            }
         }
     }
 

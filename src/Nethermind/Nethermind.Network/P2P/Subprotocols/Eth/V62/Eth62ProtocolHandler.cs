@@ -78,6 +78,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
+        /// <summary>Counts an unaccepted transaction against this peer's gossip score, as a pool rejection would.</summary>
+        private protected void ReportUnacceptedTransaction(AcceptTxResult result) => _floodController.Report(result);
+
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -439,6 +442,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
+            // EIP-8437: a dependency-bearing transaction travels only inside a proof wrapper, on every eth version, so one
+            // received through a transaction message is ignored.
+            if (Eip8288Dependencies.IsDependencyBearing(tx))
+            {
+                if (isTrace) Logger.Trace($"{Node:c} sent dependency-bearing {tx.Hash} outside a proof wrapper");
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
+            }
+
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
             {

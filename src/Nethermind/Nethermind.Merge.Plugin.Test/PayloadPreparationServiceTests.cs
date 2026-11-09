@@ -43,7 +43,7 @@ public class PayloadPreparationServiceTests
         Block empty = Build.A.Block.WithNumber(1).TestObject;
         TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, Substitute.For<IBoostRelay>());
-        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes)!;
 
         Block? handedOut = (await service.GetPayload(payloadId))!.CurrentBestBlock;
         build.SetResult(FullBlock());
@@ -65,7 +65,7 @@ public class PayloadPreparationServiceTests
         TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBoostRelay relay = Substitute.For<IBoostRelay>();
         using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, relay);
-        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes)!;
         Assert.That(() => service.Stored(payloadId), Is.Not.Null.After(5000, 10));
         IBlockImprovementContext context = service.Stored(payloadId)!;
 
@@ -323,12 +323,16 @@ public class PayloadPreparationServiceTests
         }
     }
 
-    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
+    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory,
+        IBlockProducer? producer = null, ILogManager? logManager = null)
     {
-        IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
-        blockProducer
-            .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
+        IBlockProducer blockProducer = producer ?? Substitute.For<IBlockProducer>();
+        if (producer is null)
+        {
+            blockProducer
+                .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
+        }
 
         ITxPool txPool = Substitute.For<ITxPool>();
         // The improvement loop only rebuilds once new transactions have arrived.
@@ -339,7 +343,7 @@ public class PayloadPreparationServiceTests
             txPool,
             factory,
             Substitute.For<ITimerFactory>(),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             TimePerSlot,
             TimeSpan.FromMilliseconds(1));
     }

@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <LeanFfiManifest>$(MSBuildThisFileDirectory)Cargo.toml</LeanFfiManifest>
+    <LeanFfiOutDir>$(MSBuildThisFileDirectory)target/release</LeanFfiOutDir>
+    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('Windows'))">nethermind_lean.dll</LeanFfiLibName>
+    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libnethermind_lean.dylib</LeanFfiLibName>
+    <LeanFfiLibName Condition="'$(LeanFfiLibName)' == ''">libnethermind_lean.so</LeanFfiLibName>
+  </PropertyGroup>
+  <Target Name="BuildNativeLean" BeforeTargets="GetCopyToOutputDirectoryItems;BeforeBuild" Condition="'$(BuildLeanFfi)' == 'true'">
+    <Error Condition="'$(RuntimeIdentifier)' != '' and '$(NETCoreSdkRuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != '$(NETCoreSdkRuntimeIdentifier)'"
+           Text="BuildLeanFfi requires a host RID build; build the native backend on the target platform." />
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory)" Command="cargo build --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot;" />
+    <ItemGroup>
+      <Content Include="$(LeanFfiOutDir)/$(LeanFfiLibName)" Link="$(LeanFfiLibName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>

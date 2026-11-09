@@ -103,7 +103,7 @@ internal class XdcBlockProcessorTests
         NullLogManager.Instance,
         Substitute.For<IWithdrawalProcessor>(),
         Substitute.For<IExecutionRequestsProcessor>(),
-        Substitute.For<IBlockAccessListManager>())
+        Substitute.For<IBlockAccessListManager>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>())
     {
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
             => base.CreateBlockExecutionContext(header, spec);

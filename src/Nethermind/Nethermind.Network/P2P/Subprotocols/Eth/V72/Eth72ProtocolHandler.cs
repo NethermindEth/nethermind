@@ -98,7 +98,8 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<ValueHash256, CellRequestState> _sentCellRequests = [];
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
-    private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
+    // The type each counted cell announcement claimed, restored with the announcement after a backoff.
+    private readonly ClockCache<ValueHash256, TxType> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
         static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
@@ -291,9 +292,26 @@ public class Eth72ProtocolHandler(
         }
     }
 
+    /// <summary>Whether <paramref name="tx"/> is announced with a cell mask and its blobs exchanged as EIP-8070 cells.</summary>
+    protected virtual bool AnnouncesCells(Transaction tx) => tx.SupportsBlobs;
+
+    /// <summary>Whether blob-carrying frame transactions exchange their blobs as EIP-8070 cells, as on <c>eth/73</c>
+    /// (EIP-8437); on <c>eth/72</c> they travel whole.</summary>
+    protected virtual bool ExchangesFrameBlobsAsCells => false;
+
+    /// <summary>Whether an announcement of <paramref name="txType"/> under <paramref name="announcementMask"/> offers a blob-carrying
+    /// frame transaction's cells.</summary>
+    private bool IsFrameCellAnnouncement(TxType txType, BlobCellMask announcementMask) =>
+        ExchangesFrameBlobsAsCells && txType == TxType.FrameTx && !announcementMask.IsEmpty;
+
+    /// <summary>Whether <paramref name="tx"/> is a blob-carrying frame transaction in its elided network form, whose cells are
+    /// retrieved separately.</summary>
+    private bool IsSparseFrameTransaction(Transaction tx) =>
+        ExchangesFrameBlobsAsCells && IsBlobCarryingFrameTransaction(tx) && tx.NetworkWrapper is ShardBlobNetworkWrapper { Blobs.Length: 0 };
+
     protected override void SendNewTransactionCore(Transaction tx)
     {
-        if (!tx.SupportsBlobs)
+        if (!AnnouncesCells(tx))
         {
             if (tx.CanBeBroadcast())
             {
@@ -315,7 +333,7 @@ public class Eth72ProtocolHandler(
 
     protected override bool ShouldNotifyTransactionCore(Transaction tx)
     {
-        if (!tx.SupportsBlobs || tx.Hash is null)
+        if (!AnnouncesCells(tx) || tx.Hash is null)
         {
             return base.ShouldNotifyTransactionCore(tx);
         }
@@ -358,8 +376,9 @@ public class Eth72ProtocolHandler(
         BlobCellMask? pendingMask = null;
         foreach (Transaction tx in txs)
         {
-            BlobCellMask mask = tx.SupportsBlobs ? GetAnnouncementMask(tx) : BlobCellMask.Empty;
-            if (tx.SupportsBlobs && mask.IsEmpty)
+            bool announcesCells = AnnouncesCells(tx);
+            BlobCellMask mask = announcesCells ? GetAnnouncementMask(tx) : BlobCellMask.Empty;
+            if (announcesCells && mask.IsEmpty)
             {
                 continue;
             }
@@ -450,25 +469,27 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            bool supportsBlobs = txType.SupportsBlobs();
+            bool supportsBlobs = txType.SupportsBlobs() || IsFrameCellAnnouncement(txType, announcementMask);
             Hash256? blobHash = null;
             bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
                 blobHash = hash.ToHash256();
-                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask);
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask, txType);
                 if (!recorded
                     && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
                     continue;
                 }
 
-                if (_countedBlobAnnouncements.Set(hash, 1))
+                if (_countedBlobAnnouncements.Set(hash, txType))
                 {
                     Interlocked.Increment(ref _blobAnnouncementsReceived);
                 }
             }
 
+            // An announcement does not say whether a frame transaction is dependency-bearing, so its body is requested even though
+            // a dependency-bearing one comes only with its covering proof wrapper and the request is answered as unavailable (EIP-8437).
             bool shouldRequestTx = !_txPool.IsKnown(hash)
                 && _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired;
 
@@ -577,9 +598,10 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        // A type-6 is announced at its full network size and never joins the type-3 cell protocol, so the
-        // requester can neither size-match nor refill the elided record: its sidecar must travel with it.
-        if (!IsBlobCarryingFrameTransaction(tx))
+        // On eth/72 a type-6 is announced at its full network size and never joins the cell protocol, so the
+        // requester can neither size-match nor refill the elided record: its sidecar must travel with it. On eth/73
+        // it is served elided, like a type-3 one.
+        if (!IsBlobCarryingFrameTransaction(tx) || ExchangesFrameBlobsAsCells)
         {
             return true;
         }
@@ -935,11 +957,12 @@ public class Eth72ProtocolHandler(
 
                 // Both submission and sparse-blob assembly may retain the transaction, even on failure.
                 currentIdx++;
-                if (!tx.SupportsBlobs)
+                bool sparseFrame = IsSparseFrameTransaction(tx);
+                if (!tx.SupportsBlobs && !sparseFrame)
                 {
                     PrepareAndSubmitTransaction(tx, isTrace);
                 }
-                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper)
+                else if (!sparseFrame && tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper)
                 {
                     Hash256? hash = tx.Hash;
                     bool hasFullBlobs = wrapper.HasFullBlobs();
@@ -980,7 +1003,7 @@ public class Eth72ProtocolHandler(
     private void OnNewPending(object? sender, TxEventArgs e)
     {
         Transaction tx = e.Transaction;
-        if (!tx.SupportsBlobs || tx.Hash is null)
+        if (!tx.CarriesBlobs || tx.Hash is null)
         {
             return;
         }
@@ -1652,10 +1675,12 @@ public class Eth72ProtocolHandler(
             {
                 (ValueHash256 key, BlobCellMask restoreMask, long restoreEpoch) = dueRetries[i];
                 Hash256 hash = key.ToHash256();
-                // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
+                // Restoring is one-shot only once it lands: RestoreAnnouncement also refuses when the
                 // peer is at its announcement cap or the transaction is quarantined, and dropping the
-                // mask there would lose the provider for good.
-                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
+                // mask there would lose the provider for good. The announced type goes back too, so tracked
+                // state that expired during the backoff does not take the restored claim for type 3.
+                TxType? restoreType = _countedBlobAnnouncements.TryGet(key, out TxType announcedType) ? announcedType : null;
+                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RestoreAnnouncement(this, hash, restoreMask, restoreType))
                 {
                     lock (_cellStateLock)
                     {
@@ -1728,7 +1753,8 @@ public class Eth72ProtocolHandler(
 
         if (!containsBlobTransaction)
         {
-            return BlobCellMask.Empty;
+            // A mask without a type-3 entry matters only for the wrapped cells of eth/73 frame transactions.
+            return message.CellMask.Length == BlobCellMask.FixedByteLength ? BlobCellMask.FromBytes(message.CellMask) : BlobCellMask.Empty;
         }
 
         if (message.CellMask.Length != BlobCellMask.FixedByteLength)
@@ -1786,9 +1812,10 @@ public class Eth72ProtocolHandler(
 
         if (!tx.Type.SupportsBlobs())
         {
-            // A type-6 sidecar is verified here because it arrives whole; the sparse cell protocol that
-            // defers type-3 verification to a later Cells response does not cover it.
-            return !IsBlobCarryingFrameTransaction(tx) || ValidateFullPooledBlobSidecar(tx);
+            // On eth/72 a type-6 sidecar arrives whole and is verified here; on eth/73 it may arrive elided, like a type-3
+            // one, with its cells verified in a later Cells response.
+            return !IsBlobCarryingFrameTransaction(tx)
+                || (IsSparseFrameTransaction(tx) ? ValidateSparsePooledBlobTransaction(tx) : ValidateFullPooledBlobSidecar(tx));
         }
 
         return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
@@ -1953,7 +1980,7 @@ public class Eth72ProtocolHandler(
         for (int i = 0; i < count; i++)
         {
             Transaction tx = txs[i];
-            int announcementSize = GetAnnouncementSize(tx);
+            int announcementSize = GetAnnouncementSize(tx, AnnouncesCells(tx));
             if (announcementSize <= 0)
             {
                 continue;
@@ -1977,9 +2004,9 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private static int GetAnnouncementSize(Transaction tx)
+    private static int GetAnnouncementSize(Transaction tx, bool announcesCells)
     {
-        if (!tx.SupportsBlobs)
+        if (!announcesCells)
         {
             return tx.GetLength();
         }

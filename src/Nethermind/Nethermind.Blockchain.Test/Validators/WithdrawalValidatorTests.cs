@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using NSubstitute;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,7 +24,7 @@ public class WithdrawalValidatorTests
     public bool Withdrawal_validation(IReleaseSpec spec, Withdrawal[]? withdrawals, Hash256? withdrawalRoot)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
         BlockBuilder blockBuilder = Build.A.Block.WithParent(parent);

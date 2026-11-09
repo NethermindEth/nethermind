@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -31,7 +32,8 @@ public class TaikoBlockValidatorTests
             Always.Valid,
             new TestSpecProvider(spec),
             Substitute.For<IEthereumEcdsa>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<ILeanProofVerifier>());
 
         Transaction anchor = Build.A.Transaction
             .WithType(TxType.EIP1559)

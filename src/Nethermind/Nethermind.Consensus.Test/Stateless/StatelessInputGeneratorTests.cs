@@ -41,12 +41,15 @@ using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
 
 public class StatelessInputGeneratorTests
 {
+    private static readonly ILeanProofVerifier _leanProofVerifier = new NativeLeanProofVerifier();
+
     [Test]
     [NonParallelizable]
     public async Task Encoded_execution_checks_reconstructed_header_hash(
@@ -59,7 +62,7 @@ public class StatelessInputGeneratorTests
             if (amsterdam) Mutate<SszExecutionPayloadAmsterdam>();
             else Mutate<SszExecutionPayload>();
 
-            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded, _leanProofVerifier), out StatelessValidationResult result);
             Assert.That(result.IsSuccess, Is.EqualTo(mutation == "valid"));
 
             void Mutate<TPayload>() where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
@@ -130,7 +133,7 @@ public class StatelessInputGeneratorTests
             StatelessInput<SszExecutionPayload>.Decode(modified.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> decoded);
             Assert.That(() => decoded.NewPayloadRequest.ToBlock(requestsEnabled: true), Throws.InvalidOperationException);
 
-            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified, _leanProofVerifier), out StatelessValidationResult result);
             Assert.That(result.IsSuccess, Is.False);
         }
     }
@@ -145,7 +148,7 @@ public class StatelessInputGeneratorTests
             byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
             BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
 
-            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded, _leanProofVerifier), out StatelessValidationResult result);
 
             using (Assert.EnterMultipleScope())
             {
@@ -190,7 +193,7 @@ public class StatelessInputGeneratorTests
             }
             block.Header.Hash = mutation == "hash" ? TestItem.KeccakA : block.Header.CalculateHash();
 
-            Assert.That(StatelessExecutor.Execute(block, witness, specProvider), Is.EqualTo(mutation == "valid"));
+            Assert.That(StatelessExecutor.Execute(block, witness, specProvider, _leanProofVerifier), Is.EqualTo(mutation == "valid"));
         }
     }
 
@@ -200,7 +203,7 @@ public class StatelessInputGeneratorTests
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
         using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
 
-        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance), _leanProofVerifier), Is.False);
     }
 
     [Test]
@@ -211,13 +214,13 @@ public class StatelessInputGeneratorTests
         block.Header.TxRoot = TestItem.KeccakA;
         using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
 
-        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance), _leanProofVerifier), Is.False);
     }
 
     [Test]
     public void Malformed_input_returns_failure([Values(0, 1, 2, 3)] int length)
     {
-        byte[] output = StatelessExecutor.Execute(new byte[length]);
+        byte[] output = StatelessExecutor.Execute(new byte[length], _leanProofVerifier);
         StatelessValidationResult.Decode(output, out StatelessValidationResult result);
 
         using (Assert.EnterMultipleScope())
@@ -277,7 +280,7 @@ public class StatelessInputGeneratorTests
 
             byte[] encoded = (await InputGenerator.EncodeInput(rawBlock, witness, specProvider))!;
             StatelessInput<SszExecutionPayloadAmsterdam>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayloadAmsterdam> input);
-            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded, _leanProofVerifier), out StatelessValidationResult result);
 
             using (Assert.EnterMultipleScope())
             {
@@ -410,7 +413,7 @@ public class StatelessInputGeneratorTests
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
                 .WithSlotNumber(amsterdam ? 1UL : null)
                 .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
-            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
+            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
