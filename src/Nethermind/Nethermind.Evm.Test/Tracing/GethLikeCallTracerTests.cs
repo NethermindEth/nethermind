@@ -543,9 +543,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons([Values(32, 64)] int offset, [Values] bool nested)
+    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons(
+        [Values("réverted ✓", "a\nb\tc")] string reason, [Values(32, 64)] int offset, [Values] bool nested)
     {
-        const string reason = "réverted ✓";
         byte[] payload = TransactionSubstateTests.ErrorStringPayload(reason, offset);
         byte[] revertCode = Prepare.EvmCode.StoreDataInMemory(0, payload).Revert(payload.Length, 0).Done;
         byte[] code = revertCode;

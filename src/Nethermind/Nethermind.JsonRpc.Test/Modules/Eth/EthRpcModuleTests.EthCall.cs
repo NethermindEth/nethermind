@@ -908,7 +908,8 @@ public partial class EthRpcModuleTests
 
     [TestCase("wrong-parameters")]
     [TestCase("réverted ✓")]
-    public async Task Eth_call_with_revert(string errorMessage)
+    [TestCase("a\nb\tc", @"a\nb\tc")]
+    public async Task Eth_call_with_revert(string errorMessage, string? jsonEscapedMessage = null)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
@@ -925,7 +926,7 @@ public partial class EthRpcModuleTests
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{jsonEscapedMessage ?? errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [Test]

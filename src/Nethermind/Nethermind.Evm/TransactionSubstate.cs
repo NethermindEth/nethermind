@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
@@ -116,18 +117,24 @@ public readonly ref struct TransactionSubstate
         return Encoding.ASCII.GetString(span);
     }
 
-    /// <summary>Decodes an <c>Error(string)</c> reason as UTF-8, falling back to hex when it is not valid UTF-8 or holds control characters.</summary>
+    /// <summary>Decodes an <c>Error(string)</c> reason as UTF-8, replacing each invalid byte with U+FFFD.</summary>
+    /// <remarks>
+    /// Matches Geth, which keeps the raw string and lets <c>encoding/json</c> replace every invalid byte, rather
+    /// than .NET's replacement of each maximal invalid subsequence.
+    /// </remarks>
     private static string DecodeErrorString(ReadOnlySpan<byte> span)
     {
-        if (!Utf8.IsValid(span)) return span.ToHexString(true);
+        if (Utf8.IsValid(span)) return Encoding.UTF8.GetString(span);
 
-        string decoded = Encoding.UTF8.GetString(span);
-        foreach (char c in decoded)
+        StringBuilder decoded = new(span.Length);
+        while (!span.IsEmpty)
         {
-            if (char.IsControl(c)) return span.ToHexString(true);
+            if (Rune.DecodeFromUtf8(span, out Rune rune, out int consumed) != OperationStatus.Done) consumed = 1;
+            decoded.Append(rune.ToString());
+            span = span[consumed..];
         }
 
-        return decoded;
+        return decoded.ToString();
     }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)

@@ -115,7 +115,9 @@ namespace Nethermind.Evm.Test
 
             yield return (ErrorStringPayload("réverted ✓", offset: 32), "réverted ✓");
             yield return (ErrorStringPayload("padded", offset: 64), "padded");
-            yield return (ErrorStringPayload("\u0001\u0002", offset: 32), "0x0102");
+            yield return (ErrorStringPayload("a\nb\tc\u0001", offset: 32), "a\nb\tc\u0001");
+            // Like Geth's JSON encoding, each invalid byte (here a truncated 3-byte sequence) becomes U+FFFD.
+            yield return (ErrorStringPayload([0x61, 0xE2, 0x82, 0x62], offset: 32), "a\uFFFD\uFFFDb");
 
             byte[] offsetPastEnd = ErrorStringPayload("padded", offset: 32);
             offsetPastEnd[4 + 31] = 64;
@@ -123,9 +125,10 @@ namespace Nethermind.Evm.Test
         }
 
         /// <summary>Encodes <c>Error(string)</c> with the string's length word at <paramref name="offset"/>, zero-padding any gap.</summary>
-        internal static byte[] ErrorStringPayload(string reason, int offset)
+        internal static byte[] ErrorStringPayload(string reason, int offset) => ErrorStringPayload(Encoding.UTF8.GetBytes(reason), offset);
+
+        private static byte[] ErrorStringPayload(byte[] reasonBytes, int offset)
         {
-            byte[] reasonBytes = Encoding.UTF8.GetBytes(reason);
             byte[] payload = new byte[4 + 64 + (offset - 32) + reasonBytes.Length];
             TransactionSubstate.ErrorFunctionSelector.CopyTo(payload, 0);
             payload[4 + 31] = (byte)offset;
