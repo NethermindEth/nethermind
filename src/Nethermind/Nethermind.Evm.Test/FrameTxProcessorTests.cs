@@ -5025,7 +5025,7 @@ public partial class FrameTxProcessorTests
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
-        using JsonDocument document = TraceCall(tx, mux: mux).Trace;
+        using JsonDocument document = TraceCall(tx, mux: mux, throughReceipts: true).Trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
         using (Assert.EnterMultipleScope())
@@ -5041,8 +5041,18 @@ public partial class FrameTxProcessorTests
     /// <summary>Each of the pre-dispatch exits of <c>ExecuteFrame</c> ends a frame without the VM ever
     /// reporting an action, and those are exactly the failed frames callTracer must render with an
     /// <c>error</c>.</summary>
-    [Test]
-    public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError([Values] PreDispatchExit exit, [Values] bool mux)
+    private static IEnumerable<TestCaseData> PreDispatchTraceCases()
+    {
+        foreach (PreDispatchExit exit in Enum.GetValues<PreDispatchExit>())
+        {
+            yield return new(exit, false, false);
+            yield return new(exit, true, false);
+            yield return new(exit, true, true);
+        }
+    }
+
+    [TestCaseSource(nameof(PreDispatchTraceCases))]
+    public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError(PreDispatchExit exit, bool throughReceipts, bool mux)
     {
         string expectedError = exit == PreDispatchExit.ValueTransfer ? "execution reverted" : "out of gas";
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -5050,7 +5060,7 @@ public partial class FrameTxProcessorTests
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), failing);
 
-        using JsonDocument document = TraceCall(tx, mux: mux).Trace;
+        using JsonDocument document = TraceCall(tx, mux: mux, throughReceipts: throughReceipts).Trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
         using (Assert.EnterMultipleScope())
@@ -5058,8 +5068,10 @@ public partial class FrameTxProcessorTests
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "a frame failing before dispatch is still a frame");
             Assert.That(frames[1].GetProperty("to").GetString(), Is.EqualTo(target.ToString()));
             Assert.That(frames[1].GetProperty("error").GetString(), Is.EqualTo(expectedError));
-            Assert.That(document.RootElement.TryGetProperty("error", out _), Is.False,
-                "one failed body frame does not fail the transaction");
+            Assert.That(document.RootElement.TryGetProperty("error", out JsonElement rootError), Is.EqualTo(throughReceipts),
+                "the processor includes the transaction, while the receipts tracer reports aggregate frame failure");
+            if (throughReceipts)
+                Assert.That(rootError.GetString(), Is.EqualTo(BlockReceiptsTracer.FrameTxFailedError));
         }
     }
 
@@ -5106,7 +5118,7 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Sender, target: Observer),
             Frame(FrameMode.Sender, target: afterBatch));
 
-        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux);
+        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux, throughReceipts: true);
         using JsonDocument document = trace;
         JsonElement frames = document.RootElement.GetProperty("calls");
 
@@ -5142,7 +5154,7 @@ public partial class FrameTxProcessorTests
             executionGasLimit: Eip8038Constants.ColdAccountAccess - 1, stateGasLimit: 0, UInt256.Zero, default);
         Transaction tx = FrameTx(nonce: 0, Frame(FrameMode.Default, target: Observer), SelfVerifyFrame(), assertFrame);
 
-        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux);
+        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true, mux: mux, throughReceipts: true);
         using JsonDocument document = trace;
 
         using (Assert.EnterMultipleScope())
@@ -5785,7 +5797,7 @@ public partial class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c>, returning the serialized trace and the
     /// per-frame receipts the processor reported alongside it.</summary>
-    private (JsonDocument Trace, TxFrameReceipt[] Receipts) TraceCall(Transaction tx, bool onlyTopCall = false, bool withLog = false, bool mux = false)
+    private (JsonDocument Trace, TxFrameReceipt[] Receipts) TraceCall(Transaction tx, bool onlyTopCall = false, bool withLog = false, bool mux = false, bool throughReceipts = false)
     {
         string config = $$"""{"onlyTopCall":{{(onlyTopCall ? "true" : "false")}},"withLog":{{(withLog ? "true" : "false")}}}""";
         GethTraceOptions options = GethTraceOptions.Default with
@@ -5793,6 +5805,17 @@ public partial class FrameTxProcessorTests
             Tracer = NativeCallTracer.CallTracer,
             TracerConfig = JsonSerializer.Deserialize<JsonElement>(config)
         };
+
+        if (!throughReceipts)
+        {
+            NativeCallTracer callTracer = new(tx, Spec, options);
+            FrameReceiptTracer receipts = new();
+            using CompositeTxTracer tracer = new(callTracer, receipts);
+            Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+            using GethLikeTxTrace result = callTracer.BuildResult();
+            return (JsonDocument.Parse(JsonSerializer.Serialize(result.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions)),
+                receipts.FrameReceipts!);
+        }
 
         if (mux)
         {
