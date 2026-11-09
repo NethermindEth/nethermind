@@ -701,11 +701,11 @@ public class ZeroNettyP2PHandlerTests
         int delivered = 0;
         session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
-            IByteBuffer content = call.Arg<NettyBufferPacket>().Buffer;
+            ReadOnlySpan<byte> content = call.Arg<NettyBufferPacket>().Content.Span;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(content.ReadableBytes, Is.EqualTo(length));
-                Assert.That(content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, content.ReadableBytes).IndexOfAnyExcept((byte)0xa5), Is.EqualTo(-1));
+                Assert.That(content.Length, Is.EqualTo(length));
+                Assert.That(content.IndexOfAnyExcept((byte)0xa5), Is.EqualTo(-1));
             }
             delivered++;
         });
@@ -742,13 +742,11 @@ public class ZeroNettyP2PHandlerTests
         return new NettyBufferPacket(buffer) { PacketType = packetType };
     }
 
-    private static void AssertPacket(NettyBufferPacket packet, byte[] payload, byte packetType)
+    private static void AssertPacket(ZeroPacket packet, byte[] payload, byte packetType)
     {
-        byte[] actual = new byte[packet.Buffer.ReadableBytes];
-        packet.Buffer.GetBytes(packet.Buffer.ReaderIndex, actual);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual, Is.EqualTo(payload));
+            Assert.That(packet.Content.ToArray(), Is.EqualTo(payload));
             Assert.That(packet.PacketType, Is.EqualTo(packetType));
         }
     }

@@ -254,7 +254,7 @@ public class ZeroNettyFrameMergerTests
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
             output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.That(output, Is.Not.Null);
-            Assert.That(output.Buffer.ReadableBytes, Is.EqualTo(1));
+            Assert.That(output.Content.Length, Is.EqualTo(1));
         }
         finally
         {
@@ -272,7 +272,7 @@ public class ZeroNettyFrameMergerTests
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new();
             output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.That(output, Is.Not.Null);
-            Assert.That(output.Buffer.ReadableBytes, Is.EqualTo(2049));
+            Assert.That(output.Content.Length, Is.EqualTo(2049));
         }
         finally
         {
