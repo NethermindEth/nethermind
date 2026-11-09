@@ -17,6 +17,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 public class Engine : IDisposable
 {
     private const bool IsDebugging = false;
+
+    /// <summary>
+    /// How often an external interrupt is sent again: V8 drops an interrupt that arrives while no script runs, so a
+    /// script entered just after it would otherwise run on.
+    /// </summary>
+    private static readonly TimeSpan InterruptRedeliveryPeriod = TimeSpan.FromMilliseconds(10);
     private V8ScriptEngine V8Engine { get; }
 
     private readonly IReleaseSpec _spec;
@@ -29,6 +35,8 @@ public class Engine : IDisposable
     private dynamic _createUint8Array;
     private int _disposed;
     private int _externalInterruptRequested;
+    private readonly Lock _interruptGate = new();
+    private Timer? _interruptRedelivery;
     private JavaScriptInputException? _inputError;
 
     [ThreadStatic] private static Engine? _currentEngine;
@@ -65,6 +73,9 @@ public class Engine : IDisposable
             scriptEngine = runtime.CreateScriptEngine(IsDebugging
                 ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
                 : V8ScriptEngineFlags.None);
+            // An interrupt that lands in script a host helper re-entered must end the whole script, not surface as an
+            // error the tracer can catch and loop on.
+            scriptEngine.EnableRuntimeInterruptPropagation = true;
             V8Engine = scriptEngine;
             Initialize();
         }
@@ -160,25 +171,49 @@ public class Engine : IDisposable
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
     /// <summary>
-    /// Stops the running script. Called from a timer thread, so the engine may be disposed between the check
-    /// and the call.
+    /// Stops the running script, and any script the engine runs later. Called from a timer thread, so the engine
+    /// may be disposed between the check and the call.
     /// </summary>
+    /// <remarks>
+    /// V8 ignores an interrupt that arrives while no script runs, so the interrupt is sent again every
+    /// <see cref="InterruptRedeliveryPeriod"/> until the engine is disposed. V8 interrupts the whole runtime, so until an
+    /// interrupted engine is disposed any other engine on the same <c>TracerRuntime</c> would be stopped too; callers keep
+    /// one live engine per runtime at a time.
+    /// </remarks>
     public void Interrupt()
     {
-        Interlocked.Exchange(ref _externalInterruptRequested, 1);
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Interlocked.Exchange(ref _externalInterruptRequested, 1) == 0)
         {
-            return;
+            lock (_interruptGate)
+            {
+                if (Volatile.Read(ref _disposed) == 0)
+                    _interruptRedelivery = new Timer(static engine => ((Engine)engine!).DeliverInterrupt(), this,
+                        InterruptRedeliveryPeriod, InterruptRedeliveryPeriod);
+            }
         }
 
-        try
+        DeliverInterrupt();
+    }
+
+    private void DeliverInterrupt()
+    {
+        // The gate keeps a delivery from overlapping disposal, which stops the redelivery under the same gate.
+        lock (_interruptGate)
         {
-            V8Engine.Interrupt();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The timeout fired after the tracing thread released the engine: there is no script left to stop,
-            // and the timer thread has no caller to report to.
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                V8Engine.Interrupt();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The timeout fired after the tracing thread released the engine: there is no script left to stop,
+                // and the timer thread has no caller to report to.
+            }
         }
     }
 
@@ -195,6 +230,12 @@ public class Engine : IDisposable
         }
 
         Interlocked.CompareExchange(ref _currentEngine, null, this);
+        lock (_interruptGate)
+        {
+            _interruptRedelivery?.Dispose();
+            _interruptRedelivery = null;
+        }
+
         try
         {
             try

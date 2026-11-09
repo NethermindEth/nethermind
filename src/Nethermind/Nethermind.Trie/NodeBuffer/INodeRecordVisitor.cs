@@ -8,7 +8,7 @@ namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>A tree visitor that reads each node in place, as a <see cref="NodeRecordRef"/>, rather than as a <see cref="TrieNode"/>.</summary>
 /// <remarks>
-/// A walk over node records calls it as <see cref="ITreeVisitor{TNodeContext}"/> is called, so a visitor can implement both.
+/// A walk over node records calls it as <see cref="ITreeVisitor{TNodeContext}"/> is called.
 /// A node embedded in its parent has a zero <see cref="NodeRecordRef.Hash"/>.
 /// </remarks>
 public interface INodeRecordVisitor<TNodeContext>

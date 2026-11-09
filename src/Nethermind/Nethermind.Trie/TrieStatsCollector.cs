@@ -92,6 +92,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
+        /// <inheritdoc/>
         public void VisitBranch(in Context nodeContext, NodeRecordRef node)
         {
             _cancellationToken.ThrowIfCancellationRequested();
@@ -110,6 +111,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
+        /// <inheritdoc/>
         public void VisitExtension(in Context nodeContext, NodeRecordRef node)
         {
             if (nodeContext.IsStorage)
@@ -126,6 +128,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
+        /// <inheritdoc/>
         public virtual void VisitLeaf(in Context nodeContext, NodeRecordRef node)
         {
             if (nodeContext.IsStorage)
@@ -142,6 +145,7 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: true);
         }
 
+        /// <inheritdoc/>
         public void VisitAccount(in Context nodeContext, NodeRecordRef node, in AccountStruct account)
         {
             if (!account.HasCode) return;

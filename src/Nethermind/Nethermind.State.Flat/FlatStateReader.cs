@@ -57,6 +57,7 @@ public class FlatStateReader(
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
         RunTreeVisitor(treeVisitor, new TreeVisitorAdapter<TCtx>(treeVisitor), baseBlock, visitingOptions, diagnostics);
 
+    /// <inheritdoc/>
     public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
         RunTreeVisitor(new NodeRecordVisitorAdapter<TCtx>(visitor), visitor, baseBlock, visitingOptions, diagnostics);
 

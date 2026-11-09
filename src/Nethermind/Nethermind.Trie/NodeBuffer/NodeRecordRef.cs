@@ -140,7 +140,7 @@ public readonly ref struct NodeRecordRef
     {
         ChildRef child = Kind switch
         {
-            NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch => Child(index),
+            NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch when (uint)index < TrieNode.BranchesCount => Child(index),
             NodeRecordKind.Extension when index == 0 => Child(0),
             _ => default,
         };
