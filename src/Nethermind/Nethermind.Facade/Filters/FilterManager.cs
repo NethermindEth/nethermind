@@ -23,7 +23,7 @@ namespace Nethermind.Facade.Filters
     /// Serves <c>eth_getFilterChanges</c> for installed filters.
     /// </summary>
     /// <remarks>
-    /// Filters do not buffer results. Processed blocks with their receipts and reorg removals (for log filters),
+    /// Filters do not buffer results. Canonical blocks with their receipts and reorg removals (for log filters),
     /// block hashes (for block filters) and new pending transactions are each appended once to a log shared by all
     /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
     /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
@@ -59,7 +59,6 @@ namespace Nethermind.Facade.Filters
             _blocks = new FilterEventLog<BlockEvent>(filterStore);
             _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
-            mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterSaved += OnFilterSaved;
             _filterStore.FilterRemoved += OnFilterRemoved;
@@ -103,27 +102,25 @@ namespace Nethermind.Facade.Filters
             _pendingTransactions.Untrack(e.FilterId);
         }
 
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
-        {
-            Block block = e.Block;
-            Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
-            _lastBlockHash = blockHash;
-            _blockHashes.Append(blockHash);
-            if (_blocks.IsTracking)
-            {
-                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false,
-                    _eip8116.IsEnabled(block.Number, block.Timestamp)));
-            }
-        }
-
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
+            if (!e.WasRemoved)
+            {
+                Hash256 blockHash = e.BlockHeader.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
+                _lastBlockHash = blockHash;
+                _blockHashes.Append(blockHash);
+            }
+            else if (_lastBlockHash == e.BlockHeader.Hash)
+            {
+                _lastBlockHash = null;
+            }
+
+            if (e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
             {
                 return;
             }
 
-            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true,
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: e.WasRemoved,
                 _eip8116.IsEnabled(e.BlockHeader.Number, e.BlockHeader.Timestamp)));
         }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
@@ -91,7 +92,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
+            ArgumentOutOfRangeException.ThrowIfNegative(receiptConfig.MaxTransientReceiptStorageSizeMb);
+            if (receiptConfig.MaxTransientReceiptStorageSizeMb == 0)
+                builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
+            else
+                builder.AddSingleton<IReceiptMigrationStore, TransientReceiptStorage>();
         }
     }
 
