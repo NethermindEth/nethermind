@@ -45,22 +45,3 @@ public abstract class LegacyBlockchainTestFixture<TSelf, TPrefix> : BlockchainTe
 
 /// <summary>Convenience alias defaulting to "bc" prefix.</summary>
 public abstract class LegacyBlockchainTestFixture<TSelf> : LegacyBlockchainTestFixture<TSelf, BcPrefix>;
-
-/// <summary>
-/// Variant of <see cref="LegacyBlockchainTestFixture{TSelf,TPrefix}"/> that disables RLP validation.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class LegacyBlockchainTestFixtureNoRlpValidation<TSelf, TPrefix> : BlockchainTestBase
-    where TPrefix : ITestDirectoryPrefix
-{
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => await RunTest(test, failOnInvalidRlp: false);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(),
-            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<BlockchainTest>();
-}
-
-/// <summary>Convenience alias defaulting to "bc" prefix.</summary>
-public abstract class LegacyBlockchainTestFixtureNoRlpValidation<TSelf> : LegacyBlockchainTestFixtureNoRlpValidation<TSelf, BcPrefix>;
