@@ -261,19 +261,23 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 
+    /// <remarks>
+    /// Only the newest snapshot is probed. Its root reaches every buffer record of this state: a block that rewrites a node
+    /// carries the pointers to the records of its unchanged children over from the record it replaces, and the snapshots' pins
+    /// keep those records readable. A node no buffer record holds is unchanged since the persisted state, as block
+    /// processing, which reads the same records and falls back to persistence, relies on. An older snapshot's root reaches
+    /// only the records of that older state, so probing it after a miss finds nothing newer.
+    /// </remarks>
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
+        if (snapshots.Count > 0 && snapshots[^1].TryGetStateNode(key, out node))
         {
-            if (snapshots[i].TryGetStateNode(key, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
-                return true;
-            }
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
+            return true;
         }
 
         node = null;
@@ -285,6 +289,10 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStorageNodes((address, path), out node);
 
+    /// <remarks>
+    /// Only the newest snapshot holding a storage root entry for the account (0 when the storage was cleared) is probed, as <see cref="TryFindStateNodes(HashedKey{TreePath}, out TrieNode?)"/>
+    /// probes only the newest one: it holds the root of the current storage trie, and older snapshots hold older versions of it.
+    /// </remarks>
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
@@ -292,12 +300,16 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(key, out node))
+            if (!snapshots[i].TryGetStorageRoot(key.Key.Item1, out ulong root)) continue;
+
+            if (snapshots[i].TryGetStorageNode(root, key.Key.Item2, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
             }
+
+            break;
         }
 
         node = null;
