@@ -194,7 +194,7 @@ public class DebugRpcModule(
         if (call is SetCodeTransactionForRpc { To: null, AuthorizationList: not null })
             return TxErrorMessages.NotAllowedCreateTransaction;
         if (dynamicFeesBeforeLondon)
-            return "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
+            return FeeDefaultRules.FeeFieldsBeforeLondon;
 
         Address sender = (call as LegacyTransactionForRpc)?.From ?? Address.Zero;
         // Geth's message precheck rejects fees before unsupported fields, and fields before intrinsic gas or balance.
@@ -205,7 +205,7 @@ public class DebugRpcModule(
             if (feeCap < tipCap)
                 return ErrorWrapper.DebugTrace($"{TxErrorMessages.TipAboveFeeCap}: address {sender.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tipCap}, maxFeePerGas: {feeCap}");
             if (feeCap < baseFee && (!feeCap.IsZero || !tipCap.IsZero))
-                return ErrorWrapper.DebugTrace($"max fee per gas less than block base fee: address {sender.ToString(withEip55Checksum: true)}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
+                return ErrorWrapper.DebugTrace($"{SimulateErrorMessages.FeeCapBelowBaseFee}: address {sender.ToString(withEip55Checksum: true)}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
         }
         return ErrorWrapper.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender.ToString(withEip55Checksum: true)})");
     }

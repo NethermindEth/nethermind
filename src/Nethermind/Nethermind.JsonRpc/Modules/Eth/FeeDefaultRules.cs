@@ -17,7 +17,7 @@ internal static class FeeDefaultRules
 {
     private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
     private const string ZeroGasPriceAfterLondon = "gasPrice must be non-zero after london fork";
-    private const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
+    internal const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
     private const string GasPriceWithAuthorizationList = "both gasPrice and authorizationList specified";
 
     /// <summary>The first rule <paramref name="call"/> breaks, or null when its fee fields pass or are checked elsewhere.</summary>
