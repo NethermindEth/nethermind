@@ -616,7 +616,7 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Returns_module_to_pool_once_and_internal_error_when_preparing_params_throws([Values("eth_getLogs", "eth_newFilter")] string method)
+    public async Task Returns_internal_error_without_renting_module_when_logging_throws([Values("eth_getLogs", "eth_newFilter")] string method)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsTrace.Returns(true);
@@ -634,7 +634,8 @@ public class JsonRpcServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            pool.Received(1).ReturnModule(rpcModule);
+            await pool.DidNotReceive().GetModule(Arg.Any<bool>());
+            pool.DidNotReceive().ReturnModule(Arg.Any<IEthRpcModule>());
             Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
             logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
         }

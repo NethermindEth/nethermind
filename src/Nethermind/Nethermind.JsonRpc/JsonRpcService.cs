@@ -111,9 +111,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        LogRequest(methodName);
+
         if (request.ParamsKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Array))
         {
-            LogRequest(methodName);
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", null, in request.IdRef);
         }
 
@@ -269,8 +270,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = null;
         parameterCount = 0;
         returnParametersToPool = false;
-
-        LogRequest(methodName);
 
         ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
         ExpectedParameter[] expectedParameters = method.ExpectedParameters;
