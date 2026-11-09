@@ -460,20 +460,43 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Snapshot_survives_disposal_of_another_snapshot_at_the_same_version([Values] bool newerSnapshotOpen)
+        public void Snapshot_survives_disposal_of_another_snapshot_at_the_same_version([Values] bool newerSnapshotOpen, [Values] bool clearBeforeSnapshot)
         {
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
+            IKeyValueStoreSnapshot otherSnapshot = memDb.CreateSnapshot();
+            if (clearBeforeSnapshot)
+            {
+                memDb.Clear();
+                memDb.Set(TestItem.KeccakA, _sampleValue);
+            }
             using IKeyValueStoreSnapshot snapshot = memDb.CreateSnapshot();
-            IKeyValueStoreSnapshot sameVersionSnapshot = memDb.CreateSnapshot();
             memDb.Set(TestItem.KeccakA, _sampleValue2);
             memDb.Set(TestItem.KeccakB, _sampleValue2);
             using IKeyValueStoreSnapshot? newerSnapshot = newerSnapshotOpen ? memDb.CreateSnapshot() : null;
 
-            sameVersionSnapshot.Dispose();
-            sameVersionSnapshot.Dispose();
+            otherSnapshot.Dispose();
+            otherSnapshot.Dispose();
 
             Assert.That(snapshot.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+        }
+
+        [Test]
+        public void View_keeps_its_version_after_later_writes([Values] bool snapshotOpen)
+        {
+            SnapshotableMemDb memDb = new();
+            byte[] key = Bytes.FromHexString("0x01");
+            memDb.Set(key, _sampleValue);
+            IKeyValueStoreSnapshot? snapshot = snapshotOpen ? memDb.CreateSnapshot() : null;
+            using ISortedView view = memDb.GetViewBetween(key, Bytes.FromHexString("0x02"));
+            memDb.Set(key, _sampleValue2);
+            snapshot?.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(view.MoveNext(), Is.True);
+                Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(_sampleValue));
+            }
         }
 
         [Test]

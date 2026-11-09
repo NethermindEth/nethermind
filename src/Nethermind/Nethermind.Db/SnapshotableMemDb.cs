@@ -20,7 +20,7 @@ namespace Nethermind.Db
         private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
-        private readonly Dictionary<int, int> _activeSnapshotVersions = [];
+        private readonly SortedList<int, int> _activeSnapshotVersions = [];
         private readonly Lock _versionLock = new();
         private readonly bool _neverPrune = neverPrune;
 
@@ -119,8 +119,6 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 _db.Clear();
-                _currentVersion = 0;
-                _activeSnapshotVersions.Clear();
             }
         }
 
@@ -250,6 +248,7 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 version = _currentVersion;
+                AddActiveVersion(version);
             }
             return new MemDbSortedView(this, version, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
         }
@@ -260,10 +259,13 @@ namespace Nethermind.Db
             lock (_versionLock)
             {
                 int snapshotVersion = _currentVersion;
-                _activeSnapshotVersions[snapshotVersion] = _activeSnapshotVersions.GetValueOrDefault(snapshotVersion) + 1;
+                AddActiveVersion(snapshotVersion);
                 return new MemDbSnapshot(this, snapshotVersion);
             }
         }
+
+        private void AddActiveVersion(int version) =>
+            _activeSnapshotVersions[version] = _activeSnapshotVersions.GetValueOrDefault(version) + 1;
 
         internal void OnSnapshotDisposed(int version)
         {
@@ -288,7 +290,7 @@ namespace Nethermind.Db
                 }
 
                 // Slow path: prune versions older than oldest active snapshot
-                int minVersion = _activeSnapshotVersions.Keys.Min();
+                int minVersion = _activeSnapshotVersions.Keys[0];
                 PruneVersionsOlderThan(minVersion);
             }
         }
@@ -529,12 +531,18 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
+            {
+                lock (_db._versionLock)
+                {
+                    _db.AddActiveVersion(_snapshotVersion);
+                }
+                return new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            }
 
             public void Dispose()
             {
-                if (_disposed) return;
-                _disposed = true;
+                if (Interlocked.Exchange(ref _disposed, true)) return;
                 _db.OnSnapshotDisposed(_snapshotVersion);
             }
         }
@@ -551,6 +559,7 @@ namespace Nethermind.Db
             private readonly byte[] _lastKey = lastKey;
             private byte[]? _currentKey;
             private byte[]? _currentValue;
+            private bool _disposed;
 
             public bool StartBefore(ReadOnlySpan<byte> key)
             {
@@ -667,8 +676,10 @@ namespace Nethermind.Db
 
             public void Dispose()
             {
+                if (Interlocked.Exchange(ref _disposed, true)) return;
                 _currentKey = null;
                 _currentValue = null;
+                _db.OnSnapshotDisposed(_version);
             }
         }
 
