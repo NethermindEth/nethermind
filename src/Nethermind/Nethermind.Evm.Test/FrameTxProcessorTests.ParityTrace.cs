@@ -292,10 +292,10 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A frame whose target has no code runs default code, so it does not enter the EVM: callTracer renders
-    /// it from the transaction with no <c>output</c> and no <c>calls</c>, and structLogs has no step of it.</summary>
+    /// <summary>A SENDER frame whose target has no code runs no instruction: callTracer renders it from the
+    /// transaction with no <c>output</c> and no <c>calls</c>, and structLogs has no step of it.</summary>
     [Test]
-    public void GethTraces_FrameTx_CodelessTargetFrameDoesNotEnterTheEvm()
+    public void GethTraces_FrameTx_CodelessTargetFrameRunsNoCode()
     {
         Transaction tx = ParityScenarioTx("codelessTarget");
         (JsonDocument trace, _) = TraceCall(tx);
