@@ -1387,8 +1387,8 @@ public class JsonRpcServiceTests
         return TestRequest(module, "test_string", "x");
     }
 
-    // #15500 took the exception chain out of error.data, and the Error line keeps only the type and the stack, so this
-    // Debug line is the only record of what an internal error was. Masking replaces the chain as a whole.
+    // Responses carry no error data, and the Error line keeps only the type and the stack, so this Debug line is the
+    // only record of what an internal error was. Masking replaces the chain as a whole.
     [Test]
     public void Internal_error_cause_is_logged_at_debug_only([Values] bool maskSensitiveData, [Values] bool rentalFailure)
     {

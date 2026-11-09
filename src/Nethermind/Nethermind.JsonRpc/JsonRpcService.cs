@@ -9,7 +9,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
@@ -17,6 +16,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -122,21 +122,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     /// </remarks>
     private void LogInternalErrorCause(JsonRpcRequest? request, Exception ex)
     {
-        if (_logger.IsDebug) _logger.Debug($"Internal error cause, request: {DescribeRequestForLog(request)}, exception chain: {DescribeExceptionChain(ex):hide}");
-    }
-
-    private static string DescribeExceptionChain(Exception ex)
-    {
-        StringBuilder text = new();
-        Exception? current = ex;
-        for (int depth = 0; current is not null && depth < MaxLoggedExceptionChainDepth; current = current.InnerException, depth++)
-        {
-            if (depth != 0) text.Append(" ---> ");
-            text.Append(current.GetType()).Append(": ").Append(current.Message);
-        }
-
-        if (current is not null) text.Append(" ---> ...");
-        return text.ToString();
+        if (_logger.IsDebug) _logger.Debug($"Internal error cause, request: {DescribeRequestForLog(request)}, exception chain: {ex.DescribeChain(MaxLoggedExceptionChainDepth):hide}");
     }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
