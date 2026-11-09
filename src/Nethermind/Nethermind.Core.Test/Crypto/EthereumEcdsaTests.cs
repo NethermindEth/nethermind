@@ -14,6 +14,41 @@ namespace Nethermind.Core.Test.Crypto
     [TestFixture]
     public class EthereumEcdsaTests
     {
+        [Test]
+        public void Verified_recovery_lookup_checks_every_input([Values(1, 64, 65, 100)] int count)
+        {
+            byte[] messages = new byte[count * 32];
+            byte[] signatures = new byte[count * 64];
+            byte[] ids = new byte[count];
+            byte[] keys = new byte[count * 64];
+            Random random = new(42);
+            random.NextBytes(messages);
+            random.NextBytes(signatures);
+            random.NextBytes(keys);
+            VerifiedRecoveries recoveries = new(messages, signatures, ids, keys);
+            Span<byte> actual = stackalloc byte[64];
+            for (int i = count - 1; i >= 0; i--)
+            {
+                byte[] message = messages.AsSpan(i * 32, 32).ToArray();
+                byte[] signature = signatures.AsSpan(i * 64, 64).ToArray();
+                bool found = recoveries.TryGetKey(signature, 0, message, actual);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(found, Is.True);
+                    Assert.That(actual.ToArray(), Is.EqualTo(keys.AsSpan(i * 64, 64).ToArray()));
+                    Assert.That(recoveries.TryGetKey(signature, 1, message, actual), Is.False);
+                }
+                message[0] ^= 1;
+                Assert.That(recoveries.TryGetKey(signature, 0, message, actual), Is.False);
+                message[0] ^= 1;
+                signature[0] ^= 1;
+                Assert.That(recoveries.TryGetKey(signature, 0, message, actual), Is.False);
+                signature[0] ^= 1;
+                signature[63] ^= 1;
+                Assert.That(recoveries.TryGetKey(signature, 0, message, actual), Is.False);
+            }
+        }
+
         public static IEnumerable<(string, Transaction)> TestCaseSources()
         {
             yield return ("legacy", Build.A.Transaction.SignedAndResolved().TestObject);

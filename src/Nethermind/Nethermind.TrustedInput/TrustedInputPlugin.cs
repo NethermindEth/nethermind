@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.JsonRpc.Modules;
@@ -34,6 +35,8 @@ public class TrustedInputModule : Module
 
         builder
             .AddSingleton<TrustedInputStore>()
+            .AddDecorator<IMainProcessingModule>((_, module) => module is WitnessCapturingMainProcessingModule
+                ? new WitnessCapturingMainProcessingModule(true) : module)
             .AddSingleton<IMainProcessingModule, TrustedInputMainProcessingModule>()
             .RegisterSingletonJsonRpcModule<ITrustedInputRpcModule, TrustedInputRpcModule>();
     }

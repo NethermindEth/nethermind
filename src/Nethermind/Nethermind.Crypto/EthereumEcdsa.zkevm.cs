@@ -54,12 +54,12 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         byte recoveryId,
         ReadOnlySpan<byte> message,
         Span<byte> publicKey
-        ) => _verified.TryGetKey(signature, recoveryId, message, publicKey)
+        ) => _verified?.TryGetKey(signature, recoveryId, message, publicKey) == true
         || Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey) == Accelerators.Status.OK;
 
     /// <summary>The recoveries <see cref="TryVerifyInBatch"/> checked last, which <see cref="RecoverAddressRaw"/> serves
     /// without recovering.</summary>
-    private static VerifiedRecoveries _verified;
+    private static VerifiedRecoveries? _verified;
 
     /// <summary>Sets the sender of each of <paramref name="transactions"/> from its signature, all in one call.</summary>
     /// <param name="transactions">The transactions, signed.</param>
@@ -156,28 +156,6 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         public ReadOnlySpan<byte> Ys { get; } = ys;
     }
 
-    /// <summary>Recoveries checked against their keys, found by a scan: a block makes few beyond its senders'.</summary>
-    private readonly struct VerifiedRecoveries(byte[] messages, byte[] signatures, byte[] recoveryIds, byte[] keys)
-    {
-        public bool TryGetKey(ReadOnlySpan<byte> signature, byte recoveryId, ReadOnlySpan<byte> message, Span<byte> publicKey)
-        {
-            if (recoveryIds is null || message.Length != ValueHash256.MemorySize || signature.Length != 64) return false;
-
-            for (int i = 0; i < recoveryIds.Length; i++)
-            {
-                if (recoveryIds[i] == recoveryId
-                    && message.SequenceEqual(messages.AsSpan(i * ValueHash256.MemorySize, ValueHash256.MemorySize))
-                    && signature.SequenceEqual(signatures.AsSpan(i * 64, 64)))
-                {
-                    keys.AsSpan(i * 64, 64).CopyTo(publicKey);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
     /// <param name="capacity">The signatures to make room for, the transactions' first.</param>
     private static bool TryPackSignatures(Transaction[] transactions, byte[][] encodedTransactions, IEthereumEcdsa ecdsa,
         bool useSignatureChainId, int capacity, out byte[] messages, out byte[] signatures, out byte[] recoveryIds)
@@ -209,10 +187,12 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     }
 
     [DllImport("*")]
+    [SuppressGCTransition]
     private static extern unsafe void airbender_secp256k1_ecrecover_batch(
         byte* messages, byte* signatures, byte* recoveryIds, byte* keys, byte* recovered, uint count);
 
     [DllImport("*")]
+    [SuppressGCTransition]
     private static extern unsafe int airbender_secp256k1_verify_batch(
         byte* messages, byte* signatures, byte* recoveryIds, byte* keys, byte* ys, byte* weights, uint count);
 }

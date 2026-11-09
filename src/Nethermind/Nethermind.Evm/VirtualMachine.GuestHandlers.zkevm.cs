@@ -2844,7 +2844,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else if ((offset & (sizeof(uint) - 1)) == 0)
                             airbender_keccak256_laid_out((byte*)Unsafe.AsPointer(ref data), (nuint)length, (byte*)Unsafe.AsPointer(ref lengthLimbs));
                         else
-                            KeccakCache.ComputeTo(SwizzledMemory.ToArray(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
+                            SwizzledMemory.ComputeHash(ref data, (int)length, out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         // Reloaded rather than held across the call, where each would take a callee-saved register.
                         handlers = state.OpcodeHandlers;
                         code = ref stack.Code;

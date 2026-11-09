@@ -30,5 +30,6 @@ internal static class AirbenderZeroJump
 
     // Named as its entry point in bflat's Airbender start module.
     [DllImport("*")]
+    [SuppressGCTransition]
     private static extern void airbender_set_zero_jump_target(nint target);
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm;
 
@@ -23,6 +24,42 @@ namespace Nethermind.Evm;
 internal static unsafe class SwizzledMemory
 {
     private const nuint GroupMask = sizeof(uint) - 1;
+    private const int HashScratchLimit = 64 * 1024;
+    [ThreadStatic] private static byte[]? s_hashScratch;
+    [ThreadStatic] private static KeccakHash? s_hasher;
+
+    /// <summary>Hashes swizzled memory without allocating a copy of each input.</summary>
+    /// <remarks>Small inputs keep the keccak cache; larger inputs use bounded reusable scratch, streaming past its limit.</remarks>
+    internal static void ComputeHash(ref byte source, int length, out ValueHash256 hash)
+    {
+        if (length <= 256)
+        {
+            Span<byte> natural = stackalloc byte[256];
+            Read(ref source, natural[..length]);
+            KeccakCache.ComputeTo(natural[..length], out hash);
+            return;
+        }
+
+        byte[] scratch = s_hashScratch ??= new byte[HashScratchLimit];
+        if (length <= scratch.Length)
+        {
+            Read(ref source, scratch.AsSpan(0, length));
+            KeccakCache.ComputeTo(scratch.AsSpan(0, length), out hash);
+            return;
+        }
+
+        KeccakHash hasher = s_hasher ??= KeccakHash.Create();
+        hasher.Reset();
+        for (int offset = 0; offset < length;)
+        {
+            int count = Math.Min(scratch.Length, length - offset);
+            Read(ref Unsafe.Add(ref source, offset), scratch.AsSpan(0, count));
+            hasher.Update(scratch.AsSpan(0, count));
+            offset += count;
+        }
+        hash = default;
+        hasher.UpdateFinalTo(hash.BytesAsSpan);
+    }
 
     /// <summary>The memory position of the byte at <paramref name="at"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -146,12 +183,12 @@ internal static unsafe class SwizzledMemory
 
     /// <summary>Copies <paramref name="length"/> bytes of memory from <paramref name="source"/> to <paramref name="destination"/>, which may overlap.</summary>
     /// <remarks>
-    /// Ranges apart and in the same place of their groups move as <see cref="Copy"/> moves them; others go through a copy
-    /// in natural order, which makes any overlap safe.
+    /// Overlapping ranges move in the direction that preserves unread bytes. A bounded stack buffer converts groups
+    /// without allocating scratch proportional to the input in guests that cannot collect it.
     /// </remarks>
     public static void Move(ref byte destination, ref byte source, int length)
     {
-        if (length == 0) return;
+        if (length == 0 || Unsafe.AreSame(ref destination, ref source)) return;
 
         nuint to = (nuint)Unsafe.AsPointer(ref destination);
         nuint from = (nuint)Unsafe.AsPointer(ref source);
@@ -161,7 +198,27 @@ internal static unsafe class SwizzledMemory
             return;
         }
 
-        Write(ref destination, ToArray(ref source, length));
+        Span<byte> scratch = stackalloc byte[256];
+        if (to < from)
+        {
+            for (int offset = 0; offset < length;)
+            {
+                int count = Math.Min(scratch.Length, length - offset);
+                Read(ref Unsafe.Add(ref source, offset), scratch[..count]);
+                Write(ref Unsafe.Add(ref destination, offset), scratch[..count]);
+                offset += count;
+            }
+        }
+        else
+        {
+            while (length > 0)
+            {
+                int count = Math.Min(scratch.Length, length);
+                length -= count;
+                Read(ref Unsafe.Add(ref source, length), scratch[..count]);
+                Write(ref Unsafe.Add(ref destination, length), scratch[..count]);
+            }
+        }
     }
 
     /// <summary>Loads the 32-byte word at <paramref name="source"/> into the stack slot <paramref name="slot"/>, in limb layout.</summary>

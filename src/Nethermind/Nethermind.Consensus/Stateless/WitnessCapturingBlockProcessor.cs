@@ -33,11 +33,7 @@ public sealed class WitnessCapturingBlockProcessor(
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
 
-    public event Action<Block>? TransactionsExecuted
-    {
-        add => inner.TransactionsExecuted += value;
-        remove => inner.TransactionsExecuted -= value;
-    }
+    public event Action<Block>? TransactionsExecuted;
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(
         Block suggestedBlock,
@@ -56,7 +52,7 @@ public sealed class WitnessCapturingBlockProcessor(
             && rendezvous.HasPendingRequest(blockHash);
 
         if (!shouldCapture)
-            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            return Process(inner, suggestedBlock, options, blockTracer, spec, token);
 
         ulong parentBlockNumber = suggestedBlock.Number - 1;
         BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
@@ -65,7 +61,7 @@ public sealed class WitnessCapturingBlockProcessor(
         witness.ResetForBlock();
 
         // If ProcessOne throws, the handler's using-registration cancels the pending slot — nothing to do here.
-        (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        (Block Block, TxReceipt[] Receipts) result = Process(witness.Processor, suggestedBlock, options, blockTracer, spec, token);
 
         if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
             return result; // request was declined or cancelled — nothing to publish.
@@ -84,5 +80,20 @@ public sealed class WitnessCapturingBlockProcessor(
         }
         tcs!.SetResult(capturedWitness);
         return result;
+    }
+
+    private (Block Block, TxReceipt[] Receipts) Process(IBlockProcessor processor, Block block, ProcessingOptions options,
+        IBlockTracer tracer, IReleaseSpec spec, CancellationToken token)
+    {
+        Action<Block>? handlers = TransactionsExecuted;
+        processor.TransactionsExecuted += handlers;
+        try
+        {
+            return processor.ProcessOne(block, options, tracer, spec, token);
+        }
+        finally
+        {
+            processor.TransactionsExecuted -= handlers;
+        }
     }
 }

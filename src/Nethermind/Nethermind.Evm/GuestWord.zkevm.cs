@@ -408,5 +408,6 @@ internal static unsafe class GuestWord
     /// <remarks>Named as its entry point in libairbender; only code behind <see cref="EvmPooledMemory.IsSwizzled"/>, which
     /// is Airbender's, reaches it.</remarks>
     [DllImport("*")]
+    [SuppressGCTransition]
     internal static extern void airbender_keccak256_laid_out(byte* data, nuint length, byte* output);
 }

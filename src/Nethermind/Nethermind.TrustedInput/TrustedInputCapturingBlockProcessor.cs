@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -18,21 +17,18 @@ using Nethermind.Logging;
 namespace Nethermind.TrustedInput;
 
 /// <summary>
-/// <see cref="IBlockProcessor"/> decorator that imports every block the main pipeline processes through the
-/// witness-recording processor of <see cref="WitnessCapturingBlockProcessingEnv"/>, then stores the block and its witness
-/// as a trusted input.
+/// Requests a witness from the main processing pipeline and stores it as a trusted input in the background.
 /// </summary>
 /// <remarks>
-/// The witness processor shares the main pipeline's writable world state, so a block is imported once, not re-executed.
 /// Read-only processing, such as tracing and simulation, passes straight through. Capturing is best-effort: a block whose
 /// input fails to build still stands, and <c>trustedinput_getInput</c> rebuilds it on request.
-/// At most one capture runs in the background; blocks imported while it is busy are regenerated on demand.
+/// At most one capture runs in the background; blocks imported while it is busy or another consumer owns the witness
+/// request are regenerated on demand.
 /// </remarks>
 public sealed class TrustedInputCapturingBlockProcessor(
     IBlockProcessor inner,
-    WitnessCapturingBlockProcessingEnv witness,
+    WitnessRendezvous rendezvous,
     TrustedInputStore store,
-    IHeaderFinder headerFinder,
     ISpecProvider specProvider,
     ILogManager logManager) : IBlockProcessor, IAsyncDisposable
 {
@@ -53,31 +49,30 @@ public sealed class TrustedInputCapturingBlockProcessor(
         CancellationToken token = default)
     {
         if (suggestedBlock.Hash is null || suggestedBlock.ParentHash is null || suggestedBlock.Number == 0
-            || options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+            || options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
+            || rendezvous.HasPendingRequest(suggestedBlock.Hash))
         {
             return Process(inner, suggestedBlock, options, blockTracer, spec, token);
         }
 
-        BlockHeader parent = headerFinder.Get(suggestedBlock.ParentHash, suggestedBlock.Number - 1)
-            ?? throw new ArgumentException($"Unable to find the parent of block {suggestedBlock.Number}");
-
-        witness.ResetForBlock();
-        (Block Block, TxReceipt[] Receipts) result = Process(witness.Processor, suggestedBlock, options, blockTracer, spec, token);
-
-        try
+        (Block Block, TxReceipt[] Receipts) result = default;
+        bool scheduled = TryScheduleCapture(() =>
         {
-            TryScheduleCapture(() =>
+            using WitnessRequest request = rendezvous.RequestWitness(suggestedBlock.Hash);
+            try
             {
-                Witness blockWitness = witness.GetWitness(parent);
-                return () => Capture(suggestedBlock, blockWitness);
-            });
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error($"Could not capture the trusted input of block {suggestedBlock.ToString(Block.Format.Short)}", ex);
-        }
+                result = Process(inner, suggestedBlock, options, blockTracer, spec, token);
+            }
+            catch
+            {
+                if (request.Task.IsCompletedSuccessfully) request.Task.Result?.Dispose();
+                throw;
+            }
+            Witness? captured = request.Task.IsCompletedSuccessfully ? request.Task.Result : null;
+            return captured is null ? null : () => Capture(suggestedBlock, captured);
+        });
 
-        return result;
+        return scheduled ? result : Process(inner, suggestedBlock, options, blockTracer, spec, token);
     }
 
     private (Block Block, TxReceipt[] Receipts) Process(IBlockProcessor processor, Block block, ProcessingOptions options,
@@ -95,13 +90,13 @@ public sealed class TrustedInputCapturingBlockProcessor(
         }
     }
 
-    internal bool TryScheduleCapture(Func<Action> createCapture)
+    internal bool TryScheduleCapture(Func<Action?> createCapture)
     {
         lock (_captureLock)
         {
             if (_stopping || !_capture.IsCompleted) return false;
-            Action capture = createCapture();
-            _capture = Task.Run(capture);
+            Action? capture = createCapture();
+            if (capture is not null) _capture = Task.Run(capture);
             return true;
         }
     }

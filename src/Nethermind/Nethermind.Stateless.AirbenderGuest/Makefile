@@ -61,7 +61,7 @@ run:
 verify:
 	@$(REQUIRE_INPUT)
 	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).hex
-	@expected=$$(python3 -c "import json,struct,sys; entries=json.load(open(sys.argv[1])); digest=next(e['digest'] for e in entries if e['input']==sys.argv[2]); print(*struct.unpack('<8I',bytes.fromhex(digest)), *([0]*8))" $(MAKEFILE_DIR)/../Nethermind.Stateless.ZiskGuest/inputs.json $(INPUT)) && \
+	@expected=$$(python3 -c "import json,struct,sys; digest=sys.argv[3] or next(e['digest'] for e in json.load(open(sys.argv[1])) if e['input']==sys.argv[2]); print(*struct.unpack('<8I',bytes.fromhex(digest)), *([0]*8))" $(MAKEFILE_DIR)/../Nethermind.Stateless.ZiskGuest/inputs.json $(INPUT) "$(EXPECTED_DIGEST)") && \
 		$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/$(GUEST_NAME).bin --text $(GUEST_DIR)/bin/$(GUEST_NAME).text \
 		--input-file $(GUEST_DIR)/bin/$(INPUT).hex --cycles $(AIRBENDER_CYCLES) --expected-results $$expected
 
