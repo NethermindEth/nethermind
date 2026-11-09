@@ -26,8 +26,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public UInt256[]? NonceKeys { get; set; }
 
     /// <summary>EIP-8141 <c>frames</c>, in execution order; the field that discriminates this envelope.</summary>
-    /// <remarks>The transaction's <c>gas</c> is their summed limits, so a frame's own budget is read here
-    /// rather than from that total.</remarks>
+    /// <remarks>The transaction's <c>gas</c> is the intrinsic gas plus their summed limits, so a frame's own budget is
+    /// read here rather than from that total.</remarks>
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
@@ -67,6 +67,9 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         MaxFee = transaction.MaxFee;
         MaxFeePerGas = null;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
+
+        if (extraData.Spec is not null && FrameTxValidation.TryCalculateGasBudget(transaction, extraData.Spec, out ulong intrinsicGas, out _, out _))
+            Gas = intrinsicGas.SaturatingAdd(transaction.GasLimit);
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)

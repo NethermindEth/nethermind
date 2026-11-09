@@ -99,7 +99,7 @@ public class BlockForRpc
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
-                    ? GetTransactionsForRpc(block, specProvider.ChainId)
+                    ? GetTransactionsForRpc(block, specProvider.ChainId, specProvider.GetSpec(block.Header))
                     : GetTransactionHashes(block.Transactions);
         }
         TransactionsRoot = block.TxRoot;
@@ -186,7 +186,7 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId) => BlockTransactions.FromBlock(block, chainId);
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId, IReleaseSpec spec) => BlockTransactions.FromBlock(block, chainId, spec);
 
     private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
     {
