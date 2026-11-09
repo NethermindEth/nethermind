@@ -21,45 +21,59 @@ public sealed class NodeRecordVisitorAdapter<TNodeContext>(INodeRecordVisitor<TN
     /// <summary>Fits any branch, extension, account or storage slot record.</summary>
     private const int StackRecordLength = 1024;
 
+    /// <inheritdoc/>
     public bool IsFullDbScan => visitor.IsFullDbScan;
 
+    /// <inheritdoc/>
     public bool ExpectAccounts => visitor.ExpectAccounts;
 
+    /// <inheritdoc/>
     public ReadFlags ExtraReadFlag => visitor.ExtraReadFlag;
 
+    /// <inheritdoc/>
     public bool ShouldVisit(in TNodeContext nodeContext, in ValueHash256 nextNode) => visitor.ShouldVisit(nodeContext, nextNode);
 
+    /// <inheritdoc/>
     public void VisitTree(in TNodeContext nodeContext, in ValueHash256 rootHash) => visitor.VisitTree(nodeContext, rootHash);
 
+    /// <inheritdoc/>
     public void VisitMissingNode(in TNodeContext nodeContext, in ValueHash256 nodeHash) => visitor.VisitMissingNode(nodeContext, nodeHash);
 
+    /// <inheritdoc/>
     public void VisitBranch(in TNodeContext nodeContext, TrieNode node)
     {
         Span<byte> buffer = stackalloc byte[StackRecordLength];
-        visitor.VisitBranch(nodeContext, ToRecord(node, buffer));
+        visitor.VisitBranch(nodeContext, NodeRecordVisitorAdapter.ToRecord(node, buffer));
     }
 
+    /// <inheritdoc/>
     public void VisitExtension(in TNodeContext nodeContext, TrieNode node)
     {
         Span<byte> buffer = stackalloc byte[StackRecordLength];
-        visitor.VisitExtension(nodeContext, ToRecord(node, buffer));
+        visitor.VisitExtension(nodeContext, NodeRecordVisitorAdapter.ToRecord(node, buffer));
     }
 
+    /// <inheritdoc/>
     public void VisitLeaf(in TNodeContext nodeContext, TrieNode node)
     {
         Span<byte> buffer = stackalloc byte[StackRecordLength];
-        visitor.VisitLeaf(nodeContext, ToRecord(node, buffer));
+        visitor.VisitLeaf(nodeContext, NodeRecordVisitorAdapter.ToRecord(node, buffer));
     }
 
+    /// <inheritdoc/>
     public void VisitAccount(in TNodeContext nodeContext, TrieNode node, in AccountStruct account)
     {
         Span<byte> buffer = stackalloc byte[StackRecordLength];
-        visitor.VisitAccount(nodeContext, ToRecord(node, buffer), account);
+        visitor.VisitAccount(nodeContext, NodeRecordVisitorAdapter.ToRecord(node, buffer), account);
     }
+}
 
+/// <summary>The part of <see cref="NodeRecordVisitorAdapter{TNodeContext}"/> that does not depend on the node context, so it is compiled once.</summary>
+internal static class NodeRecordVisitorAdapter
+{
     /// <param name="buffer">Holds the record when it fits; a longer one is allocated.</param>
     /// <exception cref="TrieException">The node is not one a record can hold.</exception>
-    private static NodeRecordRef ToRecord(TrieNode node, Span<byte> buffer)
+    public static NodeRecordRef ToRecord(TrieNode node, Span<byte> buffer)
     {
         ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
         if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask))

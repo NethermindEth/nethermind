@@ -25,17 +25,21 @@ internal sealed class TreeVisitorAdapter<TNodeContext>(ITreeVisitor<TNodeContext
 
     public void VisitMissingNode(in TNodeContext nodeContext, in ValueHash256 nodeHash) => visitor.VisitMissingNode(nodeContext, nodeHash);
 
-    public void VisitBranch(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitBranch(nodeContext, ToTrieNode(node));
+    public void VisitBranch(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitBranch(nodeContext, TreeVisitorAdapter.ToTrieNode(node));
 
-    public void VisitExtension(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitExtension(nodeContext, ToTrieNode(node));
+    public void VisitExtension(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitExtension(nodeContext, TreeVisitorAdapter.ToTrieNode(node));
 
-    public void VisitLeaf(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitLeaf(nodeContext, ToTrieNode(node));
+    public void VisitLeaf(in TNodeContext nodeContext, NodeRecordRef node) => visitor.VisitLeaf(nodeContext, TreeVisitorAdapter.ToTrieNode(node));
 
     public void VisitAccount(in TNodeContext nodeContext, NodeRecordRef node, in AccountStruct account) =>
-        visitor.VisitAccount(nodeContext, ToTrieNode(node), account);
+        visitor.VisitAccount(nodeContext, TreeVisitorAdapter.ToTrieNode(node), account);
+}
 
+/// <summary>The part of <see cref="TreeVisitorAdapter{TNodeContext}"/> that does not depend on the node context, so it is compiled once.</summary>
+internal static class TreeVisitorAdapter
+{
     /// <remarks>An embedded node has no hash, as in <see cref="PatriciaTree.Accept{TNodeContext}"/>.</remarks>
-    private static TrieNode ToTrieNode(NodeRecordRef record)
+    public static TrieNode ToTrieNode(NodeRecordRef record)
     {
         TrieNode node = record.Hash == ValueKeccak.Zero
             ? new TrieNode(NodeType.Unknown, record.Rlp.ToArray())

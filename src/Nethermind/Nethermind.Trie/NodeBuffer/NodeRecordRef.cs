@@ -24,7 +24,7 @@ public readonly ref struct NodeRecordRef
 
     internal ushort HashMask => BinaryPrimitives.ReadUInt16LittleEndian(_record[NodeRecordCodec.HashMaskOffset..]);
 
-    /// <summary>Keccak of the node's RLP.</summary>
+    /// <summary>Keccak of the node's RLP; zero for a node embedded in its parent, which has no hash of its own.</summary>
     public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_record.Slice(NodeRecordCodec.HashOffset, ValueHash256.MemorySize));
 
     /// <summary>The node's standard RLP, exactly the bytes that are hashed and persisted.</summary>
