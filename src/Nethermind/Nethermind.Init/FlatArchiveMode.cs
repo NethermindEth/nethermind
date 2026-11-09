@@ -49,7 +49,7 @@ public static class FlatArchiveMode
             if (!IsSet(configProvider, nameof(IFlatDbConfig.ArchiveProofServeEnabled))) flatDbConfig.ArchiveProofServeEnabled = true;
         }
 
-        if (snapSync && unbounded && flatDbConfig.Layout != FlatLayout.Flat && logger.IsWarn) logger.Warn(
+        if (snapSync && unbounded && flatDbConfig.Layout is not (FlatLayout.Flat or FlatLayout.Auto) && logger.IsWarn) logger.Warn(
             $"Pruning.Mode=None with snap sync starts the state history at the sync pivot, which needs FlatDb.Layout={nameof(FlatLayout.Flat)}; " +
             $"this node runs {flatDbConfig.Layout}, so history capture stops at the pivot. Set FlatDb.Layout={nameof(FlatLayout.Flat)} on a fresh database, " +
             "or sync from genesis with Sync.FastSync=false.");
