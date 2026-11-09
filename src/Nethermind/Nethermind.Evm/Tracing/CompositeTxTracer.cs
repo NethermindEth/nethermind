@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxReceiptTracer
 {
     internal readonly ITxTracer[] _txTracers;
 
@@ -213,6 +213,34 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             {
                 innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
             }
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReceipt)
+            {
+                IFrameTxReceiptTracer.FindIn(innerTracer)?.ReportFrameTxReceipt(payer, frameReceipts);
+            }
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFrameEnd(frameIndex, error);
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
         }
     }
 

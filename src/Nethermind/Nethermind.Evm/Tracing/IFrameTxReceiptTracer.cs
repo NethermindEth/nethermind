@@ -34,8 +34,8 @@ public interface IFrameTxReceiptTracer
     /// <summary>The first tracer in <paramref name="tracer"/>'s wrapper chain that takes EIP-8141 frame reports,
     /// or <see langword="null"/> when none does.</summary>
     /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
-    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
-    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
+    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> forwards reports
+    /// to its children, so the walk stops there rather than visiting the children twice.</remarks>
     static IFrameTxReceiptTracer? FindIn(ITxTracer tracer)
     {
         while (true)

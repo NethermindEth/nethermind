@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
@@ -46,7 +45,7 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
 
     /// <summary>The tracer to run the transaction with, so that <paramref name="txTracer"/> still gets every callback.</summary>
     public ITxTracer Wrap(ITxTracer txTracer) =>
-        ReferenceEquals(txTracer, NullTxTracer.Instance) ? this : new CompositeTracer(txTracer, this);
+        ReferenceEquals(txTracer, NullTxTracer.Instance) ? this : new CompositeTxTracer(txTracer, this);
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
         _logs = logs;
@@ -57,25 +56,4 @@ internal sealed class StateTestLogsTracer : TxTracer, IFrameTxReceiptTracer, ITx
         _logs = _frameReceipts is null ? [] : TxFrameReceipt.ConcatLogs(_frameReceipts);
 
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => _frameReceipts = frameReceipts;
-
-    /// <remarks>
-    /// The processor takes the frame receipt reports from the tracer it is given, not from inside a composite,
-    /// so this one passes them on to both tracers. The caller's tracer gets the receipt report only when it traces
-    /// receipts, as the processor would send it.
-    /// </remarks>
-    private sealed class CompositeTracer(ITxTracer txTracer, StateTestLogsTracer logsTracer)
-        : CompositeTxTracer(txTracer, logsTracer), IFrameTxReceiptTracer
-    {
-        private readonly IFrameTxReceiptTracer? _frameTxTracer = IFrameTxReceiptTracer.FindIn(txTracer);
-
-        public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
-        {
-            if (txTracer.IsTracingReceipt) _frameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
-            logsTracer.ReportFrameTxReceipt(payer, frameReceipts);
-        }
-
-        public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) => _frameTxTracer?.ReportFrameEnd(frameIndex, error);
-
-        public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) => _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
-    }
 }
