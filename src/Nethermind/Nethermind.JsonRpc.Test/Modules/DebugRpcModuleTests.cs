@@ -110,20 +110,26 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(response);
         if (expected is null)
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
-            Assert.That(json["result"], Is.Null, response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
             return;
         }
         Assert.That(json["error"], Is.Null, response);
         JToken result = json["result"]!;
-        if (mode == "callTracer")
-            Assert.That((string?)result["input"], Is.EqualTo("0x" + expected), response);
-        if (mode == "callTracer" && expected.Length == 0)
-            Assert.That(result["output"], Is.Null, response);
-        else
+        using (Assert.EnterMultipleScope())
         {
-            string output = (string)result[mode == "callTracer" ? "output" : "returnValue"]!;
-            Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+            if (mode == "callTracer")
+                Assert.That((string?)result["input"], Is.EqualTo("0x" + expected), response);
+            if (mode == "callTracer" && expected.Length == 0)
+                Assert.That(result["output"], Is.Null, response);
+            else
+            {
+                string output = (string)result[mode == "callTracer" ? "output" : "returnValue"]!;
+                Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+            }
         }
     }
 
