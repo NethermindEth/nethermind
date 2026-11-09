@@ -207,6 +207,7 @@ public partial class FrameTxProcessorTests
             using JsonDocument vmTrace = JsonDocument.Parse(JsonSerializer.Serialize(trace.VmTrace, EthereumJsonSerializer.JsonOptions));
             JsonElement[] rootOperations = [.. vmTrace.RootElement.GetProperty("ops").EnumerateArray()];
             Assert.That(rootOperations.Select(static o => o.TryGetProperty("op", out _)), Is.All.False, "a root operation runs no opcode");
+            Assert.That(rootOperations.Select(static o => o.GetProperty("ex").GetProperty("push").GetRawText()), Is.All.EqualTo("[]"), "a root operation pushes nothing");
             Assert.That(rootOperations.SelectMany(static o => o.GetProperty("sub").GetProperty("ops").EnumerateArray()).Select(static o => o.TryGetProperty("op", out _)),
                 Is.All.True, "a frame operation names its opcode");
             // Every frame's code opens with a PUSH, which a gas carry-over from the previous frame would misprice.

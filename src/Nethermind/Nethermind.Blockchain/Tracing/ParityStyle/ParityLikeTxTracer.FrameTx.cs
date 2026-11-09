@@ -119,7 +119,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         private void AddFrameOperation(ParityTraceAction frame)
         {
-            _lastFrameOperation = new ParityVmOperationTrace { Pc = frame.TraceAddress.AsSpan()[0], Cost = frame.Gas };
+            _lastFrameOperation = new ParityVmOperationTrace { Pc = frame.TraceAddress.AsSpan()[0], Cost = frame.Gas, Push = [] };
             tracer._currentVmTrace.Ops.Add(_lastFrameOperation);
             tracer._currentOperation = _lastFrameOperation;
         }
