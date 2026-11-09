@@ -99,8 +99,16 @@ public partial class DebugRpcModuleTests
             });
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Null, response);
-        string output = (string)json["result"]![mode == "callTracer" ? "output" : "returnValue"]!;
-        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+        JToken result = json["result"]!;
+        if (mode == "callTracer")
+            Assert.That((string?)result["input"], Is.EqualTo("0x" + expected), response);
+        if (mode == "callTracer" && expected.Length == 0)
+            Assert.That(result["output"], Is.Null, response);
+        else
+        {
+            string output = (string)result[mode == "callTracer" ? "output" : "returnValue"]!;
+            Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(expected), response);
+        }
     }
 
     private static IEnumerable<TestCaseData> TransactionIndexingCases()
