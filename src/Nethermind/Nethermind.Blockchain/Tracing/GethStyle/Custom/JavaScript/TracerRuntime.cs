@@ -22,16 +22,21 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// The soft limit is a sampled, best-effort bound on the V8 heap: ClearScript samples the heap size whenever a hook
 /// enters the script and periodically while it runs, and interrupts the script with its memory-limit error when the
 /// heap is still over the limit after a full collection, so a script can allocate past it between two samples.
-/// The old-space size is V8's own hard limit, which ends the process when reached. It is the headroom for what a
-/// script allocates between two samples, so it sits far above the soft limit. It is fixed: ClearScript enforces the
-/// soft limit with a last-resort collection, and V8 calls the near-heap-limit callback on every last-resort
-/// collection, so a heap expansion multiplier would raise the hard limit each time a collection brings a script back
-/// under the soft limit, until it overflows and V8 aborts the process.
+/// The old-space size is V8's own hard limit, which ends the process when reached. It sits far above the soft limit
+/// to absorb what a script allocates between two samples. A single call into a built-in that never reaches an
+/// interrupt check, such as <c>JSON.parse</c> of a large string, is not sampled while it runs, so it is bounded only
+/// by this limit and by host memory: below the limit the call completes and the next hook ends the trace with the
+/// memory-limit error, and at the limit V8 ends the process. The size reserves no memory or address space up front,
+/// so a large limit costs memory only when a script fills the heap.
+/// The size is fixed: ClearScript enforces the soft limit with a last-resort collection, and V8 calls the
+/// near-heap-limit callback on every last-resort collection, so a heap expansion multiplier would raise the hard
+/// limit each time a collection brings a script back under the soft limit, until it overflows and V8 aborts the
+/// process.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
 internal sealed class TracerRuntime : IDisposable
 {
-    private const int MaxOldSpaceMb = 4096;
+    private const int MaxOldSpaceMb = 16384;
     private static readonly UIntPtr HeapSoftLimit = new(128 * 1024 * 1024);
 
     private const string TracersPath = "Data/JSTracers/";
