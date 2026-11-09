@@ -1269,7 +1269,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["result"], Is.Null, response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: transaction type not supported: {(type == TxType.SetCode ? "setcode" : "blob")} tx (sender {Address.Zero})"), response);
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
         }
     }
@@ -1284,6 +1284,10 @@ public partial class DebugRpcModuleTests
         [
             ("access_before_berlin", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>() }, Unsupported("access list")),
             ("access_at_berlin", Berlin.Instance, new() { ["accessList"] = Array.Empty<object>() }, null),
+            ("blob_without_access_before_berlin", Istanbul.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
+            ("access_before_blob_fork", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>(), ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("access list")),
+            ("authorization_without_access_before_berlin", Istanbul.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
+            ("blob_fork_before_empty_hashes", Shanghai.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>() }, Unsupported("blob")),
             ("blob_before_cancun", Shanghai.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
             ("blob_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, null),
             ("authorization_before_prague", Cancun.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
@@ -1329,6 +1333,56 @@ public partial class DebugRpcModuleTests
                 Assert.That((bool?)json["result"]?["failed"], Is.False, response);
                 Assert.That((long?)json["result"]?["gas"], Is.GreaterThanOrEqualTo(21000), response);
             }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_field_inferred_fork_gating_uses_effective_block(
+        [Values(99, 100)] ulong number, [Values] bool streamMode)
+    {
+        CustomSpecProvider specs = new(((ForkActivation)0, Istanbul.Instance), ((ForkActivation)100, Berlin.Instance));
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(specs);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", accessList = Array.Empty<object>() }, "latest",
+            new { blockOverrides = new { number = "0x" + number.ToString("x") } });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (number < 100)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: transaction type not supported: access list tx (sender {Address.Zero})"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_field_inferred_fork_gating_checks_effective_base_fee([Values] bool streamMode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(new TestSpecProvider(Cancun.Instance));
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerGas = "0x1", authorizationList = Array.Empty<object>() }, "latest",
+            new { blockOverrides = new { baseFeePerGas = "0x2" } });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: max fee per gas less than block base fee: address {Address.Zero}, maxFeePerGas: 1, baseFee: 2"), response);
+            Assert.That(json["result"], Is.Null, response);
         }
     }
 

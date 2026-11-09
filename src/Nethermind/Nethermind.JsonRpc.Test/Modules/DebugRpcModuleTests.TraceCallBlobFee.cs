@@ -11,7 +11,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -263,7 +262,7 @@ public partial class DebugRpcModuleTests
         using Context ctx = await Context.Create(new TestSpecProvider(Shanghai.Instance));
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerBlobGas = "0x1" }, "latest");
-        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(Shanghai.Instance.Name)), response);
+        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo($"tracing failed: transaction type not supported: blob tx (sender {Address.Zero})"), response);
     }
 
     private static void AssertBlobPayment(string response, ulong expectedBalance, ulong expectedFee)
