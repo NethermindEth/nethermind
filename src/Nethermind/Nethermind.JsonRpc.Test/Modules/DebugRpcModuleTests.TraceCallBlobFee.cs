@@ -229,10 +229,12 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("0x0", false, 0)]
-    [TestCase("0x1", false, 1)]
-    [TestCase(null, true, 0)]
-    public async Task Debug_traceCall_runs_blob_fee_cap_as_geth(string? blobFeeCap, bool withBlobHashes, int expectedBlobBaseFee)
+    [TestCase("0x0", false, null, 0)]
+    [TestCase("0x1", false, null, 1)]
+    [TestCase("0x1", false, "0x9", 9)]
+    [TestCase(null, true, null, 0)]
+    [TestCase(null, true, "0x9", 0)]
+    public async Task Debug_traceCall_runs_blob_fee_cap_as_geth(string? blobFeeCap, bool withBlobHashes, string? blobBaseFeeOverride, int expectedBlobBaseFee)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
@@ -248,7 +250,10 @@ public partial class DebugRpcModuleTests
         // BLOBBASEFEE; MSTORE at 0; RETURN 32 bytes
         object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code = "0x4a60005260206000f3" } };
 
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { stateOverrides });
+        Dictionary<string, object> options = new() { ["stateOverrides"] = stateOverrides };
+        if (blobBaseFeeOverride is not null) options["blockOverrides"] = new { blobBaseFee = blobBaseFeeOverride };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", options);
 
         using (Assert.EnterMultipleScope())
         {
