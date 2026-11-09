@@ -9,9 +9,10 @@ using Nethermind.JsonRpc.Exceptions;
 namespace Nethermind.JsonRpc.Modules;
 
 /// <summary>Queues execution-heavy RPCs before module rental without occupying worker threads.</summary>
+/// <remarks>Admits every call while <see cref="IJsonRpcConfig.MaxConcurrentExecutionRequests"/> is unset.</remarks>
 public sealed class RpcExecutionLimiter
 {
-    private readonly SemaphoreSlim _semaphore;
+    private readonly SemaphoreSlim? _semaphore;
     private readonly RpcLimits _limits;
     private readonly int _timeout;
 
@@ -20,18 +21,19 @@ public sealed class RpcExecutionLimiter
     {
     }
 
-    internal RpcExecutionLimiter(int concurrency, int timeout, RpcLimits limits)
+    internal RpcExecutionLimiter(int? concurrency, int timeout, RpcLimits limits)
     {
-        _semaphore = new SemaphoreSlim(concurrency, concurrency);
+        _semaphore = concurrency is { } permits ? new SemaphoreSlim(permits, permits) : null;
         _timeout = timeout;
         _limits = limits;
     }
 
-    public static int GetConcurrency(IJsonRpcConfig config)
+    /// <summary>Returns the number of concurrent execution permits, or <see langword="null"/> when the limit is disabled.</summary>
+    public static int? GetConcurrency(IJsonRpcConfig config)
     {
-        int processors = Environment.ProcessorCount;
-        int requested = config.MaxConcurrentExecutionRequests ?? processors * 2;
-        int concurrency = Math.Min(config.EthModuleConcurrentInstances ?? processors, requested > 0 ? requested : int.MaxValue);
+        if (config.MaxConcurrentExecutionRequests is not { } requested) return null;
+
+        int concurrency = Math.Min(config.EthModuleConcurrentInstances ?? Environment.ProcessorCount, requested > 0 ? requested : int.MaxValue);
         if (config.MaxConcurrentSharedRequests > 0)
         {
             // Reserve shared headroom whenever more than one shared request is permitted.
@@ -40,14 +42,14 @@ public sealed class RpcExecutionLimiter
         return Math.Max(1, concurrency);
     }
 
-    public ValueTask EnterAsync() => _semaphore.Wait(0) ? ValueTask.CompletedTask : WaitAsync();
+    public ValueTask EnterAsync() => _semaphore is null || _semaphore.Wait(0) ? ValueTask.CompletedTask : WaitAsync();
 
     private async ValueTask WaitAsync()
     {
         _limits.AcquireQueuedSlot();
         try
         {
-            if (!await _semaphore.WaitAsync(_timeout))
+            if (!await _semaphore!.WaitAsync(_timeout))
             {
                 throw new ModuleRentalTimeoutException("Unable to start RPC execution. Too many concurrent execution requests.");
             }
@@ -58,5 +60,5 @@ public sealed class RpcExecutionLimiter
         }
     }
 
-    public void Exit() => _semaphore.Release();
+    public void Exit() => _semaphore?.Release();
 }

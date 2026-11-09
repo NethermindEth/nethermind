@@ -39,8 +39,8 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
             Applies to every sharable method, including lightweight head reads and CPU-heavy execution.
-            `MaxConcurrentExecutionRequests` separately limits heavy execution before shared rental,
-            leaving shared headroom for lightweight methods. `eth_sendRawTransactionSync` holds a
+            `MaxConcurrentExecutionRequests`, when set, separately limits heavy execution before shared
+            rental, leaving shared headroom for lightweight methods. `eth_sendRawTransactionSync` holds a
             shared slot while waiting for inclusion; see `RpcTxSyncMaxConcurrentRequests`.
             `0` to lift the shared limit.
             """,
@@ -52,11 +52,10 @@ public interface IJsonRpcConfig : IConfig
             The max number of concurrent execution-heavy RPCs: `eth_call`, `eth_estimateGas`,
             `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`. Excess calls wait
             asynchronously before parameter decoding or module rental, using `RequestQueueLimit` and `Timeout`.
-            Defaults to twice the logical processor count, bounded by `EthModuleConcurrentInstances`
+            Unset by default, which disables this limit. A set value is bounded by `EthModuleConcurrentInstances`
             (which defaults to logical processor count) and half `MaxConcurrentSharedRequests`
-            when that limit is positive, with at least one execution slot. Explicit values replace
-            the processor-derived default but remain bounded by those module/shared limits.
-            A non-positive value removes only the processor-derived limit; module/shared bounds remain.
+            when that limit is positive, with at least one execution slot. A non-positive value
+            applies only those module/shared bounds.
             """,
         DefaultValue = "null")]
     int? MaxConcurrentExecutionRequests { get; set; }

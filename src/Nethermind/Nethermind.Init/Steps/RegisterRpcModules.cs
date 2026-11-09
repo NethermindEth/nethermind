@@ -49,7 +49,7 @@ public class RegisterRpcModules(
         ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
         // Reserve default-pool workers for engine intake and following beside admitted CPU-bound RPCs.
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
-        int minimumWorkers = Math.Max(workerThreads, RpcExecutionLimiter.GetConcurrency(jsonRpcConfig)) + Environment.ProcessorCount;
+        int minimumWorkers = Math.Max(workerThreads, RpcExecutionLimiter.GetConcurrency(jsonRpcConfig) ?? 0) + Environment.ProcessorCount;
         if (!ThreadPool.SetMinThreads(minimumWorkers, completionPortThreads + Environment.ProcessorCount) && logger.IsWarn)
         {
             logger.Warn($"Unable to set the RPC worker minimum to {minimumWorkers}; check forced ThreadPool settings before qualifying following under load.");

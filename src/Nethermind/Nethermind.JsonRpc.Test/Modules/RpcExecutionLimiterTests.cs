@@ -20,7 +20,8 @@ public class RpcExecutionLimiterTests
     [TestCase(8, 6, 0, 3)]
     [TestCase(8, 1, 8, 1)]
     [TestCase(8, 0, 2, 2)]
-    public void Execution_limit_retains_module_and_shared_headroom(int moduleLimit, int sharedLimit, int executionLimit, int expected)
+    [TestCase(8, 6, null, null)]
+    public void Execution_limit_retains_module_and_shared_headroom(int moduleLimit, int sharedLimit, int? executionLimit, int? expected)
     {
         JsonRpcConfig config = new()
         {
@@ -29,6 +30,22 @@ public class RpcExecutionLimiterTests
             MaxConcurrentExecutionRequests = executionLimit
         };
         Assert.That(RpcExecutionLimiter.GetConcurrency(config), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Unset_execution_limit_admits_every_call()
+    {
+        RpcExecutionLimiter limiter = new(new JsonRpcConfig { EthModuleConcurrentInstances = 1, Timeout = 0 });
+        for (int i = 0; i < 3; i++)
+        {
+            ValueTask entered = limiter.EnterAsync();
+            Assert.That(entered.IsCompletedSuccessfully, Is.True);
+            await entered;
+        }
+        for (int i = 0; i < 3; i++)
+        {
+            limiter.Exit();
+        }
     }
 
     [Test]

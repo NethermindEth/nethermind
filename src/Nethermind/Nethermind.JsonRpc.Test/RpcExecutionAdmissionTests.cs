@@ -219,7 +219,7 @@ public class RpcExecutionAdmissionTests
 
         public Harness(int timeout = 5_000)
         {
-            JsonRpcConfig config = new() { EthModuleConcurrentInstances = 1, MaxConcurrentSharedRequests = 2, Timeout = timeout, EnabledModules = ["eth"] };
+            JsonRpcConfig config = new() { EthModuleConcurrentInstances = 1, MaxConcurrentSharedRequests = 2, MaxConcurrentExecutionRequests = 1, Timeout = timeout, EnabledModules = ["eth"] };
             Pool = new BoundedModulePool<IAdmissionModule>(new AdmissionFactory(State), 1, timeout, new RpcLimits(queuedLimit: 1, sharedLimit: 2));
             RpcModuleProvider provider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), NullLogManager.Instance);
             provider.Register(Pool);
