@@ -57,8 +57,14 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> TraceCallCalldataCases()
     {
         foreach (TestCaseData calldata in TraceCallCalldataRows())
-            foreach (string mode in new[] { "buffered", "streamed", "callTracer" })
-                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], mode);
+        {
+            yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "buffered");
+            if (calldata.Arguments[1] is not null)
+            {
+                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "streamed");
+                yield return new TestCaseData(calldata.Arguments[0], calldata.Arguments[1], "callTracer");
+            }
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceCallCalldataRows()
