@@ -2,9 +2,9 @@
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
 
-/.agents @rubo @cbermudez97 @stdevMac @kamilchodola
+/.agents @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
 /.github @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
-/scripts @rubo @cbermudez97 @stdevMac @kamilchodola
+/scripts @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
 
 /src/Nethermind/Ethereum.Test.Base @flcl42
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
