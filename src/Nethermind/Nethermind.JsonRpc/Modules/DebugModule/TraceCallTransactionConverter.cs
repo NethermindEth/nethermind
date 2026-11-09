@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -13,10 +14,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 internal sealed class TraceCallTransactionConverter : JsonConverter<TransactionForRpc>
 {
     private readonly TransactionForRpc.TransactionJsonConverter _transactionConverter = new();
-    private static readonly JsonSerializerOptions StrictDataOptions = new(JsonSerializerOptions.Default)
-    {
-        Converters = { new StrictHexByteArrayConverter() }
-    };
+    private readonly StrictHexByteArrayConverter _dataConverter = new();
 
     public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -41,7 +39,9 @@ internal sealed class TraceCallTransactionConverter : JsonConverter<TransactionF
                 {
                     if (property.Value.ValueKind != JsonValueKind.Null)
                     {
-                        property.Value.Deserialize<byte[]>(StrictDataOptions);
+                        Utf8JsonReader dataReader = new(JsonMarshal.GetRawUtf8Value(property.Value));
+                        dataReader.Read();
+                        _dataConverter.Read(ref dataReader, typeof(byte[]), options);
                     }
                     if (isInput) input = property.Value;
                     else data = property.Value;
