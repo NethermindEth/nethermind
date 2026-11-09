@@ -72,6 +72,8 @@ public class TrustedInputTests
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
     private const int CodesList = 68;
+    // Codes carry their execution padding before the padding to 8.
+    private const int CodeExecutionPadding = 34;
 
     [Test]
     public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam)
@@ -227,6 +229,27 @@ public class TrustedInputTests
         }
     }
 
+    /// <summary>An item length that runs past the input, or into a code's execution padding, makes the input malformed.</summary>
+    [Test]
+    public async Task Bad_item_length_reports_the_sentinel(
+        [Values(TransactionsList, WitnessHeadersList, StateNodesList, CodesList)] int list,
+        [Values] bool pastTheInput)
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        int position = (int)BinaryPrimitives.ReadUInt32LittleEndian(input.AsSpan(list)) + 8;
+        int padding = list == CodesList ? CodeExecutionPadding : 0;
+        uint room = (uint)(input.Length - position - TrustedInput.ItemPrefixLength);
+        BinaryPrimitives.WriteUInt32LittleEndian(input.AsSpan(position), pastTheInput ? uint.MaxValue : room - (uint)padding + 1);
+
+        StatelessValidationResult result = Execute(input);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.SchemaId, Is.Zero);
+        }
+    }
+
     private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true);
@@ -270,8 +293,7 @@ public class TrustedInputTests
         {
             int length = (int)BinaryPrimitives.ReadUInt32LittleEndian(input.AsSpan(position));
             mutate(input.AsSpan(position + TrustedInput.ItemPrefixLength, length));
-            // Codes carry their execution padding before the padding to 8.
-            int padding = list == CodesList ? 34 : 0;
+            int padding = list == CodesList ? CodeExecutionPadding : 0;
             position += TrustedInput.ItemPrefixLength + ((length + padding + 7) & ~7);
         }
     }
