@@ -153,7 +153,8 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        private static readonly byte[] VersionBytes = [1];
+        // Indexes written before canonical-only indexing may lack logs of canonical blocks, so they are rebuilt
+        private static readonly byte[] VersionBytes = [2];
 
         public const int MaxTopics = 4;
 
@@ -269,23 +270,35 @@ namespace Nethermind.Db.LogIndex
             if (reset)
                 return ResetAndCreateNew(root, "Log index: resetting data per configuration...");
 
-            Span<byte> versionBytes = meta.GetSpan(SpecialKey.Version);
+            // Copy and release through the same `meta`, as a reset below replaces it
+            byte[] versionBytes;
+            Span<byte> storedVersion = meta.GetSpan(SpecialKey.Version);
             try
             {
-                if (versionBytes.IsEmpty) // DB is empty
-                {
-                    meta.Set(SpecialKey.Version, VersionBytes);
-                    return root;
-                }
-
-                return versionBytes.SequenceEqual(VersionBytes)
-                    ? root
-                    : ResetAndCreateNew(root, $"Log index: version is incorrect: {versionBytes[0]} <> {VersionBytes[0]}, resetting data...");
+                versionBytes = storedVersion.ToArray();
             }
             finally
             {
-                meta.DangerousReleaseMemory(versionBytes);
+                meta.DangerousReleaseMemory(storedVersion);
             }
+
+            const string resetConsequences =
+                "Resetting the index; rebuilding may take substantial time and I/O, and eth_getLogs may be slower until it completes.";
+
+            // No version means an empty DB: anything else is leftover data, e.g. from a reset whose delete failed
+            if (versionBytes.Length == 0)
+            {
+                if (FirstColumnWithData(root) is { } column)
+                    return ResetAndCreateNew(root, $"Log index has data in {column} but no version. {resetConsequences}");
+
+                meta.Set(SpecialKey.Version, VersionBytes);
+                return root;
+            }
+
+            return versionBytes.SequenceEqual(VersionBytes)
+                ? root
+                : ResetAndCreateNew(root,
+                    $"Log index version mismatch (stored {versionBytes[0]}, expected {VersionBytes[0]}). {resetConsequences}");
 
             IColumnsDb<LogIndexColumns> ResetAndCreateNew(IColumnsDb<LogIndexColumns> db, string message)
             {
@@ -298,21 +311,50 @@ namespace Nethermind.Db.LogIndex
                 db.Dispose();
                 (db, meta) = CreateDb();
 
-                meta.Set(SpecialKey.Version, VersionBytes);
-                return db;
+                try
+                {
+                    // Deletion errors are only logged by the DB layer, so never mark leftover data as current
+                    if (FirstColumnWithData(db) is { } column)
+                    {
+                        throw new LogIndexStateException(
+                            $"Log index reset failed: {column} still has data after the database was deleted. " +
+                            $"Delete {dbFactory.GetFullDbPath(RootSettings())} manually or set LogIndex.Enabled=false, then restart.");
+                    }
+
+                    meta.Set(SpecialKey.Version, VersionBytes);
+                    return db;
+                }
+                catch
+                {
+                    db.Dispose();
+                    throw;
+                }
             }
 
             (IColumnsDb<LogIndexColumns> root, IDb meta) CreateDb()
             {
-                IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
-                {
-                    ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
-                        topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
-                        topicIndex => _mergeOperators[topicIndex + 1]
-                    )
-                });
-
+                IColumnsDb<LogIndexColumns> db = dbFactory.CreateColumnsDb<LogIndexColumns>(RootSettings());
                 return (db, GetMetaDb(db));
+            }
+
+            DbSettings RootSettings() => new("logIndexStorage", DbNames.LogIndex)
+            {
+                ColumnsMergeOperators = Enumerable.Range(-1, MaxTopics + 1).ToDictionary(
+                    topicIndex => $"{GetColumn(topicIndex < 0 ? null : topicIndex)}",
+                    topicIndex => _mergeOperators[topicIndex + 1]
+                )
+            };
+
+            static LogIndexColumns? FirstColumnWithData(IColumnsDb<LogIndexColumns> db)
+            {
+                foreach (LogIndexColumns column in db.ColumnKeys)
+                {
+                    using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys().GetEnumerator();
+                    if (keys.MoveNext())
+                        return column;
+                }
+
+                return null;
             }
         }
 

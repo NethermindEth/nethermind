@@ -24,6 +24,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.TurboPForBindings;
+using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using Testably.Abstractions;
@@ -56,6 +57,7 @@ namespace Nethermind.Db.Test.LogIndex
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
+        private IColumnsDb<LogIndexColumns> _root = null!;
 
         [Test]
         public void Posting_enumerator_respects_direction_and_range(
@@ -227,12 +229,13 @@ namespace Nethermind.Db.Test.LogIndex
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
+            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false, bool reset = false
         )
         {
             LogIndexConfig config = new()
             {
                 Enabled = true,
+                Reset = reset,
                 CompactionDistance = compactionDistance,
                 MaxCompressionParallelism = compressionParallelism,
                 MaxReorgDepth = maxReorgDepth,
@@ -841,6 +844,158 @@ namespace Nethermind.Db.Test.LogIndex
 
             NotSupportedException exception = Assert.Throws<NotSupportedException>(() => CreateLogIndexStorage(compressionAlgo: newAlgo));
             Assert.That(exception, Has.Message.Contain(oldAlgo).And.Message.Contain(newAlgo));
+        }
+
+        [Test]
+        public async Task Reopen_resets_index_with_legacy_version()
+        {
+            Hash256[] oldTopics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            Hash256[] newTopics = [TestItem.KeccakE, TestItem.KeccakF, TestItem.KeccakG, TestItem.KeccakH];
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            {
+                await AddBlocksAsync(storage, TestItem.AddressA, oldTopics, forward: 10, backward: 9);
+                AssertBlocks(storage, TestItem.AddressA, oldTopics, [9, 10]);
+
+                IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+                meta.Set("ver"u8, [1]);
+                meta.Set("sentinel"u8, [1]);
+            }
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            {
+                IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)null, (int?)null)));
+                    Assert.That(meta.Get("ver"u8), Is.EqualTo(new byte[] { 2 }));
+                    Assert.That(new[] { meta.Get("sentinel"u8), meta.Get("min"u8), meta.Get("max"u8) }, Is.All.Null);
+                    AssertBlocks(storage, TestItem.AddressA, oldTopics, []);
+                }
+
+                await AddBlocksAsync(storage, TestItem.AddressB, newTopics, forward: 20, backward: 19);
+            }
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            {
+                Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)19, (int?)20)));
+                AssertBlocks(storage, TestItem.AddressB, newTopics, [19, 20]);
+                AssertBlocks(storage, TestItem.AddressA, oldTopics, []);
+            }
+        }
+
+        [Test]
+        public async Task Reopen_keeps_index_with_current_version()
+        {
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+                await AddBlocksAsync(storage, TestItem.AddressA, topics, forward: 10, backward: 9);
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)9, (int?)10)));
+                Assert.That(_root.GetColumnDb(LogIndexColumns.Meta).Get("ver"u8), Is.EqualTo(new byte[] { 2 }));
+                AssertBlocks(storage, TestItem.AddressA, topics, [9, 10]);
+            }
+        }
+
+        [Test]
+        public async Task Reopen_resets_index_without_version_or_with_reset_config([Values] bool resetConfig)
+        {
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+            {
+                await AddBlocksAsync(storage, TestItem.AddressA, topics, forward: 10, backward: 9);
+
+                // Without the reset config: index data left with an empty Meta, as after a reset whose delete failed
+                if (!resetConfig)
+                {
+                    IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+                    foreach (byte[] key in meta.GetAllKeys().ToArray())
+                        meta.Remove(key);
+                }
+            }
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory, reset: resetConfig))
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)null, (int?)null)));
+                Assert.That(_root.GetColumnDb(LogIndexColumns.Meta).Get("ver"u8), Is.EqualTo(new byte[] { 2 }));
+                AssertBlocks(storage, TestItem.AddressA, topics, []);
+            }
+        }
+
+        [Test]
+        public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column, [Values] bool legacyVersion)
+        {
+            // The old root holds either a legacy version or data without any version
+            ReleaseCountingDb legacyMeta = new();
+            legacyMeta.Set(legacyVersion ? "ver"u8 : "leftover"u8, [1]);
+            IColumnsDb<LogIndexColumns> legacy = Substitute.For<IColumnsDb<LogIndexColumns>>();
+            legacy.ColumnKeys.Returns(Enum.GetValues<LogIndexColumns>());
+            legacy.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(legacyMeta);
+
+            // A clear that returned without deleting anything: the reopened database still has a key
+            MemColumnsDb<LogIndexColumns> leftover = new();
+            ReleaseCountingDb replacementMeta = new();
+            IDb Column(LogIndexColumns key) => key == LogIndexColumns.Meta ? replacementMeta : leftover.GetColumnDb(key);
+            Column(column).Set("leftover"u8, [1]);
+            IColumnsDb<LogIndexColumns> replacement = Substitute.For<IColumnsDb<LogIndexColumns>>();
+            replacement.ColumnKeys.Returns(leftover.ColumnKeys);
+            replacement.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(c => Column(c.Arg<LogIndexColumns>()));
+
+            DbSettings? rootSettings = null;
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.CreateColumnsDb<LogIndexColumns>(Arg.Do<DbSettings>(s => rootSettings = s)).Returns(legacy, replacement);
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => $"/data/{c.Arg<DbSettings>().DbName}/{c.Arg<DbSettings>().DbPath}");
+
+            LogIndexStateException exception = Assert.Throws<LogIndexStateException>(() => CreateLogIndexStorage(dbFactory: dbFactory));
+            replacement.Received(1).Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception.Message, Does.Contain($"{column} still has data")
+                    .And.Contain($"Delete /data/{rootSettings!.DbName}/{rootSettings.DbPath} manually"));
+                Assert.That(replacementMeta.Get("ver"u8), Is.Null);
+                Assert.That((legacyMeta.Releases, replacementMeta.Releases), Is.EqualTo((1, 0)), "stored version released through the meta that returned it");
+            }
+        }
+
+        private sealed class ReleaseCountingDb : MemDb, IReadOnlyKeyValueStore
+        {
+            public int Releases { get; private set; }
+            public new void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => Releases++;
+        }
+
+        private IDbFactory CreateRecordingDbFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.CreateColumnsDb<LogIndexColumns>(Arg.Any<DbSettings>())
+                .Returns(c => _root = _dbFactory.CreateColumnsDb<LogIndexColumns>(c.Arg<DbSettings>()));
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => _dbFactory.GetFullDbPath(c.Arg<DbSettings>()));
+            return dbFactory;
+        }
+
+        private static async Task AddBlocksAsync(ILogIndexStorage storage, Address address, Hash256[] topics, int forward, int backward)
+        {
+            TxReceipt[] receipts = [new() { Logs = [Build.A.LogEntry.WithAddress(address).WithTopics(topics).TestObject] }];
+            await storage.AddReceiptsAsync([new BlockReceipts(forward, receipts)], isBackwardSync: false);
+            await storage.AddReceiptsAsync([new BlockReceipts(backward, receipts)], isBackwardSync: true);
+        }
+
+        private static void AssertBlocks(ILogIndexStorage storage, Address address, Hash256[] topics, int[] expected)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.GetBlockNumbersFor(address, 0, int.MaxValue), Is.EqualTo(expected), "address");
+                for (int i = 0; i < topics.Length; i++)
+                    Assert.That(storage.GetBlockNumbersFor(i, topics[i], 0, int.MaxValue), Is.EqualTo(expected), $"topic {i}");
+            }
         }
 
         private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) =>

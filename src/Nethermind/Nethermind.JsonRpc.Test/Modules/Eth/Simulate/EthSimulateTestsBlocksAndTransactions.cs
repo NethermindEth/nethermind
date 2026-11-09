@@ -644,6 +644,54 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    /// <summary>
+    /// A simulation based on a side-chain block hash builds on that block, not on the canonical block at its height.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_a_side_chain_base_block()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Prague.Instance);
+        Block canonical = chain.BlockTree.FindBlock(1)!;
+        // Reuses the canonical block's state root so the side-chain block has state at its height.
+        Block side = Build.A.Block.WithParent(chain.BlockTree.FindBlock(0)!).WithStateRoot(canonical.StateRoot!).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(side, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(side.Number)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride> { { contract, new AccountOverride { Code = code } } },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000, GasPrice = UInt256.Zero }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(side.Hash!));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateBlockResult<SimulateCallResult> simulated = result.Data[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Number, Is.GreaterThan(side.Number + 1));
+            Assert.That(simulated.Number, Is.EqualTo(side.Number + 1));
+            Assert.That(simulated.ParentHash, Is.EqualTo(side.Hash));
+            Assert.That(new Hash256(simulated.Calls.Single().ReturnData!), Is.EqualTo(side.Hash));
+        }
+    }
+
     [Test]
     public async Task Test_eth_simulateV1_reuses_environment_after_real_head_advances()
     {

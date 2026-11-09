@@ -343,7 +343,7 @@ public sealed partial class KeccakHash
     /// this two-block floor: it compares the second block without a length check.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsResumable(int length) =>
-        length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
+        length == Hash532InputLength || ZiskFlag.IsActive && !FirstTouchMemoryFlag.IsActive && length >= 2 * HASH_DATA_AREA;
 
     /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
     /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
@@ -354,8 +354,8 @@ public sealed partial class KeccakHash
         /// <summary>How many of <see cref="Nodes"/> were keyed, those with an entry in <see cref="States"/>.</summary>
         public static nint Count;
         /// <summary>Per node, <see cref="RetainedLanes"/> lanes: the states its leading whole rate blocks leave, up to <see cref="RetainedBlocks"/>.</summary>
-        /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, at the index
-        /// <see cref="Slots"/> holds.</remarks>
+        /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, one state each, at the
+        /// index <see cref="Slots"/> holds.</remarks>
         public static unsafe ulong* States;
         /// <summary>Where the guest reuses its input, per node that keeps states, the index of its states in <see cref="States"/>.</summary>
         public static unsafe uint* Slots;
@@ -460,6 +460,9 @@ public sealed partial class KeccakHash
     /// <summary><see cref="ComputeHash256OfWitnessNodes"/> where the guest reuses its input.</summary>
     /// <remarks>Keeps states only for the nodes <see cref="IsResumable"/> accepts, packed, and records where each one's
     /// are: about half the nodes keep none, and the room in the input left to them is short of a slot for every node.
+    /// Each full branch keeps only the state its second rate block leaves. With the witness nodes in the input, the
+    /// states take fresh memory, and that state repays its memory best: it saves two permutations for an edit of any of
+    /// the last eight children, where each of the other two would save one more for a quarter of the edits.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe void ComputeHash256OfWitnessNodesPacked(byte[][] nodes, int count, Span<ValueHash256> hashes)
@@ -473,8 +476,8 @@ public sealed partial class KeccakHash
             if (IsResumable(Unsafe.Add(ref firstNode, i).Length)) resumable++;
         }
 
-        ulong* states = (ulong*)AllocateInInput(resumable * (nuint)(RetainedLanes * sizeof(ulong)) + (nuint)count * sizeof(uint));
-        uint* slots = (uint*)(states + resumable * (nuint)RetainedLanes);
+        ulong* states = (ulong*)AllocateInInput(resumable * (STATE_LANES * sizeof(ulong)) + (nuint)count * sizeof(uint));
+        uint* slots = (uint*)(states + resumable * STATE_LANES);
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         uint slot = 0;
@@ -484,9 +487,8 @@ public sealed partial class KeccakHash
             ref ValueHash256 hash = ref Unsafe.Add(ref firstHash, i);
             if (IsResumable(node.Length))
             {
-                ref ulong retained = ref states[slot * (nuint)RetainedLanes];
-                if (node.Length == Hash532InputLength) ComputeHash532Retaining(node, ref retained, ref hash);
-                else ComputeHashRetaining(node, ref retained, ref hash);
+                Debug.Assert(node.Length == Hash532InputLength, "Only full branches keep states where the guest reuses its input");
+                ComputeHash532RetainingSecond(node, ref states[slot * (nuint)STATE_LANES], ref hash);
                 slots[i] = slot++;
                 continue;
             }
@@ -587,6 +589,22 @@ public sealed partial class KeccakHash
             return false;
         }
 
+        // There a full branch keeps only the state its second block leaves; see ComputeHash256OfWitnessNodesPacked.
+        if (FirstTouchMemoryFlag.IsActive)
+        {
+            if (!BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
+            {
+                return false;
+            }
+
+            ulong* kept = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
+            ref ulong second = ref kept[WitnessNodes.Slots[index] * STATE_LANES];
+            AbsorbBlockFrom(ref lane, ref second, data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref lane);
+            AbsorbPaddedTail(ref lane, data + RetainedBlocks * HASH_DATA_AREA, FullBranchTailLength);
+            return true;
+        }
+
         nuint offset = HASH_DATA_AREA;
         nuint last = 0;
         if (BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
@@ -601,7 +619,7 @@ public sealed partial class KeccakHash
         }
 
         ulong* states = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
-        ref ulong retained = ref states[(FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * (nuint)RetainedLanes + last];
+        ref ulong retained = ref states[index * (nuint)RetainedLanes + last];
         if (length != Hash532InputLength)
         {
             AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
@@ -655,6 +673,33 @@ public sealed partial class KeccakHash
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
         PermuteKept(ref lane);
+        hash = Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Hashes a full branch into <paramref name="hash"/>, leaving the state after its second rate block in <paramref name="retained"/>.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void ComputeHash532RetainingSecond(byte[] node, ref ulong retained, ref ValueHash256 hash)
+    {
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong second = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
+
+        fixed (byte* pinned = node)
+        {
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
+            ZeroCapacity(ref lane);
+            AbsorbBlock(ref lane, data, intoZeroState: true);
+            Accelerators.KeccakF(ref lane);
+            AbsorbBlockFrom(ref second, ref lane, data + HASH_DATA_AREA);
+            Accelerators.KeccakF(ref second);
+            AbsorbBlockFrom(ref lane, ref second, data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref lane);
+            AbsorbPaddedTail(ref lane, data + RetainedBlocks * HASH_DATA_AREA, FullBranchTailLength);
+        }
+
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        Accelerators.KeccakF(ref lane);
         hash = Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
