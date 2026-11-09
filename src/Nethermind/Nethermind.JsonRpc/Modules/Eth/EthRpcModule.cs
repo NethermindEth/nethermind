@@ -1192,7 +1192,7 @@ public partial class EthRpcModule(
         }
         catch (Exception ex)
         {
-            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0ul);
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError);
         }
     }
 
@@ -1376,9 +1376,15 @@ public partial class EthRpcModule(
         return searchResult switch
         {
             { IsError: true } => ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null),
-            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, _specProvider)
+            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, blockFinder, _specProvider)
         };
     }
+
+    /// <summary>Fails a read of the receipts of <paramref name="block"/> that are not stored, with the error <c>eth_getLogs</c> returns for the same block.</summary>
+    protected internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetMissingReceiptsResult(IBlockFinder blockFinder, Block block) =>
+        LogFinder.WasPruned(blockFinder, block.Header)
+            ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail($"failed to get receipts for block #{block.Number}", ErrorCodes.ResourceNotFound);
 
     public ResultWrapper<JsonNode> eth_config()
     {

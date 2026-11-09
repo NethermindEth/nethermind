@@ -23,6 +23,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
+using Nethermind.Logging;
 using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
@@ -31,11 +32,17 @@ namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
+        private const string RetryNote = "; it is retried on every update and its further failures are not logged";
+
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
-        private volatile IMetricUpdater[][] _updaterValues = [];
+        private readonly ILogger _logger;
+        private readonly Lock _reportedFailuresLock = new();
+        private readonly HashSet<object> _reportedFailures = new(ReferenceEqualityComparer.Instance);
+
+        private readonly Dictionary<Type, NamedUpdater[]> _metricUpdaters = [];
+        private volatile NamedUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
@@ -50,6 +57,8 @@ namespace Nethermind.Monitoring.Metrics
         {
             void Update();
         }
+
+        private readonly record struct NamedUpdater(string Name, IMetricUpdater Updater);
 
         public class GaugeMetricUpdater(Gauge gauge, Func<double> accessor, params string[] labels) : IMetricUpdater
         {
@@ -238,7 +247,7 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = [];
+                IList<NamedUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
@@ -250,7 +259,7 @@ namespace Nethermind.Monitoring.Metrics
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
-                        metricUpdaters.Add(updater);
+                        metricUpdaters.Add(new($"{type.FullName}.{member.Name}", updater));
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
@@ -356,8 +365,14 @@ namespace Nethermind.Monitoring.Metrics
             ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty, labels)
             : Prometheus.Metrics.WithLabels(staticLabels).CreateGauge(name, help ?? string.Empty, labels);
 
-        public MetricsController(IMetricsConfig metricsConfig)
+        public MetricsController(IMetricsConfig metricsConfig) : this(metricsConfig, NullLogManager.Instance)
         {
+        }
+
+        public MetricsController(IMetricsConfig metricsConfig, ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger<MetricsController>();
+
             if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
@@ -381,26 +396,65 @@ namespace Nethermind.Monitoring.Metrics
                     UpdateAllMetrics();
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
             }
         }
 
+        /// <summary>
+        /// Runs every registered update action, then, when Prometheus is enabled, every metric updater.
+        /// </summary>
+        /// <remarks>
+        /// A failing action or updater does not stop the others: it is retried on the next call, and only its
+        /// first failure is logged, at Error. An <see cref="OperationCanceledException"/> is not caught and stops the update.
+        /// </remarks>
         public void UpdateAllMetrics()
         {
-            foreach (Action callback in _callbacks)
+            Action[] callbacks = _callbacks;
+            for (int i = 0; i < callbacks.Length; i++)
             {
-                callback();
+                Action callback = callbacks[i];
+                try
+                {
+                    callback();
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    if (ShouldLogFailure(callback))
+                    {
+                        _logger.Error($"Metrics update action #{i} ({callback.Method.DeclaringType?.FullName}.{callback.Method.Name}) failed{RetryNote}", ex);
+                    }
+                }
             }
 
             if (!_prometheusEnabled) return;
 
-            foreach (IMetricUpdater[] updaters in _updaterValues)
+            foreach (NamedUpdater[] updaters in _updaterValues)
             {
-                foreach (IMetricUpdater metricUpdater in updaters)
+                foreach (NamedUpdater metric in updaters)
                 {
-                    metricUpdater.Update();
+                    try
+                    {
+                        metric.Updater.Update();
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        if (ShouldLogFailure(metric.Updater))
+                        {
+                            _logger.Error($"Metric {metric.Name} failed to update{RetryNote}", ex);
+                        }
+                    }
                 }
+            }
+        }
+
+        private bool ShouldLogFailure(object item)
+        {
+            if (!_logger.IsError) return false;
+
+            lock (_reportedFailuresLock)
+            {
+                return _reportedFailures.Add(item);
             }
         }
 

@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -123,6 +125,39 @@ public class SessionTests
 
         session.Handshake(TestItem.PublicKeyA);
         Assert.That(wasCalled, Is.True);
+    }
+
+    [Test]
+    public async Task Outbound_buffer_is_full_when_the_channel_is_closed()
+    {
+        EmbeddedChannel channel = new();
+        _channelHandlerContext.Channel.Returns(channel);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Before init");
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Open channel");
+
+        await channel.CloseAsync();
+        Assert.That(session.IsOutboundBufferFull, Is.True, "Closed channel");
+    }
+
+    [Test]
+    public void Outbound_buffer_is_full_above_the_high_watermark()
+    {
+        EmbeddedChannel channel = new();
+        _channelHandlerContext.Channel.Returns(channel);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+
+        _ = channel.WriteAsync(Unpooled.WrappedBuffer(new byte[channel.Configuration.WriteBufferHighWaterMark + 1]));
+        Assert.That(session.IsOutboundBufferFull, Is.True, "Above the high watermark");
+
+        channel.Flush();
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Flushed below the low watermark");
+        channel.FinishAndReleaseAll();
     }
 
     [Test]
