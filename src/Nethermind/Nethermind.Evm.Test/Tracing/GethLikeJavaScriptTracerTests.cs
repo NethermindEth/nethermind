@@ -2228,8 +2228,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.h.length; }
                 }";
 
-    // Tries to allocate about 9.6 GB in one step, so only the heap samples taken while the step runs keep it under
-    // V8's hard limit.
+    // Tries to allocate about 9.6 GB in one step, far past the soft limit. Only the heap samples taken while the step
+    // runs can end the step with the memory-limit error; without them the step would finish and the child would
+    // report the missing error.
     private const string BurstingTracer = @"{
                     hoard: [],
                     step: function(log, db) { for (var i = 0; i < 40; i++) this.hoard.push(new Array(30000000).fill(i + 0.5)); },
