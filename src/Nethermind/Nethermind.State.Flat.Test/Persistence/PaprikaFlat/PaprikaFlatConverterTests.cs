@@ -68,7 +68,7 @@ public class PaprikaFlatConverterTests
     [Test]
     public async Task A_converted_flat_db_opens_as_paprika_flat([Values] bool trieNodeLog)
     {
-        FlatDbConfig flatConfig = new() { TrieNodeLogEnabled = trieNodeLog, PaprikaFlatFileSizeBytes = FileSize, PaprikaFlatPageCacheBytes = 0 };
+        FlatDbConfig flatConfig = new() { Layout = FlatLayout.Flat, TrieNodeLogEnabled = trieNodeLog, PaprikaFlatFileSizeBytes = FileSize, PaprikaFlatPageCacheBytes = 0 };
         await WriteFlatState(flatConfig, (persistence, log) =>
             new PaprikaFlatConverter(persistence, log, _db, flatConfig, LimboLogs.Instance).Convert(PaprikaDirectory, CancellationToken.None));
 

@@ -1837,7 +1837,7 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
-                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
                         _hashCache.SetInvalidBlobProofs(tx.Hash);
                     }
@@ -2501,12 +2501,19 @@ namespace Nethermind.TxPool
                 if (revalidation is not null)
                 {
                     UpdateGroupDelegate updateBucket = revalidation.UpdateBucket;
-                    _transactions.UpdatePool(_accounts, updateBucket);
-                    _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+                    try
+                    {
+                        _transactions.UpdatePool(_accounts, updateBucket);
+                        _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+                        SurfaceBucketUpdateDrops();
+                    }
+                    finally
+                    {
+                        _bucketUpdateDrops.Clear();
+                    }
 
                     if (revalidation.RemovedCount != 0)
                     {
-                        Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
                         if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
                     }
                 }
@@ -2851,7 +2858,7 @@ namespace Nethermind.TxPool
                     bool invalidTransactionForm = validation.Error == TxErrorMessages.InvalidTransactionForm;
                     _invalidTransactions[transaction.Hash!] = new ForkValidationResult(
                         validation,
-                        validation.Error == TxErrorMessages.InvalidProofVersion,
+                        TxErrorMessages.IsBlobSidecarError(validation.Error),
                         !invalidTransactionForm);
                 }
             }
@@ -2884,7 +2891,6 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            List<Transaction>? drops = revalidation is null ? _bucketUpdateDrops : null;
             UInt256 balance = account.Balance;
             ulong currentNonce = account.Nonce;
             Transaction? tx = null;
@@ -2925,14 +2931,14 @@ namespace Nethermind.TxPool
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
                     }
 
-                    drops?.Add(transaction);
+                    _bucketUpdateDrops.Add(transaction);
                     updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                 }
 
                 return invalidatedByFork;
             }
 
-            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, drops);
+            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, _bucketUpdateDrops);
         }
 
         public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, out _);

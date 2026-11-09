@@ -26,6 +26,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -488,6 +489,49 @@ namespace Nethermind.Db.Test
             Assert.That(uniformBlocks, writeLegacyBinarySst ? Is.EqualTo(0) : Is.GreaterThan(0));
         }
 
+        // #13601: a key-by-key wipe leaves the disk taken until compaction, while a range deletion alone is invisible to
+        // tailing iterators, so the keys of the flushed file and of the memtable must still read back as deleted.
+        [Test]
+        public void FlatClearAllColumns_GivesBackTheFilesAndHidesEveryKeyFromTailingReads()
+        {
+            using IContainer container = CreateRocksDbContainer(new DbConfig());
+            using IColumnsDb<FlatDbColumns> db = container.Resolve<IDbFactory>().CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
+            FlatDbColumns[] dataColumns = Enum.GetValues<FlatDbColumns>().Where(static c => c != FlatDbColumns.Metadata).ToArray();
+            byte[][] compacted = CreateAccountKeys();
+            // The single-byte snap checkpoint sentinel sorts first; no flat key is longer than 54 bytes.
+            byte[][] flushed = [[0x00], Enumerable.Repeat((byte)0xFF, 54).ToArray()];
+            byte[] unflushed = CreateMissingAccountKey();
+            foreach (FlatDbColumns column in dataColumns)
+            {
+                IDb columnDb = db.GetColumnDb(column);
+                for (int i = 0; i < compacted.Length; i++) columnDb.PutSpan(compacted[i], CreateAccountValue(i), WriteFlags.None);
+                columnDb.Flush();
+                columnDb.Compact();
+                foreach (byte[] key in flushed) columnDb.PutSpan(key, CreateAccountValue(0), WriteFlags.None);
+                columnDb.Flush();
+                columnDb.PutSpan(unflushed, CreateAccountValue(0), WriteFlags.None);
+            }
+
+            string flatPath = Path.Combine(DbPath, DbNames.Flat);
+            long before = SstBytes(flatPath);
+
+            BasePersistence.ClearAllColumns(db);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SstBytes(flatPath), Is.LessThan(before / 10), "the compacted files have to be given back now rather than at the next compaction");
+                foreach (FlatDbColumns column in dataColumns)
+                {
+                    IDb columnDb = db.GetColumnDb(column);
+                    Assert.That(columnDb.GetAllKeys(), Is.Empty, column.ToString());
+                    foreach (byte[] key in (byte[][])[compacted[0], .. flushed, unflushed])
+                        Assert.That(columnDb.Get(key, ReadFlags.HintReadAhead), Is.Null, $"{column} {key.ToHexString()}");
+                }
+
+                Assert.That(BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata)), Is.True);
+            }
+        }
+
         private static byte[][] CreateAccountKeys()
         {
             byte[][] keys = new byte[4096][];
@@ -516,7 +560,7 @@ namespace Nethermind.Db.Test
         private IContainer CreateRocksDbContainer(DbConfig config, FlatDbConfig? flatConfig = null)
         {
             InitConfig initConfig = new() { BaseDbPath = DbPath };
-            flatConfig ??= new FlatDbConfig();
+            flatConfig ??= new FlatDbConfig { Layout = FlatLayout.Flat };
             return new ContainerBuilder()
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
                 .AddModule(new FlatWorldStateModule(flatConfig, initConfig))
@@ -764,16 +808,22 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Native_slice_get_counts_one_read([Values] bool present)
+        public void Native_slice_get_counts_one_read([Values] bool present, [Values(ReadFlags.None, ReadFlags.HintCacheMiss)] ReadFlags flags)
         {
             byte[] key = [1, 2, 3];
             using DbOnTheRocks db = TestRocksDbFactory.OpenDb(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
             if (present) db.PutSpan(key, new byte[64], WriteFlags.None);
             long before = db.GatherMetric().TotalReads;
 
-            ReadBy(db, GetPath.NativeSlice, key, 64);
+            ReadOnlySpan<byte> value = db.GetNativeSlice(key, out nint handle, flags);
+            bool matches = present ? value.SequenceEqual(new byte[64]) : value.IsEmpty;
+            db.DangerousReleaseHandle(handle);
 
-            Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(matches, Is.True);
+                Assert.That(db.GatherMetric().TotalReads - before, Is.EqualTo(1));
+            }
         }
 
         // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be

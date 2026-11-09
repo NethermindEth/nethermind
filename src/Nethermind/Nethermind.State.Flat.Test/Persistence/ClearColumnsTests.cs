@@ -77,7 +77,8 @@ public class ClearColumnsTests
     [Test]
     public void ClearAllColumns_marks_the_wipe_in_the_first_batch_and_resets_current_state_in_the_last()
     {
-        using MemColumnsDb<FlatDbColumns> inner = new();
+        // Columns that cannot remove a key range, so the wipe goes key by key.
+        using IColumnsDb<FlatDbColumns> inner = new MemColumnsDb<FlatDbColumns>().CreateReadOnly(true);
         BasePersistence.SetCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata),
             new StateId(123, new ValueHash256("0x1111111111111111111111111111111111111111111111111111111111111111")));
         // More keys than one batch holds, so several chunks are committed before the pointer reset.
@@ -106,8 +107,95 @@ public class ClearColumnsTests
         }
     }
 
+    // #13601: deleting key by key takes many minutes on a large DB and leaves its space taken until compaction. The files
+    // may only be given back once the wipe is durable, and the keys a tailing iterator still returns are deleted one by one.
+    [Test]
+    public void ClearAllColumns_drops_each_data_column_in_one_range_and_gives_its_files_back_once_the_wipe_is_durable()
+    {
+        RangeRemovalSpyColumnsDb db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        BasePersistence.SetLayout(metadata, FlatLayout.Flat);
+        BasePersistence.SetCurrentState(metadata,
+            new StateId(123, new ValueHash256("0x1111111111111111111111111111111111111111111111111111111111111111")));
+        BasePersistence.WriteSnapCheckpoint(db, [0x01]);
+        FlatDbColumns[] dataColumns = Enum.GetValues<FlatDbColumns>().Where(static c => c != FlatDbColumns.Metadata).ToArray();
+        foreach (FlatDbColumns column in dataColumns)
+        {
+            db.GetColumnDb(column)[RangeRemovalSpyColumnsDb.LeftoverKey] = [1];
+            // As long as the longest flat key, a full storage trie node key.
+            db.GetColumnDb(column)[Enumerable.Repeat((byte)0xFF, 54).ToArray()] = [1];
+        }
+
+        db.Events.Clear();
+
+        BasePersistence.ClearAllColumns(db);
+
+        string[] expected =
+        [
+            nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent,
+            .. dataColumns.Select(static c => $"{nameof(IRangeRemovableKeyValueStore.RemoveRange)} {c}"),
+            RangeRemovalSpyColumnsDb.SyncWalEvent,
+            .. dataColumns.Select(static c => $"{nameof(IRangeRemovableKeyValueStore.ReclaimRange)} {c}"),
+            .. dataColumns.Select(static c => c.ToString()),
+            nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent,
+        ];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Events, Is.EqualTo(expected));
+            foreach (FlatDbColumns column in dataColumns)
+                Assert.That(db.GetColumnDb(column).GetAllKeys(), Is.Empty, column.ToString());
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(FlatLayout.Flat));
+            Assert.That(BasePersistence.ReadCurrentState(metadata), Is.EqualTo(StateId.PreGenesis));
+            Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.True);
+            Assert.That(BasePersistence.ReadSnapCheckpoint(metadata), Is.Null);
+        }
+    }
+
+    /// <summary>
+    /// Columns that can remove a key range, recording each range removal, reclaim and WAL sync along with the writes and
+    /// commits of its batches. A range removal leaves <see cref="LeftoverKey"/> behind, as a tailing iterator still
+    /// returns the keys of a file that could not be given back.
+    /// </summary>
+    private sealed class RangeRemovalSpyColumnsDb : IColumnsDb<FlatDbColumns>
+    {
+        public const string SyncWalEvent = "sync WAL";
+        public static readonly byte[] LeftoverKey = [0x01];
+
+        private readonly Dictionary<FlatDbColumns, RecordingMemDb> _columns;
+
+        public RangeRemovalSpyColumnsDb() => _columns = Enum.GetValues<FlatDbColumns>().ToDictionary(static c => c, c => new RecordingMemDb(c, Events));
+
+        public List<string> Events { get; } = [];
+
+        public IDb GetColumnDb(FlatDbColumns key) => _columns[key];
+        public IEnumerable<FlatDbColumns> ColumnKeys => _columns.Keys;
+        public IColumnsWriteBatch<FlatDbColumns> StartWriteBatch() => new RecordingColumnsWriteBatch(new InMemoryColumnWriteBatch<FlatDbColumns>(this), Events);
+        public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot() => throw new NotSupportedException();
+        public void Flush(bool onlyWal = false) { }
+        public void Dispose() { }
+
+        private sealed class RecordingMemDb(FlatDbColumns column, List<string> events) : MemDb, IRangeRemovableKeyValueStore
+        {
+            void IRangeRemovableKeyValueStore.RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+            {
+                events.Add($"{nameof(IRangeRemovableKeyValueStore.RemoveRange)} {column}");
+                byte[]? leftover = Get(LeftoverKey);
+                RemoveRange(firstKeyInclusive, lastKeyExclusive);
+                if (leftover is not null) Set(LeftoverKey, leftover);
+            }
+
+            void IRangeRemovableKeyValueStore.ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+                events.Add($"{nameof(IRangeRemovableKeyValueStore.ReclaimRange)} {column}");
+
+            public override void Flush(bool onlyWal = false)
+            {
+                if (onlyWal) events.Add(SyncWalEvent);
+            }
+        }
+    }
+
     /// <summary>Records, in order, the column of every write staged through its batches and each batch commit.</summary>
-    private sealed class WriteOrderSpyColumnsDb(MemColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
+    private sealed class WriteOrderSpyColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
     {
         public const string CommitEvent = "commit";
 

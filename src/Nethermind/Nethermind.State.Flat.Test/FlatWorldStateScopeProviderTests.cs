@@ -235,6 +235,8 @@ public class FlatWorldStateScopeProviderTests
         public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, Hash256? stateRoot = null, bool decorateBuffer = false, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
+            // Resolving Auto needs the hardware info and records the layout on disk.
+            if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config, new InitConfig()))

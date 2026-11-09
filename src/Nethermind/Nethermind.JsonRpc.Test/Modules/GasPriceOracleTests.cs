@@ -163,6 +163,35 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(result, Is.EqualTo(500.GWei));
         }
 
+        /// <summary>
+        /// Blocks 0..20 each carry three legacy transactions paying their base fee plus 1 gwei. The 60th percentile of the
+        /// sampled blocks 1..20 is 14 gwei, which with a base fee rising 1 gwei per block is below the head's 21 gwei, so
+        /// the estimate is floored at the head base fee plus the minimum gas price after London.
+        /// </summary>
+        [TestCase(true, true, 21_000_000_001ul, TestName = "GasPriceEstimate_RisingBaseFee_FlooredAtHeadBaseFee")]
+        [TestCase(false, true, 11_000_000_000ul, TestName = "GasPriceEstimate_FlatBaseFee_Unchanged")]
+        [TestCase(true, false, 14_000_000_000ul, TestName = "GasPriceEstimate_RisingBaseFeeBeforeLondon_Unchanged")]
+        public async Task GasPriceEstimate_FloorsAtHeadBaseFeeAfterLondon(bool risingBaseFee, bool eip1559Enabled, ulong expected)
+        {
+            const ulong headNumber = 20;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Block? block = null;
+            for (ulong number = 0; number <= headNumber; number++)
+            {
+                UInt256 baseFee = risingBaseFee ? (number + 1) * 1.GWei : 10.GWei;
+                Transaction[] transactions = [.. Enumerable.Range(0, 3).Select(_ => Build.A.Transaction.WithGasPrice(baseFee + 1.GWei).TestObject)];
+                block = Build.A.Block.WithNumber(number).WithBaseFeePerGas(baseFee).WithTransactions(transactions).TestObject;
+                blockFinder.FindBlock(number).Returns(block);
+            }
+
+            blockFinder.Head.Returns(block);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
+
+            UInt256 estimate = await gasPriceOracle.GetGasPriceEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
         [Test]
         public void GetGasPricesFromRecentBlocks_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {

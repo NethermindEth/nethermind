@@ -59,6 +59,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
+            // Resolves to Flat or FlatInTrie by the machine's memory.
+            if (layout == FlatLayout.Auto) continue;
+
             // PaprikaFlat refuses to start without the trie node log.
             if (layout != FlatLayout.PaprikaFlat)
             {

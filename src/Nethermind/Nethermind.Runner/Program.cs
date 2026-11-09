@@ -188,6 +188,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     pluginLoader.OrderPlugins(pluginConfig);
 
+    string? configuredDbPath = initConfig.BaseDbPath;
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
@@ -201,7 +202,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
-    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
+    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), configuredDbPath, initConfig);
 
     if (parseResult.GetValue(BasicOptions.PurgeDb))
     {
@@ -504,20 +505,11 @@ RootCommand CreateRootCommand()
 
 ILogger GetCriticalLogger() => NLogConfigurator.GetCriticalLogger(logger);
 
-void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
+void ResolveDatabaseDirectory(string? path, string? configuredDbPath, IInitConfig initConfig)
 {
-    if (string.IsNullOrWhiteSpace(path))
-    {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-    }
-    else
-    {
-        string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
+    initConfig.BaseDbPath = DatabaseDirectory.Resolve(path, configuredDbPath, initConfig.BaseDbPath, logger);
 
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath):hide}");
-
-        initConfig.BaseDbPath = dbPath;
-    }
+    if (!string.IsNullOrWhiteSpace(path) && logger.IsInfo) logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(initConfig.BaseDbPath):hide}");
 }
 
 void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
@@ -580,7 +572,7 @@ static class BasicOptions
 
     public static Option<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
     {
-        Description = "The path to the Nethermind database directory.",
+        Description = "The parent directory for the database. The configured database path (for example, nethermind_db/mainnet) is created under it, unless that path is absolute. Takes precedence over --data-dir for the database.",
         HelpName = "path"
     };
 

@@ -61,7 +61,7 @@ public class PaprikaFlatPersistenceTests
         _rocksDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _columns = new FaultyColumnsDb(_rocksDb);
         // Two shards per partition, so every shard gets a 4 KiB generation and merges run while blocks are written.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        _config = new FlatDbConfig { Layout = FlatLayout.Flat, TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         _readerWait = ReaderWait;
         Open();
     }

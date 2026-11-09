@@ -139,7 +139,7 @@ public class NodeRecordBufferTests
     [Test]
     public void Flat_module_compacts_only_within_a_budget_and_without_the_trie_node_log([Values] bool trieNodeLog, [Values(0UL, 1UL << 20)] ulong budget)
     {
-        FlatDbConfig config = new() { TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
         using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config, new InitConfig()))
             .AddSingleton<IFlatDbConfig>(config)

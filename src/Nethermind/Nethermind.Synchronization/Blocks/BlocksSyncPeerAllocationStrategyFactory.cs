@@ -26,11 +26,13 @@ namespace Nethermind.Synchronization.Blocks
 
         /// <remarks>
         /// Requests are built in ascending block order, so the last one is the highest. A peer whose head is below it
-        /// cannot have every list and would answer some unavailable.
+        /// cannot have every list and would answer some unavailable. Full sync allocates in the blocks context, so a peer
+        /// that sleeps for lists after it answered without one is filtered here.
         /// </remarks>
         private sealed class BlockAccessListsPeerAllocationStrategy(IPeerAllocationStrategy strategy, ulong highestBlockNumber) : FilterPeerAllocationStrategy(strategy)
         {
-            protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsBlockAccessLists() && peerInfo.HeadNumber >= highestBlockNumber;
+            protected override bool Filter(PeerInfo peerInfo) =>
+                peerInfo.SyncPeer.SupportsBlockAccessLists() && peerInfo.HeadNumber >= highestBlockNumber && !peerInfo.IsAsleep(AllocationContexts.BlockAccessLists);
         }
     }
 }

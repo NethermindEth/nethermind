@@ -110,7 +110,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout. PaprikaFlat (experimental) keeps accounts and storage in a memory-mapped Paprika file instead of RocksDB and requires TrieNodeLogEnabled.", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Flat db layout. `Auto` keeps the layout of an existing flat DB, and creates a new one as `FlatInTrie` below 16 GB of memory available to .NET (75% of a container's memory limit) and as `Flat` otherwise. `PaprikaFlat` (experimental, never chosen by `Auto`) keeps accounts and storage in a memory-mapped Paprika file instead of RocksDB and requires TrieNodeLogEnabled.", DefaultValue = "Auto")]
     FlatLayout Layout { get; set; }
 
     [ConfigItem(Description = "Size, in bytes, of the Paprika file (paprika.db in the flatPaprika directory) that holds accounts and storage with Layout=PaprikaFlat. The file is sparse, so only written pages take disk space, and a persist fails once they fill it. It must be a multiple of 4096, at least 12288 (Paprika's two root pages and one more) and at most 1 TiB (1099511627776), the most Paprika can address, and it can be raised on an existing database but not lowered. With Init.DiagnosticMode=MemDb the state is kept in anonymous memory instead, of this size but at most 4 GiB.", DefaultValue = "1099511627776")]

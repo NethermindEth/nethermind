@@ -43,7 +43,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
-    public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public FlatLayout Layout { get; set; } = FlatLayout.Auto;
     public long PaprikaFlatFileSizeBytes { get; set; } = 1024.GiB;
     public long PaprikaFlatPageCacheBytes { get; set; } = 4.GiB;
     public ulong CompactSize { get; set; } = 32;

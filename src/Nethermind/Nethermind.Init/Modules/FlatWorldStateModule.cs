@@ -144,17 +144,22 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig, IInitConfig initCo
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
+            .AddSingleton<FlatLayoutResolver>()
+            .Intercept<IFlatDbConfig>((config, ctx) =>
+            {
+                if (config.Layout == FlatLayout.Auto) ctx.Resolve<FlatLayoutResolver>().Resolve(config);
+            })
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
-                IPersistence persistence = layout switch
+                IPersistence persistence = flatDbConfig.Layout switch
                 {
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, layout, ctx.Resolve<ITrieNodeLog>()),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     FlatLayout.PaprikaFlat => ctx.Resolve<PaprikaFlatPersistence>(),
-                    _ => throw new NotSupportedException($"Unsupported layout {layout}")
+                    _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);

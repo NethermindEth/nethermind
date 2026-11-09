@@ -61,7 +61,7 @@ public class TrieNodeLogTests
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation; otherwise the shipped defaults.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        _config = new FlatDbConfig { Layout = FlatLayout.Flat, TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         // The Paprika file outlives the log's restarts, as the flat DB does.
         _paprikaDirectory = TestContext.CurrentContext.Test.Arguments.Contains(MetadataStore.Paprika) ? TempPath.GetTempDirectory() : null;
         Open();
@@ -118,6 +118,16 @@ public class TrieNodeLogTests
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         return reader.TryLoadStateRlp(TopPath, ReadFlags.None);
+    }
+
+    /// <summary>Loads the state node at <paramref name="path"/>, through the span-action overload when <paramref name="spanAction"/> is set.</summary>
+    private static byte[]? LoadState(IPersistence.IPersistenceReader reader, in TreePath path, bool spanAction)
+    {
+        if (!spanAction) return reader.TryLoadStateRlp(path, ReadFlags.None);
+
+        byte[]? rlp = null;
+        reader.TryLoadStateRlp(path, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
     }
 
     /// <summary>Reads the trie columns directly, bypassing the log.</summary>
@@ -241,7 +251,7 @@ public class TrieNodeLogTests
             static (_, exception) => throw exception);
 
     [Test]
-    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges([Values] MetadataStore store)
+    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges([Values] MetadataStore store, [Values] bool spanAction)
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
         WriteTop(0, 1, Rlp1);
@@ -254,10 +264,10 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before.TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(atV1.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(atV2.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(afterMerge.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(LoadState(before, TopPath, spanAction), Is.Null);
+            Assert.That(LoadState(atV1, TopPath, spanAction), Is.EqualTo(Rlp1));
+            Assert.That(LoadState(atV2, TopPath, spanAction), Is.EqualTo(Rlp2));
+            Assert.That(LoadState(afterMerge, TopPath, spanAction), Is.EqualTo(Rlp2));
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(LogFiles(), Is.Not.Empty, "the merged generation stays on disk while a reader pins it");
         }
@@ -268,7 +278,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones([Values] MetadataStore store)
+    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones([Values] MetadataStore store, [Values] bool spanAction)
     {
         // The node must be in RocksDB for the range delete's scan to find it: sync batches bypass the log.
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -287,8 +297,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "tombstone hides the RocksDB value");
+            Assert.That(LoadState(reader, TopPath, spanAction), Is.EqualTo(Rlp3));
+            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Null, "tombstone hides the RocksDB value");
             Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 

@@ -802,7 +802,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private static IContainer BuildFlatDbManagerContainer(LayerStack stack, StateId head, StateId persisted, double bitsPerKey, CancellationToken token)
     {
-        FlatDbConfig config = new() { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
 
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         persistenceManager.GetCurrentPersistedStateId().Returns(persisted);

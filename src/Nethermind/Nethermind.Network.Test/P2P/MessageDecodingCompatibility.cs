@@ -100,7 +100,8 @@ public static class MessageDecodingCompatibility
     }
 
     /// <summary>
-    /// Mirrors <c>ProtocolHandlerBase.Deserialize</c>, which accepts a message only if decoding it reads the whole payload.
+    /// Reports whether the payload decodes. Each serializer rejects a payload it does not read in full where the
+    /// handlers require that.
     /// </summary>
     public static bool IsAccepted(IMessageSerializationService service, Func<IMessageSerializationService, IByteBuffer, P2PMessage> deserialize, byte[] payload)
     {
@@ -109,7 +110,7 @@ public static class MessageDecodingCompatibility
         try
         {
             using P2PMessage message = deserialize(service, buffer);
-            return !buffer.IsReadable();
+            return true;
         }
         catch (Exception exception) when (exception is not AssertionException)
         {

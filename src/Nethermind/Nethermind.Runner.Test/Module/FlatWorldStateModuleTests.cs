@@ -11,6 +11,8 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -53,6 +55,23 @@ public class FlatWorldStateModuleTests
         }
     }
 
+    [Test]
+    public void Auto_layout_is_resolved_with_the_config()
+    {
+        using TempPath baseDbPath = TempPath.GetTempDirectory();
+        InitConfig initConfig = new() { BaseDbPath = baseDbPath.Path };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(new FlatDbConfig(), initConfig))
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig())
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(8.GiB))
+            .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(FlatLayout.FlatInTrie));
+    }
+
     [TestCase("")]
     [TestCase("./")]
     public void File_paths_are_rooted_like_the_databases_under_a_relative_BaseDbPath(string prefix)
@@ -62,7 +81,7 @@ public class FlatWorldStateModuleTests
         string dbRootedBaseDbPath = prefix.Length == 0 ? Path.Combine(PathUtils.ExecutingDirectory, name) : baseDbPath;
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         fileSystem.Path.Returns(new RealFileSystem().Path);
-        FlatDbConfig flatDbConfig = new();
+        FlatDbConfig flatDbConfig = new() { Layout = FlatLayout.Flat };
         InitConfig initConfig = new() { BaseDbPath = baseDbPath };
         try
         {
@@ -128,7 +147,7 @@ public class FlatWorldStateModuleTests
     }
 
     [Test]
-    public void Metadata_store_follows_the_layout([Values] FlatLayout layout)
+    public void Metadata_store_follows_the_layout([Values(FlatLayout.Flat, FlatLayout.FlatInTrie, FlatLayout.PreimageFlatV1, FlatLayout.PreimageFlat, FlatLayout.PaprikaFlat)] FlatLayout layout)
     {
         FlatDbConfig flatDbConfig = new() { Layout = layout, TrieNodeLogEnabled = true };
         using IContainer container = new ContainerBuilder()
