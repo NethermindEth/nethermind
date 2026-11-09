@@ -204,16 +204,9 @@ public class OverlayRpcModule(
             return false;
         }
 
-        Transaction[] transactions = new Transaction[block.Transactions.Length];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i] = new Transaction();
-            block.Transactions[i].CopyTo(transactions[i], copyHash: true);
-        }
-
         using (scope)
         {
-            scope.Component.Trace(new Block(block.Header.Clone(), block.Body.WithChangedTransactions(transactions)), tracer.WithCancellation(token));
+            scope.Component.Trace(new Block(block.Header.Clone(), block.Body.WithOwnTransactions()), tracer.WithCancellation(token));
         }
 
         failure = null;

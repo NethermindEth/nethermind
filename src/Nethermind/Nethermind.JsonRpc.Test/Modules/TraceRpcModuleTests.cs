@@ -4176,6 +4176,34 @@ public class TraceRpcModuleTests
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
     }
 
+    /// <summary>
+    /// Under another fork's rules the nonce the replay loads from state into each transaction can differ, so a
+    /// <c>trace_block</c> with a fork override runs on copies that keep the transaction's type and state.
+    /// </summary>
+    [Test]
+    public async Task trace_block_with_fork_override_replays_copies_of_the_block_transactions([Values] bool streaming)
+    {
+        List<Transaction> replayed = [];
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance),
+            configurer: builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+        TestRpcBlockchain chain = context.Blockchain;
+        chain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        Transaction cached = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyB, replayed);
+        Block head = chain.BlockTree.Head!;
+        ulong nonce = cached.Nonce;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", "0x" + head.Number.ToString("x"), nameof(Istanbul));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+            Assert.That(cached.Nonce, Is.EqualTo(nonce));
+            ReplayCopies.AssertReplayedCopies(replayed, cached);
+        }
+    }
+
     // regression test ensuring asynchronous streaming pipe doesn't crash tracing
     // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
     [Test]

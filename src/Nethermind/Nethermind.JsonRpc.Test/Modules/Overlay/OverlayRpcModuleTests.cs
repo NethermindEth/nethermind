@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -283,6 +284,27 @@ public class OverlayRpcModuleTests
             Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
             Assert.That(reloaded.Transactions.Select(static tx => tx.Nonce), Is.EqualTo(nonces));
             Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx).Bytes), Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
+    public async Task GetLogs_replays_copies_that_keep_the_transaction_type()
+    {
+        List<Transaction> replayed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+
+        Transaction cached = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyA, replayed);
+        Block head = chain.BlockTree.Head!;
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            new { fromBlock = head.Number.ToHexString(true), toBlock = head.Number.ToHexString(true) },
+            new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.TryGetProperty("error", out _), Is.False, response.RootElement.ToString());
+            ReplayCopies.AssertReplayedCopies(replayed, cached);
         }
     }
 
