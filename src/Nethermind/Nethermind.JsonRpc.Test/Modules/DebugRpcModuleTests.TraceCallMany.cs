@@ -104,6 +104,9 @@ public partial class DebugRpcModuleTests
         ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         TransactionBundle bundle = CreateBundle(CreateTransaction());
 
+        using ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> moduleResult = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        Assert.That(moduleResult.Data is IStreamableResult, Is.EqualTo(streaming));
+
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
 #pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
@@ -121,13 +124,7 @@ public partial class DebugRpcModuleTests
         JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
         object result = ctx.DebugRpcModule.debug_traceCallMany(bundles, BlockParameter.Latest).Data;
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
-        List<IJsonTypeInfoResolver> contexts = [];
-        foreach (IJsonTypeInfoResolver resolver in options.TypeInfoResolverChain)
-        {
-            if (resolver is System.Text.Json.Serialization.JsonSerializerContext)
-                contexts.Add(resolver);
-        }
-        options.TypeInfoResolver = JsonTypeInfoResolver.Combine(contexts.ToArray());
+        options.TypeInfoResolver = JsonTypeInfoResolver.Combine([.. options.TypeInfoResolverChain.OfType<System.Text.Json.Serialization.JsonSerializerContext>()]);
         options.MakeReadOnly();
 
         string actual = JsonSerializer.Serialize(result, RpcPayloadTypeInfo.Get(options, result.GetType()));
