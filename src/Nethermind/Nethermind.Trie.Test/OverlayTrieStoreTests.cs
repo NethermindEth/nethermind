@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
@@ -78,5 +79,18 @@ public class OverlayTrieStoreTests
             // After all this, the original should not change.
             Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
         }
+    }
+
+    [Test]
+    public void TryLoadRlp_DecompressesEoaNodePersistedByMainNodeStorage()
+    {
+        MemDb stateDb = new();
+        byte[] eoaNode = Bytes.FromHexString(NodeStorageFactoryTests.EoaNodeHex);
+        new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance).WrapKeyValueStore(stateDb)
+            .Set(null, TreePath.Empty, TestItem.KeccakA, eoaNode);
+
+        OverlayTrieStore overlayStore = new(stateDb, new TestRawTrieStore(new MemDb()).AsReadOnly());
+
+        Assert.That(overlayStore.TryLoadRlp(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(eoaNode));
     }
 }
