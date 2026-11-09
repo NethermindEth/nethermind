@@ -360,6 +360,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         if (error is not null && _slotAddedByOperation is UInt256 slot)
             _prestate[_executingAccount!].Storage?.Remove(slot);
+        _slotAddedByOperation = null;
     }
 
     /// <remarks>
