@@ -70,6 +70,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionRevert(40000, output);
+        tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
         using GethLikeTxTrace trace = tracer.BuildResult();
         using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
 
