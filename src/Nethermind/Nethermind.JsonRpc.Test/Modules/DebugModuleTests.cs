@@ -821,6 +821,43 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugStandardTraceBlockToFile_RejectsGenesisBeforeReplay(
+        [Values] bool isBadBlock, [Values("none", "zero", "missing", "present")] string filter)
+    {
+        Transaction transaction = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithTransactions(transaction).TestObject;
+        if (isBadBlock)
+            _debugBridge.GetBadBlocks().Returns([block]);
+        else
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.HasBlock(0, block.Hash!).Returns(true);
+            _blockFinder.FindBlock(block.Hash!, 0).Returns(block);
+        }
+        GethTraceOptions? options = filter == "none" ? null : new()
+        {
+            TxHash = filter switch
+            {
+                "zero" => Hash256.Zero,
+                "present" => transaction.Hash,
+                _ => TestItem.KeccakA
+            }
+        };
+        using ResultWrapper<IEnumerable<string>> result = isBadBlock
+            ? CreateModule().debug_standardTraceBadBlockToFile(block.Hash!, options)
+            : CreateModule().debug_standardTraceBlockToFile(block.Hash!, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(result.Result.Error, Is.EqualTo(filter == "missing"
+                ? $"transaction {TestItem.KeccakA} not found in block" : "genesis is not traceable"));
+        }
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
     public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
