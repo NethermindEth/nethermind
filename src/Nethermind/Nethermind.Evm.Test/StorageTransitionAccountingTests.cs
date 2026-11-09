@@ -30,6 +30,9 @@ namespace Nethermind.Evm.Test;
 [NonParallelizable]
 public sealed class StorageTransitionAccountingTests
 {
+    private const long CustomClearRefund = 1_234;
+    private const long CustomReversalRefund = 2_345;
+
     private IContainer _container = null!;
     private ILifetimeScope _scope = null!;
     private IDisposable _stateScope = null!;
@@ -84,16 +87,19 @@ public sealed class StorageTransitionAccountingTests
         }
     }
 
-    [TestCase(0, 1, 1)]
-    [TestCase(7, 7, 0)]
-    [TestCase(7, 9, 1)]
-    public void Storage_transition_hook_runs_only_for_changed_values(byte initialValue, byte newValue, int expectedCalls)
+    [TestCase(0, 1, 1, false)]
+    [TestCase(7, 7, 0, false)]
+    [TestCase(7, 9, 1, false)]
+    [TestCase(0, 1, 1, true)]
+    [TestCase(7, 7, 0, true)]
+    [TestCase(7, 9, 1, true)]
+    public void Storage_transition_hook_runs_only_for_changed_values(byte initialValue, byte newValue, int expectedCalls, bool legacyMetering)
     {
         (Block block, Transaction transaction) = PrepareTransaction(
             Prepare.EvmCode.SSTORE(0, [newValue]).Done,
             new UInt256(initialValue));
 
-        TransactionResult result = Execute(transaction, block);
+        TransactionResult result = Execute(transaction, block, spec: MeteringSpec(legacyMetering));
 
         StorageCell cell = new(TestItem.AddressB, UInt256.Zero);
         _worldState.Get(in cell, out UInt256 value);
@@ -114,14 +120,14 @@ public sealed class StorageTransitionAccountingTests
     }
 
     [Test]
-    public void Policy_error_stops_before_primary_storage_write()
+    public void Policy_error_stops_before_primary_storage_write([Values] bool legacyMetering)
     {
         _probe.Result = EvmExceptionType.OutOfGas;
         _probe.WriteBookkeepingCell = true;
         (Block block, Transaction transaction) = PrepareTransaction(
             Prepare.EvmCode.SSTORE(0, [1]).Done);
 
-        TransactionResult result = Execute(transaction, block);
+        TransactionResult result = Execute(transaction, block, spec: MeteringSpec(legacyMetering));
 
         StorageCell primaryCell = new(TestItem.AddressB, UInt256.Zero);
         StorageCell bookkeepingCell = new(TestItem.AddressB, UInt256.One);
@@ -231,10 +237,8 @@ public sealed class StorageTransitionAccountingTests
     [TestCase(true)]
     public void Policy_storage_refund_selectors_are_used(bool reversal)
     {
-        const long clearRefund = 1_234;
-        const long reversalRefund = 2_345;
-        _probe.StorageClearRefund = clearRefund;
-        _probe.StorageReversalRefund = reversalRefund;
+        _probe.StorageClearRefund = CustomClearRefund;
+        _probe.StorageReversalRefund = CustomReversalRefund;
 
         byte[] code = reversal
             ? Prepare.EvmCode.SSTORE(0, [1]).SSTORE(0, [0]).Done
@@ -249,7 +253,32 @@ public sealed class StorageTransitionAccountingTests
         {
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-            Assert.That(tracer.Refund, Is.EqualTo(reversal ? reversalRefund : clearRefund));
+            Assert.That(tracer.Refund, Is.EqualTo(reversal ? CustomReversalRefund : CustomClearRefund));
+        }
+    }
+
+    // Clearing slot 0 under legacy metering with 4,999 gas left fails the reset charge; restoring a dirty slot under
+    // EIP-1283 with 199 gas left fails the net-metered charge. Both traces report the policy's refund.
+    [TestCase(false, 21_000UL + 6 + 4_999)]
+    [TestCase(true, 21_000UL + 6 + GasCostOf.SSet + 6 + 199)]
+    public void Failed_sstore_traces_policy_refund_selectors(bool reversal, ulong gasLimit)
+    {
+        _probe.StorageClearRefund = CustomClearRefund;
+        _probe.StorageReversalRefund = CustomReversalRefund;
+
+        byte[] code = reversal
+            ? Prepare.EvmCode.SSTORE(0, [1]).SSTORE(0, [0]).Done
+            : Prepare.EvmCode.SSTORE(0, [0]).Done;
+        (Block block, Transaction transaction) = PrepareTransaction(code, reversal ? UInt256.Zero : UInt256.One, gasLimit: gasLimit);
+        StorageRefundTracer tracer = new();
+
+        TransactionResult result = Execute(transaction, block, tracer,
+            reversal ? Constantinople.Instance : ConstantinopleFix.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(tracer.StorageRefund, Is.EqualTo(reversal ? CustomReversalRefund : CustomClearRefund));
         }
     }
 
@@ -290,16 +319,20 @@ public sealed class StorageTransitionAccountingTests
     private static long GetStorageReversalRefund<TGasPolicy>(IReleaseSpec spec, bool originalIsZero)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy> => TGasPolicy.GetStorageReversalRefund(spec, originalIsZero);
 
-    private TransactionResult Execute(Transaction transaction, Block block, ITxTracer? tracer = null) =>
+    /// <summary>Selects net-metered SSTORE (Prague) or the legacy handler (ConstantinopleFix, without EIP-1283/EIP-2200).</summary>
+    private static IReleaseSpec? MeteringSpec(bool legacyMetering) => legacyMetering ? ConstantinopleFix.Instance : null;
+
+    private TransactionResult Execute(Transaction transaction, Block block, ITxTracer? tracer = null, IReleaseSpec? spec = null) =>
         _processor.Execute(
             transaction,
-            new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)),
+            new BlockExecutionContext(block.Header, spec ?? _specProvider.GetSpec(block.Header)),
             tracer ?? NullTxTracer.Instance);
 
     private (Block Block, Transaction Transaction) PrepareTransaction(
         byte[] code,
         UInt256? initialValue = null,
-        byte[]? auxiliaryCode = null)
+        byte[]? auxiliaryCode = null,
+        ulong gasLimit = 100_000)
     {
         Address sender = TestItem.AddressA;
         Address recipient = TestItem.AddressB;
@@ -329,7 +362,7 @@ public sealed class StorageTransitionAccountingTests
 
         EthereumEcdsa ecdsa = new(_specProvider.ChainId);
         Transaction transaction = Build.A.Transaction
-            .WithGasLimit(100_000)
+            .WithGasLimit(gasLimit)
             .WithGasPrice(1UL)
             .WithValue(0)
             .WithNonce(_worldState.GetNonce(sender))
@@ -348,6 +381,19 @@ public sealed class StorageTransitionAccountingTests
             .WithSlotNumber(0)
             .TestObject;
         return (block, transaction);
+    }
+
+    private sealed class StorageRefundTracer : TxTracer, ITraceOperationStart, ITraceOperationStorage
+    {
+        public StorageRefundTracer() => IsTracingInstructions = true;
+
+        public long? StorageRefund { get; private set; }
+
+        public void ReportStorageRefund(long refund) => StorageRefund = refund;
+
+        public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) { }
+
+        public void ReportOperationReady(ulong gasCost, string? error) { }
     }
 
     private sealed class ProbeState

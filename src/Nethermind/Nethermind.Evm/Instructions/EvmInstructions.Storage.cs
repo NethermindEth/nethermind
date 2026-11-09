@@ -429,7 +429,7 @@ public static partial class EvmInstructions
                 if (traceCurrent.IsZero && !traceValue.IsZero)
                     attemptedCost += GasCostOf.SSet - GasCostOf.SReset;
                 if (!traceCurrent.IsZero && traceValue.IsZero)
-                    vm.TraceStorageRefund((long)spec.GasCosts.SClearRefund);
+                    vm.TraceStorageRefund(TGasPolicy.GetStorageClearRefund(spec));
                 vm.TraceOperationReady(attemptedCost, "out of gas");
             }
             goto OutOfGas;
@@ -456,6 +456,14 @@ public static partial class EvmInstructions
 
         // Determine whether the new value is identical to the current stored value.
         bool newSameAsCurrent = currentValue == newValue;
+
+        if (!newSameAsCurrent)
+        {
+            EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
+                ref gas, vm, in storageCell, in currentValue, in newValue);
+            if (accountingResult != EvmExceptionType.None)
+                return accountingResult;
+        }
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = TGasPolicy.GetStorageClearRefund(spec);
@@ -686,7 +694,7 @@ public static partial class EvmInstructions
                         if (originalValue == newValue)
                             attemptedRefund += Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite
                                 : TEip8037.IsActive && originalIsZero ? (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead)
-                                : (long)gasCosts.RefundFromReversal(originalIsZero);
+                                : TGasPolicy.GetStorageReversalRefund(spec, originalIsZero);
                         vm.TraceStorageRefund(attemptedRefund);
                         vm.TraceOperationReady(traceExecutionCost, "out of gas");
                     }
