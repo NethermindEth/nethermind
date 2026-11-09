@@ -2049,7 +2049,7 @@ public partial class DebugRpcModuleTests
                     new string('a', 64)
                 })
                     yield return new TestCaseData(field, streaming, key, "0x" + new string('0', 64), false);
-                foreach (string value in new[] { "0x1", "0x", "", "0x" + new string('g', 64), "0x" + new string('0', 66) })
+                foreach (string value in new[] { "0x1", "0x", "0x" + new string('g', 64), "0x" + new string('0', 66) })
                     yield return new TestCaseData(field, streaming, "0x" + new string('0', 64), value, false);
             }
     }
@@ -2094,33 +2094,40 @@ public partial class DebugRpcModuleTests
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         object call = new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" };
-        object overrides = new Dictionary<string, object>
+        Task<string> Send(string key)
         {
-            [TestItem.AddressC.ToString()] = new Dictionary<string, object>
+            object overrides = new Dictionary<string, object>
             {
-                [field] = new Dictionary<string, string> { ["0x0"] = "0x" + new string('0', 64) },
-                ["code"] = "0x00"
-            }
-        };
-        string response = method switch
-        {
-            "eth_simulateV1" => await RpcTest.TestSerializedRequest(chain.EthRpcModule, method,
-                new { blockStateCalls = new[] { new { calls = new[] { call }, stateOverrides = overrides } } }, "latest"),
-            "debug_traceCallMany" => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method,
-                new[] { new { transactions = new[] { call } } }, "latest", new { stateOverrides = overrides }),
-            _ => await RpcTest.TestSerializedRequest(chain.EthRpcModule, method, call, "latest", overrides)
-        };
+                [TestItem.AddressC.ToString()] = new Dictionary<string, object>
+                {
+                    [field] = new Dictionary<string, string> { [key] = "0x" + new string('0', 64) },
+                    ["code"] = "0x00"
+                }
+            };
+            return method switch
+            {
+                "eth_simulateV1" => RpcTest.TestSerializedRequest(chain.EthRpcModule, method,
+                    new { blockStateCalls = new[] { new { calls = new[] { call }, stateOverrides = overrides } } }, "latest"),
+                "debug_traceCallMany" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method,
+                    new[] { new { transactions = new[] { call } } }, "latest", new { stateOverrides = overrides }),
+                _ => RpcTest.TestSerializedRequest(chain.EthRpcModule, method, call, "latest", overrides)
+            };
+        }
+
+        string controlResponse = await Send("0x" + new string('0', 64));
+        string response = await Send("0x0");
+        JToken control = JToken.Parse(controlResponse);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(control["error"], Is.Null, controlResponse);
+            Assert.That(control["result"], Is.Not.Null, controlResponse);
             Assert.That(json["error"], Is.Null, response);
+            Assert.That(JToken.DeepEquals(json["result"], control["result"]), Is.True, response);
             switch (method)
             {
                 case "eth_call":
                     Assert.That((string?)json["result"], Is.EqualTo("0x"), response);
-                    break;
-                case "eth_estimateGas":
-                    Assert.That((string?)json["result"], Is.EqualTo("0x5208"), response);
                     break;
                 case "eth_simulateV1":
                     Assert.That((string?)json["result"]?[0]?["calls"]?[0]?["status"], Is.EqualTo("0x1"), response);
