@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core;
@@ -824,19 +825,20 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            ReadOnlySpan<char> spanString = value.AsSpan();
+            int length = Encoding.UTF8.GetByteCount(value);
 
-            if (spanString.Length == 1 && spanString[0] < 128)
+            // A single UTF-8 byte is an ASCII character, below 128, so it is its own encoding.
+            if (length == 1)
             {
                 return 1;
             }
 
-            if (spanString.Length < RlpHelpers.SmallPrefixBarrier)
+            if (length < RlpHelpers.SmallPrefixBarrier)
             {
-                return spanString.Length + 1;
+                return length + 1;
             }
 
-            return LengthOfLength(spanString.Length) + 1 + spanString.Length;
+            return LengthOfLength(length) + 1 + length;
         }
 
         public static int LengthOf(byte value) => 1 + value / 128;

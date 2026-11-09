@@ -71,6 +71,23 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Can_do_roundtrip_storage_with_non_ascii_error()
+        {
+            TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithError("réverted ✓").TestObject;
+
+            ReceiptStorageDecoder decoder = new();
+            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage);
+            RlpReader reader = new(rlp.Bytes);
+            TxReceipt deserialized = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.Storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rlp.Bytes, Has.Length.EqualTo(decoder.GetLength(txReceipt, RlpBehaviors.Storage)));
+                Assert.That(deserialized.Error, Is.EqualTo("réverted ✓"));
+            }
+        }
+
+        [Test]
         public void Can_do_roundtrip_storage_eip()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
