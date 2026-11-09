@@ -172,9 +172,10 @@ public class ReadOnlySnapshotBundleTests
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA))),
             recordDetailedMetrics: true);
 
+        Assert.That(bundle.TryFindStateNodes(path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)), out TrieNode? found), Is.True);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.TryFindStateNodes(path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)), out TrieNode? found), Is.True);
             Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
             Assert.That(found.Keccak, Is.EqualTo(Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
         }
@@ -203,11 +204,9 @@ public class ReadOnlySnapshotBundleTests
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB))),
             recordDetailedMetrics: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
-            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
-        }
+        Assert.That(
+            bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found) ? found.FullRlp.ToArray() : null,
+            Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
