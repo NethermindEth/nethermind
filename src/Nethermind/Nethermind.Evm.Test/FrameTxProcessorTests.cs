@@ -273,6 +273,40 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void FeeFreeCall_SkipsPayerEscrowAndFeeSettlement([Values] bool chargeFees, [Values] bool funded)
+    {
+        UInt256 balance = funded ? 1.Ether : UInt256.One;
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), balance);
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(Sender).Op(Instruction.BALANCE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.LOG0)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        ExecutionOptions options = ExecutionOptions.CommitAndRestore
+            | (chargeFees ? ExecutionOptions.None : ExecutionOptions.SkipTransactionFees);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, options);
+
+        bool executes = funded || !chargeFees;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(executes), result.ErrorDescription);
+            if (executes)
+            {
+                UInt256 observed = new(tracer.FrameReceipts![1].Logs[0].Data, isBigEndian: true);
+                Assert.That(observed, Is.EqualTo(chargeFees ? balance - BlobFreeMaxCost : balance), "payer balance seen by the body frame");
+            }
+            else
+            {
+                Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+            }
+        }
+    }
+
+    [Test]
     public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
         [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
     {
