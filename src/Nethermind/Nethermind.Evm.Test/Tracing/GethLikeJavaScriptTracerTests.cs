@@ -1430,12 +1430,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         const string coinbaseTracer = @"{
                     fault: function(log, db) { },
-                    result: function(ctx, db) { return (ctx.coinbase instanceof Uint8Array) + ':' + toHex(ctx.coinbase); }
+                    result: function(ctx, db) {
+                        var coinbase = (ctx.coinbase instanceof Uint8Array) + ':' + toHex(ctx.coinbase);
+                        ctx.coinbase[0] = 0xff;
+                        return coinbase;
+                    }
                 }";
-        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(coinbaseTracer), MStore(), MainnetSpecProvider.CancunActivation);
-        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(coinbaseTracer));
 
-        AssertResult(trace, $"true:{Miner}");
+        string expected = JsonSerializer.Serialize($"true:{Miner}");
+        Assert.That(ResultJsons(tracer.BuildResult()), Is.EqualTo(new[] { expected, expected }));
     }
 
     [TestCase("5b600056", null, "out of gas")]

@@ -23,6 +23,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private TracerRuntime? _runtime = CreateRuntime(options);
     private GethLikeJavaScriptTxTracer? _currentTxTracer;
     private Hash256? _blockHash;
+    private Address? _coinbase;
     private UInt256 _baseFee;
 
     private static TracerRuntime? CreateRuntime(GethTraceOptions options)
@@ -40,7 +41,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
-        _ctx.Coinbase = block.Header.GasBeneficiary ?? Address.Zero;
+        _coinbase = block.Header.GasBeneficiary ?? Address.Zero;
         _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
         _index = options.TxHash is { } txHash ? block.GetTransactionIndex(txHash.ValueHash256) : 0;
@@ -76,6 +77,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private void SetTransactionCtx(Transaction? tx)
     {
         _ctx.BlockHash = _blockHash;
+        _ctx.Coinbase = _coinbase;
         _ctx.error = Undefined.Value;
         _ctx.Output = null;
         _ctx.gasUsed = 0;
