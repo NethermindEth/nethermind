@@ -374,7 +374,14 @@ public class KademliaAdapterTests
             udpPort: source.Port);
         TaskCompletionSource<Node> admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _kademlia.When(kademlia => kademlia.AddOrRefresh(Arg.Any<Node>())).Do(call => admitted.TrySetResult(call.Arg<Node>()));
-        RecordingDatagramSocket socket = new();
+        TaskCompletionSource<byte[]> firstSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDatagramSocket socket = Substitute.For<IDatagramSocket>();
+        socket.SendToAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IPEndPoint>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                firstSent.TrySetResult(call.Arg<ReadOnlyMemory<byte>>().ToArray());
+                return ValueTask.CompletedTask;
+            });
         DiscoveryV5Transport transport = new(LimboLogs.Instance);
         transport.BindSocket(socket);
         KademliaAdapter adapter = CreateAdapter(transport: transport);
@@ -387,7 +394,7 @@ public class KademliaAdapterTests
             transport.Receive(PooledUdpReceiveResult.Copy(remoteCodec.EncodeOrdinary(TestItem.PublicKeyA, new byte[16], ping, new byte[PacketCodec.NonceSize]), source));
         }
 
-        byte[] whoAreYou = await WaitForSentPacket(socket, cancellation.Token);
+        byte[] whoAreYou = await firstSent.Task.WaitAsync(cancellation.Token);
         Assert.That(PacketCodec.TryDecode(whoAreYou, TestItem.PublicKeyB.Hash.Bytes, out Packet challengePacket), Is.True);
         byte[] handshake;
         using (challengePacket)
@@ -534,17 +541,6 @@ public class KademliaAdapterTests
             Assert.That(adapter.RequestCount, Is.EqualTo(alreadyCancelled ? 0 : 1));
             Assert.That(node.RequestingEnrSequence, Is.Zero);
         }
-    }
-
-    private static async Task<byte[]> WaitForSentPacket(RecordingDatagramSocket socket, CancellationToken token)
-    {
-        (byte[] Data, IPEndPoint Destination) sent;
-        while (!socket.Sent.TryDequeue(out sent))
-        {
-            await Task.Delay(10, token);
-        }
-
-        return sent.Data;
     }
 
     private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null, DiscoveryV5Transport? transport = null)
