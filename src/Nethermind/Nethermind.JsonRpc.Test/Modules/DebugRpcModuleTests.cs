@@ -2025,6 +2025,115 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> TraceCallStorageKeyCases()
+    {
+        foreach (string field in new[] { "state", "stateDiff" })
+            foreach (bool streaming in new[] { false, true })
+            {
+                foreach (string key in new[]
+                {
+                    "0x" + new string('0', 64),
+                    "0x" + new string('0', 63) + "1",
+                    "0x" + new string('a', 64),
+                    "0x" + new string('A', 64),
+                    "0X" + new string('0', 62) + "AB"
+                })
+                    yield return new TestCaseData(field, streaming, key, "0x" + new string('0', 62) + "ab", true);
+                foreach (string key in new[]
+                {
+                    "0x0", "0x1", "0x01", "", "0x", "0xgg",
+                    "0x" + new string('g', 64),
+                    "0x" + new string('0', 63),
+                    "0x" + new string('0', 65),
+                    "0x" + new string('0', 66),
+                    new string('a', 64)
+                })
+                    yield return new TestCaseData(field, streaming, key, "0x" + new string('0', 64), false);
+                foreach (string value in new[] { "0x1", "0x", "", "0x" + new string('g', 64), "0x" + new string('0', 66) })
+                    yield return new TestCaseData(field, streaming, "0x" + new string('0', 64), value, false);
+            }
+    }
+
+    [TestCaseSource(nameof(TraceCallStorageKeyCases))]
+    public async Task Debug_traceCall_storage_keys_require_hashes(string field, bool streaming, string key, string value, bool valid)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object overrides = new Dictionary<string, object>
+        {
+            [TestItem.AddressC.ToString()] = new Dictionary<string, object>
+            {
+                [field] = new Dictionary<string, string> { [key] = value },
+                ["code"] = "0x6000355460005260206000f3"
+            }
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0", input = valid ? "0x" + key[2..] : "0x" },
+            "latest", new { stateOverrides = overrides });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (valid)
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo(value), response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Storage_override_sibling_routes_keep_short_keys(
+        [Values("state", "stateDiff")] string field,
+        [Values("eth_call", "eth_estimateGas", "eth_simulateV1", "debug_traceCallMany")] string method)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        object call = new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        object overrides = new Dictionary<string, object>
+        {
+            [TestItem.AddressC.ToString()] = new Dictionary<string, object>
+            {
+                [field] = new Dictionary<string, string> { ["0x0"] = "0x" + new string('0', 64) },
+                ["code"] = "0x00"
+            }
+        };
+        string response = method switch
+        {
+            "eth_simulateV1" => await RpcTest.TestSerializedRequest(chain.EthRpcModule, method,
+                new { blockStateCalls = new[] { new { calls = new[] { call }, stateOverrides = overrides } } }, "latest"),
+            "debug_traceCallMany" => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method,
+                new[] { new { transactions = new[] { call } } }, "latest", new { stateOverrides = overrides }),
+            _ => await RpcTest.TestSerializedRequest(chain.EthRpcModule, method, call, "latest", overrides)
+        };
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            switch (method)
+            {
+                case "eth_call":
+                    Assert.That((string?)json["result"], Is.EqualTo("0x"), response);
+                    break;
+                case "eth_estimateGas":
+                    Assert.That((string?)json["result"], Is.EqualTo("0x5208"), response);
+                    break;
+                case "eth_simulateV1":
+                    Assert.That((string?)json["result"]?[0]?["calls"]?[0]?["status"], Is.EqualTo("0x1"), response);
+                    Assert.That((string?)json["result"]?[0]?["calls"]?[0]?["returnData"], Is.EqualTo("0x"), response);
+                    break;
+                case "debug_traceCallMany":
+                    Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.False, response);
+                    Assert.That((string?)json["result"]?[0]?[0]?["returnValue"], Is.EqualTo("0x"), response);
+                    break;
+            }
+        }
+    }
+
     [TestCase(
         "Nonce override doesn't cause failure",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""",
