@@ -56,9 +56,10 @@ jobs:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           project=Nethermind.ReferenceAssemblies/Nethermind.ReferenceAssemblies.csproj
-          version=$(dotnet msbuild $project -getProperty:Version)
-          # Each commit needs a unique prerelease version that sorts below the final release
-          [[ $version == *-* ]] && version+=".ci.$GITHUB_RUN_NUMBER" || version+="-ci.$GITHUB_RUN_NUMBER"
+          prefix=$(dotnet msbuild $project -getProperty:VersionPrefix)
+          suffix=$(dotnet msbuild $project -getProperty:VersionSuffix)
+          # The run number precedes the suffix so that builds keep their order when a branch drops its suffix
+          version="$prefix-ci.$GITHUB_RUN_NUMBER${suffix:+.$suffix}"
           package_output="$(mktemp -d)"
           dotnet pack $project -c release -p:PackageVersion=$version --output "$package_output"
           dotnet nuget push "$package_output/*.nupkg" --skip-duplicate \
