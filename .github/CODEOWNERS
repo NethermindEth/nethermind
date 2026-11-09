@@ -3,7 +3,7 @@
 *.md @rubo @LukaszRozmej @MarekM25
 
 /.agents @rubo @cbermudez97 @stdevMac @kamilchodola
-/.github @rubo @cbermudez97 @stdevMac @kamilchodola
+/.github @rubo @cbermudez97 @stdevMac @kamilchodola @LukaszRozmej
 /scripts @rubo @cbermudez97 @stdevMac @kamilchodola
 
 /src/Nethermind/Ethereum.Test.Base @flcl42
