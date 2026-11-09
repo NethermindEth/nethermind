@@ -5038,9 +5038,6 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <summary>Each of the pre-dispatch exits of <c>ExecuteFrame</c> ends a frame without the VM ever
-    /// reporting an action, and those are exactly the failed frames callTracer must render with an
-    /// <c>error</c>.</summary>
     private static IEnumerable<TestCaseData> PreDispatchTraceCases()
     {
         foreach (PreDispatchExit exit in Enum.GetValues<PreDispatchExit>())
@@ -5051,6 +5048,9 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    /// <summary>Each of the pre-dispatch exits of <c>ExecuteFrame</c> ends a frame without the VM ever
+    /// reporting an action, and those are exactly the failed frames callTracer must render with an
+    /// <c>error</c>.</summary>
     [TestCaseSource(nameof(PreDispatchTraceCases))]
     public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError(PreDispatchExit exit, bool throughReceipts, bool mux)
     {
@@ -5071,7 +5071,7 @@ public partial class FrameTxProcessorTests
             Assert.That(document.RootElement.TryGetProperty("error", out JsonElement rootError), Is.EqualTo(throughReceipts),
                 "the processor includes the transaction, while the receipts tracer reports aggregate frame failure");
             if (throughReceipts)
-                Assert.That(rootError.GetString(), Is.EqualTo(BlockReceiptsTracer.FrameTxFailedError));
+                Assert.That(rootError.GetString(), Is.EqualTo("frame failed"));
         }
     }
 
@@ -5833,9 +5833,8 @@ public partial class FrameTxProcessorTests
         JsonDocument trace = TraceThroughReceiptsTracer(tx, options, baseFeePerGas: 0, out TxReceipt receipt);
         if (mux)
         {
-            JsonDocument callTrace = JsonDocument.Parse(trace.RootElement.GetProperty(NativeCallTracer.CallTracer).GetRawText());
-            trace.Dispose();
-            trace = callTrace;
+            using JsonDocument muxTrace = trace;
+            trace = JsonDocument.Parse(muxTrace.RootElement.GetProperty(NativeCallTracer.CallTracer).GetRawText());
         }
         return (trace, receipt.FrameReceipts!);
     }
