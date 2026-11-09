@@ -150,10 +150,22 @@ public class DebugRpcModule(
 
     private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
     {
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
+        // Unlike eth_call, Geth traces a blob fee cap without blob hashes from Cancun, as eth_simulateV1 does;
+        // the cap is kept so that a zero cap still zeroes the blob base fee.
+        if (call is BlobTransactionForRpc { BlobVersionedHashes: null, Blobs: null, MaxFeePerBlobGas: { } loneBlobFeeCap })
+        {
+            if (!spec.IsEip4844Enabled)
+                return TxErrorMessages.InvalidTxType(spec.Name);
+
+            Result<Transaction> converted = BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
+            if (converted) converted.Data.MaxFeePerBlobGas = loneBlobFeeCap;
+            return converted;
+        }
+
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas: null or { IsZero: true } })
             return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
 
-        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
         Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
         return result;
