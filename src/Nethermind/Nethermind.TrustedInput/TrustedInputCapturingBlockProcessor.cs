@@ -69,7 +69,12 @@ public sealed class TrustedInputCapturingBlockProcessor(
                 throw;
             }
             Witness? captured = request.Task.IsCompletedSuccessfully ? request.Task.Result : null;
-            return captured is null ? null : () => Capture(suggestedBlock, captured);
+            if (captured is null) return null;
+
+            // The import frees the block's access list (BlockAccessListStore) while the capture still reads it.
+            Block block = suggestedBlock.WithReplacedBody(suggestedBlock.Body);
+            block.EncodedBlockAccessList = suggestedBlock.EncodedBlockAccessList;
+            return () => Capture(block, captured);
         });
 
         return scheduled ? result : Process(inner, suggestedBlock, options, blockTracer, spec, token);

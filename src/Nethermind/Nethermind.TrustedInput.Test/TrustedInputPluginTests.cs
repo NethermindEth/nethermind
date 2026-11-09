@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -10,8 +11,10 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
@@ -91,6 +94,106 @@ public class TrustedInputPluginTests
         {
             release.Set();
             await processor.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Capture_keeps_the_access_list_the_import_frees()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        byte[] blockAccessList = Bytes.FromHexString("0x0123456789abcdeffedcba9876543210");
+        WitnessRendezvous rendezvous = new();
+        IBlockProcessor inner = Substitute.For<IBlockProcessor>();
+        inner.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Prague.Instance, default)
+            .Returns(_ =>
+            {
+                block.EncodedBlockAccessList = blockAccessList;
+                Assert.That(rendezvous.TryClaim(block.Hash!, out TaskCompletionSource<Witness?>? witness), Is.True);
+                witness!.SetResult(new Witness
+                {
+                    Codes = ArrayPoolList<byte[]>.Empty(),
+                    State = ArrayPoolList<byte[]>.Empty(),
+                    Keys = ArrayPoolList<byte[]>.Empty(),
+                    Headers = ArrayPoolList<byte[]>.Empty()
+                });
+                return (block, Array.Empty<TxReceipt>());
+            });
+        TrustedInputStore store = new(new TrustedInputConfig(), LimboLogs.Instance);
+        TrustedInputCapturingBlockProcessor processor = new(inner, rendezvous, store, MainnetSpecProvider.Instance, LimboLogs.Instance);
+
+        processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Prague.Instance);
+        block.EncodedBlockAccessList = null;
+        await processor.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGet(block.Hash!, out byte[] input), Is.True);
+            Assert.That(input.AsSpan().IndexOf(blockAccessList), Is.Positive);
+        }
+    }
+
+    [Test]
+    public void Store_rejects_a_cache_size_below_one([Values(0, -1)] int cacheSize) =>
+        Assert.Throws<InvalidConfigurationException>(() => new TrustedInputStore(new TrustedInputConfig { CacheSize = cacheSize }, LimboLogs.Instance));
+
+    [Test]
+    public void Store_replaces_the_file_of_an_input_whole()
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            TrustedInputStore store = new(new TrustedInputConfig { OutputDirectory = directory }, LimboLogs.Instance);
+
+            store.Add(1, TestItem.KeccakA, [1, 2, 3]);
+            store.Add(1, TestItem.KeccakA, [4, 5]);
+
+            string[] files = Directory.GetFiles(directory);
+            Assert.That(files, Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Path.GetFileName(files[0]), Is.EqualTo($"1-{TestItem.KeccakA.ToString(withZeroX: false)}.nti"));
+                Assert.That(File.ReadAllBytes(files[0]), Is.EqualTo(new byte[] { 4, 5 }));
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>A file that cannot be written leaves the input served from memory and no partial file.</summary>
+    [Test]
+    public void Store_keeps_an_input_whose_file_cannot_be_written([Values] bool outputDirectoryIsFile)
+    {
+        string directory = CreateTemporaryDirectory();
+        try
+        {
+            string outputDirectory = directory;
+            if (outputDirectoryIsFile)
+            {
+                outputDirectory = Path.Combine(directory, "file");
+                File.WriteAllBytes(outputDirectory, []);
+            }
+            else
+            {
+                // A directory where the file goes fails the move into place.
+                Directory.CreateDirectory(Path.Combine(directory, $"1-{TestItem.KeccakA.ToString(withZeroX: false)}.nti"));
+            }
+
+            TrustedInputStore store = new(new TrustedInputConfig { OutputDirectory = outputDirectory }, LimboLogs.Instance);
+            byte[] input = [1, 2, 3];
+
+            Assert.DoesNotThrow(() => store.Add(1, TestItem.KeccakA, input));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.TryGet(TestItem.KeccakA, out byte[] stored), Is.True);
+                Assert.That(stored, Is.SameAs(input));
+                Assert.That(Directory.GetFiles(directory, "*.tmp"), Is.Empty);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -177,6 +280,9 @@ public class TrustedInputPluginTests
             await processor.DisposeAsync();
         }
     }
+
+    private static string CreateTemporaryDirectory() =>
+        Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"{nameof(TrustedInputPluginTests)}-{Guid.NewGuid():N}")).FullName;
 
     private static Transaction Transfer(TestRpcBlockchain chain) =>
         Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1).WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
