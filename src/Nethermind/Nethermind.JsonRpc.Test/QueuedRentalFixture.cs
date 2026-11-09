@@ -84,10 +84,10 @@ public sealed class QueuedRentalFixture : IRpcModulePool<QueuedRentalFixture.IPr
     [RpcModule(ModuleType.Eth)]
     public interface IProbeRpcModule : IRpcModule
     {
-        [JsonRpcMethod(IsSharable = false)]
+        [JsonRpcMethod(IsSharable = false, Description = "Test method used to verify that a queued exclusive rental is abandoned.")]
         ResultWrapper<int> probe_exclusive();
 
-        [JsonRpcMethod(IsSharable = false)]
+        [JsonRpcMethod(IsSharable = false, Description = "Test method used to verify queued rentals of serial batch items.")]
         ResultWrapper<int> probe_serial();
     }
 
