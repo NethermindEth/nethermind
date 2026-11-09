@@ -54,12 +54,12 @@ public class LocalDbContext(
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        remote.StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);
         if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        StateTree.Accept(dumper, StateTree.RootHash);
+        StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), StateTree.RootHash);
         string localStr = dumper.ToString();
         if (!skipLogs) logger.Info(localStr);
 
