@@ -287,7 +287,8 @@ public sealed class EraExporter(
 
     /// <summary>
     /// Finds a finished file that holds the requested blocks and the blocks of every other file of the epoch, so removing
-    /// the others loses nothing. Prefers the canonical extension, then the first name.
+    /// the others loses nothing. Prefers a file without the <c>noproofs</c> profile, then the canonical extension, then
+    /// the first name.
     /// </summary>
     private static EpochFile? FindReusableFile(EpochFile[] earlierFiles, ulong writeFrom, ulong writeTo)
     {
@@ -296,11 +297,19 @@ public sealed class EraExporter(
         {
             if (candidate.IsPlaceholder || candidate.First > writeFrom || candidate.Last < writeTo) continue;
             if (!earlierFiles.All(other => other.IsPlaceholder || (candidate.First <= other.First && other.Last <= candidate.Last))) continue;
-            if (reusable is null || (EraPathUtils.IsCanonicalEraFile(candidate.Path) && !EraPathUtils.IsCanonicalEraFile(reusable.Value.Path)))
+            if (reusable is null || IsPreferred(candidate.Path, reusable.Value.Path))
                 reusable = candidate;
         }
 
         return reusable;
+
+        static bool IsPreferred(string candidate, string current)
+        {
+            bool candidateHasNoProofs = EraPathUtils.HasNoProofsProfile(candidate);
+            return candidateHasNoProofs != EraPathUtils.HasNoProofsProfile(current)
+                ? !candidateHasNoProofs
+                : EraPathUtils.IsCanonicalEraFile(candidate) && !EraPathUtils.IsCanonicalEraFile(current);
+        }
     }
 
     /// <summary>
@@ -363,18 +372,21 @@ public sealed class EraExporter(
     }
 
     /// <summary>
-    /// Deletes the earlier files of an epoch except the one that now holds it. A name that differs from the survivor's
-    /// only in case is a separate file only when the directory lists both names, as on a case-sensitive file system;
-    /// elsewhere it is the survivor itself.
+    /// Deletes the earlier files of an epoch except the one that now holds it. A finished file of another profile may
+    /// hold entries the survivor lacks, such as proofs, so it is kept. A name that differs from the survivor's only in
+    /// case is a separate file only when the directory lists both names, as on a case-sensitive file system; elsewhere
+    /// it is the survivor itself.
     /// </summary>
     private void DeleteSupersededFiles(EpochFile[] earlierFiles, string survivor)
     {
         string survivorName = Path.GetFileName(survivor);
+        string survivorProfile = EraPathUtils.GetProfile(survivor);
         HashSet<string>? listed = null;
         foreach (EpochFile earlier in earlierFiles)
         {
             string name = Path.GetFileName(earlier.Path);
             if (name == survivorName) continue;
+            if (!earlier.IsPlaceholder && !string.Equals(EraPathUtils.GetProfile(earlier.Path), survivorProfile, StringComparison.OrdinalIgnoreCase)) continue;
             if (string.Equals(name, survivorName, StringComparison.OrdinalIgnoreCase))
             {
                 listed ??= fileSystem.Directory.EnumerateFiles(Path.GetDirectoryName(survivor)!).Select(static f => Path.GetFileName(f)).ToHashSet(StringComparer.Ordinal);

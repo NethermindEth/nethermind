@@ -99,6 +99,18 @@ public static class EraPathUtils
     }
 
     /// <summary>
+    /// The profile postfixes of an era file name joined by '-', such as <c>noproofs</c>; empty for the full profile.
+    /// </summary>
+    internal static string GetProfile(string path)
+    {
+        string[] parts = Path.GetFileNameWithoutExtension(path).Split(_separator);
+        return parts.Length > 3 ? string.Join('-', parts.Skip(3)) : "";
+    }
+
+    internal static bool HasNoProofsProfile(string path) =>
+        GetProfile(path).Split(_separator).Contains(NoProofsProfile, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Recognizes an era file of <paramref name="network"/> that an export may reuse or replace:
     /// <c>&lt;network&gt;-&lt;epoch&gt;-&lt;8 hex digits&gt;[-&lt;profile&gt;...]</c> with the <c>.ere</c> or legacy
     /// <c>.erae</c> extension. Stricter than <see cref="TryGetEpoch"/>, so it never matches a file that is not an era file.
