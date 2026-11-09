@@ -76,6 +76,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         tracer.ReportActionRevert(40000, output);
         if (nested)
             tracer.ReportActionEnd(60000, ReadOnlyMemory<byte>.Empty);
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
         using GethLikeTxTrace trace = tracer.BuildResult();
         using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
         JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
