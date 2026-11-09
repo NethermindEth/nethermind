@@ -78,7 +78,7 @@ namespace Ethereum.Test.Base
                 throw new FormatException($"Total difficulty transition '{transitionInfo}' is not 'Diff' followed by hex digits.");
             }
 
-            terminalTotalDifficulty = Bytes.FromHexString(digits.Length % 2 == 0 ? digits : "0" + digits).ToUInt256();
+            terminalTotalDifficulty = UInt256.Parse(digits, NumberStyles.HexNumber);
             return true;
         }
 

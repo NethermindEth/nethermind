@@ -263,9 +263,7 @@ public abstract class BlockchainTestBase
         // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
         // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
         // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
-        // A total-difficulty transition needs the merge module too: its PoSSwitcher moves the chain to PoS at the
-        // terminal total difficulty, and its decorators then apply the PoS header rules, drop block rewards and skip
-        // the PoW seal check for the post-merge blocks only.
+        // A total-difficulty transition needs it too: CreateSpecProvider relies on its PoSSwitcher.
         bool isTotalDifficultyTransition = test.TransitionTerminalTotalDifficulty is not null;
         if (isEngineTest || isPostMerge || isTotalDifficultyTransition)
         {
