@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
@@ -142,6 +143,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
+                if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
+                {
+                    EncodeZeroBaseFee(processedBlock);
+                }
+
                 stateProvider.CommitTree(processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
@@ -160,6 +166,20 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
+    }
+
+    /// <summary>
+    /// Hashes and sizes a block with the zero base fee in its header, as EIP-1559 requires from London.
+    /// </summary>
+    /// <remarks>
+    /// The block processor and the RPC block model use the default encoding, which drops a zero base fee when no later
+    /// field follows. This runs before the block joins the simulated chain, so BLOCKHASH and the parent hash of the next
+    /// simulated block see the same hash.
+    /// </remarks>
+    private static void EncodeZeroBaseFee(Block block)
+    {
+        block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
+        block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
     }
 
     private BlockBody AssembleBody(

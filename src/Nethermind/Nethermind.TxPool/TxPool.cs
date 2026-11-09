@@ -26,7 +26,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -35,6 +34,7 @@ using System.Threading.Tasks;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
@@ -3191,7 +3191,7 @@ namespace Nethermind.TxPool
 
         private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
 
-        private sealed class AccountCache : IAccountStateProvider
+        internal sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
             private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
@@ -3227,16 +3227,15 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address) => Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    n =>
-                    {
-                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
-                        foreach (AddressAsKey a in n)
-                        {
-                            cache.Delete(a);
-                        }
-                    }
-                );
+            // Runs under the new-head write lock, which every submission waits on. Each delete is a short lock and a
+            // dictionary remove, so a plain loop is cheaper than grouping the addresses and fanning out to the thread pool.
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> addresses)
+            {
+                foreach (AddressAsKey address in addresses.AsSpan())
+                {
+                    _caches[GetCacheIndex(address.Value)].Delete(address);
+                }
+            }
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 

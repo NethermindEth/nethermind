@@ -281,7 +281,7 @@ public class JsonRpcProcessorTests
             {
                 Assert.That(error.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
                 Assert.That(error.Message, Is.EqualTo(secret));
-                Assert.That(error.Data?.ToString(), Does.Contain(secret));
+                Assert.That(error.Data, Is.Null);
                 Assert.That(logger.LogList, Has.Some.Contains("Missing trie node during eth_getLogs"));
                 Assert.That(logger.LogList, Has.Some.Contains("Error response handling JsonRpc Id:1"));
                 Assert.That(logger.LogList, Has.Some.Contains("Error when handling Id:1"));

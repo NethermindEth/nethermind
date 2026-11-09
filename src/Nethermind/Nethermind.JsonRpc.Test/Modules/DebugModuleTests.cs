@@ -160,10 +160,19 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugTraceBlock_streamed_missing_body_message_is_route_scoped([Values] bool byHash)
+    public void DebugTraceBlock_streamed_missing_body_message_is_route_scoped([Values] bool byHash) =>
+        AssertStreamedMissingBody(byHash);
+
+    [Test]
+    public void Debug_traceBlockByHash_streamed_missing_body_preserves_temporary_status(
+        [Values] bool temporary, [Values] bool historyPruned) => AssertStreamedMissingBody(byHash: true, temporary, historyPruned);
+
+    private void AssertStreamedMissingBody(bool byHash, bool temporary = false, bool historyPruned = false)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(1).TestObject;
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? 2UL : 0UL);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
         _blockFinder.Head.Returns(new Block(header));
         _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
@@ -180,9 +189,10 @@ public class DebugModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(result.Result.Error, Is.EqualTo(byHash
-                ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
+            Assert.That(result.ErrorCode, Is.EqualTo(historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo(historyPruned ? ErrorMessages.PrunedHistoryUnavailable
+                : byHash ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
+            Assert.That(result.IsTemporary, Is.EqualTo(byHash && temporary && !historyPruned));
         }
         _blockFinder.Received(byHash ? 2 : 1).FindBlock(header.Hash!,
             BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number);
@@ -341,6 +351,78 @@ public class DebugModuleTests
         using JsonRpcResponse response = await Request("debug_getRawReceipts", byHash ? pruned.Hash! : "0x1");
 
         Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+    }
+
+    [Test]
+    public void Debug_traceBlockByHash_missing_body_preserves_temporary_status(
+        [Values] bool temporary, [Values] bool historyPruned)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? 2UL : 0UL);
+        _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByHash(header.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo(historyPruned ? ErrorMessages.PrunedHistoryUnavailable : $"block {header.Hash} not found"));
+            Assert.That(response.IsTemporary, Is.EqualTo(temporary && !historyPruned));
+            _blockchainBridge.DidNotReceiveWithAnyArgs().HasStateForBlock(default!);
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default!, default, default);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_missing_history_classifies_pruned_and_unknown_selectors(
+        [Values] bool byHash, [Values] bool streamMode, [Values] bool knownHeader,
+        [Values] bool historyPruned, [Values] bool parentStateAvailable)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? 2UL : 0UL);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(parentStateAvailable);
+        if (knownHeader)
+        {
+            _blockFinder.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(header);
+            _blockFinder.FindHeader(new BlockParameter(header.Number)).Returns(header);
+        }
+        string method = byHash ? "debug_traceBlockByHash" : "debug_traceBlockByNumber";
+        object selector = byHash ? header.Hash! : header.Number;
+        string response = await SerializedRequest(method, selector, new { streamMode });
+        JObject json = JObject.Parse(response);
+        bool expectedPruned = historyPruned && (!byHash || knownHeader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedPruned ? ErrorMessages.PrunedHistoryUnavailable
+                : byHash ? $"block {header.Hash} not found" : $"block #{header.Number} not found"), response);
+            Assert.That(json.Property("result"), Is.Null, response);
+        }
+        _blockchainBridge.DidNotReceiveWithAnyArgs().HasStateForBlock(default!);
+        _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default!, default, default);
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_missing_header_preserves_temporary_status(
+        [Values] bool temporary, [Values] bool historyPruned)
+    {
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? 2UL : 0UL);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo(historyPruned ? ErrorMessages.PrunedHistoryUnavailable : "block #1 not found"));
+            Assert.That(response.IsTemporary, Is.EqualTo(temporary && !historyPruned));
+            _blockchainBridge.DidNotReceiveWithAnyArgs().HasStateForBlock(default!);
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default!, default, default);
+        }
     }
 
     private Block BlockAtNumberOne()
@@ -558,28 +640,42 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByHash_with_cache_only_body_reaches_replay([Values] bool streaming)
+    public Task Debug_traceBlockByHash_with_cache_only_body_reaches_replay([Values] bool streaming) =>
+        AssertTraceBodyReachesReplay(byHash: true, streaming, cachedOnly: true, historyPruned: false);
+
+    [Test]
+    public Task Debug_traceBlock_available_body_below_pruning_floor_reaches_replay(
+        [Values] bool byHash, [Values] bool streaming, [Values] bool cachedOnly) =>
+        AssertTraceBodyReachesReplay(byHash, streaming, cachedOnly, historyPruned: true);
+
+    private async Task AssertTraceBodyReachesReplay(bool byHash, bool streaming, bool cachedOnly, bool historyPruned)
     {
         Block parent = Build.A.Block.WithNumber(1).TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
-        _blockFinder.Head.Returns(parent);
+        _blockFinder.Head.Returns(historyPruned ? Build.A.Block.WithNumber(block.Number + 5).TestObject : parent);
         _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
+        _blockFinder.FindHeader(new BlockParameter(block.Number)).Returns(block.Header);
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? block.Number + 1 : 0UL);
+        _blockFinder.HasBlock(block.Number, block.Hash!).Returns(!cachedOnly);
         _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number).Returns(block);
+        _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
             Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>()).Returns(Array.Empty<GethLikeTxTrace>());
-        Assert.That(_blockFinder.HasBlock(block.Number, block.Hash!), Is.False);
+        Assert.That(_blockFinder.HasBlock(block.Number, block.Hash!), Is.EqualTo(!cachedOnly));
 
-        JToken response = JToken.Parse(await SerializedRequest("debug_traceBlockByHash", block.Hash!, new { tracer = "noopTracer", streamMode = streaming }));
+        JToken response = JToken.Parse(await SerializedRequest(byHash ? "debug_traceBlockByHash" : "debug_traceBlockByNumber",
+            byHash ? block.Hash! : (object)block.Number, new { tracer = "noopTracer", streamMode = streaming }));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response["error"], Is.Null, response.ToString());
             Assert.That(response["result"], Is.EqualTo(new JArray()).Using(JToken.EqualityComparer));
-            _blockFinder.Received(streaming ? 2 : 1).FindBlock(block.Hash!,
+            _blockFinder.Received(byHash ? streaming ? 2 : 1 : streaming ? 1 : 0).FindBlock(block.Hash!,
                 BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, block.Number);
+            _blockFinder.Received(byHash ? 0 : (cachedOnly ? 1 : 0) + (streaming ? 0 : 1)).FindBlock(block.Hash!, block.Number);
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(parameter => parameter.BlockHash == block.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
         }
