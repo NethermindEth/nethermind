@@ -41,7 +41,7 @@ public sealed class BlockTransactions
     private readonly ulong _blockNumber;
     private readonly ulong _blockTimestamp;
     private readonly UInt256 _baseFee;
-    private readonly IReleaseSpec? _spec;
+    private readonly IReleaseSpec _spec;
 
     private BlockTransactions(Hash256[]? hashes, TransactionForRpc[]? full)
     {
@@ -51,7 +51,7 @@ public sealed class BlockTransactions
 
     private BlockTransactions(ValueHash256[] flatHashes) => _flatHashes = flatHashes;
 
-    private BlockTransactions(Block block, ulong chainId, IReleaseSpec? spec)
+    private BlockTransactions(Block block, ulong chainId, IReleaseSpec spec)
     {
         _source = block.Transactions;
         _chainId = chainId;
@@ -74,7 +74,7 @@ public sealed class BlockTransactions
 
     /// <summary>Creates the full form as a view over <paramref name="block"/>'s transactions.</summary>
     /// <exception cref="ArgumentException">A transaction has a type with no registered RPC type, as building it eagerly would report.</exception>
-    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec? spec = null)
+    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec spec)
     {
         Transaction[] transactions = block.Transactions;
         if (transactions.Length == 0) return EmptyInstance;
@@ -108,7 +108,7 @@ public sealed class BlockTransactions
     /// <param name="reuse">An instance of the right type to refill instead of creating one, or <see langword="null"/>.</param>
     internal TransactionForRpc GetViewTransaction(int index, TransactionForRpc? reuse)
     {
-        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, spec: _spec);
+        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, _spec);
         Transaction transaction = _source![index];
         if (reuse is null) return TransactionForRpc.FromTransaction(transaction, context);
 

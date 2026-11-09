@@ -1156,6 +1156,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
@@ -1230,6 +1231,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>

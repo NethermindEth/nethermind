@@ -330,6 +330,7 @@ public class OptimismEthRpcModule(
                 txIndex: (int)positionIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
+                spec: _specProvider.GetSpec(block.Header),
                 receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
@@ -381,6 +382,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
+                            spec: _specProvider.GetSpec(block.Header),
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

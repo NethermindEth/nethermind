@@ -53,7 +53,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildMinimalFrameTx();
         tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _), Is.True);
-        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, spec: Eip8141Prototype.Instance);
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
 
         using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
 
