@@ -1379,11 +1379,11 @@ public partial class DebugRpcModuleTests
             ("genesis", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("genesis", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("genesis", "5s", false, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
-            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
-            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
+            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
             ("empty", "5s", false, null, null, raw, null, null),
             ("empty", "5s", true, null, null, raw, null, null),
-            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
             ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("empty", "bad", null, noop, null, raw, null, null),
             ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
@@ -2564,7 +2564,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(actual["result"], Is.Null, response);
                 Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
-                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.Contain("decoding block RLP"));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.StartWith("could not decode block:"));
             }
             return;
         }
@@ -3237,7 +3237,7 @@ public partial class DebugRpcModuleTests
             else
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain("decoding block RLP"), response);
+                Assert.That((string?)json["error"]?["message"], Does.StartWith("could not decode block:"), response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
