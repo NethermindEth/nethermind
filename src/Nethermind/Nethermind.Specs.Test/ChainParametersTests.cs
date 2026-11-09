@@ -119,6 +119,32 @@ public class ChainParametersTests
         }
     }
 
+    // EIP-8272's recent root contract reads SLOTNUM, so it activates at or after EIP-7843.
+    [TestCase(null, true)]
+    [TestCase(5UL, false)]
+    [TestCase(10UL, false)]
+    [TestCase(11UL, true)]
+    public void Eip8272_refuses_to_activate_before_eip7843(ulong? slotNumberTransition, bool refused)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip7843TransitionTimestamp = slotNumberTransition,
+                Eip8272TransitionTimestamp = 10
+            }
+        };
+        if (refused)
+        {
+            Assert.That(() => TestSpecHelper.LoadChainSpec(test),
+                Throws.Exception.With.InnerException.InstanceOf<InvalidConfigurationException>());
+            return;
+        }
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(test);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).IsEip8272Enabled, Is.True);
+    }
+
     [Test]
     public void Eip8288_aggregated_vk_switches_at_its_transition()
     {

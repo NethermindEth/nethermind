@@ -128,7 +128,8 @@ public class ExecutionPayloadV4Tests
     }
 
     // A Prague devnet that schedules EIP-8288 without Amsterdam keeps the Prague Engine API: newPayloadV4 carries an
-    // ExecutionPayloadV3 and forkchoiceUpdatedV3 its attributes, neither with a slot, so EIP-8288 must not enable EIP-7843.
+    // ExecutionPayloadV3 and forkchoiceUpdatedV3 its attributes, neither with a slot, so EIP-8288 must not enable EIP-7843, nor
+    // the EIP-8272 recent roots that read it.
     [Test]
     public void Prague_engine_api_accepts_eip8288_payloads_without_a_slot_number()
     {
@@ -190,6 +191,7 @@ public class ExecutionPayloadV4Tests
         {
             Assert.That(spec.IsEip8288Enabled, Is.True);
             Assert.That(spec.IsEip7843Enabled, Is.False);
+            Assert.That(spec.IsEip8272Enabled, Is.False);
             Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V4), Is.True);
             Assert.That(new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [])
                 .ValidateParams(spec, EngineApiVersions.NewPayload.V4, out string? payloadError), Is.EqualTo(ValidationResult.Success), payloadError);

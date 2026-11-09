@@ -591,7 +591,8 @@ public class GethGenesisLoaderTests
     [TestCase("eip7906PrototypeTime", false, false, true)]
     public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
+        // Amsterdam supplies the EIP-7843 slot numbers that EIP-8272 requires.
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 0, \"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
@@ -676,12 +677,12 @@ public class GethGenesisLoaderTests
             Assert.That(chainSpec.Parameters.Eip8288TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(15UL));
-            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.EqualTo(15UL));
+            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.Null);
             Assert.That(chainSpec.Parameters.Eip7906TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8288Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8288Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8250Enabled, Is.True);
-            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8272Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8272Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7906Enabled, Is.True);
         }
     }
@@ -1176,7 +1177,7 @@ public class GethGenesisLoaderTests
             if (forks[i].Fork is Eip8288Prototype or Eip8250Prototype or Eip8272Prototype or Eip7906Prototype)
                 forks[i] = forks[i] with { ActivationValue = framesActivation };
 
-        // Overlapping prototype labels must agree: EIP-8288's prototype also enables EIP-8141, EIP-8250, EIP-8272 and EIP-7906.
+        // Overlapping prototype labels must agree: EIP-8288's prototype also enables EIP-8141, EIP-8250 and EIP-7906.
         // Bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
         string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));

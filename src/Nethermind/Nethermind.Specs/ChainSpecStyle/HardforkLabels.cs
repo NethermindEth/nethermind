@@ -69,6 +69,11 @@ public static partial class HardforkLabels
             throw new InvalidConfigurationException(
                 $"EIP-8288 at 0x{target.Eip8288TransitionTimestamp:x} cannot activate before the EIP-7843 slot numbers it extends at 0x{target.Eip7843TransitionTimestamp:x}.",
                 ExitCodes.ConflictingChainspecEipConfiguration);
+        // EIP-8272 activates at or after EIP-7843: its recent root contract reads SLOTNUM, which only EIP-7843 defines.
+        if (target.Eip8272TransitionTimestamp is { } recentRoots && (target.Eip7843TransitionTimestamp ?? ulong.MaxValue) > recentRoots)
+            throw new InvalidConfigurationException(
+                $"EIP-8272 at 0x{recentRoots:x} cannot activate before the EIP-7843 slot numbers it reads{(target.Eip7843TransitionTimestamp is { } slots ? $" at 0x{slots:x}" : "")}.",
+                ExitCodes.ConflictingChainspecEipConfiguration);
     }
 
     /// <param name="name">Fork class name (e.g. <c>Homestead</c>); the JSON wire key is its camelCase form.</param>
