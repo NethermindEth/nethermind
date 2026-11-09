@@ -233,11 +233,11 @@ public sealed class SnapshotBundle : IDisposable
     internal Snapshot? StateSnapshot => _snapshots.Count > 0 ? _snapshots[^1] : _readOnlySnapshotBundle.StateSnapshot;
 
     /// <summary>Runs a tree visitor over the trie at <paramref name="rootHash"/> by following trie node buffer record pointers.</summary>
-    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 rootHash, VisitingOptions options, VisitingStats? diagnostics)
+    internal void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, Hash256 rootHash, VisitingOptions options, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
         GuardDispose();
-        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, TreeVisitorAdapter<TCtx>.For(visitor), options, diagnostics).Accept(rootHash);
+        new NodeRecordBufferVisitor<TCtx>(_readOnlySnapshotBundle, StateSnapshot, visitor, options, diagnostics).Accept(rootHash);
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>

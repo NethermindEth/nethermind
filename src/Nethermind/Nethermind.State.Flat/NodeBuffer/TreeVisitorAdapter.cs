@@ -13,10 +13,6 @@ namespace Nethermind.State.Flat.NodeBuffer;
 internal sealed class TreeVisitorAdapter<TNodeContext>(ITreeVisitor<TNodeContext> visitor) : INodeRecordVisitor<TNodeContext>
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
-    /// <summary>The visitor itself when it takes records, otherwise an adapter over it.</summary>
-    public static INodeRecordVisitor<TNodeContext> For(ITreeVisitor<TNodeContext> visitor) =>
-        visitor as INodeRecordVisitor<TNodeContext> ?? new TreeVisitorAdapter<TNodeContext>(visitor);
-
     public bool IsFullDbScan => visitor.IsFullDbScan;
 
     public bool ExpectAccounts => visitor.ExpectAccounts;

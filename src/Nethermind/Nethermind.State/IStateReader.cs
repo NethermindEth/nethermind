@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State
 {
@@ -32,6 +33,11 @@ namespace Nethermind.State
         /// <c>proof_getProofWithMeta</c>).
         /// </summary>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
+
+        /// <summary>Runs a node record visitor against the state at <paramref name="baseBlock"/>.</summary>
+        /// <remarks>Unless overridden, it runs as an <see cref="ITreeVisitor{TNodeContext}"/>, through a <see cref="NodeRecordVisitorAdapter{TNodeContext}"/>.</remarks>
+        void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
+            RunTreeVisitor(new NodeRecordVisitorAdapter<TCtx>(visitor), baseBlock, visitingOptions, diagnostics);
 
         bool HasStateForBlock(BlockHeader? baseBlock);
     }

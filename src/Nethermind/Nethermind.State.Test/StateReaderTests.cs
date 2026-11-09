@@ -285,7 +285,7 @@ namespace Nethermind.Store.Test
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
+                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h, visitingOptions: null, diagnostics: null))).SetName("RunTreeVisitor");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     Assert.That(r.DumpState(h), Is.Not.Empty))).SetName("DumpState");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>

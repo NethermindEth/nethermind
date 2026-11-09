@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test
             NodeStorage nodeStorage = new(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            IStateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             BlockHeader baseBlock;
 
             using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
@@ -66,7 +66,7 @@ namespace Nethermind.Store.Test
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
+            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions, diagnostics: null);
             TrieStats stats = statsCollector.Stats;
 
             using (Assert.EnterMultipleScope())

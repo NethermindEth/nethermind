@@ -18,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -255,7 +256,7 @@ public class FlatStateReaderTests
         public TrieStats CollectStats()
         {
             TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
-            stateTree.Accept(collector, stateTree.RootHash);
+            stateTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), stateTree.RootHash);
             return collector.Stats;
         }
 
