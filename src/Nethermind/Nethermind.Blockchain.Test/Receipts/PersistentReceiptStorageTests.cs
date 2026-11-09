@@ -860,6 +860,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(single, Is.TypeOf<MarkedTxReceipt>(), "single receipt read with the registered decoder");
             Assert.That(decoder.MarkedRefReads, Is.EqualTo(1), "iterator reads with the registered decoder");
             Assert.That(_storage.Get(block), Has.Exactly(1).TypeOf<MarkedTxReceipt>(), "block receipts read with the registered decoder");
+            Assert.That(((IReceiptMigrationStore)_storage).GetForMigration(block.Number, block.Hash!), Has.Exactly(1).TypeOf<MarkedTxReceipt>(), "migration reads with the registered decoder");
         }
     }
 
