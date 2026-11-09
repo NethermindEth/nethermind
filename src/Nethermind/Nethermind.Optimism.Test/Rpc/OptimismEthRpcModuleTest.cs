@@ -654,11 +654,11 @@ public class OptimismEthRpcModuleTest
         Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 0, 0 }), "a transaction the node did not sign must not use up a nonce of its from");
     }
 
-    [TestCase(StateFailure.MissingTrieNode, typeof(MissingTrieNodeException))]
-    [TestCase(StateFailure.CorruptTrieNode, typeof(TrieNodeException))]
-    [TestCase(StateFailure.SnapshotNotGathered, typeof(InvalidOperationException))]
-    [TestCase(StateFailure.StoreClosed, typeof(ObjectDisposedException))]
-    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, Type error)
+    [TestCase(StateFailure.MissingTrieNode, ErrorCodes.ResourceNotFound)]
+    [TestCase(StateFailure.CorruptTrieNode, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.SnapshotNotGathered, ErrorCodes.InternalError)]
+    [TestCase(StateFailure.StoreClosed, ErrorCodes.InternalError)]
+    public async Task Forwarding_node_forwards_an_explicit_nonce_without_the_head_state(StateFailure failure, int errorCode)
     {
         RecordingSequencer sequencer = new();
         HeadState headState = new() { Failure = failure };
@@ -669,7 +669,7 @@ public class OptimismEthRpcModuleTest
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(withoutNonce)["error"]?["data"]?.Value<string>(), Does.Contain(error.FullName),
+            Assert.That(JToken.Parse(withoutNonce)["error"]?["code"]?.Value<int>(), Is.EqualTo(errorCode),
                 "without the head state there is no nonce to fill, so the state error stops the send");
             Assert.That(sequencer.ReceivedNonces, Is.EqualTo(new ulong[] { 5 }), "a request with its nonce needs no head state");
         }
@@ -1590,6 +1590,26 @@ public class OptimismEthRpcModuleTest
                          }
                          """;
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task GetBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing([Values] bool canonical, [Values] bool byHash)
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithHash(TestItem.KeccakA).WithSenderAddress(TestItem.AddressA).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakC).TestObject).WithTransactions(tx).TestObject;
+        IBlockFinder blockFinder = MockBlockFinder(block);
+        if (canonical)
+        {
+            blockFinder.Head.Returns(block);
+            blockFinder.IsMainChain(block.Header).Returns(true);
+        }
+
+        using TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(blockFinder, MockReceiptFinder(block));
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", byHash ? new BlockParameter(block.Hash!) : new BlockParameter(block.Number));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(),
+            Is.EqualTo(canonical ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), serialized);
     }
 
     [Test]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.JsonRpc.Modules.Admin.Models;
 using Nethermind.Network.Contract.P2P;
 
@@ -48,6 +49,7 @@ public class NodeInfo
 
     public string? Ip { get; set; }
 
+    [JsonPropertyName("listenAddr")]
     public string ListenAddress { get; set; }
 
     public string Name { get; set; }

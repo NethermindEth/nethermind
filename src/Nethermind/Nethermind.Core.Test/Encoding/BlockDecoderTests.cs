@@ -267,6 +267,29 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Header_behaviors_reach_the_encoded_header()
+    {
+        // A zero base fee with no later header field is written only under Eip1559Header.
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0)
+            .WithTransactions(Build.A.Transaction.WithNonce(1).Signed().TestObject, Build.A.Transaction.WithNonce(2).Signed().TestObject)
+            .TestObject;
+        BlockDecoder decoder = new();
+
+        byte[] encoded = decoder.Encode(block, RlpBehaviors.Eip1559Header).Bytes;
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(block, RlpBehaviors.Eip1559Header);
+        RlpReader ctx = new(encoded);
+        Block decoded = decoder.Decode(ref ctx)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Length, Is.EqualTo(decoder.GetLength(block, RlpBehaviors.Eip1559Header)));
+            Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(encoded));
+            Assert.That(decoded.Header.Hash, Is.EqualTo(block.Header.CalculateHash(RlpBehaviors.Eip1559Header)));
+            Assert.That(decoded.Transactions, Has.Length.EqualTo(2));
+        }
+    }
+
+    [Test]
     public void Encode_with_pre_encoded_typed_transactions_produces_same_rlp()
     {
         Transaction[] transactions =

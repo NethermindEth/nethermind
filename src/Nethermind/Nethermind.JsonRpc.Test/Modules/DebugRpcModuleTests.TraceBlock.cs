@@ -2191,10 +2191,10 @@ public partial class DebugRpcModuleTests
 
     private const string JavaScriptResultDepthError = "JavaScript tracer result exceeds the maximum depth of 4096 (possibly cyclic)";
 
-    [TestCase("throw Error('result failure');", "Error: result failure", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
-    [TestCase("var o={};o.self=o;return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_cyclic")]
-    [TestCase("var o=1;for(var i=0;i<5000;i++)o={a:o};return o;", JavaScriptResultDepthError, TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_deep")]
-    public async Task Debug_traceCall_fails_on_a_javascript_result_failure(string resultBody, string expected)
+    [TestCase("throw Error('result failure');", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_thrown")]
+    [TestCase("var o={};o.self=o;return o;", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_cyclic")]
+    [TestCase("var o=1;for(var i=0;i<5000;i++)o={a:o};return o;", TestName = "Debug_traceCall_fails_on_a_javascript_result_failure_deep")]
+    public async Task Debug_traceCall_fails_on_a_javascript_result_failure(string resultBody)
     {
         using Context ctx = await Context.Create();
         object call = new { to = TestItem.AddressC.ToString() };
@@ -2209,7 +2209,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["result"], Is.Null, response);
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
-            Assert.That((string?)json["error"]?["data"], Does.Contain(expected), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
         }
     }
