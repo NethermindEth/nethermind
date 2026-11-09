@@ -263,10 +263,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = null;
         parameterCount = 0;
         returnParametersToPool = false;
-        ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
-        ExpectedParameter[] expectedParameters = method.ExpectedParameters;
-        bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
-        JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
         LogRequest(methodName);
 
@@ -274,6 +270,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "non-array args", null, in request.IdRef);
         }
+
+        ReadOnlyMemory<byte> providedParametersUtf8 = request.ParamsUtf8;
+        ExpectedParameter[] expectedParameters = method.ExpectedParameters;
+        bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
+        JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
         return expectedParameters.Length == 0
             ? PrepareNoParameters(
