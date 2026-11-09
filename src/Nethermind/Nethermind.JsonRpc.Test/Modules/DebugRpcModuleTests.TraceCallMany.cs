@@ -152,6 +152,21 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Debug_traceCallMany_runs_a_signed_call_as_its_from([Values] bool fromOmitted, [Values] bool streaming)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(ctx.Blockchain.EthereumEcdsa, ctx.Blockchain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], new GethTraceOptions { Tracer = "callTracer" });
+
+        string? caller = (string?)result[0][0]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), result.ToString());
+    }
+
     [Test]
     public async Task Debug_traceCallMany_respects_gas_cap()
     {

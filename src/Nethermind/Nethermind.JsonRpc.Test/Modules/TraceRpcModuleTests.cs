@@ -3512,6 +3512,29 @@ public class TraceRpcModuleTests
         }
     }
 
+    /// <summary>A signed call of <c>trace_call</c> and <c>trace_callMany</c> runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Trace_call_runs_a_signed_call_as_its_from(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool fromOmitted, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(blockchain.EthereumEcdsa, blockchain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [call, traceTypes, "latest"]
+            : [new[] { new object[] { call, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        JToken? result = JToken.Parse(response)["result"];
+        string? caller = (string?)(method == "trace_call" ? result : result?[0])?["trace"]?[0]?["action"]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
+    }
+
     [Test]
     public void trace_transaction_WhenReceiptPointsToNonCanonicalBlock_ReturnsNotCanonicalError()
     {
