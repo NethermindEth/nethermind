@@ -82,6 +82,15 @@ public static class BlobRlpConverterExt
 public record Blobs(List<Blob> Items);
 
 [RlpSerializable]
+public record BlobPair((Blob, Blob) Values);
+
+[RlpSerializable]
+public record BlobMap(Dictionary<Blob, Blob> Values);
+
+[RlpSerializable]
+public record BlobPairList(List<(Blob, Blob)> Values);
+
+[RlpSerializable]
 public record UnhintedEntry(byte[] Address, List<byte[]> Keys);
 
 [RlpSerializable(RlpRepresentation.Newtype)]
@@ -339,6 +348,68 @@ public class RlpDerivedTest
         => Assert.That(static () => Rlp.Write<BlobsRlpConverter, Blobs>(new Blobs([new Blob(new byte[31]), new Blob(new byte[33])])), Throws.InvalidOperationException);
 
     [Test]
+    public void NestedFixedLengthValues([Values(31, 32, 33)] int firstLength, [Values(31, 32, 33)] int secondLength, [Values] bool dictionary, [Values] bool read)
+    {
+        Blob first = new(new byte[firstLength]);
+        Blob second = new(new byte[secondLength]);
+        byte[] encoded = [];
+        if (read)
+        {
+            encoded = Rlp.Write(dictionary, (ref RlpWriter w, bool dictionary) => w.WriteSequence(dictionary, (ref RlpWriter w, bool dictionary) =>
+            {
+                if (dictionary)
+                {
+                    w.WriteSequence((first, second), static (ref RlpWriter w, (Blob First, Blob Second) pair) =>
+                        w.WriteSequence(pair, static (ref RlpWriter w, (Blob First, Blob Second) pair) =>
+                        {
+                            w.Write(pair.First.Bytes);
+                            w.Write(pair.Second.Bytes);
+                        }));
+                }
+                else
+                {
+                    w.Write(first.Bytes);
+                    w.Write(second.Bytes);
+                }
+            }));
+        }
+
+        void Convert()
+        {
+            if (read)
+            {
+                if (dictionary) _ = Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobMap());
+                else _ = Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPair());
+            }
+            else
+            {
+                if (dictionary) _ = Rlp.Write(new BlobMap(new() { [first] = second }), static (ref RlpWriter w, BlobMap value) => w.Write(value));
+                else _ = Rlp.Write(new BlobPair((first, second)), static (ref RlpWriter w, BlobPair value) => w.Write(value));
+            }
+        }
+
+        if (firstLength == 32 && secondLength == 32) Assert.That(Convert, Throws.Nothing);
+        else if (read) Assert.That(Convert, Throws.TypeOf<RlpReaderException>());
+        else Assert.That(Convert, Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void ListOfFixedLengthPairs([Values(31, 32, 33)] int firstLength)
+    {
+        BlobPairList value = new([(new Blob(new byte[firstLength]), new Blob(new byte[64 - firstLength]))]);
+        if (firstLength == 32)
+        {
+            AssertDirect<BlobPairListRlpConverter, BlobPairList>(value);
+            byte[] encoded = Rlp.Write<BlobPairListRlpConverter, BlobPairList>(value);
+            Assert.That(Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPairList()), Is.EqualTo(value).UsingPropertiesComparer());
+        }
+        else
+        {
+            Assert.That(() => Rlp.Write<BlobPairListRlpConverter, BlobPairList>(value), Throws.InvalidOperationException);
+        }
+    }
+
+    [Test]
     public void LengthConverterThatDoesNotEndASequence()
         => Assert.That(static () => Rlp.Write<OpenSequenceConverter, int>(0), Throws.InvalidOperationException);
 
@@ -352,6 +423,35 @@ public class RlpDerivedTest
     [Test]
     public void BufferedWriteWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write(new NamedEntry(new byte[19], "name"), static (ref RlpWriter w, NamedEntry entry) => w.Write(entry)), Throws.InvalidOperationException);
+
+    [Test]
+    public void WrongFixedLengthDoesNotAllocatePayload()
+    {
+        byte[] encoded = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
+        {
+            w.Write(new byte[1 << 20]);
+            w.WriteSequence(static (ref RlpWriter _) => { });
+        }));
+        Reject(encoded);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Reject(encoded);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(allocated, Is.LessThan(4096));
+
+        static void Reject(byte[] encoded)
+        {
+            try
+            {
+                Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadFixedEntry());
+            }
+            catch (RlpReaderException)
+            {
+                return;
+            }
+
+            Assert.Fail("Expected invalid fixed length");
+        }
+    }
 
     private static void AssertDirect<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
     {
@@ -412,6 +512,13 @@ public class RlpDerivedTest
     [TestCase("public record Chunks(byte[][] A, int[][] B, (int, long)[] C, (byte[], int)[] D, System.Collections.Generic.List<int[]>[] E);", null, TestName = "Arrays of arrays and tuples")]
     [TestCase("internal record Hidden(int A);", null, TestName = "Internal record")]
     [TestCase("public record Names(int @class, string value, int r, int w, System.Collections.Generic.List<System.Collections.Generic.List<int>> items, int _0);", null, TestName = "Keyword and generated names as parameters")]
+    [TestCase("public record Account(int Nonce) { public readonly int Balance = 0; public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Readonly initialized field reassigned by constructor")]
+    [TestCase("public record Account(int Nonce) { public int Balance { get => field; init => field = value; } }", "RLP0002", TestName = "Field-backed settable property")]
+    [TestCase("public partial record Account(int Nonce) { public readonly int Balance = 0; } public partial record Account { public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Readonly field assigned in another part")]
+    [TestCase("public record Account(int Nonce) { public int Balance { get; } = 0; public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Initialized get-only property reassigned by constructor")]
+    [TestCase("public record Account(int Nonce) { public readonly int Balance = Nonce * 2; public Account(string nonce) : this(int.Parse(nonce)) { } }", null, TestName = "Derived field with delegating constructor")]
+    [TestCase("public record Account(int Nonce) { public int Balance => Nonce * 2; }", null, TestName = "Computed property without storage")]
+    [TestCase("public record Account(int Nonce) { public readonly int Balance = 0; public Account(int nonce, int balance) : this(nonce) { (Balance, Nonce) = (balance, nonce); } }", "RLP0002", TestName = "Readonly field assigned by deconstruction")]
     public void GeneratorDiagnostics(string declaration, string? expectedId)
     {
         string source = $"""
