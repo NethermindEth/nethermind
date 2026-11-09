@@ -18,6 +18,8 @@ namespace Nethermind.Store.Test.NodeBuffer;
 internal class NodeRecordCodecTests
 {
     private const string ShortLeaf = "c482201205";
+    // A branch of two leaves with one key nibble and a one-byte value, short enough to be embedded, which keccak keys only theoretically make.
+    private const string EmbeddedBranch = "d5" + "c23101" + "c23201" + "808080808080808080808080808080";
 
     private static string HashItem(char digit) => "a0" + new string(digit, 64);
 
@@ -38,6 +40,9 @@ internal class NodeRecordCodecTests
             .SetName("inline branch, inline child at 0");
         yield return new TestCaseData("f5" + Repeat("80", 3) + HashItem('8') + Repeat("80", 11) + ShortLeaf + "80", NodeRecordKind.InlineBranch, (ushort)0x0008)
             .SetName("inline branch, inline child at 15");
+        yield return new TestCaseData("d710" + EmbeddedBranch, NodeRecordKind.Extension, (ushort)0).SetName("extension, embedded branch child");
+        yield return new TestCaseData("f848" + "d710" + EmbeddedBranch + HashItem('9') + Repeat("80", 15), NodeRecordKind.InlineBranch, (ushort)0x0002)
+            .SetName("inline branch, embedded extension child over an embedded branch");
     }
 
     [TestCaseSource(nameof(RecordCases))]
@@ -69,7 +74,7 @@ internal class NodeRecordCodecTests
         }
     }
 
-    [TestCase("d7c611c482201205" + "80808080808080808080808080808080", TestName = "inline extension")]
+    [TestCase("d710" + "d5c23101c23201" + "8080808080808080808080808080" + "01", TestName = "embedded branch value")]
     [TestCase("f851"
         + "a01111111111111111111111111111111111111111111111111111111111111111"
         + "a02222222222222222222222222222222222222222222222222222222222222222"
