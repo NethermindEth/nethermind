@@ -300,6 +300,28 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    [TestCase("latest", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("head hash", ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase("unprocessed side-chain hash", ErrorCodes.ResourceNotFound)]
+    public async Task Eth_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing(string selector, int expectedCode)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        Block head = test.BlockTree.Head!;
+        Block sideChain = Build.A.Block.WithParent(test.BlockTree.FindBlock(head.ParentHash!)!)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
+            .WithExtraData([1])
+            .TestObject;
+        test.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        test.ReceiptStorage.RemoveReceipts(head);
+        Block block = selector == "unprocessed side-chain hash" ? sideChain : head;
+        Assert.That(block.Transactions, Is.Not.Empty, "precondition: the block has transactions");
+
+        string serialized = await test.TestEthRpc("eth_getBlockReceipts", selector == "latest" ? "latest" : block.Hash!.ToString());
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode), serialized);
+    }
+
     [Test]
     public async Task Eth_config_includes_builder_request_contracts()
     {
@@ -1260,7 +1282,7 @@ public partial class EthRpcModuleTests
 
         string message = $"From block {expectedFromBlock} is later than to block 0.";
         Assert.That(serialized, Is.EqualTo(
-            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}"},"id":67}"""));
     }
 
     [TestCase("""{"fromBlock":"0x1","toBlock":"0x64"}""", ErrorCodes.InvalidParams)]
@@ -1659,6 +1681,31 @@ public partial class EthRpcModuleTests
         string serialized2 = await ctx.Test.TestEthRpc("eth_getBlockByNumber", blockParameter);
         Assert.That(serialized2, Is.EqualTo(expectedResult), serialized2);
     }
+
+    [Test]
+    public async Task Earliest_resolves_to_the_lowest_served_block_when_history_is_pruned(
+        [Values("eth_getBlockByNumber", "eth_getHeaderByNumber", "eth_getBlockReceipts", "eth_getBlockTransactionCountByNumber",
+            "eth_getTransactionByBlockNumberAndIndex", "eth_feeHistory")] string method)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.BlockTree.NewOldestBlock(2);
+
+        string earliest = await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "earliest"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earliest, Is.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x2"))));
+            Assert.That(earliest, Is.Not.EqualTo(await ctx.Test.TestEthRpc(method, EarliestTestParameters(method, "0x0"))));
+        }
+    }
+
+    private static object?[] EarliestTestParameters(string method, string block) => method switch
+    {
+        "eth_getBlockByNumber" => [block, true],
+        "eth_getTransactionByBlockNumberAndIndex" => [block, "0x0"],
+        "eth_feeHistory" => ["0x1", block, Array.Empty<double>()],
+        _ => [block],
+    };
 
     [Test]
     public async Task Eth_getBlockByNumber_pending_fields_should_be_null([Values("hash", "nonce", "miner")] string field)
@@ -2274,6 +2321,32 @@ public partial class EthRpcModuleTests
             Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
         }
         bridge.Received(1).GetChainId();
+    }
+
+    [Test]
+    public async Task Eth_chain_id_failure_has_no_error_data()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        using Context ctx = await Context.Create(blockchainBridge: bridge);
+        _ = ctx.Test;
+        bridge.GetChainId().Throws(new InvalidOperationException("chain id unavailable"));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_chainId");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32603,"message":"chain id unavailable"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_revert_without_output_reports_empty_hex_data()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        string code = Prepare.EvmCode.Revert(0, 0).Done.ToHexString(true);
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{code}}", "gas": 1000000}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x"},"id":67}"""));
     }
 
     [Test]

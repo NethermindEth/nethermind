@@ -16,22 +16,20 @@ public class MetaTests : DirectoryMetaTests<BcPrefix>
     protected override string GetTestsDirectory() => Path.Combine(base.GetTestsDirectory(), "Tests");
 }
 
-public class ArrowGlacierToMerge : LegacyBlockchainTestFixture<ArrowGlacierToMerge>;
-
 public class ArrowGlacierToParis : LegacyBlockchainTestFixture<ArrowGlacierToParis>;
 
 [NonParallelizable]
-public class BerlinToLondon : BlockchainTestFixture<BerlinToLondon>;
+public class BerlinToLondon : LegacyBlockchainTestFixture<BerlinToLondon>;
 
-public class ByzantiumToConstantinopleFix : BlockchainTestFixture<ByzantiumToConstantinopleFix>;
+public class ByzantiumToConstantinopleFix : LegacyBlockchainTestFixture<ByzantiumToConstantinopleFix>;
 
-public class EIP158ToByzantium : BlockchainTestFixture<EIP158ToByzantium>;
+public class EIP158ToByzantium : LegacyBlockchainTestFixture<EIP158ToByzantium>;
 
-public class FrontierToHomestead : BlockchainTestFixture<FrontierToHomestead>;
+public class FrontierToHomestead : LegacyBlockchainTestFixture<FrontierToHomestead>;
 
-public class HomesteadToDao : BlockchainTestFixture<HomesteadToDao>;
+public class HomesteadToDao : LegacyBlockchainTestFixture<HomesteadToDao>;
 
-public class HomesteadToEIP150 : BlockchainTestFixture<HomesteadToEIP150>;
+public class HomesteadToEIP150 : LegacyBlockchainTestFixture<HomesteadToEIP150>;
 
 public class MergeToShanghai : LegacyBlockchainTestFixture<MergeToShanghai>;
 

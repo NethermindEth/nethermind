@@ -25,6 +25,7 @@ public class TxPoolConfig : ITxPoolConfig
     public ulong FrameTxMaxVerifyGas { get; set; } = DefaultFrameTxMaxVerifyGas;
     public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
     public int FrameTxMaxPendingPerDelegatingCode { get; set; } = 16;
+    public int FrameTxMaxCodeDependencies { get; set; } = 8;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
     public bool FrameTxPeerSimulationFairShare { get; set; } = false;

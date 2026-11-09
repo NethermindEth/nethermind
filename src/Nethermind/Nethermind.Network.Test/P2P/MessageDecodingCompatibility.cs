@@ -69,7 +69,39 @@ public static class MessageDecodingCompatibility
     }
 
     /// <summary>
-    /// Mirrors <c>ProtocolHandlerBase.Deserialize</c>, which accepts a message only if decoding it reads the whole payload.
+    /// Asserts that decoding every truncation of the sample's payload, the payload itself and the payload with a trailing byte
+    /// leaves the received buffer as it was once the message, if any, is disposed.
+    /// </summary>
+    /// <remarks>
+    /// An <see cref="IOwningMessageSerializer{T}"/> takes a reference to the buffer, which it must give back on every path.
+    /// The payload follows a byte in the buffer, as a message follows its packet type.
+    /// </remarks>
+    public static void AssertReleasesBuffer(IMessageSerializationService service, Sample sample)
+    {
+        byte[] payload = sample.Payload(service);
+        for (int length = 0; length <= payload.Length + 1; length++)
+        {
+            IByteBuffer buffer = Unpooled.Buffer(length + 1);
+            buffer.WriteByte(0);
+            buffer.WriteBytes(payload.AsSpan(0, Math.Min(length, payload.Length)));
+            if (length > payload.Length) buffer.WriteByte(0);
+            buffer.SkipBytes(1);
+            try
+            {
+                using P2PMessage message = sample.Deserialize(service, buffer);
+            }
+            catch (Exception exception) when (exception is not AssertionException)
+            {
+            }
+
+            Assert.That(buffer.ReferenceCount, Is.EqualTo(1), $"{length} of {payload.Length} bytes");
+            buffer.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reports whether the payload decodes. Each serializer rejects a payload it does not read in full where the
+    /// handlers require that.
     /// </summary>
     public static bool IsAccepted(IMessageSerializationService service, Func<IMessageSerializationService, IByteBuffer, P2PMessage> deserialize, byte[] payload)
     {
@@ -78,7 +110,7 @@ public static class MessageDecodingCompatibility
         try
         {
             using P2PMessage message = deserialize(service, buffer);
-            return !buffer.IsReadable();
+            return true;
         }
         catch (Exception exception) when (exception is not AssertionException)
         {

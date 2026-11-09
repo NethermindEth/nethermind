@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool
@@ -20,7 +19,6 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
     internal sealed class TxPoolInspectionConverter : JsonConverter<TxPoolInspection>
     {
-        private static readonly AddressAsKeyConverter AddressConverter = new();
         private static readonly TxPoolTxKeyConverter KeyConverter = new();
 
         public override TxPoolInspection Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
@@ -44,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             writer.WriteStartObject();
             foreach (KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> byAddress in source)
             {
-                AddressConverter.WriteAsPropertyName(writer, byAddress.Key, options);
+                writer.WritePropertyName(((Address)byAddress.Key).ToString(withZeroX: true, withEip55Checksum: true));
                 writer.WriteStartObject();
                 foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in byAddress.Value)
                 {
@@ -57,6 +55,9 @@ namespace Nethermind.JsonRpc.Modules.TxPool
         }
 
         private static string GetTransactionSummary(Transaction tx)
-            => $"{tx.SenderAddress}: {tx.Value} wei + {tx.GasLimit} × {tx.GasPrice} gas";
+        {
+            string recipient = tx.To?.ToString(withZeroX: true, withEip55Checksum: true) ?? "contract creation";
+            return $"{recipient}: {tx.Value} wei + {tx.GasLimit} gas × {tx.MaxFeePerGas} wei";
+        }
     }
 }

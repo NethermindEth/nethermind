@@ -343,6 +343,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task parity_getBlockReceipts_fails_when_the_receipts_of_a_block_with_transactions_are_missing()
+        {
+            _receiptStorage.RemoveReceipts(_blockTree.Head!);
+
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_getBlockReceipts", "latest");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
+        }
+
+        [Test]
         public async Task parity_enode()
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_enode");

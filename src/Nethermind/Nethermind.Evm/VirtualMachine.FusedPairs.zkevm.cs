@@ -80,10 +80,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     internal static nint[] PairHandlers(ReadOnlySpan<nint> handlers)
     {
         const int length = FollowerHandlersLength + PairedHandlersLength;
+        // Pinned, so a frame entering dispatch addresses it without pinning it again.
         nint[] paired;
         if (CompactsHandlers)
         {
-            paired = GC.AllocateUninitializedArray<nint>(length * sizeof(uint) / sizeof(ulong));
+            paired = GC.AllocateUninitializedArray<nint>(length * sizeof(uint) / sizeof(ulong), pinned: true);
             Span<uint> entries = MemoryMarshal.Cast<nint, uint>(paired.AsSpan());
             entries[..FollowerHandlersLength].Fill(CompactEntry(handlers[(int)Instruction.PUSH1]));
             Span<uint> first = entries.Slice(FollowerHandlersLength, byte.MaxValue + 1);
@@ -94,7 +95,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         else
         {
-            paired = GC.AllocateUninitializedArray<nint>(length);
+            paired = GC.AllocateUninitializedArray<nint>(length, pinned: true);
             paired.AsSpan(0, FollowerHandlersLength).Fill(handlers[(int)Instruction.PUSH1]);
             for (int block = FollowerHandlersLength; block < paired.Length; block += byte.MaxValue + 1)
                 handlers.CopyTo(paired.AsSpan(block));
@@ -146,7 +147,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint PairAt(ref byte ip) =>
-            StrictAlignmentFlag.IsActive ? ip | (Unsafe.Add(ref ip, 1) << 8) : Unsafe.ReadUnaligned<ushort>(ref ip);
+            StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive ? ip | (Unsafe.Add(ref ip, 1) << 8) : Unsafe.ReadUnaligned<ushort>(ref ip);
 
         /// <summary>Installs the fused handlers of the pairs that run often enough in mainnet blocks to pay for one.</summary>
         /// <param name="handlers">The 256-entry table the paired one expands.</param>
@@ -530,7 +531,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteJumpAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -546,7 +547,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The second word becomes the top for the JUMP either way.
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 nuint target = (nuint)destination;
-                if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
+                if (FitsNativeWord(ref destination) &&
                     target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
@@ -555,7 +556,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         TFirst.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                         head += TFirst.Growth;
                         sp = ref Moved(ref sp, TFirst.Growth);
-                        gas += JumpGasCost.GasCost + JumpDestGasCost.GasCost;
+                        gas += (nuint)(JumpGasCost.GasCost + JumpDestGasCost.GasCost);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
@@ -572,7 +573,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += fusedGas;
+                gas += (nuint)fusedGas;
             }
 
             nint alone = TFirst.Handler;
@@ -597,7 +598,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteMStoreAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -631,7 +632,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += VeryLowGasCost.GasCost;
+                gas += (nuint)VeryLowGasCost.GasCost;
                 nint store = Entry(&ExecuteMStoreInsideBacking);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, store);
             }
@@ -649,7 +650,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteMLoadAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -659,7 +660,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TFirst : struct, IStackStep
         {
             // The step and the MLOAD are charged in one test; an MLOAD that does not run here pays its share back.
-            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && TryCharge(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
+            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && ChargeUntested(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 TFirst.Apply(ref end, ref ip);
@@ -669,7 +670,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedRange(slot, EvmStack.WordSize);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         LoadBigEndian(ref slot, ref source);
@@ -679,7 +680,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += VeryLowGasCost.GasCost;
+                gas += (nuint)VeryLowGasCost.GasCost;
                 nint load = Entry(&ExecuteMLoadFromActiveMemory);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, load);
             }
@@ -694,7 +695,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1MLoad(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -702,9 +703,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+            if (head < EvmStack.MaxStackSize - 1 && ChargeUntested(ref gas, 2 * VeryLowGasCost.GasCost))
             {
-                ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
+                ref byte source = ref AlignedMemory(ref state).GetActiveInitializedRange(Unsafe.Add(ref ip, 1), EvmStack.WordSize);
                 if (!Unsafe.IsNullRef(ref source))
                 {
                     LoadBigEndian(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);
@@ -715,7 +716,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Push1Step.Handler;
@@ -728,7 +729,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1MStore(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -752,7 +753,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Push1Step.Handler;
@@ -772,7 +773,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1Jump<TConditional>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -786,7 +787,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (TConditional.IsActive)
                 {
                     ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                    if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                    if (IsZeroWord(ref condition))
                     {
                         if (TryCharge(ref gas, VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
                         {
@@ -808,7 +809,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!stack.IsAnalyzedJumpDestination(destination))
                     {
                         // The analysis charges the jump itself.
-                        gas += jumpGas;
+                        gas += (nuint)jumpGas;
                         SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), destination);
                         ip = ref Unsafe.Add(ref ip, 2);
                         head++;
@@ -843,7 +844,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1ByFollower(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -867,7 +868,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1OneByFollower(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            // The mask runs in a handler of its own, which needs a frame: a PUSH1 1 before anything else keeps none.
+            byte following = Unsafe.Add(ref ip, 2);
+            nint next = following == (byte)Instruction.PUSH1 && Unsafe.Add(ref ip, 3) == 1
+                ? Entry(&ExecutePush1OneMask)
+                : FollowerHandlerAt(handlers, following);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary><see cref="ExecutePush1OneByFollower"/> where another PUSH1 1 follows: the low-bits mask when the rest of its sequence does.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecutePush1OneMask(
+            ref EvmStack stack,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -884,7 +906,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (Unsafe.Add(ref opcode, 8) == (byte)Instruction.AND)
                 {
                     // The three pushes go above the word the AND reads.
-                    if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 4) && TryCharge(ref gas, 6 * VeryLowGasCost.GasCost))
+                    if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 4) && ChargeUntested(ref gas, 6 * VeryLowGasCost.GasCost))
                     {
                         ref ulong word = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                         word &= LowBitsOfLimb(bits, 0);
@@ -896,7 +918,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, masked);
                     }
                 }
-                else if (head < EvmStack.MaxStackSize - 3 && TryCharge(ref gas, 5 * VeryLowGasCost.GasCost))
+                else if (head < EvmStack.MaxStackSize - 3 && ChargeUntested(ref gas, 5 * VeryLowGasCost.GasCost))
                 {
                     ref ulong mask = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                     mask = LowBitsOfLimb(bits, 0);
@@ -932,12 +954,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static bool IsOnesMask<TOpCount>(ref byte immediates) where TOpCount : struct, EvmInstructions.IOpCount
         {
             if (StrictAlignmentFlag.IsActive)
-            {
-                uint bits = byte.MaxValue;
-                for (int i = 0; i < TOpCount.Count; i++)
-                    bits &= Unsafe.Add(ref immediates, i);
-                return bits == byte.MaxValue;
-            }
+                return ZkEvmBitOperations.AreAllOnes(ref immediates, TOpCount.Count);
 
             return TOpCount.Count == 4
                 ? Unsafe.ReadUnaligned<uint>(ref immediates) == uint.MaxValue
@@ -965,7 +982,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteOnesMask<TOpCount>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -976,7 +993,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             Debug.Assert(TOpCount.Count is 4 or 20);
             // One unsigned test bounds the depth on both sides: the AND needs a word below the pushed one.
-            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && ChargeUntested(ref gas, 2 * VeryLowGasCost.GasCost))
             {
                 ref byte immediates = ref Unsafe.Add(ref ip, 1);
                 // The AND first: the mask is often pushed for another use, and it is the cheaper test.
@@ -998,7 +1015,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Entry(&ExecutePush<TOpCount>);
@@ -1014,7 +1031,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePair<TFirst, TSecond>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -1024,7 +1041,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TFirst : struct, IStackStep
             where TSecond : struct, IStackStep
         {
-            if (Fits<TFirst, TSecond>(head) && TryCharge(ref gas, TFirst.GasCost + TSecond.GasCost))
+            if (Fits<TFirst, TSecond>(head) && ChargeUntested(ref gas, TFirst.GasCost + TSecond.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 if (typeof(TFirst) == typeof(Push1Step) && TSecond.TakesPushedByte)
@@ -1160,6 +1177,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void Apply(ref ulong end, ref byte opcode)
             {
                 nint source = -TOpCount.Count * LimbsPerWord;
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Copy(Unsafe.AsPointer(ref end), Unsafe.AsPointer(ref Unsafe.Add(ref end, source)));
+                    return;
+                }
+
                 end = Unsafe.Add(ref end, source);
                 Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
                 Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
@@ -1185,16 +1208,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 nint source = -TOpCount.Count * LimbsPerWord;
-                end = Unsafe.Add(ref end, source);
-                Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
-                Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
-                Unsafe.Add(ref end, 3) = Unsafe.Add(ref end, source + 3);
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Copy(Unsafe.AsPointer(ref end), Unsafe.AsPointer(ref Unsafe.Add(ref end, source)));
+                }
+                else
+                {
+                    end = Unsafe.Add(ref end, source);
+                    Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
+                    Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
+                    Unsafe.Add(ref end, 3) = Unsafe.Add(ref end, source + 3);
+                }
+
                 SetWord(ref Unsafe.Add(ref end, source), pushed);
             }
 
+            /// <remarks>On Airbender the slot above the top, which every stack has, is the exchange's scratch word.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode)
             {
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Swap(
+                        Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)),
+                        Unsafe.AsPointer(ref Unsafe.Add(ref end, -(TOpCount.Count + 1) * LimbsPerWord)),
+                        Unsafe.AsPointer(ref end));
+                    return;
+                }
+
                 SwapLimbs(ref end, -LimbsPerWord, -(TOpCount.Count + 1) * LimbsPerWord);
                 SwapLimbs(ref end, 1 - LimbsPerWord, 1 - (TOpCount.Count + 1) * LimbsPerWord);
                 SwapLimbs(ref end, 2 - LimbsPerWord, 2 - (TOpCount.Count + 1) * LimbsPerWord);
@@ -1284,7 +1325,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <remarks>A pushed byte is a shift below 256.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            public static void ApplyToPushedByte(ref ulong end, ulong pushed)
+            {
+                // The slot the PUSH1 would have taken is free.
+                if (AirbenderFlag.IsActive)
+                    AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), (int)pushed);
+                else
+                    ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            }
 
             public static nint Handler => Entry(&ExecuteShl);
 
@@ -1295,7 +1343,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong value = ref Unsafe.Subtract(ref shift, LimbsPerWord);
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftLeft(ref value, (int)bits);
+                {
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref value), (int)bits);
+                    else
+                        ShiftLeft(ref value, (int)bits);
+                }
                 else
                     SetWord(ref value, 0);
             }
@@ -1311,7 +1364,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <remarks>A pushed byte is a shift below 256.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            public static void ApplyToPushedByte(ref ulong end, ulong pushed)
+            {
+                // The slot the PUSH1 would have taken is free.
+                if (AirbenderFlag.IsActive)
+                    AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), (int)pushed);
+                else
+                    ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            }
 
             public static nint Handler => Entry(&ExecuteShr);
 
@@ -1322,7 +1382,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong value = ref Unsafe.Subtract(ref shift, LimbsPerWord);
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftRight(ref value, (int)bits);
+                {
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref value), (int)bits);
+                    else
+                        ShiftRight(ref value, (int)bits);
+                }
                 else
                     SetWord(ref value, 0);
             }
@@ -1355,6 +1420,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
                 ref ulong copied = ref Unsafe.Subtract(ref end, depth * LimbsPerWord);
+                // The delegation takes two distinct words, which a DUP1's copy is not.
+                if (AirbenderFlag.IsActive && depth > 1 &&
+                    (typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation)))
+                {
+                    if (typeof(TOperation) == typeof(AddOperation))
+                        AirbenderArithmetic.Add(Unsafe.AsPointer(ref word), Unsafe.AsPointer(ref copied));
+                    else
+                        AirbenderArithmetic.SubtractFrom(Unsafe.AsPointer(ref word), Unsafe.AsPointer(ref copied));
+                    return;
+                }
+
                 if (typeof(TOperation) == typeof(AddOperation))
                 {
                     ulong left = word;
@@ -1442,7 +1518,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
-                if (typeof(TOperation) == typeof(AddOperation))
+                if (typeof(TOperation) == typeof(AddOperation) && IntPtr.Size == sizeof(uint))
+                {
+                    // A 32-bit guest adds to the low word alone: the 64-bit limb sum and compare cost three times as much.
+                    ref uint low = ref Unsafe.As<ulong, uint>(ref word);
+                    uint sum = low + (uint)pushed;
+                    low = sum;
+                    for (int i = 1; sum < (uint)pushed && i < 2 * LimbsPerWord; i++)
+                        sum = ++Unsafe.Add(ref low, i) == 0 ? 0 : uint.MaxValue;
+                }
+                else if (typeof(TOperation) == typeof(AddOperation))
                 {
                     ulong sum = word + pushed;
                     word = sum;
@@ -1478,7 +1563,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 else if (typeof(TOperation) == typeof(ArithmeticShiftRightOperation))
                 {
-                    ShiftRight(ref word, (int)pushed, arithmetic: true);
+                    // The slot the PUSH1 would have taken is free.
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref word), (int)pushed);
+                    else
+                        ShiftRight(ref word, (int)pushed, arithmetic: true);
                 }
             }
         }

@@ -3,14 +3,20 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.AggressiveInlining;
+
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
 
     // Weak keys: transient state-override specs in eth_simulateV1 must not be retained forever by this
     // process-wide cache.
