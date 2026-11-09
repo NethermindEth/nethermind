@@ -756,6 +756,40 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_trace_buffered_invalid_replay_returns_tracing_failed(
+        [Values("debug_traceTransaction", "debug_traceTransactionByBlockhashAndIndex", "debug_traceTransactionByBlockAndIndex",
+            "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        Block block = context.Blockchain.BlockTree.Head!;
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            StreamMode = false,
+            StateOverrides = new Dictionary<Address, AccountOverride> { [TestItem.AddressA] = new() { Balance = UInt256.Zero } }
+        };
+        object[] parameters = method switch
+        {
+            "debug_traceTransaction" => [transaction.Hash!, options],
+            "debug_traceTransactionByBlockhashAndIndex" => [block.Hash!, 0, options],
+            "debug_traceTransactionByBlockAndIndex" => [block.Number, 0, options],
+            "debug_traceBlockByNumber" => [block.Number, options],
+            _ => [block.Hash!, options]
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Does.StartWith("tracing failed: insufficient funds"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     private static async Task<Transaction> AddBlockWithTransfer(Context context)
     {
         Transaction transaction = Build.A.Transaction

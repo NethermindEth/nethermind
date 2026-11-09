@@ -143,6 +143,10 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
+        catch (InvalidTransactionException ex)
+        {
+            return TracingFailed<GethLikeTxTrace>(ex);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
@@ -510,6 +514,10 @@ public class DebugRpcModule(
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<GethLikeTxTrace>(exception);
         }
         if (transactionTrace is null)
         {
