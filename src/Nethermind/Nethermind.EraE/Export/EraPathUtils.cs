@@ -99,6 +99,15 @@ public static class EraPathUtils
     }
 
     /// <summary>
+    /// The hash part is zero: the name an export writes to before it knows the last block hash.
+    /// </summary>
+    internal static bool IsPlaceholderName(string path)
+    {
+        string[] parts = Path.GetFileNameWithoutExtension(path).Split(_separator);
+        return parts.Length >= 3 && parts[2] == "00000000";
+    }
+
+    /// <summary>
     /// The profile postfixes of an era file name joined by '-', such as <c>noproofs</c>; empty for the full profile.
     /// </summary>
     internal static string GetProfile(string path)

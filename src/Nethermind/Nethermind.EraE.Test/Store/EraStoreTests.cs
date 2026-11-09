@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Config;
 using EraException = Nethermind.Era1.Exceptions.EraException;
+using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Store;
 using NUnit.Framework;
@@ -55,6 +57,28 @@ public class EraStoreTests
 
         Assert.That(() => ctx.Resolve<IEraStoreFactory>().Create(directory, null), Throws.TypeOf<EraException>()
             .With.Message.Contains("Epoch 0").And.Message.Contains(Path.GetFileName(file)).And.Message.Contains(duplicate));
+    }
+
+    [Test]
+    public async Task Create_WhenEpochHasAPlaceholderBesideOneFinishedFileWithoutEntry_ReadsTheFinishedFile()
+    {
+        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(32, 0, 31);
+        string directory = ctx.ResolveTempDirPath();
+        string file = Directory.GetFiles(directory, $"{EraETestModule.TestNetwork}-00000-*{EraPathUtils.FileExtension}").Single();
+        // An interrupted rewrite of an epoch that the checksum manifest has no entry for.
+        await File.WriteAllBytesAsync(Path.Combine(directory, EraPathUtils.Filename(EraETestModule.TestNetwork, 0, Keccak.Zero)), (await File.ReadAllBytesAsync(file))[..1024]);
+        string checksums = Path.Combine(directory, EraExporter.ChecksumsSHA256FileName);
+        await File.WriteAllLinesAsync(checksums, (await File.ReadAllLinesAsync(checksums)).Where(static line => !line.Contains("-00000-")));
+
+        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(directory, null);
+
+        (Block? block, _) = await eraStore.FindBlockAndReceipts(5, ensureValidated: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block?.Hash, Is.EqualTo(ctx.Resolve<IBlockTree>().FindBlock(5, BlockTreeLookupOptions.None)!.Hash));
+            Assert.That(async () => await eraStore.FindBlockAndReceipts(20), Throws.Nothing, "an epoch with an entry still validates");
+            Assert.That(async () => await eraStore.FindBlockAndReceipts(5), Throws.TypeOf<EraVerificationException>(), "an epoch without an entry cannot validate");
+        }
     }
 
     [Test]

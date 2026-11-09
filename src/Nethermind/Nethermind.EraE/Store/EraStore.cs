@@ -111,16 +111,27 @@ public sealed class EraStore : IEraStore
             throw new EraException($"No relevant era files (.ere or .erae) found for network '{networkName}' in directory {directory}.");
 
         // A failed re-export can leave a new file beside the one the manifests name until an export of that epoch
-        // succeeds. Read the file the checksum manifest names; when it names none of them and the extension does not
-        // decide, the choice would depend on enumeration order.
+        // succeeds. Read the file the checksum manifest names. Otherwise leave out placeholders, which an interrupted
+        // export leaves, and read the only finished file, or the only finished .ere. An epoch with only placeholders
+        // and no checksum entry cannot pass a validated read anyway, so it takes the first of them and does not keep
+        // the other epochs from opening. In any other case the choice would depend on enumeration order.
         foreach ((int epoch, List<string> files) in duplicates)
         {
             if (checksumFiles.TryGetValue(epoch, out string? named) && files.Find(f => Path.GetFileName(f) == named) is { } namedFile)
+            {
                 _epochs[epoch] = namedFile;
-            else if (files.Count(EraPathUtils.IsCanonicalEraFile) != 1)
-                throw new EraException(
-                    $"Epoch {epoch} has more than one era file and {EraExporter.ChecksumsSHA256FileName} names none of them: " +
-                    $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch or remove the stale file.");
+                continue;
+            }
+
+            List<string> finished = files.FindAll(static f => !EraPathUtils.IsPlaceholderName(f));
+            List<string> canonical = finished.FindAll(EraPathUtils.IsCanonicalEraFile);
+            _epochs[epoch] = finished.Count == 1 ? finished[0]
+                : canonical.Count == 1 ? canonical[0]
+                : finished.Count == 0 && !_checksumsByEpoch.ContainsKey(epoch)
+                    ? files.OrderBy(static f => !EraPathUtils.IsCanonicalEraFile(f)).ThenBy(static f => f, StringComparer.Ordinal).First()
+                    : throw new EraException(
+                        $"Epoch {epoch} has more than one era file and {EraExporter.ChecksumsSHA256FileName} names none of them: " +
+                        $"{string.Join(", ", files.Select(static f => Path.GetFileName(f)))}. Re-export the epoch or remove the stale file.");
         }
 
         _blockRange = new Lazy<(ulong, ulong)>(() =>
