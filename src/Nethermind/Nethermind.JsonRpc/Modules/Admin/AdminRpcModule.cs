@@ -144,7 +144,7 @@ public class AdminRpcModule : IAdminRpcModule
     {
         PeerInfo[] validatedPeers = _peerPool.ActivePeers
             .Where(p => IsValidatedPeer(p.Value))
-            .Select(p => new PeerInfo(p.Value, includeDetails))
+            .Select(p => new PeerInfo(p.Value, includeDetails, _enode.HostIp))
             .ToArray();
 
         return ResultWrapper<PeerInfo[]>.Success(validatedPeers);
@@ -246,7 +246,7 @@ public class AdminRpcModule : IAdminRpcModule
             Enode = _enode.Info,
             Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
             Ip = _enode.HostIp?.ToString(),
-            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            ListenAddress = $"{Enode.FormatEnodeHost(_enode.HostIp)}:{_enode.Port}",
             Ports =
             {
                 Discovery = _networkConfig.DiscoveryPort,

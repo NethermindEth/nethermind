@@ -31,15 +31,6 @@ namespace Nethermind.Network.Test.P2P
             yield return new TestCaseData(limit.Limit + 1, true).SetName("{m}(above limit)");
         }
 
-        public static void AssertLimitEnforced<TMessage>(
-            IZeroMessageSerializer<TMessage> serializer,
-            Func<IByteArrayList, TMessage> createMessage,
-            Func<TMessage, int> itemCount,
-            int items,
-            bool shouldThrow)
-            where TMessage : P2PMessage =>
-            AssertLimitEnforced(serializer.Serialize, serializer.Deserialize, createMessage, itemCount, items, shouldThrow);
-
         /// <remarks>Decodes through <see cref="MessageSerializationService"/>, which hands the packet buffer to an <see cref="IOwningMessageSerializer{T}"/>.</remarks>
         public static void AssertLimitEnforced<TMessage>(
             IMessageSerializer<TMessage> serializer,

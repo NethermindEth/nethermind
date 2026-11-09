@@ -1,6 +1,7 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+#:property PublishAot=false
 #:include script-process.helpers.cs
 
 using var cancellation = new CancellationTokenSource();

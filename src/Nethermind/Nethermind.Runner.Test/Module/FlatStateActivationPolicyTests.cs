@@ -123,7 +123,8 @@ public class FlatStateActivationPolicyTests
 
         string[] expectedEvents = expectedOutcome switch
         {
-            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
+            // The wipe commits its marker, then drops the columns, then resets the state pointer.
+            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
             RepairOutcome.Acknowledged => [SpyFlatColumnsDb.AcknowledgeEvent],
             _ => []
         };

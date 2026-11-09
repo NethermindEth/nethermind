@@ -291,8 +291,43 @@ public class TxPoolRpcModuleTests
 
     private const string TxPoolInspectJson =
         """
-        {"jsonrpc":"2.0","result":{"pending":{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"0":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099: 1 wei + 21000 × 2 gas","1":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099: 2 wei + 21001 × 2 gas"},"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358":{"5":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358: 6 wei + 21005 × 2 gas"}},"queued":{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"3":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099: 4 wei + 21003 × 2 gas"},"0x76e68a8696537e4141926f3e528733af9e237d69":{"7":"0x76e68a8696537e4141926f3e528733af9e237d69: 8 wei + 21007 × 2 gas","0x077da99d806abd13c9f15ece5398525119d11e11e9836b2ee7d23f6159ad87d2":"0x76e68a8696537e4141926f3e528733af9e237d69: 10 wei + 21009 × 2 gas"}}},"id":67}
+        {"jsonrpc":"2.0","result":{"pending":{"0xb7705aE4c6F81B66cdB323C65f4E8133690fC099":{"0":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 2 wei","1":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 2 wei + 21001 gas × 11 wei"},"0x942921b14f1B1C385CD7e0cc2eF7aBe5598c8358":{"5":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 6 wei + 21005 gas × 2 wei"}},"queued":{"0xb7705aE4c6F81B66cdB323C65f4E8133690fC099":{"3":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 4 wei + 21003 gas × 13 wei"},"0x76e68A8696537e4141926F3e528733af9e237d69":{"7":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 8 wei + 21007 gas × 2 wei","0x077da99d806abd13c9f15ece5398525119d11e11e9836b2ee7d23f6159ad87d2":"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 10 wei + 21009 gas × 2 wei"}}},"id":67}
         """;
+
+    [TestCase(TxType.Legacy, false, ExpectedResult = "0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 2 wei")]
+    [TestCase(TxType.AccessList, false, ExpectedResult = "0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 2 wei")]
+    [TestCase(TxType.EIP1559, false, ExpectedResult = "0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 10 wei")]
+    [TestCase(TxType.Blob, false, ExpectedResult = "0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 10 wei")]
+    [TestCase(TxType.SetCode, false, ExpectedResult = "0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1 wei + 21000 gas × 10 wei")]
+    [TestCase(TxType.Legacy, true, ExpectedResult = "contract creation: 1 wei + 21000 gas × 2 wei")]
+    [TestCase(TxType.EIP1559, true, ExpectedResult = "contract creation: 1 wei + 21000 gas × 10 wei")]
+    public async Task<string?> TxPoolInspect_SummarizesRecipientValueGasAndFeeCap(TxType type, bool isContractCreation)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithType(type)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(isContractCreation ? null : TestItem.AddressF)
+            .WithValue(1)
+            .WithGasLimit(21_000)
+            .WithGasPrice(2)
+            .WithMaxFeePerGas(10)
+            .TestObject;
+
+        ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
+            pending: new() { { new AddressAsKey(TestItem.AddressA), new Dictionary<TxPoolTxKey, Transaction> { { new TxPoolTxKey(0), tx } } } },
+            queued: []));
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.ChainId.Returns(1ul);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+
+        string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_inspect");
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("result").GetProperty("pending")
+            .GetProperty(TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)).GetProperty("0").GetString();
+    }
 
     [Test]
     public async Task TxPoolContentFrom_WhenNonceIsLarge_SerializesNonceKeyAsDecimalString()

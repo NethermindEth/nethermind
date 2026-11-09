@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -159,18 +159,10 @@ public class TransactionProcessorFeeTests
         }
     }
 
-    [TestCase(false, false, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_not_paid_without_EIP8037")]
-    [TestCase(false, true, true, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_and_kept_by_EIP8246_with_EIP8037_and_EIP7708")]
-    [TestCase(false, true, false, TestName = "Destroyed_gas_beneficiary_of_successful_transaction_is_paid_after_destruction_with_EIP8037_without_EIP7708")]
-    [TestCase(true, false, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_without_EIP8037")]
-    [TestCase(true, true, true, TestName = "Destroyed_gas_beneficiary_of_failed_transaction_is_paid_with_EIP8037")]
-    public void Destroyed_gas_beneficiary_payment(bool revert, bool eip8037, bool eip7708)
+    [Test]
+    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool revert, [Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
     {
-        // Without EIP-7708 the destroy list is finalized before PayFees, so the fee is kept even without EIP-8246.
-        // This pins the current behaviour; no fork enables EIP-8037 without EIP-7708.
-        IReleaseSpec spec = !eip8037 ? Amsterdam.NoEip8037Instance
-            : eip7708 ? Amsterdam.Instance
-            : new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7708Enabled = false, IsEip8246Enabled = false };
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8037Enabled = eip8037, IsEip7708Enabled = eip7708, IsEip8246Enabled = eip8246 };
         Address creator = ContractAddress.From(TestItem.AddressA, 0);
         Address beneficiary = ContractAddress.From(creator, 1);
 
@@ -198,17 +190,27 @@ public class TransactionProcessorFeeTests
             .TestObject;
 
         FeesTracer feesTracer = new();
-        CallOutputTracer callOutputTracer = new();
-        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), new CompositeTxTracer(feesTracer, callOutputTracer));
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
 
-        bool paid = revert || eip8037;
+        // execution-specs pay the coinbase, then destroy: the fee is burned unless EIP-8246 keeps the balance.
+        // A reverted tx destroys nothing, so the fee is always kept.
+        bool feeKept = revert || eip8246;
+        bool burnLogged = !revert && eip8037 && eip7708 && !eip8246;
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(callOutputTracer.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(receipt.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
             Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
-            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(paid ? feesTracer.Fees : UInt256.Zero));
-            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(paid));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(feeKept ? feesTracer.Fees : UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(feeKept));
             Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
+            Assert.That(receipt.Logs!.Count(static log => log.Topics[0] == TransferLog.BurnSignature), Is.EqualTo(burnLogged ? 1 : 0));
         }
     }
 
