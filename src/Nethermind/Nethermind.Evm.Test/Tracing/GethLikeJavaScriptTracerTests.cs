@@ -2102,6 +2102,28 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Large_call_without_interrupt_checks_ends_in_the_memory_limit_error_at_the_next_hook()
+    {
+        // V8 ends the process if the call reaches its hard heap limit, so the call runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(UnsampledCallChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    [Test]
+    public void Hard_heap_limit_covers_the_fixed_old_space()
+    {
+        using TracerRuntime runtime = new();
+
+        Assert.That(runtime.HeapSizeLimit, Is.GreaterThanOrEqualTo(16384UL * 1024 * 1024), "V8's hard limit includes the old space");
+    }
+
     private static async Task<(int ExitCode, string Output)> RunInChildProcess(string argument)
     {
         ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
@@ -2135,6 +2157,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     private static Task<int> Main(string[] args) => args switch
     {
         [AllocationBurstChildArgument] => Task.FromResult(RunAllocationBurst()),
+        [UnsampledCallChildArgument] => Task.FromResult(RunUnsampledCall()),
         _ => MicrosoftTestingPlatformEntryPoint.Main(args)
     };
 
@@ -2160,7 +2183,50 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
+    private static int RunUnsampledCall()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic unsampledCallTracer = engine.CreateTracer(UnsampledCallTracer);
+        try
+        {
+            try
+            {
+                unsampledCallTracer.step(null, null);
+            }
+            catch (ScriptEngineException exception)
+            {
+                Console.Error.WriteLine($"The large call was interrupted while it ran: {exception.Message}");
+                return 1;
+            }
+
+            unsampledCallTracer.step(null, null);
+            Console.Error.WriteLine("The hook after the large call ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)unsampledCallTracer as IDisposable)?.Dispose();
+        }
+    }
+
     private const string AllocationBurstChildArgument = "--nethermind-js-tracer-allocation-burst";
+    private const string UnsampledCallChildArgument = "--nethermind-js-tracer-unsampled-call";
+
+    // One JSON.parse that builds about 640 MiB of heap, far over the 128 MiB soft limit. The built-in never reaches an
+    // interrupt check, so the heap is not sampled until the next hook enters the script.
+    private const string UnsampledCallTracer = @"{
+                    step: function(log, db) {
+                        if (!this.h) this.h = JSON.parse('[' + ('[' + '{},'.repeat(999) + '{}],').repeat(10000) + '[]]');
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.h.length; }
+                }";
 
     // Tries to allocate about 9.6 GB in one step, so only the heap samples taken while the step runs keep it under
     // V8's hard limit.
