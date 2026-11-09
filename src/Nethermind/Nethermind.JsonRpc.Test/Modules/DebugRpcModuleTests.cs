@@ -1338,7 +1338,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_field_inferred_fork_gating_uses_effective_block(
-        [Values(99, 100)] ulong number, [Values] bool streamMode)
+        [Values(99UL, 100UL)] ulong number, [Values] bool streamMode)
     {
         CustomSpecProvider specs = new(((ForkActivation)0, Istanbul.Instance), ((ForkActivation)100, Berlin.Instance));
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
