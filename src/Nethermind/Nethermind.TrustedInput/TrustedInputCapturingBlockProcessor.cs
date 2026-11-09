@@ -24,6 +24,10 @@ namespace Nethermind.TrustedInput;
 /// input fails to build still stands, and <c>trustedinput_getInput</c> rebuilds it on request.
 /// At most one capture runs in the background; blocks imported while it is busy or another consumer owns the witness
 /// request are regenerated on demand.
+/// While a block is processed here, its witness request holds the single slot of <see cref="WitnessRendezvous"/>, so an
+/// <c>engine_newPayloadWithWitness</c> request for another block is declined and its handler executes that block again
+/// to build the witness. The block is processed under the lock <see cref="DisposeAsync"/> takes, so disposal can wait
+/// for one block.
 /// </remarks>
 public sealed class TrustedInputCapturingBlockProcessor(
     IBlockProcessor inner,

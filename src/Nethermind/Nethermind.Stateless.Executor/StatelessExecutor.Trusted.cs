@@ -19,6 +19,9 @@ public static partial class StatelessExecutor
     /// validates a stateless input.</summary>
     /// <returns>The encoded <see cref="StatelessValidationResult"/>, whose root is the block hash and whose schema id
     /// identifies the format and selected fork via <see cref="TrustedInput.SchemaIdOf"/>.</returns>
+    /// <remarks>A successful result covers the validity of the block alone. The input carries no engine API envelope, so
+    /// unlike <see cref="Execute(ReadOnlySpan{byte})"/> it does not check the blob versioned hashes against the block's
+    /// transactions (<see cref="BlobVersionedHashesMatch"/>).</remarks>
     public static byte[] ExecuteTrusted(ReadOnlySpan<byte> data)
     {
         byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
