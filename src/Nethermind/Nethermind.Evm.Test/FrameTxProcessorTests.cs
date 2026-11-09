@@ -5828,7 +5828,7 @@ public partial class FrameTxProcessorTests
         receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = GethStyleTracer.CreateOptionsTracer(
             Build.A.Block.WithNumber(1).TestObject.Header, options, tracedState, _specProvider), baseFeePerGas, slotNumber);
 
-        using IDisposable cleanup = blockTracer as IDisposable;
+        using IDisposable? cleanup = blockTracer as IDisposable;
         using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
         return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
     }
