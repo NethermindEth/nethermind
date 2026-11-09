@@ -1,40 +1,40 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
+using System;
+using System.Buffers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
-    public class TrieNodesMessageSerializer : IZeroMessageSerializer<TrieNodesMessage>
+    public class TrieNodesMessageSerializer : IOwningMessageSerializer<TrieNodesMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
+        public int Serialize(Span<byte> destination, TrieNodesMessage message)
         {
-            int nodesLength = Rlp.LengthOfByteArrayList(message.Nodes);
-            int contentLength = Rlp.LengthOf(message.RequestId) + nodesLength;
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(message));
             writer.Encode(message.RequestId);
             writer.WriteByteArrayList(message.Nodes);
+            return writer.Position;
         }
 
-        public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
+        /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
+        public TrieNodesMessage Deserialize(ReadOnlySpan<byte> data) => Deserialize(OwnedMemory.Copy(data, out Memory<byte> memory), memory);
+
+        public TrieNodesMessage Deserialize(IMemoryOwner<byte> owner, Memory<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
+            IMemoryOwner<byte>? memoryOwner = owner;
             RlpByteArrayList? list = null;
 
             try
             {
+                RlpReader ctx = new(data.Span);
                 ctx.ReadSequenceLength();
                 long requestId = ctx.DecodeLong();
 
-                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.TrieNodesRlpLimit);
+                list = RlpByteArrayList.DecodeList(ref ctx, owner, data, SnapMessageLimits.TrieNodesRlpLimit);
                 memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                ctx.CheckEnd();
 
                 return new TrieNodesMessage(list) { RequestId = requestId };
             }
@@ -45,5 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 throw;
             }
         }
+
+        public int GetLength(TrieNodesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private static int GetContentLength(TrieNodesMessage message) => Rlp.LengthOf(message.RequestId) + Rlp.LengthOfByteArrayList(message.Nodes);
     }
 }

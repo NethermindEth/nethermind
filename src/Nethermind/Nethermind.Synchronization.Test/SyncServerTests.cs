@@ -66,6 +66,45 @@ public class SyncServerTests
     }
 
     [Test]
+    public void Receipts_are_served_with_a_single_block_load([Values] bool bodyStored, [Values] bool hasTransactions)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader
+            .WithTransactionsRoot(hasTransactions ? TestItem.KeccakB : Keccak.EmptyTreeHash)
+            .TestObject;
+        Hash256 hash = header.Hash!;
+        TxReceipt[] stored = [Build.A.Receipt.TestObject];
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(bodyStored);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(hash).Returns(stored);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+
+        TxReceipt[]? served = server.GetReceipts(hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, bodyStored ? (hasTransactions ? Is.SameAs(stored) : Is.Empty) : Is.Null);
+            ctx.BlockTree.DidNotReceiveWithAnyArgs().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
+            receiptFinder.Received(hasTransactions && bodyStored ? 1 : 0).Get(hash);
+        }
+    }
+
+    [Test]
+    public void Receipts_are_not_served_for_an_unknown_block()
+    {
+        Context ctx = new();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.GetReceipts(TestItem.KeccakA), Is.Null);
+            receiptFinder.DidNotReceiveWithAnyArgs().Get(Arg.Any<Hash256>());
+        }
+    }
+
+    [Test]
     public void Does_not_request_peer_refresh_on_known_hints()
     {
         Context ctx = new();
@@ -1135,12 +1174,13 @@ public class SyncServerTests
             IBlockValidator? blockValidator = null,
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
-            ISpecProvider? specProvider = null) =>
+            ISpecProvider? specProvider = null,
+            IReceiptFinder? receiptFinder = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                NullReceiptStorage.Instance,
+                receiptFinder ?? NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 blockValidator ?? Always.Valid,
                 sealValidator ?? Always.Valid,

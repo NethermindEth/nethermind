@@ -179,4 +179,5 @@
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
+  <Project Path="Nethermind.Zkvm.Abstractions/Nethermind.Zkvm.Abstractions.csproj" />
 </Solution>

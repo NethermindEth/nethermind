@@ -118,6 +118,44 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(ErrorCode(response), Is.Null, response);
     }
 
+    private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
+    private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
+
+    [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]
+    [TestCase("{" + ConflictingStorage + "," + Calls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides")]
+    [TestCase("{" + ConflictingStorage + "," + MixedFeeCalls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides before the calls of their block")]
+    [TestCase("{" + MixedFeeCalls + "},{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, RpcTransactionErrors.GasPriceInEip1559, TestName = "Simulate rejects the calls of an earlier block before conflicting storage overrides")]
+    [TestCase("{" + ConflictingStorage + "},{\"blockOverrides\":{\"number\":\"0x0\"}}", ErrorCodes.InvalidInputBlocksOutOfOrder, SimulateErrorMessages.BlockNumberNotIncreasing, TestName = "Simulate orders its blocks before rejecting conflicting storage overrides")]
+    public async Task Simulate_rejects_conflicting_storage_overrides(string blockStateCalls, int expectedCode, string? expectedMessage)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = ParseJson($"{{\"validation\":true,\"blockStateCalls\":[{blockStateCalls}]}}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expectedCode), response);
+            Assert.That(error.GetProperty("message").GetString(),
+                Is.EqualTo(expectedMessage ?? $"account {new Address("0xc100000000000000000000000000000000000000").ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+        }
+    }
+
+    [Test]
+    public async Task Simulate_applies_a_lone_storage_override([Values("state", "stateDiff")] string field)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        // PUSH1 0 SLOAD PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        JsonElement payload = SimulatePayloadJson("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x60005460005260206000f3\",\"" + field + "\":{\"" + Hash256.Zero + "\":\"" + Keccak.OfAnEmptyString + "\"}}}," + Calls + "}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(Keccak.OfAnEmptyString.ToString()), response);
+    }
+
     private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
 
     private static JsonElement ParseJson(string json)
@@ -603,6 +641,54 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
             Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+        }
+    }
+
+    /// <summary>
+    /// A simulation based on a side-chain block hash builds on that block, not on the canonical block at its height.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_a_side_chain_base_block()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Prague.Instance);
+        Block canonical = chain.BlockTree.FindBlock(1)!;
+        // Reuses the canonical block's state root so the side-chain block has state at its height.
+        Block side = Build.A.Block.WithParent(chain.BlockTree.FindBlock(0)!).WithStateRoot(canonical.StateRoot!).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(side, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(side.Number)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride> { { contract, new AccountOverride { Code = code } } },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000, GasPrice = UInt256.Zero }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(side.Hash!));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateBlockResult<SimulateCallResult> simulated = result.Data[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Number, Is.GreaterThan(side.Number + 1));
+            Assert.That(simulated.Number, Is.EqualTo(side.Number + 1));
+            Assert.That(simulated.ParentHash, Is.EqualTo(side.Hash));
+            Assert.That(new Hash256(simulated.Calls.Single().ReturnData!), Is.EqualTo(side.Hash));
         }
     }
 

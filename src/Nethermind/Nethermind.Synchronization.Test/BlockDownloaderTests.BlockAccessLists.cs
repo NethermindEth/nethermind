@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -49,13 +53,18 @@ public partial class BlockDownloaderTests
     [TestCase(false, false, true, false, true, true)]
     // Missed slots leave the block inside the height window yet older than the retention period.
     [TestCase(false, false, true, false, true, false, true)]
-    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false, bool pastRetentionPeriod = false)
+    // A block that can execute without its list is not held back, which the warning says.
+    [TestCase(true, false, true, false, true, true)]
+    // During beacon sync the best known header follows the downloaded blocks; the beacon head marks the chain tip.
+    [TestCase(false, false, true, true, true, false, false, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false, bool pastRetentionPeriod = false, bool farHeadIsBeacon = false)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
         IBlockTree farKnownBlockTree = Substitute.For<IBlockTree>();
-        farKnownBlockTree.BestKnownNumber.Returns(ulong.MaxValue);
+        farKnownBlockTree.BestKnownNumber.Returns(farHeadIsBeacon ? 2UL : ulong.MaxValue);
+        farKnownBlockTree.BestKnownBeaconNumber.Returns(farHeadIsBeacon ? ulong.MaxValue : 0UL);
         ulong retentionSeconds = HistoryRetentionConstants.HistoryPruneEpochs * 32 * new BlocksConfig().SecondsPerSlot;
         ulong now = HeaderTimestamp + (pastRetentionPeriod ? retentionSeconds + 1 : retentionSeconds);
         await using IContainer node = CreateNode(builder =>
@@ -81,6 +90,7 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(peerPastRetention ? ulong.MaxValue : 2UL);
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
+        ctx.PeerPool.InitializedPeers.Returns([peerInfo]);
 
         using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
         if (peerServedBody)
@@ -94,6 +104,8 @@ public partial class BlockDownloaderTests
         List<SyncResponseHandlingResult> results = [];
         foreach (byte[]?[] response in responses)
         {
+            // A peer that answers without a list the block can execute without sleeps for lists until the pool wakes it.
+            peerInfo.TryToWakeUp(DateTime.UtcNow, TimeSpan.Zero);
             using BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
             request.BlockAccessLists = BuildBlockAccessLists(response);
             results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
@@ -102,12 +114,15 @@ public partial class BlockDownloaderTests
         bool breach = peerServedBody && !(peerPastRetention && peerHeadKnown) && !processing && !pastRetentionPeriod;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            Assert.That(results, Is.All.EqualTo(processing ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.LesserQuality));
+            // Only a withheld list that the block can execute without puts the peer to sleep for lists.
+            Assert.That(peerInfo.IsAsleep(AllocationContexts.BlockAccessLists), Is.EqualTo(processing));
             ctx.PeerPool.Received(breach ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
                 Arg.Any<string>());
-            logger.Received(isStatic || isTrusted ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("block access list")));
+            logger.Received(isStatic || isTrusted ? 1 : 0).Warn(Arg.Is<string>(message =>
+                message.Contains("block access list") && message.Contains("sync cannot pass this block") != processing));
         }
     }
 
@@ -263,6 +278,107 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
+    public enum AccessListSource { Served, Withheld, EmptyReply, ServedByOtherPeer, WithheldByAllPeers, NoEth71Peer, OutsideServingWindow, Stored }
+
+    [TestCase(false, false, AccessListSource.Served)]
+    [TestCase(true, false, AccessListSource.Served)]
+    [TestCase(false, true, AccessListSource.Served)]
+    [TestCase(true, true, AccessListSource.Withheld)]
+    [TestCase(true, false, AccessListSource.EmptyReply)]
+    // A peer that answered without the list sleeps for lists, so the retry goes to another peer.
+    [TestCase(true, false, AccessListSource.ServedByOtherPeer)]
+    // Each peer is asked once, up to the retry cap.
+    [TestCase(true, false, AccessListSource.WithheldByAllPeers)]
+    [TestCase(true, false, AccessListSource.NoEth71Peer)]
+    [TestCase(false, true, AccessListSource.OutsideServingWindow)]
+    // The list of a beacon body from engine_newPayload is already in the store.
+    [TestCase(true, false, AccessListSource.Stored)]
+    public async Task Full_sync_downloads_access_lists_of_executed_blocks_when_execution_uses_them(
+        bool parallelExecution, bool batchRead, AccessListSource source)
+    {
+        // A far beacon head puts the block below the serving window, where peers may have pruned its list.
+        IBlockTree farBeaconBlockTree = Substitute.For<IBlockTree>();
+        farBeaconBlockTree.BestKnownBeaconNumber.Returns(ulong.MaxValue);
+        CountingBlockAccessListStore? countingStore = null;
+        await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false,
+            new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead },
+            builder =>
+            {
+                builder.AddDecorator<IBlockAccessListStore>((_, inner) => countingStore = new CountingBlockAccessListStore(inner));
+                if (source == AccessListSource.OutsideServingWindow)
+                {
+                    builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider, ITimestamper, IBlocksConfig>(
+                        (historyPruner, specProvider, timestamper, blocksConfig) => new(farBeaconBlockTree, historyPruner, specProvider, timestamper, blocksConfig));
+                }
+            });
+        if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
+        bool served = source is AccessListSource.Served or AccessListSource.ServedByOtherPeer;
+        Block block = catchUp.Blocks[0];
+        PeerInfo[] peers = [catchUp.Peer, .. Enumerable.Range(0, source switch
+        {
+            AccessListSource.ServedByOtherPeer => 1,
+            AccessListSource.WithheldByAllPeers => 3,
+            _ => 0,
+        }).Select(_ => CreateBlockAccessListsPeer(block.Number))];
+        catchUp.Ctx.PeerPool.InitializedPeers.Returns(peers);
+        if (source == AccessListSource.Stored) catchUp.BalStore.Insert(block.Number, block.Hash!, catchUp.Bal);
+        bool suggested = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+
+        int accessListRequests = 0;
+        while (accessListRequests < 4 && await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None) is { } request)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.BlockAccessListsRequests, Has.Count.EqualTo(1));
+                Assert.That(request.ReceiptsRequests, Is.Empty);
+                Assert.That(suggested, Is.False);
+            }
+            // The allocation takes the awake list peers in turn.
+            PeerInfo peer = peers[accessListRequests];
+            bool servedNow = source == AccessListSource.Served || (source == AccessListSource.ServedByOtherPeer && peer != catchUp.Peer);
+            accessListRequests++;
+            request.BlockAccessLists = source == AccessListSource.EmptyReply ? BuildBlockAccessLists() : BuildBlockAccessLists(servedNow ? catchUp.Bal : null);
+            SyncResponseHandlingResult result = catchUp.Downloader.HandleResponse(request, peer);
+            using (Assert.EnterMultipleScope())
+            {
+                // A weak peer sleeps for bodies too, which would hold back each retry of a list that the block does not need.
+                Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(peer.IsAsleep(AllocationContexts.BlockAccessLists), Is.EqualTo(!servedNow));
+            }
+        }
+
+        bool usesAccessLists = parallelExecution || batchRead;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.True);
+            // An unserved list does not hold the block back: it executes without one when no awake list peer is left,
+            // after the retry cap, or at once without an eth/71 peer.
+            Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : source switch
+            {
+                AccessListSource.Served or AccessListSource.Withheld or AccessListSource.EmptyReply => 1,
+                AccessListSource.ServedByOtherPeer => 2,
+                AccessListSource.WithheldByAllPeers => 3,
+                _ => 0,
+            }));
+            // The store is checked once, when the block enters the download buffer, not on each request.
+            Assert.That(countingStore!.ExistsCalls, Is.EqualTo(1));
+            Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo((usesAccessLists && served) || source == AccessListSource.Stored));
+        }
+    }
+
+    private static PeerInfo CreateBlockAccessListsPeer(ulong headNumber)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+        syncPeer.HeadNumber.Returns(headNumber);
+        return new PeerInfo(syncPeer);
+    }
+
     private const ulong HeaderTimestamp = 1_000_000;
 
     private static void ConfigureBlockAccessListRequest(Context ctx, IForwardHeaderProvider forwardHeaderProvider, params Hash256[] accessListHashes)
@@ -295,6 +411,28 @@ public partial class BlockDownloaderTests
 
     private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
         new ArrayPoolList<byte[]?>(blockAccessLists);
+
+    /// <summary>Counts the store checks for a list, which are database reads.</summary>
+    private sealed class CountingBlockAccessListStore(IBlockAccessListStore inner) : IBlockAccessListStore
+    {
+        public int ExistsCalls { get; private set; }
+        public Lock WriteLock => inner.WriteLock;
+        public void InsertFromBlock(Block block) => inner.InsertFromBlock(block);
+        public void InsertFromBlockDeferred(Block block) => inner.InsertFromBlockDeferred(block);
+        public void Insert(ulong blockNumber, Hash256 blockHash, byte[] bal) => inner.Insert(blockNumber, blockHash, bal);
+        public void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal) => inner.Insert(blockNumber, blockHash, bal);
+        public void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal) => inner.Insert(blockNumber, blockHash, bal);
+        public MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash) => inner.GetRlp(blockNumber, blockHash);
+        public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash) => inner.Get(blockNumber, blockHash);
+        public void Delete(ulong blockNumber, Hash256 blockHash) => inner.Delete(blockNumber, blockHash);
+        public void DeleteRange(ulong fromInclusive, ulong toExclusive) => inner.DeleteRange(fromInclusive, toExclusive);
+
+        public bool Exists(ulong blockNumber, Hash256 blockHash)
+        {
+            ExistsCalls++;
+            return inner.Exists(blockNumber, blockHash);
+        }
+    }
 
     /// <summary>Requests block access lists while processing, as the merge downloader does for reconstructable blocks.</summary>
     private sealed class AccessListOnProcessingBlockDownloader(
