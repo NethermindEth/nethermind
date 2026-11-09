@@ -59,14 +59,26 @@ public class EraStoreTests
             .With.Message.Contains("Epoch 0").And.Message.Contains(Path.GetFileName(file)).And.Message.Contains(duplicate));
     }
 
-    [Test]
-    public async Task Create_WhenEpochHasAPlaceholderBesideOneFinishedFileWithoutEntry_ReadsTheFinishedFile()
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Create_WhenEpochWithoutEntryHasAPlaceholder_ReadsTheFinishedOrFirstFile(bool withFinishedFile)
     {
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(32, 0, 31);
         string directory = ctx.ResolveTempDirPath();
         string file = Directory.GetFiles(directory, $"{EraETestModule.TestNetwork}-00000-*{EraPathUtils.FileExtension}").Single();
-        // An interrupted rewrite of an epoch that the checksum manifest has no entry for.
-        await File.WriteAllBytesAsync(Path.Combine(directory, EraPathUtils.Filename(EraETestModule.TestNetwork, 0, Keccak.Zero)), (await File.ReadAllBytesAsync(file))[..1024]);
+        string placeholder = Path.Combine(directory, EraPathUtils.Filename(EraETestModule.TestNetwork, 0, Keccak.Zero));
+        if (withFinishedFile)
+        {
+            // An interrupted rewrite: a truncated placeholder beside the finished file.
+            await File.WriteAllBytesAsync(placeholder, (await File.ReadAllBytesAsync(file))[..1024]);
+        }
+        else
+        {
+            // Only placeholders: the complete .ere one is read, not the truncated .erae one.
+            await File.WriteAllBytesAsync(Path.Combine(directory, $"{EraETestModule.TestNetwork}-00000-00000000{EraPathUtils.LegacyFileExtension}"), (await File.ReadAllBytesAsync(file))[..1024]);
+            File.Move(file, placeholder);
+        }
+
         string checksums = Path.Combine(directory, EraExporter.ChecksumsSHA256FileName);
         await File.WriteAllLinesAsync(checksums, (await File.ReadAllLinesAsync(checksums)).Where(static line => !line.Contains("-00000-")));
 

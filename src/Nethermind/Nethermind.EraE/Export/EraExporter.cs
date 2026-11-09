@@ -287,8 +287,8 @@ public sealed class EraExporter(
 
     /// <summary>
     /// Finds a finished file that holds the requested blocks and the blocks of every other file of the epoch, so removing
-    /// the others loses nothing. Prefers a file without the <c>noproofs</c> profile, then the canonical extension, then
-    /// the first name.
+    /// the others loses nothing. Prefers a file without the <c>noreceipts</c> profile, which Nethermind cannot read
+    /// receipts from, then one without the <c>noproofs</c> profile, then the canonical extension, then the first name.
     /// </summary>
     private static EpochFile? FindReusableFile(EpochFile[] earlierFiles, ulong writeFrom, ulong writeTo)
     {
@@ -303,13 +303,13 @@ public sealed class EraExporter(
 
         return reusable;
 
-        static bool IsPreferred(string candidate, string current)
-        {
-            bool candidateHasNoProofs = EraPathUtils.HasNoProofsProfile(candidate);
-            return candidateHasNoProofs != EraPathUtils.HasNoProofsProfile(current)
-                ? !candidateHasNoProofs
-                : EraPathUtils.IsCanonicalEraFile(candidate) && !EraPathUtils.IsCanonicalEraFile(current);
-        }
+        static bool IsPreferred(string candidate, string current) => Rank(candidate) < Rank(current);
+
+        // Lower is better; equal ranks keep the first name.
+        static int Rank(string path) =>
+            (EraPathUtils.HasProfile(path, EraPathUtils.NoReceiptsProfile) ? 4 : 0)
+            + (EraPathUtils.HasProfile(path, EraPathUtils.NoProofsProfile) ? 2 : 0)
+            + (EraPathUtils.IsCanonicalEraFile(path) ? 0 : 1);
     }
 
     /// <summary>

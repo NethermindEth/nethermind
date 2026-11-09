@@ -25,6 +25,9 @@ public static class EraPathUtils
     // postfix per the spec — matching go-ethereum's execdb writer.
     public const string NoProofsProfile = "noproofs";
 
+    // The spec profile without CompressedSlimReceipts entries; Nethermind cannot read receipts from such a file.
+    internal const string NoReceiptsProfile = "noreceipts";
+
     public static bool IsEraFile(string path)
     {
         ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
@@ -116,8 +119,8 @@ public static class EraPathUtils
         return parts.Length > 3 ? string.Join('-', parts.Skip(3)) : "";
     }
 
-    internal static bool HasNoProofsProfile(string path) =>
-        GetProfile(path).Split(_separator).Contains(NoProofsProfile, StringComparer.OrdinalIgnoreCase);
+    internal static bool HasProfile(string path, string profile) =>
+        GetProfile(path).Split(_separator).Contains(profile, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Recognizes an era file of <paramref name="network"/> that an export may reuse or replace:

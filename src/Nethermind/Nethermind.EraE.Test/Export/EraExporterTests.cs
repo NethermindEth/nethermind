@@ -242,30 +242,33 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).Where(EraPathUtils.IsEraFile), Is.EqualTo(new[] { ere }));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Export_WhenEpochHasAFullProfileFile_ReusesOrKeepsIt(bool rewrite)
+    [TestCase(".ere", false, true)]
+    [TestCase(".erae", false, true)]
+    [TestCase("-noreceipts.ere", false, false)]
+    [TestCase("-noproofs-noreceipts.ere", false, false)]
+    [TestCase(".ere", true, false)]
+    public async Task Export_WhenEpochHasAFileOfAnotherProfile_RanksAndKeepsIt(string otherSuffix, bool rewrite, bool otherIsReused)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
         using TempPath source = TempPath.GetTempDirectory();
         await sut.Export(rewrite ? source.Path : directory, rewrite ? 8UL : 0UL, 15);
-        string noProofs = Directory.GetFiles(rewrite ? source.Path : directory, $"*{EraPathUtils.FileExtension}").Single();
-        string full = Path.Combine(directory, Path.GetFileName(noProofs).Replace($"-{EraPathUtils.NoProofsProfile}", ""));
+        string ours = Directory.GetFiles(rewrite ? source.Path : directory, $"*{EraPathUtils.FileExtension}").Single();
+        string other = Path.Combine(directory, Path.GetFileName(ours).Replace($"-{EraPathUtils.NoProofsProfile}{EraPathUtils.FileExtension}", otherSuffix));
         Directory.CreateDirectory(directory);
-        File.Copy(noProofs, full);
+        File.Copy(ours, other);
         if (!rewrite) DropReceipts(container, 0, 15);
 
-        // Equal ranges: the full-profile file is reused. Rewrite: the new noproofs file must not delete it.
+        // Equal ranges: a file with receipts, then with proofs, then .ere is reused. Rewrite: the new file must not delete it.
         await sut.Export(directory, 0, 15);
 
         string[] checksums = await File.ReadAllLinesAsync(Path.Combine(directory, EraExporter.ChecksumsSHA256FileName));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Directory.GetFiles(directory).Where(EraPathUtils.IsEraFile).Select(Path.GetFileName),
-                Is.EquivalentTo(new[] { Path.GetFileName(full), Path.GetFileName(noProofs) }), "no file of another profile is deleted");
-            Assert.That(checksums.Single(), Does.EndWith("  " + (rewrite ? Path.GetFileName(noProofs) : Path.GetFileName(full))), "the manifest names the file that holds the epoch");
+                Is.EquivalentTo(new[] { Path.GetFileName(other), Path.GetFileName(ours) }), "no file of another profile is deleted");
+            Assert.That(checksums.Single(), Does.EndWith("  " + Path.GetFileName(otherIsReused ? other : ours)), "the manifest names the file that holds the epoch");
         }
 
         if (rewrite) await AssertReadsBack(container, directory, 0, 15);
