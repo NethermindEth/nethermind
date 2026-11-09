@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
@@ -33,13 +34,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ulong _maxBlockCount;
+        private readonly int _maxUncachedRequests;
+        private int _uncachedRequests;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ulong? maxDistanceFromHead = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _specProvider = specProvider;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
+            _maxBlockCount = jsonRpcConfig.FeeHistoryMaxBlockCount > 0 ? (ulong)Math.Min(jsonRpcConfig.FeeHistoryMaxBlockCount, MaxBlockCount) : MaxBlockCount;
+            _maxUncachedRequests = jsonRpcConfig.FeeHistoryMaxConcurrentRequests ?? Math.Max(1, Environment.ProcessorCount / 4);
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
         }
 
@@ -89,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                                      BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
         {
             Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
                 ? blockParameter.BlockHash
@@ -99,6 +105,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return i;
             }
 
+            // The head is held in memory, so a new head the cache has not taken in yet needs no read;
+            // its rewards are filled like those of any cached block.
+            if (_blockTree.Head is { } head && head.Hash == hash)
+            {
+                return SaveHistorySearchInfo(head, withRewards: false);
+            }
+
+            // A block whose header is not found has no body to read.
+            if (hash is not null) uncachedRequestSlot.EnsureAcquired();
             Block block = _blockTree.FindBlock(blockParameter);
             return block is null
                 ? null
@@ -107,10 +122,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     : SaveHistorySearchInfo(block, withRewards);
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
+                uncachedRequestSlot.EnsureAcquired();
                 Block? block = _blockTree.FindBlock(blockHash, AncestorLookupOptions, blockNumber);
                 return block is null ? null : SaveHistorySearchInfo(block, withRewards);
             }
@@ -166,8 +182,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] rewardPercentiles)
         {
             ArgumentNullException.ThrowIfNull(rewardPercentiles);
-            if (blockCount > MaxBlockCount)
-                blockCount = MaxBlockCount;
+            if (blockCount > _maxBlockCount)
+                blockCount = _maxBlockCount;
 
             ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
@@ -175,8 +191,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return initialCheckResult;
             }
 
+            UncachedRequestSlot uncachedRequestSlot = new(this);
+            try
+            {
+                return GetFeeHistory(blockCount, newestBlock, rewardPercentiles, ref uncachedRequestSlot);
+            }
+            finally
+            {
+                uncachedRequestSlot.Dispose();
+            }
+        }
+
+        private ResultWrapper<FeeHistoryResults> GetFeeHistory(
+            ulong blockCount,
+            BlockParameter newestBlock,
+            double[] rewardPercentiles,
+            ref UncachedRequestSlot uncachedRequestSlot)
+        {
             bool withRewards = rewardPercentiles.Length > 0;
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards);
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards, ref uncachedRequestSlot);
 
             if (historyInfo is null)
             {
@@ -203,28 +236,41 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
-            while (historyInfo is not null && effectiveBlockCount-- > 0)
+            try
             {
-                info = historyInfo.Value;
-                if (rewards is not null)
+                while (historyInfo is not null && effectiveBlockCount-- > 0)
                 {
-                    // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
-                    if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                    info = historyInfo.Value;
+                    if (rewards is not null)
                     {
-                        effectiveBlockCount++;
-                        historyInfo = null;
-                        break;
-                    }
+                        // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
+                        if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                        {
+                            effectiveBlockCount++;
+                            historyInfo = null;
+                            break;
+                        }
 
-                    rewards[effectiveBlockCount] = rewardsInBlock;
+                        rewards[effectiveBlockCount] = rewardsInBlock;
+                    }
+                    oldestBlockNumber = info.BlockNumber;
+                    baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
+                    baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
+                    gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
+                    blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
+                    // The oldest requested block needs no parent.
+                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards, ref uncachedRequestSlot);
                 }
-                oldestBlockNumber = info.BlockNumber;
-                baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
-                baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
-                gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
-                blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
-                // The oldest requested block needs no parent.
-                historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards);
+            }
+            catch
+            {
+                // The walk throws when a block outside the cache is reached while all slots are taken, or when a read fails.
+                baseFeePerGas.Dispose();
+                baseFeePerBlobGas.Dispose();
+                gasUsedRatio.Dispose();
+                blobGasUsedRatio.Dispose();
+                rewards?.DisposeRecursive();
+                throw;
             }
 
             // An unavailable ancestor ends the walk early; the leading slots were never filled,
@@ -241,6 +287,42 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// One of the limited slots for a request that has to read blocks or receipts from the database.
+        /// </summary>
+        /// <remarks>
+        /// Building the fee data of a block not in the cache reads and decodes its body and receipts, which costs
+        /// far more than serving cached data, so the number of such requests running at once is capped.
+        /// The slot is taken right before the first such read and held until the request ends, so requests served
+        /// entirely from the cache stay unlimited. That includes the reward percentiles of a cached block: they are
+        /// computed at most once per cached block, on the first request for them, and the cache window bounds that work.
+        /// </remarks>
+        private struct UncachedRequestSlot(FeeHistoryOracle oracle) : IDisposable
+        {
+            private bool _acquired;
+
+            /// <exception cref="LimitExceededException">All slots are taken.</exception>
+            public void EnsureAcquired()
+            {
+                if (_acquired || oracle._maxUncachedRequests <= 0) return;
+
+                if (Interlocked.Increment(ref oracle._uncachedRequests) > oracle._maxUncachedRequests)
+                {
+                    Interlocked.Decrement(ref oracle._uncachedRequests);
+                    throw new LimitExceededException($"Too many concurrent eth_feeHistory requests for blocks outside the cache. Limit: {oracle._maxUncachedRequests}.");
+                }
+
+                _acquired = true;
+            }
+
+            public void Dispose()
+            {
+                if (!_acquired) return;
+                _acquired = false;
+                Interlocked.Decrement(ref oracle._uncachedRequests);
+            }
         }
 
         private static void DropLeading<T>(ArrayPoolList<T> list, int count)
@@ -287,12 +369,21 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private BlockRewards? GetRewards(BlockFeeHistorySearchInfo blockInfo)
         {
             StrongBox<BlockRewards?> rewards = blockInfo.Rewards;
-            if (rewards.Value is null && _blockTree.FindBlock(blockInfo.BlockHash, AncestorLookupOptions, blockInfo.BlockNumber) is { } block)
+            if (Volatile.Read(ref rewards.Value) is { } filled)
             {
-                rewards.Value = GetRewardsInBlock(block, _specProvider.GetSpec(block.Header));
+                return filled;
             }
 
-            return rewards.Value;
+            // Concurrent requests for the same cached block wait for one read of its body and receipts.
+            lock (rewards)
+            {
+                if (rewards.Value is null && _blockTree.FindBlock(blockInfo.BlockHash, AncestorLookupOptions, blockInfo.BlockNumber) is { } block)
+                {
+                    Volatile.Write(ref rewards.Value, GetRewardsInBlock(block, _specProvider.GetSpec(block.Header)));
+                }
+
+                return rewards.Value;
+            }
         }
 
         private BlockRewards GetRewardsInBlock(Block block, IReleaseSpec spec)
