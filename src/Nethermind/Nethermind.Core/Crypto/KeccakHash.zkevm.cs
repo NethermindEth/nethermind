@@ -250,7 +250,7 @@ public sealed partial class KeccakHash
     {
         if (AirbenderFlag.IsActive)
         {
-            airbender_keccak256(data, length, (byte*)Unsafe.AsPointer(ref lane));
+            Accelerators.AirbenderKeccak256(data, length, (byte*)Unsafe.AsPointer(ref lane));
             return;
         }
 
@@ -1098,10 +1098,6 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
     }
 
-    // Named as its entry point in libairbender; only code behind AirbenderFlag reaches it.
-    [DllImport("*")]
-    private static extern unsafe void airbender_keccak256(byte* data, nuint length, byte* output);
-
     /// <summary>Keccak-f on a state of the witness keying or of a resumed node.</summary>
     /// <remarks>On Airbender every such state is a 256-byte aligned slot (<see cref="RetainedStride"/>,
     /// <see cref="WitnessNodes.Lane"/>), which its delegation permutes in place rather than through copies of the state
@@ -1110,14 +1106,10 @@ public sealed partial class KeccakHash
     private static unsafe void PermuteKept(ref ulong state)
     {
         if (AirbenderFlag.IsActive)
-            airbender_keccak_f1600_in_place((ulong*)Unsafe.AsPointer(ref state));
+            Accelerators.AirbenderKeccakFInPlace((ulong*)Unsafe.AsPointer(ref state));
         else
             Accelerators.KeccakF(ref state);
     }
-
-    // Named as its entry point in libairbender; only code behind AirbenderFlag reaches it.
-    [DllImport("*")]
-    private static extern unsafe void airbender_keccak_f1600_in_place(ulong* state);
 
     /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned, except on Airbender, where it
     /// must be word aligned.</summary>

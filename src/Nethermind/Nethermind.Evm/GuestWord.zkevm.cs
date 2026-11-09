@@ -402,12 +402,4 @@ internal static unsafe class GuestWord
     /// <remarks>The same no-op rounding <c>AlignedSlot</c> applies to stack slots; nothing between it and the accesses can move the buffer.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong* AlignedWords(ref byte bytes) => (ulong*)((nuint)Unsafe.AsPointer(ref bytes) & ~(nuint)(sizeof(ulong) - 1));
-
-    /// <summary>Keccak-256 of <paramref name="length"/> bytes of swizzled memory from a group boundary, unswizzled as they
-    /// are absorbed.</summary>
-    /// <remarks>Named as its entry point in libairbender; only code behind <see cref="EvmPooledMemory.IsSwizzled"/>, which
-    /// is Airbender's, reaches it.</remarks>
-    [DllImport("*")]
-    [SuppressGCTransition]
-    internal static extern void airbender_keccak256_laid_out(byte* data, nuint length, byte* output);
 }

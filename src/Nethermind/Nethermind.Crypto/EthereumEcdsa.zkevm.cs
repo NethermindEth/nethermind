@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Zkvm.Abstractions;
@@ -85,7 +84,7 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         byte[] keys = new byte[count * 64];
         byte[] recovered = new byte[count];
         fixed (byte* m = messages, s = signatures, v = recoveryIds, k = keys, ok = recovered)
-            airbender_secp256k1_ecrecover_batch(m, s, v, k, ok, (uint)count);
+            Accelerators.AirbenderSecP256k1RecoverBatch(m, s, v, k, ok, (uint)count);
 
         if (recovered.AsSpan().Contains((byte)0))
             return false;
@@ -129,11 +128,11 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         others.Keys.CopyTo(keys.AsSpan(senders * 64));
         others.Ys.CopyTo(ys.AsSpan(senders * 32));
 
-        int verified;
+        bool verified;
         fixed (byte* m = messages, s = signatures, v = recoveryIds, k = keys, y = ys, w = weights)
-            verified = airbender_secp256k1_verify_batch(m, s, v, k, y, w, (uint)count);
+            verified = Accelerators.AirbenderSecP256k1VerifyBatch(m, s, v, k, y, w, (uint)count);
 
-        if (verified == 0)
+        if (!verified)
             return false;
 
         SetSenders(transactions, keys);
@@ -185,14 +184,4 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         for (int i = 0; i < transactions.Length; i++)
             transactions[i].SenderAddress = PublicKey.ComputeAddress(keys.Slice(i * 64, 64));
     }
-
-    [DllImport("*")]
-    [SuppressGCTransition]
-    private static extern unsafe void airbender_secp256k1_ecrecover_batch(
-        byte* messages, byte* signatures, byte* recoveryIds, byte* keys, byte* recovered, uint count);
-
-    [DllImport("*")]
-    [SuppressGCTransition]
-    private static extern unsafe int airbender_secp256k1_verify_batch(
-        byte* messages, byte* signatures, byte* recoveryIds, byte* keys, byte* ys, byte* weights, uint count);
 }

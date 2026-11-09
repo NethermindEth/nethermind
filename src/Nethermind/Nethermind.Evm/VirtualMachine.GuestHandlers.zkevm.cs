@@ -2842,7 +2842,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if (!EvmPooledMemory.IsSwizzled)
                             KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         else if ((offset & (sizeof(uint) - 1)) == 0)
-                            airbender_keccak256_laid_out((byte*)Unsafe.AsPointer(ref data), (nuint)length, (byte*)Unsafe.AsPointer(ref lengthLimbs));
+                            Accelerators.AirbenderKeccak256LaidOut((byte*)Unsafe.AsPointer(ref data), (nuint)length, (byte*)Unsafe.AsPointer(ref lengthLimbs));
                         else
                             SwizzledMemory.ComputeHash(ref data, (int)length, out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         // Reloaded rather than held across the call, where each would take a callee-saved register.

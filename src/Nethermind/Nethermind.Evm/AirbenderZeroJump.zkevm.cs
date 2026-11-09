@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.InteropServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
@@ -22,14 +22,9 @@ internal static class AirbenderZeroJump
         if (previous != target)
         {
             s_target = target;
-            airbender_set_zero_jump_target(target);
+            AirbenderRuntime.SetZeroJumpTarget(target);
         }
 
         return previous;
     }
-
-    // Named as its entry point in bflat's Airbender start module.
-    [DllImport("*")]
-    [SuppressGCTransition]
-    private static extern void airbender_set_zero_jump_target(nint target);
 }

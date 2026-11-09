@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
@@ -48,7 +49,7 @@ internal static unsafe class AirbenderArithmetic
     public static void Copy(void* destination, void* source)
     {
         Debug.Assert((((nuint)destination | (nuint)source) & 31) == 0 && destination != source);
-        airbender_u256_op(destination, source, CopyOp);
+        Accelerators.AirbenderUInt256Op(destination, source, CopyOp);
     }
 
     /// <summary>Exchanges the words at <paramref name="a"/> and <paramref name="b"/> through the free word <paramref name="scratch"/>.</summary>
@@ -65,7 +66,7 @@ internal static unsafe class AirbenderArithmetic
     public static void Add(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
-        airbender_u256_op(left, right, AddOp);
+        Accelerators.AirbenderUInt256Op(left, right, AddOp);
     }
 
     /// <summary>Subtracts <paramref name="right"/> from <paramref name="left"/>, modulo 2^256; whether it borrowed.</summary>
@@ -73,7 +74,7 @@ internal static unsafe class AirbenderArithmetic
     public static bool Subtract(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
-        return airbender_u256_op(left, right, SubtractOp) != 0;
+        return Accelerators.AirbenderUInt256Op(left, right, SubtractOp) != 0;
     }
 
     /// <summary>Replaces <paramref name="subtrahend"/> with <paramref name="minuend"/> minus it, modulo 2^256.</summary>
@@ -81,7 +82,7 @@ internal static unsafe class AirbenderArithmetic
     public static void SubtractFrom(void* subtrahend, void* minuend)
     {
         Debug.Assert((((nuint)subtrahend | (nuint)minuend) & 31) == 0 && subtrahend != minuend);
-        airbender_u256_op(subtrahend, minuend, SubtractAndNegateOp);
+        Accelerators.AirbenderUInt256Op(subtrahend, minuend, SubtractAndNegateOp);
     }
 
     /// <summary>Whether the words at <paramref name="left"/> and <paramref name="right"/> are equal.</summary>
@@ -89,7 +90,7 @@ internal static unsafe class AirbenderArithmetic
     public static bool Equal(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
-        return airbender_u256_op(left, right, EqualOp) != 0;
+        return Accelerators.AirbenderUInt256Op(left, right, EqualOp) != 0;
     }
 
     /// <summary>Whether the word at <paramref name="value"/> is zero.</summary>
@@ -101,7 +102,7 @@ internal static unsafe class AirbenderArithmetic
     public static void MultiplyLow(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
-        airbender_u256_op(left, right, MultiplyLowOp);
+        Accelerators.AirbenderUInt256Op(left, right, MultiplyLowOp);
     }
 
     /// <summary>Replaces <paramref name="left"/> with the high 256 bits of <paramref name="left"/> times <paramref name="right"/>.</summary>
@@ -109,7 +110,7 @@ internal static unsafe class AirbenderArithmetic
     public static void MultiplyHigh(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
-        airbender_u256_op(left, right, MultiplyHighOp);
+        Accelerators.AirbenderUInt256Op(left, right, MultiplyHighOp);
     }
 
     /// <summary>Shifts <paramref name="value"/> left by <paramref name="bits"/>, below 256.</summary>
@@ -131,7 +132,7 @@ internal static unsafe class AirbenderArithmetic
         if (bits == 0)
             return;
 
-        airbender_u256_op(value, PowerOfTwo(256 - bits), MultiplyHighOp);
+        Accelerators.AirbenderUInt256Op(value, PowerOfTwo(256 - bits), MultiplyHighOp);
     }
 
     /// <summary>Shifts <paramref name="value"/> right by <paramref name="bits"/>, below 256, filling with its sign.</summary>
@@ -160,7 +161,7 @@ internal static unsafe class AirbenderArithmetic
             ((uint*)left)[7] ^= 0x80000000u;
             ((uint*)right)[7] ^= 0x80000000u;
         }
-        return airbender_u256_op(left, right, SubtractOp) != 0;
+        return Accelerators.AirbenderUInt256Op(left, right, SubtractOp) != 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -179,8 +180,4 @@ internal static unsafe class AirbenderArithmetic
         Debug.Assert(s_powersOfTwo is not null, "Initialize runs before any handler that shifts");
         return s_powersOfTwo + exponent * (32 / sizeof(uint));
     }
-
-    // Named as its entry point, which is the name the JIT matches.
-    [DllImport("*")]
-    private static extern uint airbender_u256_op(void* left, void* right, uint op);
 }
