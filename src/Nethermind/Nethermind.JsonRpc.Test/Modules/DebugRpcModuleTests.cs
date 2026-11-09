@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -37,6 +38,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -564,6 +566,63 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_missing_block_identifies_selector(
+        [Values("number", "number-object", "hash", "hash-object")] string selectorKind,
+        [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool invalidOptions)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object selector = selectorKind switch
+        {
+            "number" => "0x190",
+            "number-object" => new { blockNumber = "0x190" },
+            "hash" => TestItem.KeccakA.ToString(),
+            _ => new { blockHash = TestItem.KeccakA.ToString(), requireCanonical = true }
+        };
+        string expected = selectorKind.StartsWith("number", StringComparison.Ordinal)
+            ? "block #400 not found"
+            : $"block {TestItem.KeccakA} not found";
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, selector,
+            new
+            {
+                txIndex,
+                tracer = invalidOptions ? "missingTracer" : null,
+                blockOverrides = invalidOptions ? new { withdrawals = Array.Empty<object>() } : null,
+                stateOverrides = invalidOptions
+                    ? new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } }
+                    : null
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_missing_block_preserves_temporary_status(
+        [Values] bool byHash, [Values] bool indexed, [Values] bool temporary)
+    {
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISyncModeSelector>(syncModeSelector));
+        syncModeSelector.Current.Returns(temporary ? SyncMode.FastHeaders : SyncMode.None);
+        BlockParameter selector = byHash ? new(TestItem.KeccakA) : new(400UL);
+        using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
+            new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 }, selector,
+            new GethTraceOptions { TxIndex = indexed ? 0UL : null });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo(byHash ? $"block {TestItem.KeccakA} not found" : "block #400 not found"));
+            Assert.That(result.IsTemporary, Is.EqualTo(temporary));
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCall_txIndex_rejects_end_of_nonempty_block([Values] bool streaming, [Values] bool conflictingStorage)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -588,9 +647,10 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds()
+    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds([Values] bool streaming)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         Block parent = chain.BlockTree.Head!;
         Block empty = await chain.AddBlock();
         parent.Header.StateRoot = TestItem.KeccakA;
@@ -1997,7 +2057,7 @@ public partial class DebugRpcModuleTests
         (int code, string message) = blockSelection switch
         {
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
-            "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
+            "missing" => (ErrorCodes.ResourceNotFound, $"block {TestItem.KeccakA} not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
         };
         JToken json = JToken.Parse(response);

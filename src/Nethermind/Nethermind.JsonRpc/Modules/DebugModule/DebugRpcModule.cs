@@ -192,6 +192,17 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetTraceCallHeader(blockParameter, options?.TxIndex, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
+            if (headerError.ErrorCode == ErrorCodes.ResourceNotFound && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+            {
+                string? message = blockParameter.Type switch
+                {
+                    BlockParameterType.BlockNumber => $"block #{blockParameter.BlockNumber} not found",
+                    BlockParameterType.BlockHash => $"block {blockParameter.BlockHash} not found",
+                    _ => null
+                };
+                if (message is not null)
+                    return ResultWrapper<GethLikeTxTrace>.Fail(message, headerError.ErrorCode, headerError.IsTemporary);
+            }
             return headerError;
         }
 
