@@ -995,6 +995,9 @@ public class OtsRpcModuleTests
             Assert.That(response.Data?.Hash, Is.EqualTo(location == "absent" ? null : (location == "below" ? first : last).Transactions[0].Hash));
             Assert.That(serializer.Reads - before, Is.EqualTo(location == "above" ? 1 : 2));
         }
+        chain.Container.ResolveKeyed<IDb>(TraceStorePlugin.DbName).Delete((location == "above" ? last : first).Hash!);
+        using ResultWrapper<OtsContractCreator?> missing = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create().ots_getContractCreator(target);
+        Assert.That(missing.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
 
     [Test]
