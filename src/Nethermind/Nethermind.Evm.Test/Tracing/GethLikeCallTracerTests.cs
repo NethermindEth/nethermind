@@ -61,6 +61,36 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     };
 
     [Test]
+    public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", "reason")] string reason)
+    {
+        byte[] output = new byte[reason.Length == 0 ? 68 : 100];
+        TransactionSubstate.ErrorFunctionSelector.CopyTo(output, 0);
+        output[35] = 32;
+        output[67] = (byte)reason.Length;
+        Encoding.ASCII.GetBytes(reason).CopyTo(output, 68);
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionRevert(40000, output);
+        if (nested)
+            tracer.ReportActionEnd(60000, ReadOnlyMemory<byte>.Empty);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+            Assert.That(frame.TryGetProperty("revertReason", out JsonElement decoded), Is.EqualTo(reason.Length != 0));
+            if (reason.Length != 0)
+                Assert.That(decoded.GetString(), Is.EqualTo(reason));
+        }
+    }
+
+    [Test]
     public void Call_tracer_records_insufficient_balance_attempt(
         [Values(null, WithLog, OnlyTopCall)] string? config,
         [Values(Instruction.CALL, Instruction.CALLCODE)] Instruction opcode,
