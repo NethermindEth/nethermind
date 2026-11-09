@@ -1274,6 +1274,64 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> TraceCallFieldInferredForkGatingCases()
+    {
+        object[] authorizationList = [new { chainId = "0x1", address = TestItem.AddressB.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" }];
+        string[] blobHashes = ["0x01" + new string('0', 62)];
+        string sender = Address.Zero.ToString();
+        string Unsupported(string type) => $"tracing failed: transaction type not supported: {type} tx (sender {sender})";
+        (string Name, IReleaseSpec Spec, Dictionary<string, object> Fields, string? Error)[] cases =
+        [
+            ("access_before_berlin", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>() }, Unsupported("access list")),
+            ("access_at_berlin", Berlin.Instance, new() { ["accessList"] = Array.Empty<object>() }, null),
+            ("blob_before_cancun", Shanghai.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
+            ("blob_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, null),
+            ("authorization_before_prague", Cancun.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
+            ("authorization_at_prague", Prague.Instance, new() { ["authorizationList"] = authorizationList }, null),
+            ("explicit_type_without_fields", Istanbul.Instance, new() { ["type"] = "0x4" }, null),
+            ("dynamic_fees_before_london", Berlin.Instance, new() { ["maxFeePerGas"] = "0x0" }, "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
+            ("fee_order_before_authorization_fork", Cancun.Instance, new() { ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
+            ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode"))
+        ];
+        foreach ((string name, IReleaseSpec spec, Dictionary<string, object> fields, string? error) in cases)
+            foreach (bool streamMode in new[] { false, true })
+                yield return new TestCaseData(spec, fields, error, streamMode).SetName($"{{m}}_{name}_{(streamMode ? "streamed" : "buffered")}");
+    }
+
+    [TestCaseSource(nameof(TraceCallFieldInferredForkGatingCases))]
+    public async Task Debug_traceCall_field_inferred_fork_gating(IReleaseSpec spec, Dictionary<string, object> fields, string? expectedError, bool streamMode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(new TestSpecProvider(spec));
+        Dictionary<string, object> call = new(fields)
+        {
+            ["from"] = Address.Zero.ToString(),
+            ["to"] = TestItem.AddressC.ToString(),
+            ["gas"] = "0x493e0"
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest");
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (expectedError is not null)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.GreaterThanOrEqualTo(21000), response);
+            }
+        }
+    }
+
     private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
     {
         (string Json, string? Error, int? Code)[] cases =
