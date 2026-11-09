@@ -121,10 +121,7 @@ try
         var actual = await Node(authorization, new JsonArray(text, type, permission, JsonValue.Create(apiError)));
         Check(JsonNode.DeepEquals(actual, new JsonObject { ["called"] = called, ["allowed"] = allowed, ["error"] = JsonValue.Create(error) }), $"authorization {text}/{type}/{permission}/{apiError}");
     }
-    var automatic = Read(".github/workflows/ai-review.yml");
-    const string largeDiffModel = "      model: ${{ github.event.pull_request.changed_files > 300 && 'openai/gemini/gemini-pro-latest' || '' }}\n";
-    Check(automatic.Contains(largeDiffModel, StringComparison.Ordinal), "large PRs bypass the diff endpoint file limit");
-    foreach (var workflow in new[] { command, automatic.Replace(largeDiffModel, "", StringComparison.Ordinal) })
+    foreach (var workflow in new[] { command, Read(".github/workflows/ai-review.yml") })
         Check(workflow.Contains("uses: ./.github/workflows/ai-review-instructions.yml", StringComparison.Ordinal) && workflow.Contains("extra_instructions: ${{ needs.instructions.outputs.instructions }}", StringComparison.Ordinal) && !ModelOverrideRegex().IsMatch(workflow), "trusted prepared instructions without model override");
     Check(new[] { "ref: ${{ steps.target.outputs.base_sha }}", "persist-credentials: false", "ALL_SCOPES: ${{ steps.target.outputs.all_scopes }}" }.All(text => instructions.Contains(text, StringComparison.Ordinal)) && !instructions.Contains("secrets:", StringComparison.Ordinal) && !instructions.Split("jobs:")[0].Contains("write", StringComparison.Ordinal), "read-only trusted rules checkout");
     var renamed = new JsonArray(new JsonObject { ["filename"] = "renamed.txt", ["previous_filename"] = "old/Test/File.cs" });
