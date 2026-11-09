@@ -135,10 +135,15 @@ public class FlatStateReaderTests
         reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics);
 
         TrieStats expected = trieReader.CollectStats();
+        // The root branch of two hashes is 83 bytes and each account leaf 107; each storage trie is one 36-byte slot leaf.
+        const long stateSize = 83 + 2 * 107;
+        const long storageSize = 2 * 36;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(collector.Stats.StateSize, Is.EqualTo(expected.StateSize));
-            Assert.That(collector.Stats.StorageSize, Is.EqualTo(expected.StorageSize));
+            Assert.That(collector.Stats.StateSize, Is.EqualTo(stateSize));
+            Assert.That(collector.Stats.StorageSize, Is.EqualTo(storageSize));
+            Assert.That(expected.StateSize, Is.EqualTo(stateSize));
+            Assert.That(expected.StorageSize, Is.EqualTo(storageSize));
             Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
             Assert.That(collector.Stats.AccountCount, Is.EqualTo(2));
             Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(2));
