@@ -150,6 +150,32 @@ public class FlatStateReaderTests
         }
     }
 
+    [Test]
+    public void Record_walk_on_one_thread_does_not_allocate()
+    {
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(_header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        // Sixteen leaves, all in the buffer under the branch the fixture builds above them.
+        for (int i = 0; i < 16; i++) snapshot.Content.SetStateNodeRlp(_buffer, TreePath.Empty.Append(i), FlatTestHelpers.LeafRlp((byte)i));
+        Assert.That(_buffer.TryLocate(snapshot.Content.StateRootPointer, out NodeRecord root), Is.True);
+        Hash256 rootHash = new(root.Hash);
+        _buffer.SetRoot(null, rootHash, snapshot.Content.StateRootPointer);
+        using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new NoopPersistenceReader(), snapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
+        NodeCounter counter = new();
+        NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, snapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
+        walk.Accept(rootHash);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        walk.Accept(rootHash);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
     private static void AssertVisit(FlatStateReader reader, BlockHeader header, Hash256 stateRoot, bool fullScan)
     {
         if (fullScan)
@@ -183,6 +209,20 @@ public class FlatStateReaderTests
                 Assert.That(proof.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
             }
         }
+    }
+
+    private sealed class NodeCounter : INodeRecordVisitor<EmptyContext>
+    {
+        public int Nodes;
+        public bool IsFullDbScan => true;
+        public bool ExpectAccounts => false;
+        public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
+        public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }
+        public void VisitMissingNode(in EmptyContext nodeContext, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {nodeHash}");
+        public void VisitBranch(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitExtension(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitLeaf(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitAccount(in EmptyContext nodeContext, NodeRecordRef node, in AccountStruct account) { }
     }
 
     private class ThrowingFlatDbManager : IFlatDbManager
