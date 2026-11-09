@@ -280,6 +280,10 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Reason.ErrorDescription), ErrorCodes.InvalidInput);
         }
+        catch (InvalidTransactionException ex)
+        {
+            return TracingFailed<GethLikeTxTrace>(ex);
+        }
         catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
@@ -395,6 +399,12 @@ public class DebugRpcModule(
         long max = jsonRpcConfig.MaxBufferedTraceLogSize;
         return max <= 0 || (effective.Limit != 0 && effective.Limit <= max) ? effective : effective with { Limit = max };
     }
+
+    /// <summary>
+    /// Fails a buffered trace whose transaction is invalid with the same message the streaming envelope carries.
+    /// </summary>
+    private static ResultWrapper<T> TracingFailed<T>(InvalidTransactionException exception) =>
+        ResultWrapper<T>.Fail(StructLogEnvelopeWriter.FormatErrorMessage(exception), ErrorCodes.InvalidInput);
 
     private GethLikeTxTraceStreamingSingleResult BuildStreamingResult(
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace)
@@ -523,7 +533,16 @@ public class DebugRpcModule(
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<GethLikeTxTrace>(exception);
+        }
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -555,7 +574,15 @@ public class DebugRpcModule(
 
         // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<GethLikeTxTrace>(exception);
+        }
 
         if (transactionTrace is null)
         {
@@ -634,6 +661,10 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
             || JavaScriptTraceFailure.IsRecoverable(exception))
@@ -723,6 +754,10 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = !string.IsNullOrEmpty(options?.Tracer) });
         }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
+        }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
@@ -782,6 +817,10 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = !string.IsNullOrEmpty(options?.Tracer) });
         }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
+        }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
@@ -827,7 +866,15 @@ public class DebugRpcModule(
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, timeout.Token, WithBufferedLimit(options));
+        IReadOnlyCollection<GethLikeTxTrace> blockTrace;
+        try
+        {
+            blockTrace = debugBridge.GetBlockTrace(block, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidTransactionException exception)
+        {
+            return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBadBlock)} request {blockHash}, result: {blockTrace}");
 
