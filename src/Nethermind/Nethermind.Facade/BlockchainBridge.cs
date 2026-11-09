@@ -302,7 +302,7 @@ namespace Nethermind.Facade
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 
-        private static bool HasBlockOverrides(BlockOverride blockOverride) =>
+        internal static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
             blockOverride.Time is not null ||

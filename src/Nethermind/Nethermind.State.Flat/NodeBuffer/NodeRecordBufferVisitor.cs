@@ -19,24 +19,26 @@ internal abstract class NodeRecordBufferVisitor(
     VisitingStats? diagnostics,
     ReadFlags readFlags)
 {
-    private static readonly ReadOnlySpanAction<byte, LoadTarget> Decode = static (rlp, target) => target.Record = DecodeRecord(rlp, target.Hash);
+    private static readonly ReadOnlySpanAction<byte, LoadTarget> Decode = static (rlp, target) => target.Record = DecodeRecord(rlp, target.Hash, target.Buffer);
 
     private readonly INodeRecordBuffer? _nodeRecordBuffer = stateSnapshot?.BufferPin?.Buffer;
 
     /// <summary>Loads a trie's root, starting at the record the state's snapshot finds by hash, as block processing does.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="buffer">As for <see cref="TryLoad"/>.</param>
     /// <returns>False when neither the buffer nor persistence holds it.</returns>
-    protected bool TryLoadRoot(Hash256? address, in ValueHash256 rootHash, out NodeRecord root)
+    protected bool TryLoadRoot(Hash256? address, in ValueHash256 rootHash, DecodeBuffer buffer, out NodeRecord root)
     {
         RecordLookup(TreePath.Empty);
-        return TryLoad(address, TreePath.Empty, rootHash, stateSnapshot?.ResolveRoot(address, rootHash) ?? 0, out root);
+        return TryLoad(address, TreePath.Empty, rootHash, stateSnapshot?.ResolveRoot(address, rootHash) ?? 0, buffer, out root);
     }
 
     /// <summary>Loads the node <paramref name="hash"/> names at <paramref name="path"/>: the buffer record at <paramref name="pointer"/>, otherwise the record of the RLP the persisted snapshots or persistence hold.</summary>
     /// <remarks>A record decoded from RLP has no child pointers, so every node below it is loaded from persistence too.</remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="buffer">The walking worker's buffer, which a record decoded from RLP is written to.</param>
     /// <returns>False when neither holds a valid node.</returns>
-    protected bool TryLoad(Hash256? address, in TreePath path, in ValueHash256 hash, ulong pointer, out NodeRecord record)
+    protected bool TryLoad(Hash256? address, in TreePath path, in ValueHash256 hash, ulong pointer, DecodeBuffer buffer, out NodeRecord record)
     {
         if (pointer != 0 && _nodeRecordBuffer is not null && _nodeRecordBuffer.TryLocate(pointer, out record))
         {
@@ -46,14 +48,14 @@ internal abstract class NodeRecordBufferVisitor(
 
         diagnostics?.RecordCacheMiss();
         NodeRecord? loaded = null;
-        bundle.TryLoadPersistedRlp(address, path, readFlags, Decode, new LoadTarget(in hash, ref loaded));
+        bundle.TryLoadPersistedRlp(address, path, readFlags, Decode, new LoadTarget(in hash, buffer, ref loaded));
         record = loaded.GetValueOrDefault();
         return loaded.HasValue;
     }
 
-    /// <summary>The record of a child embedded in its parent's record.</summary>
-    protected static NodeRecord InlineRecord(in ChildRef child) =>
-        DecodeRecord(child.InlineRlp, default) ?? throw new TrieException("Invalid embedded trie node RLP.");
+    /// <summary>The record of a child embedded in its parent's record, written to <paramref name="buffer"/>.</summary>
+    protected static NodeRecord InlineRecord(in ChildRef child, DecodeBuffer buffer) =>
+        DecodeRecord(child.InlineRlp, default, buffer) ?? throw new TrieException("Invalid embedded trie node RLP.");
 
     protected void RecordLookup(in TreePath path)
     {
@@ -61,24 +63,57 @@ internal abstract class NodeRecordBufferVisitor(
         diagnostics?.ObserveDepth(path.Length);
     }
 
-    /// <returns>The record of <paramref name="rlp"/> with every child pointer 0, or null when it is not a valid trie node.</returns>
-    private static NodeRecord? DecodeRecord(ReadOnlySpan<byte> rlp, in ValueHash256 hash)
+    /// <returns>The record of <paramref name="rlp"/> with every child pointer 0, written to <paramref name="buffer"/>, or null when it is not a valid trie node.</returns>
+    private static NodeRecord? DecodeRecord(ReadOnlySpan<byte> rlp, in ValueHash256 hash, DecodeBuffer buffer)
     {
         if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) return null;
 
-        byte[] record = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
+        byte[] record = buffer.Reserve(NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length));
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, 0, record);
         return new NodeRecord(record, 0);
+    }
+
+    /// <summary>The pooled array one worker of a walk decodes records into, each overwriting the last.</summary>
+    /// <remarks>
+    /// A record is only read until the walk descends below it: a branch or extension copies its child references out first, and an
+    /// account leaf is decoded and visited before its storage root is loaded.
+    /// </remarks>
+    protected sealed class DecodeBuffer : IDisposable
+    {
+        /// <summary>Fits any branch, extension, account or storage slot record.</summary>
+        private const int MinLength = 1024;
+
+        private byte[]? _array;
+
+        /// <returns>The array, rented anew first when there is none or it is shorter than <paramref name="length"/>.</returns>
+        public byte[] Reserve(int length)
+        {
+            if (_array is not null && _array.Length >= length) return _array;
+
+            Dispose();
+            return _array = ArrayPool<byte>.Shared.Rent(Math.Max(length, MinLength));
+        }
+
+        /// <summary>Returns the array to the pool; a later <see cref="Reserve"/> rents another.</summary>
+        public void Dispose()
+        {
+            if (_array is null) return;
+
+            ArrayPool<byte>.Shared.Return(_array);
+            _array = null;
+        }
     }
 
     private readonly ref struct LoadTarget
     {
         public readonly ref readonly ValueHash256 Hash;
+        public readonly DecodeBuffer Buffer;
         public readonly ref NodeRecord? Record;
 
-        public LoadTarget(ref readonly ValueHash256 hash, ref NodeRecord? record)
+        public LoadTarget(ref readonly ValueHash256 hash, DecodeBuffer buffer, ref NodeRecord? record)
         {
             Hash = ref hash;
+            Buffer = buffer;
             Record = ref record;
         }
     }
@@ -89,6 +124,7 @@ internal abstract class NodeRecordBufferVisitor(
 /// Calls the visitor as <see cref="PatriciaTree.Accept{TNodeContext}"/> does. Each trie starts at the root record the state's snapshot
 /// finds by hash, as block processing does, and each child at the record its parent points at. A node no pointer resolves, and every node
 /// below it, is loaded by path from the persisted snapshots and persistence instead. The walk reads only records, and hands them to the visitor.
+/// Each worker decodes the records it loads from RLP into one <see cref="NodeRecordBufferVisitor.DecodeBuffer"/> of its own.
 /// Records are borrowed under the caller's pins, so every parallel worker joins before <see cref="Accept"/> returns.
 /// </remarks>
 /// <param name="stateSnapshot">The in-memory snapshot of the visited state, whose buffer holds its records; null when the state is persisted.</param>
@@ -103,6 +139,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
     private readonly ConcurrencyController _workers = new(options.MaxDegreeOfParallelism);
+    private readonly DecodeBuffer _buffer = new();
 
     /// <param name="address">The address hash of the storage trie at <paramref name="rootHash"/>, to visit that trie alone as <see cref="PatriciaTree.Accept{TNodeContext}"/> does given a storage address; null for the state trie.</param>
     public void Accept(Hash256 rootHash, Hash256? address)
@@ -114,14 +151,15 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        if (!TryLoadRoot(address, rootHash, out NodeRecord root))
+        if (!TryLoadRoot(address, rootHash, _buffer, out NodeRecord root))
         {
             visitor.VisitMissingNode(default, rootHash);
             return;
         }
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
-        Visit(root, default, address, TreePath.Empty, long.MaxValue);
+        Visit(root, default, address, TreePath.Empty, long.MaxValue, _buffer);
+        _buffer.Dispose();
     }
 
     /// <summary>Whether the visitor descends into <paramref name="child"/>, counting a lookup of it when it is referenced by hash.</summary>
@@ -133,16 +171,16 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         return visitor.ShouldVisit(childContext, child.Data);
     }
 
-    private long Descend(in ChildRef child, in TNodeContext context, Hash256? address, in TreePath path, long sizeHint)
+    private long Descend(in ChildRef child, in TNodeContext context, Hash256? address, in TreePath path, long sizeHint, DecodeBuffer buffer)
     {
-        if (child.Kind == ChildRefKind.Inline) return Visit(InlineRecord(child), context, address, path, sizeHint);
-        if (TryLoad(address, path, child.Data, child.Pointer, out NodeRecord record)) return Visit(record, context, address, path, sizeHint);
+        if (child.Kind == ChildRefKind.Inline) return Visit(InlineRecord(child, buffer), context, address, path, sizeHint, buffer);
+        if (TryLoad(address, path, child.Data, child.Pointer, buffer, out NodeRecord record)) return Visit(record, context, address, path, sizeHint, buffer);
 
         visitor.VisitMissingNode(context, child.Data);
         return 1;
     }
 
-    private long Visit(NodeRecord record, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
+    private long Visit(NodeRecord record, in TNodeContext context, Hash256? address, TreePath path, long sizeHint, DecodeBuffer buffer)
     {
         long size = 1;
         sizeHint--;
@@ -151,15 +189,15 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             case NodeRecordKind.HashedBranch:
             case NodeRecordKind.InlineBranch:
                 visitor.VisitBranch(context, record.View);
-                size += VisitBranch(record, context, address, path, sizeHint);
+                size += VisitBranch(record, context, address, path, sizeHint, buffer);
                 break;
             case NodeRecordKind.Extension:
                 visitor.VisitExtension(context, record.View);
-                size += VisitExtension(record, context, address, path, sizeHint);
+                size += VisitExtension(record, context, address, path, sizeHint, buffer);
                 break;
             case NodeRecordKind.Leaf:
                 visitor.VisitLeaf(context, record.View);
-                if (address is null && visitor.ExpectAccounts) size += VisitAccount(record, context, path, sizeHint);
+                if (address is null && visitor.ExpectAccounts) size += VisitAccount(record, context, path, sizeHint, buffer);
                 break;
             default:
                 throw new TrieException($"An attempt was made to visit a {record.Kind} record");
@@ -167,7 +205,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         return size;
     }
 
-    private long VisitExtension(NodeRecord extension, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
+    private long VisitExtension(NodeRecord extension, in TNodeContext context, Hash256? address, TreePath path, long sizeHint, DecodeBuffer buffer)
     {
         NodeRecordRef view = extension.View;
         Span<byte> key = stackalloc byte[view.KeyLength(0)];
@@ -175,10 +213,10 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         path.AppendMut(key);
         TNodeContext childContext = context.Add(key);
         ChildRef child = view.Child(0);
-        return ShouldVisit(child, childContext, path) ? Descend(child, childContext, address, path, sizeHint) : 0;
+        return ShouldVisit(child, childContext, path) ? Descend(child, childContext, address, path, sizeHint, buffer) : 0;
     }
 
-    private long VisitAccount(NodeRecord leaf, in TNodeContext context, TreePath path, long sizeHint)
+    private long VisitAccount(NodeRecord leaf, in TNodeContext context, TreePath path, long sizeHint, DecodeBuffer buffer)
     {
         RlpReader reader = new(leaf.LeafValue.Span);
         if (!AccountDecoder.Instance.TryDecodeStruct(ref reader, out AccountStruct account))
@@ -193,14 +231,14 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
 
         path.AppendMut(key);
         Hash256 address = path.Path.ToCommitment();
-        if (TryLoadRoot(address, account.StorageRoot, out NodeRecord storageRoot))
-            return Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint);
+        if (TryLoadRoot(address, account.StorageRoot, buffer, out NodeRecord storageRoot))
+            return Visit(storageRoot, leafContext.AddStorage(address), address, TreePath.Empty, sizeHint, buffer);
 
         visitor.VisitMissingNode(leafContext, account.StorageRoot);
         return 0;
     }
 
-    private long VisitBranch(NodeRecord branch, in TNodeContext context, Hash256? address, TreePath path, long sizeHint)
+    private long VisitBranch(NodeRecord branch, in TNodeContext context, Hash256? address, TreePath path, long sizeHint, DecodeBuffer buffer)
     {
         Span<ChildRef> children = stackalloc ChildRef[TrieNode.BranchesCount];
         branch.View.CopyChildren(children);
@@ -236,7 +274,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
                 else
                 {
                     // Changing the size hint mid-iteration is deliberate, as in TrieNodeTraverser.
-                    sizeHint = Descend(child, childContext, address, childPath, sizeHint);
+                    sizeHint = Descend(child, childContext, address, childPath, sizeHint, buffer);
                     size += sizeHint;
                 }
             }
@@ -259,12 +297,13 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
         return size;
     }
 
-    /// <summary>Descends into <paramref name="child"/> on a worker, which releases <paramref name="slot"/> when done.</summary>
+    /// <summary>Descends into <paramref name="child"/> on a worker with a decode buffer of its own, which releases <paramref name="slot"/> when done.</summary>
     /// <remarks>Kept out of <see cref="VisitBranch"/> so that its closure is allocated only when a worker starts, not for every child.</remarks>
     private Task<long> DescendInWorker(ConcurrencyController.Slot slot, ChildRef child, TNodeContext context, Hash256? address, TreePath path, long sizeHint) =>
         Task.Run(() =>
         {
             using ConcurrencyController.Slot worker = slot;
-            return Descend(child, context, address, path, sizeHint);
+            using DecodeBuffer buffer = new();
+            return Descend(child, context, address, path, sizeHint, buffer);
         });
 }

@@ -163,12 +163,12 @@ internal class NodeRecordCodecTests
     private static void AssertChildHashes(NodeRecordRef view, TrieNode node)
     {
         int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
-        using (Assert.EnterMultipleScope())
+        for (int i = 0; i < 16; i++)
         {
-            for (int i = 0; i < 16; i++)
+            ValueHash256 expectedHash = default;
+            bool hasHash = i < childCount && node.GetChildHashAsValueKeccak(i, out expectedHash);
+            using (Assert.EnterMultipleScope())
             {
-                ValueHash256 expectedHash = default;
-                bool hasHash = i < childCount && node.GetChildHashAsValueKeccak(i, out expectedHash);
                 Assert.That(view.TryGetChildHash(i, out ValueHash256 hash), Is.EqualTo(hasHash), $"child {i} has a hash");
                 Assert.That(hash, Is.EqualTo(hasHash ? expectedHash : default), $"child {i} hash");
             }

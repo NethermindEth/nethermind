@@ -55,6 +55,8 @@ public class FlatOverridableWorldScopeTests
         public TestContext(FlatDbConfig? config = null)
         {
             config ??= new FlatDbConfig();
+            // Resolving Auto needs the hardware info and records the layout on disk.
+            if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
             IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
 
             _containerBuilder = new ContainerBuilder()
