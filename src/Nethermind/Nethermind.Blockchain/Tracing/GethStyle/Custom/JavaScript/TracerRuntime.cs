@@ -22,15 +22,17 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// The soft limit is a sampled, best-effort bound on the V8 heap: ClearScript samples the heap size whenever a hook
 /// enters the script and periodically while it runs, and interrupts the script with its memory-limit error when the
 /// heap is still over the limit after a full collection, so a script can allocate past it between two samples.
-/// The old-space size is V8's own hard limit, which ends the process when reached. It sits far above the soft limit
-/// to absorb what a script allocates between two samples. A single call into a built-in that never reaches an
-/// interrupt check, such as <c>JSON.parse</c> of a large string, is not sampled while it runs, so it is bounded only
-/// by this limit and by host memory: below the limit the call completes and the next hook ends the trace with the
-/// memory-limit error, and at the limit V8 ends the process. The size reserves no memory or address space up front,
-/// so a large limit costs memory only when a script fills the heap.
-/// The size is fixed: ClearScript enforces the soft limit with a last-resort collection, and V8 calls the
-/// near-heap-limit callback on every last-resort collection, so a heap expansion multiplier would raise the hard
-/// limit each time a collection brings a script back under the soft limit, until it overflows and V8 aborts the
+/// The old-space size caps V8's old generation; the total heap limit V8 reports is slightly higher because it also
+/// covers the young generation. When V8 cannot satisfy an allocation within these constraints, it ends the process.
+/// The old-space ceiling sits far above the soft limit to absorb what a script allocates between two samples.
+/// A single call into a built-in that never reaches an interrupt check, such as <c>JSON.parse</c> of a large string,
+/// is not sampled while it runs, so its V8 heap allocations are bounded only by this ceiling and by the memory
+/// available to the process. The trace ends with the memory-limit error only if a later sample still finds the heap
+/// over the soft limit after a collection. Array buffer memory is allocated outside the V8 heap, so neither limit
+/// bounds it. Raising the ceiling does not preallocate that memory.
+/// The size is fixed: ClearScript enforces the soft limit with last-resort collections, and V8 can raise its heap
+/// limit through the near-heap-limit callback on those collections, so a heap expansion multiplier would raise the
+/// ceiling each time a collection brings a script back under the soft limit, until it overflows and V8 aborts the
 /// process.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>

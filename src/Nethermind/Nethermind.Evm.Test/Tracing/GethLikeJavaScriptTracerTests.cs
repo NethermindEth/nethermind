@@ -2229,8 +2229,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 }";
 
     // Tries to allocate about 9.6 GB in one step, far past the soft limit. Only the heap samples taken while the step
-    // runs can end the step with the memory-limit error; without them the step would finish and the child would
-    // report the missing error.
+    // runs can end the step with the memory-limit error. Without them the step would finish if the host has enough
+    // memory, and the child would report the missing error; otherwise the child dies or times out. Every one of these
+    // outcomes fails the test.
     private const string BurstingTracer = @"{
                     hoard: [],
                     step: function(log, db) { for (var i = 0; i < 40; i++) this.hoard.push(new Array(30000000).fill(i + 0.5)); },
