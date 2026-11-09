@@ -82,6 +82,8 @@ public sealed partial class OtsRpcModule
                 timeout.Token.ThrowIfCancellationRequested();
                 if (action.Type == "create" && action.CreationMethod is not (null or "create" or "create2"))
                     return ResultWrapper<List<OtsInternalOperation>>.Fail("Stored trace contains an unsupported creation method.", ErrorCodes.ResourceUnavailable);
+                if (action is { Type: "create", To: null, From: not null, Result: null, Error: not null, Subtraces.Count: 0 })
+                    continue;
                 int type = action.Type switch
                 {
                     "call" when action.CallType == "call" && !action.Value.IsZero => 0,
@@ -146,6 +148,16 @@ public sealed partial class OtsRpcModule
         CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
         try
         {
+            timeout.Token.ThrowIfCancellationRequested();
+            if (!stateReader.HasStateForBlock(head.Header))
+                return ResultWrapper<Hash256?>.Fail($"State for block {head.Number} is unavailable.", ErrorCodes.ResourceUnavailable);
+            bool used = stateReader.TryGetAccount(head.Header, sender, out AccountStruct account) && account.Nonce > nonce;
+            timeout.Token.ThrowIfCancellationRequested();
+            if (!blockFinder.IsMainChain(head.Header))
+                return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            // EIP-7702 authorizations can consume nonces, but never decrease this upper bound.
+            if (!used) return ResultWrapper<Hash256?>.Success(null);
+
             Block? previous = null;
             for (ulong number = head.Number; number > 0; number--)
             {

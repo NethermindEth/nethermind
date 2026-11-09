@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules;
 
@@ -40,22 +41,64 @@ public sealed partial class OtsRpcModule
                 if (Eip7702Constants.IsDelegatedCode(code)) return ResultWrapper<OtsContractCreator?>.Success(null);
             }
 
+            const int candidateBatchSize = 64;
+            TraceAddressIndex.Candidates? candidates = addressIndex?.FindCandidates(address, 1, head.Number, true, candidateBatchSize, timeout.Token);
+            TraceAddressIndex.Checkpoint? coverage = candidates?.Coverage;
+            Hash256? firstParent = candidates?.FirstParent;
+            int nextCandidate = 0;
+            bool crossedCoverage = false;
             Block? previous = null;
             Stack<ParityTraceAction> stack = new();
             for (ulong number = head.Number; number > 0; number--)
             {
                 timeout.Token.ThrowIfCancellationRequested();
+                Hash256? indexedHash = null;
+                if (coverage is not null && number >= (ulong)coverage.From && number <= (ulong)coverage.To)
+                {
+                    if (!crossedCoverage && previous is not null && previous.ParentHash != coverage.Hash)
+                        return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+                    crossedCoverage = true;
+                    if (nextCandidate == candidates!.Blocks.Length && candidates.Blocks.Length == candidateBatchSize)
+                    {
+                        candidates = addressIndex!.FindCandidates(address, 1, number, true, candidateBatchSize, timeout.Token);
+                        nextCandidate = 0;
+                        if (candidates is null || candidates.Coverage != coverage || candidates.FirstParent != firstParent)
+                            return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+                    }
+                    if (nextCandidate == candidates!.Blocks.Length)
+                    {
+                        number = (ulong)coverage.From - 1;
+                        if (number == 0) break;
+                    }
+                    else
+                    {
+                        number = (ulong)candidates.Blocks[nextCandidate];
+                        indexedHash = candidates.Hashes[nextCandidate++];
+                    }
+                }
                 Block? block = blockFinder.FindBlock(number);
                 if (block is null)
                     return ResultWrapper<OtsContractCreator?>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
-                if (!blockFinder.IsMainChain(block.Header) || (previous is not null && previous.ParentHash != block.Hash))
+                if (!blockFinder.IsMainChain(block.Header) || (indexedHash is not null && block.Hash != indexedHash)
+                    || (crossedCoverage && coverage is not null && number == (ulong)coverage.From - 1 && block.Hash != firstParent)
+                    || (previous is not null && (previous.Number == number + 1
+                        ? previous.ParentHash != block.Hash : !blockFinder.IsMainChain(previous.Header))))
                     return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
                 previous = block;
+                if (indexedHash is not null && block.Transactions.Length == 0)
+                    return ResultWrapper<OtsContractCreator?>.Fail("Trace address index references an empty block; reset the index.", ErrorCodes.ResourceUnavailable);
                 if (block.Transactions.Length == 0) continue;
                 SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
                 if (stored.IsError) return ResultWrapper<OtsContractCreator?>.Fail(stored);
                 if (OtsTraceReader.Validate(block, stored.Object!, timeout.Token) is { } error)
                     return ResultWrapper<OtsContractCreator?>.Fail(error, ErrorCodes.ResourceUnavailable);
+                if (indexedHash is not null)
+                {
+                    SearchResult<bool[]> matches = MatchTransactions(block, stored.Object!, address, timeout.Token);
+                    if (matches.IsError) return ResultWrapper<OtsContractCreator?>.Fail(matches);
+                    if (Array.IndexOf(matches.Object!, true) < 0)
+                        return ResultWrapper<OtsContractCreator?>.Fail("Trace address index candidate does not match stored traces; reset the index.", ErrorCodes.ResourceUnavailable);
+                }
 
                 // Stored trace order is not part of the storage contract; use canonical transaction positions.
                 ParityLikeTxTrace?[] ordered = new ParityLikeTxTrace?[block.Transactions.Length];
@@ -88,13 +131,15 @@ public sealed partial class OtsRpcModule
                         for (int i = action.Subtraces.Count - 1; i >= 0; i--) stack.Push(action.Subtraces[i]);
                     }
                     if (creator is null) continue;
-                    if (!blockFinder.IsMainChain(head.Header) || !blockFinder.IsMainChain(block.Header))
+                    if (!blockFinder.IsMainChain(head.Header) || !blockFinder.IsMainChain(block.Header)
+                        || (coverage is not null && !addressIndex!.IsCanonical(coverage)))
                         return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
                     return ResultWrapper<OtsContractCreator?>.Success(new() { Hash = trace.TransactionHash!, Creator = creator });
                 }
             }
             timeout.Token.ThrowIfCancellationRequested();
-            return blockFinder.IsMainChain(head.Header)
+            return blockFinder.IsMainChain(head.Header) && (previous is null || blockFinder.IsMainChain(previous.Header))
+                && (coverage is null || addressIndex!.IsCanonical(coverage))
                 ? ResultWrapper<OtsContractCreator?>.Success(null)
                 : ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
         }
