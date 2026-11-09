@@ -19,8 +19,8 @@ public class RlpWriterTest
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => Rlp.LengthOfString(length), Throws.TypeOf<OverflowException>());
-            Assert.That(() => Rlp.LengthOfSequence(length), Throws.TypeOf<OverflowException>());
+            Assert.That(() => RlpCodec.LengthOfString(length), Throws.TypeOf<OverflowException>());
+            Assert.That(() => RlpCodec.LengthOfSequence(length), Throws.TypeOf<OverflowException>());
         }
     }
 
@@ -29,9 +29,9 @@ public class RlpWriterTest
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => Rlp.LengthOf(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
-            Assert.That(() => Rlp.LengthOfString(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
-            Assert.That(() => Rlp.LengthOfSequence(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => RlpCodec.LengthOf(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => RlpCodec.LengthOfString(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => RlpCodec.LengthOfSequence(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
         }
     }
 

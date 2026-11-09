@@ -323,8 +323,8 @@ public class RlpDerivedTest
     public void EmptyArraysUseSharedInstance([Values] bool generated)
     {
         int[] values = generated
-            ? Rlp.Read(new byte[] { 0xc2, 0x80, 0xc0 }, static (scoped ref RlpReader r) => r.ReadCodes()).Values
-            : Rlp.Read(new byte[] { 0xc0 }, static (scoped ref RlpReader r) => r.ReadArray(static (scoped ref RlpReader r) => r.ReadInt32()));
+            ? RlpCodec.Read(new byte[] { 0xc2, 0x80, 0xc0 }, static (scoped ref RlpReader r) => r.ReadCodes()).Values
+            : RlpCodec.Read(new byte[] { 0xc0 }, static (scoped ref RlpReader r) => r.ReadArray(static (scoped ref RlpReader r) => r.ReadInt32()));
 
         Assert.That(values, Is.SameAs(Array.Empty<int>()));
     }
@@ -355,7 +355,7 @@ public class RlpDerivedTest
         byte[] encoded = [];
         if (read)
         {
-            encoded = Rlp.Write(dictionary, (ref RlpWriter w, bool dictionary) => w.WriteSequence(dictionary, (ref RlpWriter w, bool dictionary) =>
+            encoded = RlpCodec.Write(dictionary, (ref RlpWriter w, bool dictionary) => w.WriteSequence(dictionary, (ref RlpWriter w, bool dictionary) =>
             {
                 if (dictionary)
                 {
@@ -378,13 +378,13 @@ public class RlpDerivedTest
         {
             if (read)
             {
-                if (dictionary) _ = Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobMap());
-                else _ = Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPair());
+                if (dictionary) _ = RlpCodec.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobMap());
+                else _ = RlpCodec.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPair());
             }
             else
             {
-                if (dictionary) _ = Rlp.Write(new BlobMap(new() { [first] = second }), static (ref RlpWriter w, BlobMap value) => w.Write(value));
-                else _ = Rlp.Write(new BlobPair((first, second)), static (ref RlpWriter w, BlobPair value) => w.Write(value));
+                if (dictionary) _ = RlpCodec.Write(new BlobMap(new() { [first] = second }), static (ref RlpWriter w, BlobMap value) => w.Write(value));
+                else _ = RlpCodec.Write(new BlobPair((first, second)), static (ref RlpWriter w, BlobPair value) => w.Write(value));
             }
         }
 
@@ -400,12 +400,12 @@ public class RlpDerivedTest
         if (firstLength == 32)
         {
             AssertDirect<BlobPairListRlpConverter, BlobPairList>(value);
-            byte[] encoded = Rlp.Write<BlobPairListRlpConverter, BlobPairList>(value);
-            Assert.That(Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPairList()), Is.EqualTo(value).UsingPropertiesComparer());
+            byte[] encoded = RlpCodec.Write<BlobPairListRlpConverter, BlobPairList>(value);
+            Assert.That(RlpCodec.Read(encoded, static (scoped ref RlpReader r) => r.ReadBlobPairList()), Is.EqualTo(value).UsingPropertiesComparer());
         }
         else
         {
-            Assert.That(() => Rlp.Write<BlobPairListRlpConverter, BlobPairList>(value), Throws.InvalidOperationException);
+            Assert.That(() => RlpCodec.Write<BlobPairListRlpConverter, BlobPairList>(value), Throws.InvalidOperationException);
         }
     }
 
@@ -427,7 +427,7 @@ public class RlpDerivedTest
     [Test]
     public void WrongFixedLengthDoesNotAllocatePayload()
     {
-        byte[] encoded = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
+        byte[] encoded = RlpCodec.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
         {
             w.Write(new byte[1 << 20]);
             w.WriteSequence(static (ref RlpWriter _) => { });
@@ -442,7 +442,7 @@ public class RlpDerivedTest
         {
             try
             {
-                Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadFixedEntry());
+                RlpCodec.Read(encoded, static (scoped ref RlpReader r) => r.ReadFixedEntry());
             }
             catch (RlpReaderException)
             {
