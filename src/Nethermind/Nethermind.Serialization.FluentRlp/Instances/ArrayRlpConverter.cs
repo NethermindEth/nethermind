@@ -13,7 +13,7 @@ public abstract class ArrayRlpConverter<T>
         => reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
         {
             // The item count is an upper bound: an element can span more than one item, as a tuple does.
-            T[] result = new T[r.CountItems()];
+            T[] result = r.HasNext ? new T[r.CountItems()] : [];
             int count = 0;
             while (r.HasNext && count < result.Length)
             {

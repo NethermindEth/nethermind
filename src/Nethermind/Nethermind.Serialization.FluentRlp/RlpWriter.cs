@@ -69,7 +69,7 @@ public ref struct RlpWriter
     /// <summary>
     /// Gets the number of bytes measured by a <see cref="LengthWriter"/>, or written by a <see cref="ContentWriter"/>.
     /// </summary>
-    public readonly int Length => _length + _longPrefixBytes;
+    public readonly int Length => checked(_length + _longPrefixBytes);
 
     internal readonly bool HasOpenSequences => _openSequences != 0;
 
@@ -291,7 +291,7 @@ public ref struct RlpWriter
         action(ref this, ctx);
 
         // Payload length in the output, which includes the long prefixes inserted into the payload.
-        int payloadLength = _length - prefixPosition - 1 + _longPrefixBytes - longPrefixBytes;
+        int payloadLength = checked(_length - prefixPosition - 1 + (_longPrefixBytes - longPrefixBytes));
         if (payloadLength <= RlpPrefix.MaxShortLength)
         {
             _destination[prefixPosition] = (byte)(RlpPrefix.ShortList + payloadLength);
@@ -299,7 +299,7 @@ public ref struct RlpWriter
         }
         else
         {
-            _longPrefixBytes += LengthOfLength(payloadLength);
+            _longPrefixBytes = checked(_longPrefixBytes + LengthOfLength(payloadLength));
             _sequences![slot] = prefixPosition;
             _sequences[slot + 1] = payloadLength;
         }
@@ -337,7 +337,7 @@ public ref struct RlpWriter
             WriteLongSequencePrefix(payloadLength);
         }
 
-        return new RlpSequence(Length + payloadLength, depth);
+        return new RlpSequence(checked(Length + payloadLength), depth);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

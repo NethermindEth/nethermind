@@ -82,6 +82,7 @@ public static class RlpCodec
     /// <summary>Gets the encoded length of a non-negative integer.</summary>
     public static int LengthOf<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
         int byteCount = (int.CreateTruncating(T.Log2(value)) + 8) / 8;
         // Saturating, as 0x80 does not fit a signed byte: truncated, it would be -128.
         return value <= T.CreateSaturating(RlpPrefix.ShortString - 1) ? 1 : LengthOfString(byteCount);
@@ -94,7 +95,10 @@ public static class RlpCodec
     public static int LengthOfSequence(int payloadLength) => LengthOfPrefixed(payloadLength);
 
     private static int LengthOfPrefixed(int length)
-        => length + (length <= RlpPrefix.MaxShortLength ? 1 : length < 0x100 ? 2 : length < 0x10000 ? 3 : length < 0x1000000 ? 4 : 5);
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        return checked(length + (length <= RlpPrefix.MaxShortLength ? 1 : length < 0x100 ? 2 : length < 0x10000 ? 3 : length < 0x1000000 ? 4 : 5));
+    }
 
     /// <summary>Decodes the start of <paramref name="source"/> with <paramref name="func"/>, and ignores the bytes after it.</summary>
     /// <remarks>For a value at the start of a larger buffer, or stored data that can have extra bytes at the end.</remarks>

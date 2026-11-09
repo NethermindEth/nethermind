@@ -54,7 +54,7 @@ cannot encode without data loss:
 | RLP0004 | Unsupported parameter type, for example a tuple of three                  |
 | RLP0005 | `length` on a record that is not a `Newtype` over a byte array            |
 | RLP0006 | `Newtype` record that contains itself without a sequence around it      |
-| RLP0007 | `RlpFixedLength` below 2, or on a type that is not written as a byte string |
+| RLP0007 | `RlpFixedLength` outside 2..2147483642, or on a type that is not written as a byte string |
 
 A parameter of another type `T` uses the `ReadT()` and `Write(T)` extension methods that are in scope of the record.
 

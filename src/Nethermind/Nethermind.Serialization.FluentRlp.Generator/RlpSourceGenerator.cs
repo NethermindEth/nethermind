@@ -61,7 +61,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
     private static readonly DiagnosticDescriptor InvalidFixedLength = new(
         "RLP0007", "Invalid fixed length",
-        "RlpFixedLength of '{0}' must be at least 2, on a byte array, on a UInt256 of 32 bytes or on a type with its own converter",
+        "RlpFixedLength of '{0}' must be between 2 and 2147483642, on a byte array, on a UInt256 of 32 bytes or on a type with its own converter",
         "RLP", DiagnosticSeverity.Error, true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -109,8 +109,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "derived records are not supported"));
         }
 
-        IMethodSymbol? primaryConstructor = symbol.InstanceConstructors.FirstOrDefault(static c =>
-            c.DeclaringSyntaxReferences.Any(static r => r.GetSyntax() is RecordDeclarationSyntax));
+        IMethodSymbol? primaryConstructor = PrimaryConstructor(symbol);
         if (primaryConstructor is null || primaryConstructor.Parameters.Length == 0)
         {
             diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "a primary constructor with at least one parameter is required"));
@@ -120,7 +119,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         foreach (ISymbol member in symbol.GetMembers())
         {
             ct.ThrowIfCancellationRequested();
-            if (!member.IsStatic && LosesData(member, parameterSymbols))
+            if (!member.IsStatic && LosesData(member, parameterSymbols, ctx.SemanticModel.Compilation, ct))
             {
                 diagnostics.Add(Diagnostic.Create(MemberNotSerialized, member.Locations.FirstOrDefault() ?? location, member.Name));
             }
@@ -167,7 +166,8 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 continue;
             }
 
-            readCalls.Add(mapper.Read(type, name));
+            int? byteLength = FixedLengthOf(parameterSymbols[i]) ?? (isNewtype && constLength >= 0 ? constLength : null);
+            readCalls.Add(IsByteArray(type) && byteLength is { } length ? $"r.ReadBytes({length}).ToArray()" : mapper.Read(type, name));
             writeCalls.Add(mapper.Write(type, name, $"value.{name}"));
         }
 
@@ -186,32 +186,101 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     }
 
     /// <summary>Whether <paramref name="member"/> holds a value that the primary constructor parameters do not carry.</summary>
-    private static bool LosesData(ISymbol member, ImmutableArray<IParameterSymbol> parameters)
+    private static bool LosesData(ISymbol member, ImmutableArray<IParameterSymbol> parameters, Compilation compilation, CancellationToken ct)
     {
         SyntaxNode? syntax = member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
         switch (member, syntax)
         {
             case (IFieldSymbol field, VariableDeclaratorSyntax declarator):
-                return !(field.IsReadOnly && declarator.Initializer is not null);
+                return !field.IsReadOnly || declarator.Initializer is null || IsWrittenInConstructor(member, compilation, ct);
             case (IPropertySymbol property, PropertyDeclarationSyntax declaration):
-                bool isParameter = parameters.Any(p => p.Name == property.Name);
-                // A redeclared positional property must take the parameter value unchanged.
-                if (isParameter) return declaration.Initializer?.Value is not IdentifierNameSyntax { Identifier.ValueText: var name } || name != property.Name;
-                // A get-only auto-property without an initializer can get its value only from another constructor.
-                return IsAutoProperty(declaration) && (property.SetMethod is not null || declaration.Initializer is null);
+                foreach (IParameterSymbol parameter in parameters)
+                {
+                    // A redeclared positional property must take the parameter value unchanged.
+                    if (parameter.Name == property.Name)
+                        return !IsAutoProperty(declaration) || declaration.Initializer?.Value is not IdentifierNameSyntax identifier || identifier.Identifier.ValueText != property.Name;
+                }
+
+                return HasBackingStorage(declaration) && (property.SetMethod is not null || declaration.Initializer is null || IsWrittenInConstructor(member, compilation, ct));
             default:
                 return false;
         }
     }
 
     private static bool IsAutoProperty(PropertyDeclarationSyntax property)
-        => property.AccessorList is not null && property.AccessorList.Accessors.All(static a => a.Body is null && a.ExpressionBody is null);
+    {
+        if (property.AccessorList is null) return false;
+        foreach (AccessorDeclarationSyntax accessor in property.AccessorList.Accessors)
+        {
+            if (accessor.Body is not null || accessor.ExpressionBody is not null) return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasBackingStorage(PropertyDeclarationSyntax property)
+    {
+        if (IsAutoProperty(property)) return true;
+        foreach (SyntaxNode node in property.DescendantNodes())
+        {
+            if (node is FieldExpressionSyntax) return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsWrittenInConstructor(ISymbol member, Compilation compilation, CancellationToken ct)
+    {
+        foreach (IMethodSymbol constructor in member.ContainingType.InstanceConstructors)
+        {
+            foreach (SyntaxReference reference in constructor.DeclaringSyntaxReferences)
+            {
+                if (reference.GetSyntax(ct) is not ConstructorDeclarationSyntax declaration) continue;
+                SemanticModel model = compilation.GetSemanticModel(declaration.SyntaxTree);
+                foreach (SyntaxNode node in declaration.DescendantNodes())
+                {
+                    ExpressionSyntax? target = node switch
+                    {
+                        AssignmentExpressionSyntax assignment => assignment.Left,
+                        PrefixUnaryExpressionSyntax prefix when prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression) => prefix.Operand,
+                        PostfixUnaryExpressionSyntax postfix when postfix.IsKind(SyntaxKind.PostIncrementExpression) || postfix.IsKind(SyntaxKind.PostDecrementExpression) => postfix.Operand,
+                        ArgumentSyntax argument when argument.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) || argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword) => argument.Expression,
+                        _ => null
+                    };
+                    if (target is not null && IsMemberTarget(target, member, model, ct)) return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsMemberTarget(ExpressionSyntax target, ISymbol member, SemanticModel model, CancellationToken ct)
+    {
+        if (target is TupleExpressionSyntax tuple)
+        {
+            foreach (ArgumentSyntax argument in tuple.Arguments)
+            {
+                if (IsMemberTarget(argument.Expression, member, model, ct)) return true;
+            }
+        }
+
+        return SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(target, ct).Symbol, member);
+    }
 
     /// <summary>Whether reading <paramref name="type"/> can read <paramref name="record"/> again before it reads a sequence prefix.</summary>
     private static bool ContainsWithoutSequence(ITypeSymbol type, INamedTypeSymbol record, HashSet<ITypeSymbol> visited)
     {
         if (SymbolEqualityComparer.Default.Equals(type, record)) return true;
-        if (type is INamedTypeSymbol { IsTupleType: true } tuple) return tuple.TupleElements.Any(e => ContainsWithoutSequence(e.Type, record, visited));
+        if (type is INamedTypeSymbol { IsTupleType: true } tuple)
+        {
+            foreach (IFieldSymbol element in tuple.TupleElements)
+            {
+                if (ContainsWithoutSequence(element.Type, record, visited)) return true;
+            }
+
+            return false;
+        }
 
         // Another Newtype reads its value without a sequence prefix too, so a cycle through it never ends either.
         return type is INamedTypeSymbol named && IsNewtype(named) && visited.Add(named)
@@ -220,16 +289,16 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     }
 
     private static bool IsNewtype(INamedTypeSymbol type)
-        => type.GetAttributes().FirstOrDefault(static a => a.AttributeClass?.ToDisplayString() == AttributeMetadataName) is { } attribute
+        => FindAttribute(type, AttributeMetadataName) is { } attribute
            && attribute.ConstructorArguments.Length > 0
            && attribute.ConstructorArguments[0].Value is { } representation && System.Convert.ToInt32(representation) == NewtypeRepresentation;
 
     /// <summary>Whether a <c>RlpFixedLength</c> on <paramref name="parameter"/> or on its type is one that the generated code can keep.</summary>
     private static bool IsValidFixedLength(ITypeSymbol type, IParameterSymbol parameter)
     {
-        if (FixedLengthOf(type) is < 2) return false;
+        if (FixedLengthOf(type) is < 2 or > int.MaxValue - 5) return false;
         if (FixedLengthOf(parameter) is not { } length) return true;
-        if (length < 2) return false;
+        if (length is < 2 or > int.MaxValue - 5) return false;
         if (IsUInt256(type)) return length == 32;
         return IsByteArray(type)
             || type is INamedTypeSymbol { IsTupleType: false, IsGenericType: false, SpecialType: SpecialType.None, TypeKind: TypeKind.Class or TypeKind.Struct };
@@ -241,18 +310,18 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         int length = FixedLengthOf(parameter) ?? FixedLengthOf(type) ?? NewtypeLengthOf(type) ?? -1;
 
         // A single byte has two encodings, so only longer byte strings have a known length.
-        if (length < 2) return null;
+        if (length < 2 || length > int.MaxValue - 5) return null;
         return length + (length <= 55 ? 1 : 1 + (length < 0x100 ? 1 : length < 0x10000 ? 2 : length < 0x1000000 ? 3 : 4));
     }
 
     private static int? FixedLengthOf(ISymbol? symbol)
-        => symbol?.GetAttributes().FirstOrDefault(static a => a.AttributeClass?.ToDisplayString() == FixedLengthMetadataName) is { } attribute
+        => FindAttribute(symbol, FixedLengthMetadataName) is { } attribute
            && attribute.ConstructorArguments.Length == 1 && attribute.ConstructorArguments[0].Value is int length
             ? length
             : null;
 
     private static int? NewtypeLengthOf(ITypeSymbol type)
-        => type.GetAttributes().FirstOrDefault(static a => a.AttributeClass?.ToDisplayString() == AttributeMetadataName) is { } attribute
+        => FindAttribute(type, AttributeMetadataName) is { } attribute
            && attribute.ConstructorArguments.Length > 1
            && attribute.ConstructorArguments[0].Value is { } representation && System.Convert.ToInt32(representation) == NewtypeRepresentation
            && attribute.ConstructorArguments[1].Value is int length
@@ -277,7 +346,18 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 // stack check, so it writes through the buffered path.
                 if (!visiting.Add(named)) return false;
                 IMethodSymbol? constructor = PrimaryConstructor(named);
-                bool result = constructor is not null && constructor.Parameters.All(p => CanMeasure(p.Type, p, visiting));
+                bool result = constructor is not null;
+                if (constructor is not null)
+                {
+                    foreach (IParameterSymbol field in constructor.Parameters)
+                    {
+                        if (!CanMeasure(field.Type, field, visiting))
+                        {
+                            result = false;
+                            break;
+                        }
+                    }
+                }
                 visiting.Remove(named);
                 return result;
             default:
@@ -286,10 +366,31 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     }
 
     private static bool IsSerializable(INamedTypeSymbol type)
-        => type.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == AttributeMetadataName);
+        => FindAttribute(type, AttributeMetadataName) is not null;
+
+    private static AttributeData? FindAttribute(ISymbol? symbol, string metadataName)
+    {
+        if (symbol is null) return null;
+        foreach (AttributeData attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() == metadataName) return attribute;
+        }
+
+        return null;
+    }
 
     private static IMethodSymbol? PrimaryConstructor(INamedTypeSymbol type)
-        => type.InstanceConstructors.FirstOrDefault(static c => c.DeclaringSyntaxReferences.Any(static r => r.GetSyntax() is RecordDeclarationSyntax));
+    {
+        foreach (IMethodSymbol constructor in type.InstanceConstructors)
+        {
+            foreach (SyntaxReference reference in constructor.DeclaringSyntaxReferences)
+            {
+                if (reference.GetSyntax() is RecordDeclarationSyntax) return constructor;
+            }
+        }
+
+        return null;
+    }
 
     private static bool IsUInt256(ITypeSymbol type)
         => type is INamedTypeSymbol { Name: "UInt256", ContainingNamespace.Name: "Int256", ContainingNamespace.ContainingNamespace.Name: "Nethermind" };
@@ -314,13 +415,21 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
     {
         string recordName = symbol.Name;
         string fullTypeName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        string? @namespace = symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString();
-
-        // Read{Type}() and Write(value) of other types bind to extension methods, so bring the usings of the record into scope.
-        IEnumerable<string> usingDirectives = new[] { "using Nethermind.Serialization.FluentRlp.Instances;" }
-            .Concat(recordDecl.SyntaxTree.GetCompilationUnitRoot().Usings.Where(static u => u.GlobalKeyword.IsKind(SyntaxKind.None)).Select(static u => u.ToString()))
-            .Concat(recordDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(static n => n.Usings).Select(static u => u.ToString()))
-            .Distinct();
+        // Preserve each import's scope: relative names and shadowed aliases bind differently if moved.
+        StringBuilder scope = new("using global::Nethermind.Serialization.FluentRlp.Instances;\n");
+        foreach (UsingDirectiveSyntax directive in recordDecl.SyntaxTree.GetCompilationUnitRoot().Usings)
+        {
+            if (directive.Alias is null && directive.StaticKeyword.IsKind(SyntaxKind.None)
+                && directive.Name?.ToString() is "Nethermind.Serialization.FluentRlp.Instances" or "global::Nethermind.Serialization.FluentRlp.Instances") continue;
+            if (directive.GlobalKeyword.IsKind(SyntaxKind.None)) scope.Append(directive).Append('\n');
+        }
+        int namespaceCount = 0;
+        foreach (BaseNamespaceDeclarationSyntax declaration in recordDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse())
+        {
+            scope.Append("namespace ").Append(declaration.Name).Append(" {\n");
+            foreach (UsingDirectiveSyntax directive in declaration.Usings) scope.Append(directive).Append('\n');
+            namespaceCount++;
+        }
         string accessibility = symbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
 
         List<string> writeLines = [];
@@ -383,13 +492,13 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             ? ""
             : isNewtype
                 ? $$"""
-                        public static int GetLength({{fullTypeName}} value) => {{payloadLength}};
+                        public static int GetLength({{fullTypeName}} value) => checked({{payloadLength}});
 
                     """
                 : $$"""
                         public static int GetLength({{fullTypeName}} value) => {{Library}}.RlpCodec.LengthOfSequence(GetPayloadLength(value));
 
-                        private static int GetPayloadLength({{fullTypeName}} value) => {{payloadLength}};
+                        private static int GetPayloadLength({{fullTypeName}} value) => checked({{payloadLength}});
 
                     """;
 
@@ -402,9 +511,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         return $$"""
                  // <auto-generated />
                  #nullable enable
-                 {{string.Join("\n", usingDirectives)}}
-
-                 {{(@namespace is null ? "" : $"namespace {@namespace};")}}
+                 {{scope}}
 
                  {{GeneratedCodeAttribute}}
                  {{accessibility}} abstract class {{recordName}}RlpConverter : {{Library}}.{{converterInterface}}<{{fullTypeName}}>
@@ -427,6 +534,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                      public static {{fullTypeName}} Read{{recordName}}(this ref {{Library}}.RlpReader reader) => {{recordName}}RlpConverter.Read(ref reader);
                      public static void Write(this ref {{Library}}.RlpWriter writer, {{fullTypeName}} value) => {{recordName}}RlpConverter.Write(ref writer, value);
                  }
+                 {{new string('}', namespaceCount)}}
 
                  """;
     }
@@ -505,7 +613,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                 ? $$"""if (r.BytesRead - start != {{itemLength}}) throw new {{Library}}.RlpReaderException("RLP item has another length than declared");"""
                 : "";
             string resultType = asArray ? $"{itemTypeName}[]" : $"global::System.Collections.Generic.List<{itemTypeName}>";
-            string create = asArray ? $"new {ArrayOf(itemType, count)}" : $"new({count})";
+            string create = asArray ? $"r.HasNext ? new {ArrayOf(itemType, count)} : []" : $"new({count})";
             string store = asArray ? "items[count++] = item;" : "items.Add(item);";
             Helpers.Add($$"""
                     private static {{resultType}} {{name}}(ref {{Library}}.RlpReader outer)
@@ -599,7 +707,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         private string PayloadOfItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
         {
             string count = type is IArrayTypeSymbol ? "Length" : "Count";
-            if (FixedLength(itemType, null) is { } itemLength) return $"{value}.{count} * {itemLength}";
+            if (FixedLength(itemType, null) is { } itemLength) return $"checked({value}.{count} * {itemLength})";
 
             string name = $"PayloadOfItems{_helperCount++}";
             string length = Length(itemType, null, "item");
@@ -609,7 +717,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                         int payloadLength = 0;
                         foreach ({{Name(itemType)}} item in items)
                         {
-                            payloadLength += {{length}};
+                            payloadLength = checked(payloadLength + {{length}});
                         }
 
                         return payloadLength;
@@ -620,10 +728,20 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         }
 
         private string ReadLambda(ITypeSymbol type, string member)
-            => $"static (scoped ref {Library}.RlpReader r) => {Read(type, member)}";
+        {
+            string read = Read(type, member);
+            return FixedLength(type, null) is { } length
+                ? $$"""static (scoped ref {{Library}}.RlpReader r) => { int start = r.BytesRead; {{Name(type)}} item = {{read}}; if (r.BytesRead - start != {{length}}) throw new {{Library}}.RlpReaderException("RLP item has another length than declared"); return item; }"""
+                : $"static (scoped ref {Library}.RlpReader r) => {read}";
+        }
 
         private string WriteLambda(ITypeSymbol type, string member)
-            => $"static (ref {Library}.RlpWriter w, {Name(type)} value) => {Write(type, member, "value")}";
+        {
+            string write = Write(type, member, "value");
+            return FixedLength(type, null) is { } length
+                ? $$"""static (ref {{Library}}.RlpWriter w, {{Name(type)}} value) => { int start = w.Length; {{write}}; if (w.Length - start != {{length}}) throw new global::System.InvalidOperationException("RLP item has another length than declared"); }"""
+                : $"static (ref {Library}.RlpWriter w, {Name(type)} value) => {write}";
+        }
 
         private static string Name(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
