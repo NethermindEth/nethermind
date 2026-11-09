@@ -151,18 +151,28 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void Record_walk_on_one_thread_does_not_allocate()
+    public void Record_walk_on_one_thread_does_not_allocate([Values] bool fromPersistence)
     {
+        // Sixteen leaves under a branch, held either in the buffer or only by persistence.
+        Dictionary<TreePath, byte[]> nodes = [];
+        byte[]?[] leaves = new byte[16][];
+        for (int i = 0; i < 16; i++) nodes[TreePath.Empty.Append(i)] = leaves[i] = FlatTestHelpers.LeafRlp((byte)i);
+        byte[] rootRlp = FlatTestHelpers.BranchRlp(leaves);
+        Hash256 rootHash = Keccak.Compute(rootRlp);
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(_header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        // Sixteen leaves, all in the buffer under the branch the fixture builds above them.
-        for (int i = 0; i < 16; i++) snapshot.Content.SetStateNodeRlp(_buffer, TreePath.Empty.Append(i), FlatTestHelpers.LeafRlp((byte)i));
-        Assert.That(_buffer.TryLocate(snapshot.Content.StateRootPointer, out NodeRecord root), Is.True);
-        Hash256 rootHash = new(root.Hash);
-        _buffer.SetRoot(null, rootHash, snapshot.Content.StateRootPointer);
-        using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new NoopPersistenceReader(), snapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
+        if (!fromPersistence)
+        {
+            // The fixture builds the same branch above the leaves.
+            foreach ((TreePath path, byte[] rlp) in nodes) snapshot.Content.SetStateNodeRlp(_buffer, path, rlp);
+            _buffer.SetRoot(null, rootHash, snapshot.Content.StateRootPointer);
+        }
+
+        nodes[TreePath.Empty] = rootRlp;
+        Snapshot? stateSnapshot = fromPersistence ? null : snapshot;
+        using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
-        NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, snapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
+        NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
         walk.Accept(rootHash);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
@@ -209,6 +219,22 @@ public class FlatStateReaderTests
                 Assert.That(proof.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
             }
         }
+    }
+
+    /// <summary>Serves state trie node RLP by path without allocating.</summary>
+    private sealed class PathRlpReader(Dictionary<TreePath, byte[]> nodes) : SubstitutablePersistenceReader
+    {
+        public override byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => nodes.GetValueOrDefault(path);
+        public override byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public override Account? GetAccount(Address address) => null;
+        public override bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+        public override StateId CurrentState => new(5, Keccak.EmptyTreeHash);
+        public override byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public override bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
+        public override IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public override IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public override bool IsPreimageMode => false;
+        public override void Dispose() { }
     }
 
     private sealed class NodeCounter : INodeRecordVisitor<EmptyContext>
