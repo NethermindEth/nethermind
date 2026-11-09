@@ -25,6 +25,7 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
     private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
     private const string WrongPosException = "BlockException.IMPORT_IMPOSSIBLE_PARIS_WRONG_POS";
     private const string WrongPosBlockHash = "0x4c655cdc61ae3d4619e2e17fde7ba217ee475b8d27657b1ff3ded66630d63283";
+    private const string PosOnNonTerminalParentError = "A proof-of-stake block cannot follow a non-terminal proof-of-work parent.";
 
     private static string BlockRejectionFixture =>
         Path.Combine(AppContext.BaseDirectory, "Tests", "bcArrowGlacierToParis", "powToPosBlockRejection.json");
@@ -89,7 +90,9 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
     /// <remarks>
     /// The fixture's PoS block before the terminal total difficulty never reaches the main chain either way. With
     /// its expected exception removed, the run fails only if pre-validation rejects it: the block tree would
-    /// otherwise keep it unprocessed and the run would still end at the expected last block.
+    /// otherwise keep it unprocessed and the run would still end at the expected last block. The header is
+    /// validated as decoded, without a total difficulty, so the rejection comes from the merge header rule that a
+    /// PoS block needs a terminal or PoS parent.
     /// </remarks>
     [Test]
     public async Task Proof_of_stake_block_before_the_terminal_total_difficulty_is_rejected_by_pre_validation()
@@ -105,7 +108,8 @@ public class TotalDifficultyTransitionTests : BlockchainTestBase
 
         AssertionException exception = await Assert.CatchAsync<AssertionException>(() => RunTest(test));
 
-        Assert.That(exception.Message, Does.Contain($"Unexpected invalid block {WrongPosBlockHash}"));
+        Assert.That(exception.Message,
+            Does.Contain($"Unexpected invalid block {WrongPosBlockHash}: {PosOnNonTerminalParentError}"));
     }
 
     private static BlockchainTest Load(string network) =>

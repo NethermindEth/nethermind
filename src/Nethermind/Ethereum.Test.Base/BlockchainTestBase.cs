@@ -471,13 +471,6 @@ public abstract class BlockchainTestBase
 
             Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
-            // Across a total-difficulty transition the merge rules classify a header by its total difficulty, which a
-            // decoded block lacks. Without it a zero-difficulty block counts as PoS whatever its parent, so one that
-            // arrives before the terminal total difficulty would pass pre-validation. Fill it in from the parent, as
-            // SyncServer does before the same validation; tests without a TTD keep the header as decoded.
-            if (test.TransitionTerminalTotalDifficulty is not null)
-                SetTotalDifficultyFromParent(correctRlp[i].Block.Header, parentHeader);
-
             bool expectsException = correctRlp[i].ExpectedException is not null;
             // Validate block structure first (mimics SyncServer validation). Pre-validation is
             // not authoritative for invalid-block fixtures: many EEST exceptions (state root,
@@ -519,16 +512,6 @@ public abstract class BlockchainTestBase
         return lastBlockError is null
             ? Result<BlockHeader>.Success(parentHeader)
             : Result<BlockHeader>.Fail(lastBlockError, parentHeader);
-    }
-
-    /// <summary>
-    /// Sets <paramref name="header"/>'s total difficulty to its parent's plus its own difficulty, when
-    /// <paramref name="parent"/> is its parent and has a total difficulty; otherwise leaves it unset.
-    /// </summary>
-    private static void SetTotalDifficultyFromParent(BlockHeader header, BlockHeader parent)
-    {
-        if (parent.Hash == header.ParentHash && parent.TotalDifficulty is { } parentTotalDifficulty)
-            header.TotalDifficulty = parentTotalDifficulty + header.Difficulty;
     }
 
     private static readonly Dictionary<int, int> NewPayloadParamCounts = BuildNewPayloadParamCounts();
