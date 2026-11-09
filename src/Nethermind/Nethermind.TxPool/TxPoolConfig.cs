@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -9,7 +10,7 @@ namespace Nethermind.TxPool;
 public class TxPoolConfig : ITxPoolConfig
 {
     /// <summary>The node verification budget used by default and when the static ceiling is disabled.</summary>
-    public const ulong DefaultFrameTxMaxVerifyGas = 300_000;
+    public const ulong DefaultFrameTxMaxVerifyGas = Eip8141Constants.MaxVerifyGas;
 
     public int PeerNotificationThreshold { get; set; } = 5;
     public int MinBaseFeeThreshold { get; set; } = 70;

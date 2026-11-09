@@ -38,14 +38,10 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("a prefix one gas over the configured ceiling is rejected");
         yield return new TestCaseData(new[] { SelfVerify(100_000) }, AcceptTxResult.Accepted, null)
             .SetName("the node default admits work at the shared floor");
-        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.Accepted, null)
-            .SetName("the node default admits work above the shared floor");
-        yield return new TestCaseData(new[] { SelfVerify(235_800) }, AcceptTxResult.Accepted, null)
-            .SetName("the node default admits the soispoke profile budget");
-        yield return new TestCaseData(new[] { SelfVerify(300_000) }, AcceptTxResult.Accepted, null)
-            .SetName("the node default admits work at its 300k headroom");
-        yield return new TestCaseData(new[] { SelfVerify(300_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
-            .SetName("the node default rejects work above its 300k headroom");
+        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
+            .SetName("the node default rejects work above the shared floor");
+        yield return new TestCaseData(new[] { SelfVerify(300_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
+            .SetName("the node default rejects work at the former 300k headroom");
         yield return new TestCaseData(new[] { SelfVerify(500_000) }, AcceptTxResult.Accepted, (ulong?)500_000)
             .SetName("raised headroom accepts its configured limit");
         yield return new TestCaseData(new[] { SelfVerify(500_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)500_000)
@@ -133,6 +129,7 @@ internal class FrameTxVerifyGasFilterTest
 
     private static readonly int Secp256k1AtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.Secp256k1VerificationGasCost);
     private static readonly int P256AtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.P256VerificationGasCost);
+    private static readonly int ArbitraryAtCeiling = (int)(TxPoolConfig.DefaultFrameTxMaxVerifyGas / Eip8141Constants.ArbitraryVerificationGasCost);
 
     private static IEnumerable<TestCaseData> LiftedCeilingCases()
     {
@@ -144,8 +141,10 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("P256 verification at the default fallback is accepted with the ceiling lifted");
         yield return new TestCaseData(P256AtCeiling + 1, TxFrameSignature.SchemeP256, AcceptTxResult.FrameTxVerifyGasTooHigh)
             .SetName("P256 verification over the default fallback is rejected with the ceiling lifted");
-        yield return new TestCaseData(1024, TxFrameSignature.SchemeArbitrary, AcceptTxResult.Accepted)
-            .SetName("the maximum decodable arbitrary signature list fits the default fallback");
+        yield return new TestCaseData(ArbitraryAtCeiling, TxFrameSignature.SchemeArbitrary, AcceptTxResult.Accepted)
+            .SetName("arbitrary verification at the default fallback is accepted with the ceiling lifted");
+        yield return new TestCaseData(ArbitraryAtCeiling + 1, TxFrameSignature.SchemeArbitrary, AcceptTxResult.FrameTxVerifyGasTooHigh)
+            .SetName("arbitrary verification over the default fallback is rejected with the ceiling lifted");
     }
 
     [TestCaseSource(nameof(LiftedCeilingCases))]

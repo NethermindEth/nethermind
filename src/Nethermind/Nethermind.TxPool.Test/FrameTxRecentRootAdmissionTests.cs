@@ -135,7 +135,7 @@ public class FrameTxRecentRootAdmissionTests
         {
             builder.AddSingleton(_specProvider);
             // The first simulation runs cold and can overrun the default timeout on CI.
-            builder.AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0 });
+            builder.AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0, FrameTxMaxVerifyGas = 300_000 });
             builder.WithGenesisPostProcessor((genesis, worldState, specProvider) =>
             {
                 genesis.Header.SlotNumber = HeadSlot;
