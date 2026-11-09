@@ -763,7 +763,7 @@ public partial class DebugRpcModuleTests
         ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Result.IsError, Is.False);
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(call.To, Is.Null);
             Assert.That(call.Input, Is.Null);
             Assert.That(call.ToTransaction(validateUserInput: true).IsError, Is.True,
