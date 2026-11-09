@@ -832,7 +832,7 @@ public class DebugModuleTests
         {
             _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
             _blockFinder.HasBlock(0, block.Hash!).Returns(true);
-            _blockFinder.FindBlock(block.Hash!, 0).Returns(block);
+            _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         }
         GethTraceOptions? options = filter == "none" ? null : new()
         {
