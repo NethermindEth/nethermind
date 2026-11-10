@@ -41,7 +41,7 @@ internal sealed class XdcConsensusMessageHandler(
     /// <returns><c>true</c> when the message was handled or deliberately ignored; <c>false</c> to let the base handler decide.</returns>
     public bool TryHandle(ZeroPacket message, IXdcMessageContext context)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         int packetType = message.PacketType;
 
         if (packetType is XdcMessageCode.OrderTx or XdcMessageCode.LendingTx)
@@ -69,21 +69,21 @@ internal sealed class XdcConsensusMessageHandler(
         {
             case XdcMessageCode.VoteMsg:
                 {
-                    using VoteMsg voteMsg = context.Decode<VoteMsg>(message.Content);
+                    using VoteMsg voteMsg = context.Decode<VoteMsg>(message);
                     context.Report(voteMsg, size);
                     _ = votesManager.OnReceiveVote(voteMsg.Vote);
                     return true;
                 }
             case XdcMessageCode.TimeoutMsg:
                 {
-                    using TimeoutMsg timeoutMsg = context.Decode<TimeoutMsg>(message.Content);
+                    using TimeoutMsg timeoutMsg = context.Decode<TimeoutMsg>(message);
                     context.Report(timeoutMsg, size);
                     _ = timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
                     return true;
                 }
             case XdcMessageCode.SyncInfoMsg:
                 {
-                    using SyncInfoMsg syncInfoMsg = context.Decode<SyncInfoMsg>(message.Content);
+                    using SyncInfoMsg syncInfoMsg = context.Decode<SyncInfoMsg>(message);
                     context.Report(syncInfoMsg, size);
                     Handle(syncInfoMsg);
                     return true;

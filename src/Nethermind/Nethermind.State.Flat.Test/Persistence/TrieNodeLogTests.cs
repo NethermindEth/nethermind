@@ -281,6 +281,32 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public void A_null_span_deletes_and_an_empty_value_is_stored([Values] bool spanAction)
+    {
+        WriteTop(0, 1, Rlp1);
+        using (IPersistence.IWriteBatch batch = Batch(1, 2))
+        {
+            batch.SetStateTrieNode(TopPath, default);
+            batch.SetStateTrieNode(MediumPath, Array.Empty<byte>());
+        }
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LoadState(reader, TopPath, spanAction), Is.Null);
+            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Empty);
+        }
+
+        _log.Drain();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
+        }
+    }
+
+    [Test]
     public void Three_columns_are_logged_and_fallback_goes_direct()
     {
         Hash256 address = TestItem.KeccakA;

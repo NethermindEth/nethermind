@@ -342,7 +342,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     /// <summary>Span variant of <see cref="GetWithIterator"/>, passing the value to <paramref name="action"/> without copying it.</summary>
-    /// <param name="found">Whether a non-empty value was passed to <paramref name="action"/>.</param>
+    /// <param name="found">Whether the key exists, in which case its value, possibly empty, was passed to <paramref name="action"/>.</param>
     /// <returns>False when the iterator could not settle the read and the caller must fall back to a point read.</returns>
     internal bool TryGetWithIterator<TArg>(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool found)
         where TArg : allows ref struct
@@ -352,10 +352,47 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
         if (!TrySeekWithIterator(wrapper.Iterator, key, iteratorManager.SequentialKeys, out found)) return false;
 
-        ReadOnlySpan<byte> value = found ? wrapper.Iterator.GetValueSpan() : default;
-        found = !value.IsEmpty;
-        if (found) action(value, arg);
+        if (found) action(wrapper.Iterator.GetValueSpan(), arg);
         return true;
+    }
+
+    /// <summary>Point-read variant of <see cref="TryGetWithIterator"/>, passing the value to <paramref name="action"/> without copying it out of RocksDB-owned memory.</summary>
+    /// <returns>Whether the key exists, in which case its value, possibly empty, was passed to <paramref name="action"/>.</returns>
+    internal bool TryGetPinnedWithColumnFamily<TArg>(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
+        Interlocked.Increment(ref _pinnedSlices);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
+            UpdateReadMetrics();
+
+            PinnedSlice slice;
+            try
+            {
+                if (!_db.TryGetPinned(key, out slice, cf, readOptions)) return false;
+            }
+            catch (RocksDbException e)
+            {
+                HandleFatalDbError(e);
+                throw;
+            }
+
+            try
+            {
+                action(slice.Value, arg);
+            }
+            finally
+            {
+                slice.Dispose();
+            }
+            return true;
+        }
+        finally
+        {
+            ReleasePinnedSlice();
+        }
     }
 
     /// <summary>Positions <paramref name="iterator"/> on <paramref name="key"/> when it is stored.</summary>

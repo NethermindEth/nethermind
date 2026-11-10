@@ -501,6 +501,147 @@ public class VotesManagerTests
         Assert.That(voteManager.GetVotesCount(vote), Is.EqualTo(0L));
     }
 
+    [Test]
+    public async Task OnReceiveVote_RelayedCopies_AreVerifiedOnce()
+    {
+        PrivateKey[] keys = MakeKeys(1);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        Vote signed = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys[0]);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address]);
+
+        // Each copy is decoded from a different peer, so it carries the signature but no signer yet.
+        Vote[] copies = new Vote[5];
+        for (int i = 0; i < copies.Length; i++)
+        {
+            copies[i] = new Vote(blockInfo, 450, signed.Signature!);
+            await voteManager.OnReceiveVote(copies[i]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            snapshotManager.Received(1).GetSnapshotByGapNumber(450);
+            Assert.That(copies.Select(static c => c.Signer), Is.All.EqualTo(keys[0].Address));
+            Assert.That(voteManager.GetVotesCount(signed), Is.EqualTo(1L));
+        }
+    }
+
+    [Test]
+    public async Task OnReceiveVote_DistinctVotes_AreEachVerified()
+    {
+        PrivateKey[] keys = MakeKeys(3);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        BlockRoundInfo nextRound = new(Hash256.Zero, ReceiveRound + 1, ReceiveHead);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver(keys.Select(static k => k.Address).ToArray());
+
+        foreach (PrivateKey key in keys)
+        {
+            await voteManager.OnReceiveVote(XdcTestHelper.BuildSignedVote(blockInfo, 450, key));
+        }
+        await voteManager.OnReceiveVote(XdcTestHelper.BuildSignedVote(nextRound, 450, keys[0]));
+
+        snapshotManager.Received(4).GetSnapshotByGapNumber(450);
+    }
+
+    [Test]
+    public async Task OnReceiveVote_RejectedVote_IsVerifiedAgain()
+    {
+        PrivateKey[] keys = MakeKeys(2);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        Vote outsider = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys[1]);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address]);
+
+        await voteManager.OnReceiveVote(new Vote(blockInfo, 450, outsider.Signature!));
+        await voteManager.OnReceiveVote(new Vote(blockInfo, 450, outsider.Signature!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            snapshotManager.Received(2).GetSnapshotByGapNumber(450);
+            Assert.That(voteManager.GetVotesCount(outsider), Is.EqualTo(0L));
+        }
+    }
+
+    [Test]
+    public async Task OnReceiveVote_VoteRejectedForMissingSnapshot_IsAcceptedLater()
+    {
+        PrivateKey[] keys = MakeKeys(1);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        Vote signed = XdcTestHelper.BuildSignedVote(blockInfo, 450, keys[0]);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address]);
+        snapshotManager.GetSnapshotByGapNumber(450).Returns(null, new Snapshot(0, Hash256.Zero, [keys[0].Address]));
+
+        await voteManager.OnReceiveVote(new Vote(blockInfo, 450, signed.Signature!));
+        long afterMissingSnapshot = voteManager.GetVotesCount(signed);
+        await voteManager.OnReceiveVote(new Vote(blockInfo, 450, signed.Signature!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterMissingSnapshot, Is.EqualTo(0L));
+            Assert.That(voteManager.GetVotesCount(signed), Is.EqualTo(1L));
+        }
+    }
+
+    [Test]
+    public async Task OnReceiveVote_VoteWithoutSignature_IsRejected()
+    {
+        PrivateKey[] keys = MakeKeys(1);
+        BlockRoundInfo blockInfo = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        Vote unsigned = new(blockInfo, 450);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address]);
+
+        await voteManager.OnReceiveVote(unsigned);
+
+        using (Assert.EnterMultipleScope())
+        {
+            snapshotManager.DidNotReceive().GetSnapshotByGapNumber(Arg.Any<ulong>());
+            Assert.That(voteManager.GetVotesCount(unsigned), Is.EqualTo(0L));
+        }
+    }
+
+    [Test]
+    public async Task OnReceiveVote_SecondVoteOfASignerInARound_IsNotCached()
+    {
+        PrivateKey[] keys = MakeKeys(2);
+        BlockRoundInfo firstBlock = new(Hash256.Zero, ReceiveRound, ReceiveHead);
+        BlockRoundInfo secondBlock = new(TestItem.KeccakA, ReceiveRound, ReceiveHead);
+        Vote first = XdcTestHelper.BuildSignedVote(firstBlock, 450, keys[0]);
+        Vote second = XdcTestHelper.BuildSignedVote(secondBlock, 450, keys[0]);
+        Vote other = XdcTestHelper.BuildSignedVote(firstBlock, 450, keys[1]);
+        (VotesManager voteManager, ISnapshotManager snapshotManager) = CreateReceiver([keys[0].Address, keys[1].Address]);
+
+        // Each copy is decoded from a different peer, so it carries the signature but no signer yet.
+        Task Receive(Vote vote) => voteManager.OnReceiveVote(new Vote(vote.ProposedBlockInfo, vote.GapNumber, vote.Signature!));
+
+        await Receive(first);
+        for (int i = 0; i < 3; i++) await Receive(second);
+        await Receive(first);
+        await Receive(other);
+        await Receive(other);
+
+        // The first vote and the other signer's vote are verified once each; the second vote on every copy.
+        snapshotManager.Received(5).GetSnapshotByGapNumber(450);
+    }
+
+    private const ulong ReceiveRound = 14;
+    private const long ReceiveHead = 100;
+
+    private static (VotesManager VoteManager, ISnapshotManager SnapshotManager) CreateReceiver(Address[] masternodes)
+    {
+        XdcConsensusContext context = new();
+        context.SetNewRound(ReceiveRound);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(Build.A.XdcBlockHeader().WithNumber(ReceiveHead).TestObject));
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(450).Returns(new Snapshot(0, Hash256.Zero, masternodes));
+
+        VotesManager voteManager = new VoteManagerBuilder
+        {
+            Context = context,
+            BlockTree = blockTree,
+            SnapshotManager = snapshotManager
+        }.Build();
+        return (voteManager, snapshotManager);
+    }
+
     private static PrivateKey[] MakeKeys(int n)
     {
         PrivateKeyGenerator keyBuilder = new();

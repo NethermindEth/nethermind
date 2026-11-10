@@ -49,11 +49,16 @@ public class ReadOnlySnapshotBundleBenchmark
     private TreePath[] _missShortPaths = null!;
     private TreePath[] _missLongPaths = null!;
     private (Hash256 AddressHash, TreePath Path)[] _missStorageNodes = null!;
+    private (Hash256 AddressHash, TreePath Path)[] _missHotContractStorageNodes = null!;
 
     private int _index;
 
-    private const int SnapshotCount = 8;
     private const int ArraySize = 32;
+    private const int HotContractSlotsPerBlock = 100;
+
+    // The number of in-memory snapshots in the bundle; mainnet sizes keep about 8.
+    [Params(4, 8, 16)]
+    public int SnapshotCount;
 
     // false: bundle over mutable (ConcurrentDictionary) snapshots. true: over sorted (SortedSnapshotContent)
     // snapshots — the compacted form most bundle snapshots have in production, and where the dictionary load
@@ -76,6 +81,8 @@ public class ReadOnlySnapshotBundleBenchmark
         using SnapshotPooledList allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
+        // A contract every block writes, as a busy token or router is, so each snapshot holds a version of its storage trie.
+        Address hotContract = DeriveAddress(1_000_001);
         int totalAccountCount = 0;
         int totalStorageAccountCount = 0;
         int maxSlotsPerStorageAccount = 0;
@@ -83,7 +90,7 @@ public class ReadOnlySnapshotBundleBenchmark
         // Track storage account ranges per snapshot for hit distribution
         List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = [];
 
-        for (ulong block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < (ulong)SnapshotCount; block++)
         {
             int multiplier = block < 6 ? 16 : 1;
             int accountCount = 1000 * multiplier;
@@ -126,6 +133,15 @@ public class ReadOnlySnapshotBundleBenchmark
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch =
                 scope.StartWriteBatch(accountCount))
             {
+                batch.Set(hotContract, new Account(balance: (UInt256)(block + 1)));
+                using (IWorldStateScopeProvider.IStorageWriteBatch hotBatch = batch.CreateStorageWriteBatch(hotContract, HotContractSlotsPerBlock))
+                {
+                    for (int s = 0; s < HotContractSlotsPerBlock; s++)
+                    {
+                        hotBatch.Set((UInt256)(block * HotContractSlotsPerBlock + (ulong)s + 1), new UInt256(block + 1));
+                    }
+                }
+
                 // Phase 1 (sequential): set accounts and create storage write batches
                 IWorldStateScopeProvider.IStorageWriteBatch[] storageBatches =
                     new IWorldStateScopeProvider.IStorageWriteBatch[storageAccountCount];
@@ -186,7 +202,7 @@ public class ReadOnlySnapshotBundleBenchmark
             }
         }
 
-        // Build final ReadOnlySnapshotBundle with all 8 snapshots
+        // Build final ReadOnlySnapshotBundle with all snapshots
         _bundle = new ReadOnlySnapshotBundle(
             finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty(), bufferPin: null);
@@ -306,6 +322,14 @@ public class ReadOnlySnapshotBundleBenchmark
             _missStorageNodes[i] = (addrHash, TreePath.Empty);
         }
 
+        // Full-length paths into the hot contract's storage trie that no slot has.
+        Hash256 hotContractHash = Keccak.Compute(hotContract.Bytes);
+        _missHotContractStorageNodes = new (Hash256, TreePath)[ArraySize];
+        for (int i = 0; i < ArraySize; i++)
+        {
+            _missHotContractStorageNodes[i] = (hotContractHash, TreePath.FromPath(Keccak.Compute($"absent-slot-{i}").Bytes));
+        }
+
         _index = 0;
 
         // Verify hit arrays are populated
@@ -419,4 +443,11 @@ public class ReadOnlySnapshotBundleBenchmark
         return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
     }
 
+    [Benchmark]
+    public bool TryFindStorageNodes_HotContract_Miss()
+    {
+        (Hash256 addrHash, TreePath path) =
+            _missHotContractStorageNodes[_index++ % _missHotContractStorageNodes.Length];
+        return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
+    }
 }

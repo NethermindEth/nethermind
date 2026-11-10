@@ -1321,7 +1321,7 @@ public class Eth72ProtocolHandlerTests
         HandleIncomingStatusMessage();
 
         Assert.That(
-            () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }),
+            () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }),
             Throws.Nothing);
     }
 
@@ -1479,7 +1479,7 @@ public class Eth72ProtocolHandlerTests
                 new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { tx }));
             using DisposableByteBuffer packet = SerializePooledResponse(response, malformed);
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
+            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(correlated ? 0 : 1));
@@ -1504,7 +1504,7 @@ public class Eth72ProtocolHandlerTests
         using PooledTransactionsMessage66 response = new(GetLastGetPooledTransactionsRequestId(tx.Hash!),
             new PooledTransactionsMessage65(IOwnedReadOnlyList<Transaction>.Empty));
         using DisposableByteBuffer packet = SerializePooledResponse(response, malformed);
-        Action receive = () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
+        Action receive = () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
         if (malformed)
             Assert.That(receive, Throws.Exception);
         else
@@ -2757,7 +2757,7 @@ public class Eth72ProtocolHandlerTests
         packet.WriteByte(0);
         packet.ReadByte();
 
-        Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpException>());
+        Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<RlpException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -5759,14 +5759,14 @@ public class Eth72ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 
     private long GetLastGetCellsRequestId(Hash256 hash, BlobCellMask cellMask)
@@ -6350,18 +6350,8 @@ public class Eth72ProtocolHandlerTests
         public T Deserialize<T>(ArraySegment<byte> bytes)
             where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);
 
-        public T Deserialize<T>(IByteBuffer buffer)
-            where T : MessageBase
-        {
-            T? message = GetOverride<T>();
-            if (message is null)
-            {
-                return inner.Deserialize<T>(buffer);
-            }
-
-            buffer.SkipBytes(buffer.ReadableBytes);
-            return message;
-        }
+        public T Deserialize<T>(ZeroPacket packet)
+            where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(packet);
 
         private T? GetOverride<T>() where T : MessageBase =>
             typeof(T) == typeof(PooledTransactionsMessage66) && PooledTransactions is not null

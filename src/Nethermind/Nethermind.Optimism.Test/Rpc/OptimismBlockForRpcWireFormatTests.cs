@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -36,7 +37,7 @@ public class OptimismBlockForRpcWireFormatTests
         for (int i = 0; i < transactions.Length; i++)
         {
             TransactionForRpc rpc = TransactionForRpc.FromTransaction(block.Transactions[i],
-                new(BlockchainIds.Mainnet, block.Hash!, block.Number, i, block.Timestamp, block.BaseFeePerGas));
+                new(BlockchainIds.Mainnet, block.Hash!, block.Number, i, block.Timestamp, block.BaseFeePerGas, MainnetSpecProvider.Instance.GetSpec(block.Header)));
             if (rpc is DepositTransactionForRpc deposit) deposit.DepositReceiptVersion = 1;
             transactions[i] = rpc;
         }

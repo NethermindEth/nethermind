@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
@@ -41,7 +42,7 @@ public class GeneratedJsonWriterTests
         foreach ((string name, Transaction tx) in Transactions())
         {
             yield return new TestCaseData(TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(BlockchainIds.Mainnet))).SetArgDisplayNames($"{name}, pending");
-            yield return new TestCaseData(TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10 * Unit.GWei)))
+            yield return new TestCaseData(TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10 * Unit.GWei, Eip8141Prototype.Instance)))
                 .SetArgDisplayNames($"{name}, mined");
         }
 

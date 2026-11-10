@@ -297,14 +297,14 @@ public class Eth71ProtocolHandlerTests
 
         IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         IByteBuffer packet = _svc.ZeroSerialize(msg);
         packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 
     private static TestCaseData[] BlockAccessListsResponseCases =>
