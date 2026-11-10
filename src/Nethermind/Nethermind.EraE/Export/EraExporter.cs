@@ -102,6 +102,29 @@ public sealed class EraExporter(
                 EnsureNoBlocksLost(earlierFiles[i], epoch, writeFrom, writeTo);
         }
 
+        // A rewritten epoch whose new file takes the name of an earlier file replaces it in place. Remove the manifest
+        // entries of that name before writing any epoch: after a failure, a later export would reuse the new file with the
+        // old file's hashes. A rewrite under another name keeps the earlier entries, which name the file a store reads.
+        // A missing block plans nothing, as WriteEpoch fails on it.
+        bool invalidated = false;
+        for (ulong i = 0; i < epochCount; i++)
+        {
+            ulong epoch = startEpoch + i;
+            (ulong writeFrom, ulong writeTo) = GetWriteRange(epoch, from, to);
+            if (FindReusableFile(earlierFiles[i], writeFrom, writeTo) is not null
+                || blockTree.FindBlock(writeTo, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Hash is not { } lastBlockHash)
+                continue;
+
+            string finalName = EraPathUtils.Filename(_networkName, epoch, lastBlockHash);
+            invalidated |= cachedChecksums.Remove(finalName) | cachedAccumulators.Remove(finalName);
+        }
+
+        if (invalidated)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            await WriteManifests(destinationPath, CollectEarlierEntries(destinationPath, cachedChecksums, cachedAccumulators).Values, cancellation);
+        }
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = concurrency,
@@ -109,29 +132,12 @@ public sealed class EraExporter(
         },
         (epochIdx, cancel) => new ValueTask(WriteEpoch(epochIdx, cancel)));
 
-        // Keep the entries of an earlier export whose era files are still in the directory, so the manifests
-        // cover the whole directory. The epochs of this export replace them.
-        SortedDictionary<long, ManifestEntry> manifest = [];
-        foreach ((string fileName, ValueHash256 checksum) in cachedChecksums)
-        {
-            if (EraPathUtils.TryGetEpoch(fileName, out long epoch) && fileSystem.File.Exists(Path.Combine(destinationPath, fileName)))
-                manifest[epoch] = new ManifestEntry(fileName, checksum, cachedAccumulators.GetValueOrDefault(fileName));
-        }
-
+        // The epochs of this export replace the entries of an earlier one.
+        SortedDictionary<long, ManifestEntry> manifest = CollectEarlierEntries(destinationPath, cachedChecksums, cachedAccumulators);
         for (int i = 0; i < fileNames.Count; i++)
             manifest[(long)startEpoch + i] = new ManifestEntry(fileNames[i], checksums[i], accumulators[i]);
 
-        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-        fileSystem.File.Delete(accumulatorPath);
-        await WriteLines(accumulatorPath, manifest.Values, static e => $"{e.Accumulator.ToString(false)}  {e.FileName}", cancellation);
-
-        string checksumSha256FilePath = Path.Combine(destinationPath, ChecksumsSHA256FileName);
-        fileSystem.File.Delete(checksumSha256FilePath);
-        await WriteLines(checksumSha256FilePath, manifest.Values, static e => $"{e.Checksum.ToString(false)}  {e.FileName}", cancellation);
-
-        string checksumFilePath = Path.Combine(destinationPath, ChecksumsFileName);
-        fileSystem.File.Delete(checksumFilePath);
-        await WriteLines(checksumFilePath, manifest.Values, static e => $"0x{e.Checksum.ToString(false)}", cancellation);
+        await WriteManifests(destinationPath, manifest.Values, cancellation);
 
         // Only now, with every epoch exported and the manifests naming the new files, delete the files they replace.
         for (int i = 0; i < fileNames.Count; i++)
@@ -420,6 +426,40 @@ public sealed class EraExporter(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Keeps the entries of an earlier export whose era files are still in the directory, so the manifests cover the
+    /// whole directory.
+    /// </summary>
+    private SortedDictionary<long, ManifestEntry> CollectEarlierEntries(
+        string destinationPath,
+        Dictionary<string, ValueHash256> cachedChecksums,
+        Dictionary<string, ValueHash256> cachedAccumulators)
+    {
+        SortedDictionary<long, ManifestEntry> manifest = [];
+        foreach ((string fileName, ValueHash256 checksum) in cachedChecksums)
+        {
+            if (EraPathUtils.TryGetEpoch(fileName, out long epoch) && fileSystem.File.Exists(Path.Combine(destinationPath, fileName)))
+                manifest[epoch] = new ManifestEntry(fileName, checksum, cachedAccumulators.GetValueOrDefault(fileName));
+        }
+
+        return manifest;
+    }
+
+    private async Task WriteManifests(string destinationPath, IReadOnlyCollection<ManifestEntry> entries, CancellationToken cancellation)
+    {
+        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+        fileSystem.File.Delete(accumulatorPath);
+        await WriteLines(accumulatorPath, entries, static e => $"{e.Accumulator.ToString(false)}  {e.FileName}", cancellation);
+
+        string checksumSha256FilePath = Path.Combine(destinationPath, ChecksumsSHA256FileName);
+        fileSystem.File.Delete(checksumSha256FilePath);
+        await WriteLines(checksumSha256FilePath, entries, static e => $"{e.Checksum.ToString(false)}  {e.FileName}", cancellation);
+
+        string checksumFilePath = Path.Combine(destinationPath, ChecksumsFileName);
+        fileSystem.File.Delete(checksumFilePath);
+        await WriteLines(checksumFilePath, entries, static e => $"0x{e.Checksum.ToString(false)}", cancellation);
     }
 
     private async Task WriteLines(string path, IEnumerable<ManifestEntry> entries, Func<ManifestEntry, string> format, CancellationToken cancellation)

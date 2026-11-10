@@ -306,17 +306,19 @@ public class EraExporterTests
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
 
-    [Test]
-    public async Task Export_WhenLastEpochWouldLoseBlocks_ChangesNothing()
+    [TestCase(0UL, 20UL)]
+    [TestCase(8UL, 15UL)]
+    public async Task Export_WhenLastEpochWouldLoseBlocks_ChangesNothing(ulong firstFrom, ulong firstTo)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
         string directory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(directory, 0, 20);
+        await sut.Export(directory, firstFrom, firstTo);
         await sut.Export(directory, 36, 47);
         Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
 
-        // Epoch 1 alone could be rewritten as 16-31, but epoch 2 can neither reuse 36-47 nor replace it without losing 41-47.
+        // The earlier epochs could be written (from 8, epoch 0 under the name of its earlier file), but epoch 2 can neither
+        // reuse 36-47 nor replace it without losing 41-47.
         Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<EraException>().With.Message.Contains("(blocks 36-47)"));
         Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
     }
@@ -363,6 +365,99 @@ public class EraExporterTests
         // Epoch 1 is rewritten as 16-31 and supersedes its earlier file, then epoch 2 or the manifests fail.
         Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<IOException>());
         Assert.That(before.Keys.Where(File.Exists).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+    }
+
+    [Test]
+    public async Task Export_WhenFailingAfterReplacingAFileUnderItsOwnName_DropsItsEntriesUntilARetry([Values] bool postMerge, [Values] bool failManifest)
+    {
+        // The genesis of the post-merge fixture is pre-merge, so its wider export starts at 1.
+        ulong widerFrom = postMerge ? 1UL : 0UL;
+        string epoch0 = "";
+        int moves = 0;
+        int faults = 0;
+        bool armed = false;
+        await using IContainer container = (postMerge
+                ? EraETestModule.BuildContainerBuilderWithPostMergeBlockTreeOfLength(48)
+                : EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48))
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork, Concurrency = 1 })
+            .AddSingleton(CreateFaultyFileSystem(
+                path =>
+                {
+                    if (path == epoch0) moves++;
+                    return false;
+                },
+                path =>
+                {
+                    // Only after the move, so the manifests can still be rewritten before any epoch is written.
+                    bool fail = armed && moves > 0 && Path.GetFileName(path) == EraExporter.AccumulatorFileName;
+                    if (fail) faults++;
+                    return fail;
+                })).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        using TempPath reference = TempPath.GetTempDirectory();
+        foreach ((string target, ulong first) in new[] { (directory, 8UL), (reference.Path, widerFrom) })
+        {
+            await sut.Export(target, first, 15);
+            await sut.Export(target, 32, 47);
+        }
+
+        epoch0 = Directory.GetFiles(directory, $"{EraETestModule.TestNetwork}-00000-*").Single();
+        string[] manifests = [EraExporter.AccumulatorFileName, EraExporter.ChecksumsSHA256FileName, EraExporter.ChecksumsFileName];
+        // Rows are in epoch order, so all but the first belong to the control epoch 2.
+        string[][] controlRows = [.. manifests.Select(m => File.ReadAllLines(Path.Combine(directory, m))[1..])];
+        if (!failManifest) DropReceipts(container, 16, 31);
+        armed = failManifest;
+
+        // The wider epoch-0 file ends at the same block, so it replaces the earlier one under its name; then the manifests
+        // or epoch 1 fail.
+        Assert.That(() => sut.Export(directory, widerFrom, failManifest ? 15UL : 31UL),
+            failManifest ? Throws.TypeOf<IOException>() : Throws.TypeOf<EraException>());
+        armed = false;
+        using (E2StoreReader replaced = new(epoch0))
+            Assert.That(replaced.First, Is.EqualTo(widerFrom), "the failed export replaced the file");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(faults, Is.EqualTo(failManifest ? 1 : 0), "manifest faults");
+            for (int i = 0; i < manifests.Length; i++)
+                Assert.That(File.ReadAllLines(Path.Combine(directory, manifests[i])), Is.EqualTo(controlRows[i]), $"{manifests[i]} after the failure");
+        }
+
+        await sut.Export(directory, widerFrom, 15);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(moves, Is.EqualTo(1), "the retry reuses the replaced file");
+            foreach (string manifest in manifests)
+            {
+                Assert.That(File.ReadAllLines(Path.Combine(directory, manifest)),
+                    Is.EqualTo(File.ReadAllLines(Path.Combine(reference.Path, manifest))), $"{manifest} after the retry");
+            }
+        }
+
+        await AssertReadsBack(container, directory, widerFrom, 15);
+        await AssertReadsBack(container, directory, 32, 47);
+    }
+
+    [Test]
+    public async Task Export_WhenDroppingTheEntriesOfAReplacedNameFails_WritesNoEpoch()
+    {
+        bool fail = false;
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(48)
+            .AddSingleton(CreateFaultyFileSystem(static _ => false, path => fail && Path.GetFileName(path) == EraExporter.AccumulatorFileName)).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, 8, 20);
+        Dictionary<string, byte[]> before = Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes);
+        fail = true;
+
+        // Epoch 0 would replace its file under the same name, so its entries are dropped first, and that fails.
+        Assert.That(() => sut.Export(directory, 0, 40), Throws.TypeOf<IOException>());
+        Assert.That(Directory.GetFiles(directory).ToDictionary(static f => f, File.ReadAllBytes), Is.EqualTo(before));
+
+        fail = false;
+        await sut.Export(directory, 0, 40);
+        await AssertReadsBack(container, directory, 0, 40);
     }
 
     [Test]
