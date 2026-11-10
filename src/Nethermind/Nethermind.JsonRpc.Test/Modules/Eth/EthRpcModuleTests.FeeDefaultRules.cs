@@ -268,14 +268,15 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Submission_calldata_conflicts_follow_signing_and_fee_checks(
         [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
-        [Values] bool suppliedGas, [Values] bool invalidFee)
+        [Values] bool suppliedGas, [Values] bool invalidFee, [Values] bool creation)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string gas = suppliedGas ? "\"gas\":\"0x76c0\"," : "";
+        string recipient = creation ? "null" : $"\"{FeeRecipient}\"";
         using JsonDocument request = JsonDocument.Parse($$"""
-            {"from":"{{HeldAccount}}","to":"{{FeeRecipient}}","nonce":"0x0",{{gas}}
-             "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","input":"0x01","data":"0x2a"}
+            {"from":"{{HeldAccount}}","to":{{recipient}},"nonce":"0x0",{{gas}}
+             "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","input":"{{(creation ? "0x" : "0x01")}}","data":"0x2a"}
             """);
         string response = await ctx.Test.TestEthRpc(method, request.RootElement);
         string expected = method == "eth_signTransaction" && !suppliedGas ? "gas not specified"
@@ -310,12 +311,13 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Blob_submission_calldata_conflicts_precede_empty_hashes_and_missing_to(
         [Values("eth_sendTransaction", "eth_signTransaction")] string method,
-        [Values("0x2a", "0x01", null)] string? data, [Values] bool emptyHashes)
+        [Values("0x2a", "0x01", null)] string? data, [Values("0x01", "0x")] string input, [Values] bool emptyHashes)
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
         request["data"] = data;
+        request["input"] = input;
         JsonArray blobHashes = emptyHashes ? [] : ["0x0100000000000000000000000000000000000000000000000000000000000000"];
         request["blobVersionedHashes"] = blobHashes;
         request["from"] = HeldAccount;
@@ -324,7 +326,7 @@ public partial class EthRpcModuleTests
         if (emptyHashes) request["to"] = FeeRecipient;
 
         string response = await ctx.Test.TestEthRpc(method, JsonSerializer.Deserialize<object>(request.ToJsonString()));
-        string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+        string expected = data is not null && data != input ? RpcTransactionErrors.DataAndInputDiffer
             : emptyHashes ? RpcTransactionErrors.AtLeastOneBlobInBlobTransaction : RpcTransactionErrors.MissingToInBlobTx;
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
