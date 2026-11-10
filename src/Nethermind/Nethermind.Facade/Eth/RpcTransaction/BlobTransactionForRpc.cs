@@ -152,11 +152,18 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     /// eth_simulateV1 keeps accepting it, as its spec fixtures expect. A cap beside another type's fields, such as
     /// an authorization list, describes no single transaction and is rejected while deserializing, before this applies.
     /// </summary>
-    public static TransactionForRpc WithLoneBlobFeeCapOmitted(TransactionForRpc call)
+    public static TransactionForRpc WithLoneBlobFeeCapOmitted(TransactionForRpc call) => WithLoneBlobFeeCapOmitted(call, out _);
+
+    /// <inheritdoc cref="WithLoneBlobFeeCapOmitted(TransactionForRpc)"/>
+    /// <param name="call">The call to read again.</param>
+    /// <param name="loneBlobFeeCap">The omitted blob fee cap, or null when <paramref name="call"/> set none.</param>
+    public static TransactionForRpc WithLoneBlobFeeCapOmitted(TransactionForRpc call, out UInt256? loneBlobFeeCap)
     {
+        loneBlobFeeCap = null;
         if (call is not BlobTransactionForRpc { BlobVersionedHashes: null, Blobs: null } blobCall)
             return call;
 
+        loneBlobFeeCap = blobCall.MaxFeePerBlobGas;
         BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();
         copy.MaxFeePerBlobGas = null;
         JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
