@@ -191,7 +191,7 @@ public class FrameTxVerifyDosMeasurement
     /// the node's public-pool headroom.</remarks>
     [TestCase(300_000L, TestName = "burn at the default node headroom")]
     [TestCase(235_800L, TestName = "burn at soispoke v2's declared validation budget")]
-    [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the shared verification floor")]
+    [TestCase(100_000L, TestName = "burn at the EIP-8141 100k verification gas")]
     public void UnpaidBurnPerAttempt(long verifyGas)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
