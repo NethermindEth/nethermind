@@ -79,6 +79,7 @@ public partial class EthRpcModule(
     public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     private const string UnknownAccount = "unknown account";
+    private const string FromIsNotSigner = "from does not match the signer";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -412,10 +413,31 @@ public partial class EthRpcModule(
 
         tx.ChainId = _blockchainBridge.GetChainId();
 
+        if (tx.Signature is not null && SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
+            return signerError;
+
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return await SendTx(tx, options);
+    }
+
+    /// <summary>
+    /// Makes the account that signed <paramref name="tx"/> its sender: every node that executes the transaction
+    /// recovers its sender from the signature.
+    /// </summary>
+    /// <param name="from">The request's <c>from</c>, or null when it leaves it out.</param>
+    /// <returns>The error that stops the send, or null when the signer is recovered and is <paramref name="from"/>, if given.</returns>
+    private ResultWrapper<Hash256>? SendAsSigner(Transaction tx, Address? from)
+    {
+        if (_blockchainBridge.RecoverTxSender(tx) is not { } signer)
+            return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+
+        if (from is not null && from != signer)
+            return ResultWrapper<Hash256>.Fail(FromIsNotSigner, ErrorCodes.InvalidInput);
+
+        tx.SenderAddress = signer;
+        return null;
     }
 
     public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)

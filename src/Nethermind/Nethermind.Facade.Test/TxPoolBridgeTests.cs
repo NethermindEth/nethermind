@@ -26,7 +26,8 @@ namespace Nethermind.Facade.Test
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
             _nonceManager = new NonceManager(Substitute.For<IChainHeadInfoProvider>(), Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
-            _ecdsa = Substitute.For<IEthereumEcdsa>();
+            // The sender checks a signature it keeps against the transaction's sender.
+            _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }
 
