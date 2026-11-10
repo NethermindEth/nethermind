@@ -196,18 +196,18 @@ public class DebugRpcModule(
         if (dynamicFeesBeforeLondon)
             return FeeDefaultRules.FeeFieldsBeforeLondon;
 
-        Address sender = (call as LegacyTransactionForRpc)?.From ?? Address.Zero;
+        string sender = ((call as LegacyTransactionForRpc)?.From ?? Address.Zero).ToString(withEip55Checksum: true);
         // Geth's message precheck rejects fees before unsupported fields, and fields before intrinsic gas or balance.
         if (spec.IsEip1559Enabled && call is LegacyTransactionForRpc legacy)
         {
             UInt256 feeCap = legacy.GasPrice ?? (call as EIP1559TransactionForRpc)?.MaxFeePerGas ?? UInt256.Zero;
             UInt256 tipCap = legacy.GasPrice ?? (call as EIP1559TransactionForRpc)?.MaxPriorityFeePerGas ?? UInt256.Zero;
             if (feeCap < tipCap)
-                return ErrorWrapper.DebugTrace($"{TxErrorMessages.TipAboveFeeCap}: address {sender.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tipCap}, maxFeePerGas: {feeCap}");
+                return ErrorWrapper.DebugTrace($"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: {tipCap}, maxFeePerGas: {feeCap}");
             if (feeCap < baseFee && (!feeCap.IsZero || !tipCap.IsZero))
-                return ErrorWrapper.DebugTrace($"{SimulateErrorMessages.FeeCapBelowBaseFee}: address {sender.ToString(withEip55Checksum: true)}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
+                return ErrorWrapper.DebugTrace($"{SimulateErrorMessages.FeeCapBelowBaseFee}: address {sender}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
         }
-        return ErrorWrapper.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender.ToString(withEip55Checksum: true)})");
+        return ErrorWrapper.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender})");
     }
 
     private bool IsTransactionIndexingInProgress()
