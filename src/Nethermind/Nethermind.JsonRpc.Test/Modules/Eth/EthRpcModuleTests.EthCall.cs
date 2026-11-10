@@ -740,6 +740,31 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_methods_share_empty_creation_defaults(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        ctx.Test.Container.Resolve<IJsonRpcConfig>().EstimateErrorMargin = 0;
+        string response = await ctx.Test.TestEthRpc(method,
+            new { from = TestItem.AddressA.ToString(), gas = "0x186a0" }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            if (method == "eth_createAccessList")
+            {
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo("0xcf08"), response);
+                Assert.That(json["result"]?["accessList"], Is.Empty, response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"], Is.EqualTo(method == "eth_call" ? "0x" : "0xcf08"), response);
+            }
+        }
+    }
+
+
+    [Test]
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();
