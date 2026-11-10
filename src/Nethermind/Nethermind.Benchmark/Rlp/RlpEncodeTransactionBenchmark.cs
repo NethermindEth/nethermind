@@ -4,7 +4,6 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Benchmarks.Rlp
@@ -22,26 +21,7 @@ namespace Nethermind.Benchmarks.Rlp
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            Console.WriteLine($"Length current: {Current().Length}");
-            Console.WriteLine($"Length improved: {Improved().Length}");
-            Check(Current(), Improved());
-        }
-
-        private void Check(byte[] a, byte[] b)
-        {
-            if (!a.SequenceEqual(b))
-            {
-                Console.WriteLine($"Outputs are different {a.ToHexString()} != {b.ToHexString()}!");
-                throw new InvalidOperationException();
-            }
-
-            Console.WriteLine($"Outputs are the same: {a.ToHexString()}");
-        }
-
-        [Benchmark]
-        public byte[] Improved() => throw new NotImplementedException();
+        public void Setup() => Console.WriteLine($"Length current: {Current().Length}");
 
         [Benchmark]
         public byte[] Current() => Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
