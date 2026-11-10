@@ -1288,6 +1288,7 @@ public partial class DebugRpcModuleTests
             ("access_before_blob_fork", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>(), ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("access list")),
             ("authorization_without_access_before_berlin", Istanbul.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
             ("blob_fork_before_empty_hashes", Shanghai.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>() }, Unsupported("blob")),
+            ("blobs_only_before_cancun_keeps_conversion_error", Shanghai.Instance, new() { ["blobs"] = new[] { "0x00" } }, "need at least 1 blob for a blob transaction"),
             ("blob_before_cancun", Shanghai.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
             ("blob_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, null),
             ("authorization_before_prague", Cancun.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
