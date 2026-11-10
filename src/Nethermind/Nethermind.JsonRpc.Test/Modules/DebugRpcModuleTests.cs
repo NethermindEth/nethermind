@@ -1296,7 +1296,13 @@ public partial class DebugRpcModuleTests
             ("dynamic_fees_before_london", Berlin.Instance, new() { ["maxFeePerGas"] = "0x0" }, "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
             ("fee_order_before_authorization_fork", Cancun.Instance, new() { ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
                 $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
-            ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode"))
+            ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode")),
+            ("blob_recipient_before_fork", Shanghai.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes }, TxErrorMessages.TxMissingTo),
+            ("authorization_recipient_before_fork", Cancun.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList }, TxErrorMessages.NotAllowedCreateTransaction),
+            ("unsupported_type_sender_checksum", Cancun.Instance, new() { ["from"] = TestItem.AddressA.ToString(), ["authorizationList"] = authorizationList },
+                "tracing failed: transaction type not supported: setcode tx (sender 0xb7705aE4c6F81B66cdB323C65f4E8133690fC099)"),
+            ("priority_fee_sender_checksum", Cancun.Instance, new() { ["from"] = TestItem.AddressA.ToString(), ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                "tracing failed: max priority fee per gas higher than max fee per gas: address 0xb7705aE4c6F81B66cdB323C65f4E8133690fC099, maxPriorityFeePerGas: 2, maxFeePerGas: 1")
         ];
         foreach ((string name, IReleaseSpec spec, Dictionary<string, object> fields, string? error) in cases)
             foreach (bool streamMode in new[] { false, true })
@@ -1309,12 +1315,10 @@ public partial class DebugRpcModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
             .Build(new TestSpecProvider(spec));
-        Dictionary<string, object> call = new(fields)
-        {
-            ["from"] = Address.Zero.ToString(),
-            ["to"] = TestItem.AddressC.ToString(),
-            ["gas"] = "0x493e0"
-        };
+        Dictionary<string, object> call = new(fields);
+        call.TryAdd("from", Address.Zero.ToString());
+        call.TryAdd("to", TestItem.AddressC.ToString());
+        call.TryAdd("gas", "0x493e0");
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest");
 
@@ -1367,21 +1371,21 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_field_inferred_fork_gating_checks_effective_base_fee([Values] bool streamMode)
+    public async Task Debug_traceCall_field_inferred_fork_gating_checks_effective_base_fee([Values] bool streamMode, [Values] bool checksumSender)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
             .Build(new TestSpecProvider(Cancun.Instance));
 
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
-            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerGas = "0x1", authorizationList = Array.Empty<object>() }, "latest",
+            new { from = (checksumSender ? TestItem.AddressA : Address.Zero).ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerGas = "0x1", authorizationList = Array.Empty<object>() }, "latest",
             new { blockOverrides = new { baseFeePerGas = "0x2" } });
 
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: max fee per gas less than block base fee: address {Address.Zero}, maxFeePerGas: 1, baseFee: 2"), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: max fee per gas less than block base fee: address {(checksumSender ? "0xb7705aE4c6F81B66cdB323C65f4E8133690fC099" : Address.Zero.ToString())}, maxFeePerGas: 1, baseFee: 2"), response);
             Assert.That(json["result"], Is.Null, response);
         }
     }
