@@ -4821,13 +4821,13 @@ namespace Nethermind.TxPool.Test
 
         // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
         // still consensus-valid, so the pool must refuse it at ingress rather than the validator.
-        [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
-        [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
-        [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
-        [TestCase(97_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        [TestCase(300_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
+        [TestCase(300_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
+        [TestCase(300_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
+        [TestCase(297_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
         public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withSignature, bool expectedAccepted)
         {
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 300_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
             peer.Id.Returns(TestItem.PublicKeyA);
@@ -4836,7 +4836,7 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
             if (withSignature)
             {
-                // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 97 200-gas
+                // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 297 200-gas
                 // prefix. It must actually verify: the pool rejects a bad one before comparing the budget.
                 frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
                 frameTx.Hash = frameTx.CalculateHash();
