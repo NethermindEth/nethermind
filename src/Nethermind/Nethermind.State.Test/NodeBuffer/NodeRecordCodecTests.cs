@@ -66,11 +66,13 @@ internal class NodeRecordCodecTests
             Assert.That(hashMask, Is.EqualTo(expectedMask));
             Assert.That(record.Span.Length, Is.EqualTo(buffer.Length));
             Assert.That(record.Hash, Is.EqualTo(expectedHash.ValueHash256));
+            Assert.That(record.View.Hash, Is.EqualTo(expectedHash.ValueHash256));
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
             Assert.That(record.ToTrieNode().FullRlp.ToArray(), Is.EqualTo(rlp));
             Assert.That(ReEncode(record.View), Is.EqualTo(rlp));
             AssertChildren(record.View, node);
             AssertKeyAndValue(record.View, node);
+            AssertChildHashes(record.View, node);
         }
     }
 
@@ -161,5 +163,21 @@ internal class NodeRecordCodecTests
         }
 
         if (node.IsLeaf) Assert.That(view.LeafValue.ToArray(), Is.EqualTo(node.Value.ToArray()), "value");
+    }
+
+    private static void AssertChildHashes(NodeRecordRef view, TrieNode node)
+    {
+        int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
+        // Past both ends of the children too: index 32 wraps a 32-bit shift back to child 0.
+        for (int i = -1; i <= 32; i++)
+        {
+            ValueHash256 expectedHash = default;
+            bool hasHash = (uint)i < childCount && node.GetChildHashAsValueKeccak(i, out expectedHash);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(view.TryGetChildHash(i, out ValueHash256 hash), Is.EqualTo(hasHash), $"child {i} has a hash");
+                Assert.That(hash, Is.EqualTo(hasHash ? expectedHash : default), $"child {i} hash");
+            }
+        }
     }
 }

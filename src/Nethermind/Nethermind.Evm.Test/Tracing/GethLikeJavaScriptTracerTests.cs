@@ -107,7 +107,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = GetTracer(tracerCode);
         Action trace = () => ExecuteBlock(tracer, MStore());
-        Assert.That(trace, Throws.TypeOf<ArgumentException>());
+        Assert.That(trace, Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCase("fe", "INVALID")]
@@ -506,16 +506,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("flatCallTracer")]
-    [TestCase("noSuchTracer.js")]
-    [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase("callTracer_legacy.tracer")]
     [TestCase(null)]
     [TestCase("{ ) }")]
     public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
         Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("callTracer_legacy.tracer")]
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
@@ -2347,6 +2347,203 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Heap_held_at_the_soft_limit_does_not_raise_the_hard_limit()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        ulong hardLimit = runtime.HeapSizeLimit;
+        dynamic hoveringTracer = engine.CreateTracer(HoveringTracer);
+        try
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                hoveringTracer.step(null, null);
+            }
+
+            int steps = (int)hoveringTracer.result(null, null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(steps, Is.EqualTo(10), "the script stays under the soft limit after each collection");
+                Assert.That(runtime.HeapSizeLimit, Is.EqualTo(hardLimit), "the collections enforcing the soft limit leave V8's hard limit as configured");
+            }
+        }
+        finally
+        {
+            ((object)hoveringTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Allocation_burst_between_heap_samples_ends_in_the_memory_limit_error()
+    {
+        // V8 ends the process if the burst reaches its hard heap limit, so the burst runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(AllocationBurstChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Large_call_without_interrupt_checks_ends_in_the_memory_limit_error_at_the_next_hook()
+    {
+        // V8 ends the process if the call reaches its hard heap limit, so the call runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(UnsampledCallChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    [Test]
+    public void Hard_heap_limit_covers_the_fixed_old_space()
+    {
+        using TracerRuntime runtime = new();
+
+        Assert.That(runtime.HeapSizeLimit, Is.GreaterThanOrEqualTo(16384UL * 1024 * 1024), "V8's hard limit includes the old space");
+    }
+
+    private static async Task<(int ExitCode, string Output)> RunInChildProcess(string argument)
+    {
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(GethLikeJavaScriptTracerTests).Assembly.Location);
+        start.ArgumentList.Add(argument);
+        using Process child = new() { StartInfo = start };
+        Assert.That(child.Start(), Is.True);
+        Task<string> output = child.StandardOutput.ReadToEndAsync();
+        Task<string> error = child.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(2));
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+            Assert.Fail($"The child process did not end.\n{await output}\n{await error}");
+        }
+
+        return (child.ExitCode, $"{await output}\n{await error}");
+    }
+
+    // Runs before the test host starts, so whatever ends a child process ends only that process.
+    private static Task<int> Main(string[] args) => args switch
+    {
+        [AllocationBurstChildArgument] => Task.FromResult(RunAllocationBurst()),
+        [UnsampledCallChildArgument] => Task.FromResult(RunUnsampledCall()),
+        _ => MicrosoftTestingPlatformEntryPoint.Main(args)
+    };
+
+    private static int RunAllocationBurst()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic burstingTracer = engine.CreateTracer(BurstingTracer);
+        try
+        {
+            burstingTracer.step(null, null);
+            Console.Error.WriteLine("The burst ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)burstingTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private static int RunUnsampledCall()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic unsampledCallTracer = engine.CreateTracer(UnsampledCallTracer);
+        try
+        {
+            try
+            {
+                unsampledCallTracer.step(null, null);
+            }
+            catch (ScriptEngineException exception)
+            {
+                Console.Error.WriteLine($"The large call was interrupted while it ran: {exception.Message}");
+                return 1;
+            }
+
+            unsampledCallTracer.step(null, null);
+            Console.Error.WriteLine("The hook after the large call ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)unsampledCallTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private const string AllocationBurstChildArgument = "--nethermind-js-tracer-allocation-burst";
+    private const string UnsampledCallChildArgument = "--nethermind-js-tracer-unsampled-call";
+
+    // One JSON.parse that builds about 640 MiB of heap, far over the 128 MiB soft limit. The built-in never reaches an
+    // interrupt check, so the heap is not sampled until the next hook enters the script.
+    private const string UnsampledCallTracer = @"{
+                    step: function(log, db) {
+                        if (!this.h) this.h = JSON.parse('[' + ('[' + '{},'.repeat(999) + '{}],').repeat(10000) + '[]]');
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.h.length; }
+                }";
+
+    // Tries to allocate about 9.6 GB in one step, far past the soft limit. Only the heap samples taken while the step
+    // runs can end the step with the memory-limit error. Without them the step would finish if the host has enough
+    // memory, and the child would report the missing error; otherwise the child dies or times out. Every one of these
+    // outcomes fails the test.
+    private const string BurstingTracer = @"{
+                    hoard: [],
+                    step: function(log, db) { for (var i = 0; i < 40; i++) this.hoard.push(new Array(30000000).fill(i + 0.5)); },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.hoard.length; }
+                }";
+
+    // Keeps 120 MB of arrays alive (about 116 MiB of heap after a collection) and leaves 16 MB of garbage per step,
+    // so the heap is over the 128 MiB soft limit when the next step starts and back under it after the collection
+    // that enforces the limit.
+    private const string HoveringTracer = @"{
+                    live: null,
+                    steps: 0,
+                    step: function(log, db) {
+                        this.steps++;
+                        if (this.live === null) {
+                            this.live = [];
+                            for (var i = 0; i < 15; i++) this.live.push(new Array(1000000).fill(i + 0.5));
+                        }
+                        var garbage = new Array(2000000).fill(1.5);
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.steps; }
+                }";
+
     private const string HoardingTracer = @"{
                     hoard: [],
                     step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },
@@ -2526,7 +2723,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                  });
                                                  return this.trace;
                                              },
-                                             fault: this.step
+                                             fault: function(log, db) { this.step(log, db); }
                                          }
                                          """;
 }

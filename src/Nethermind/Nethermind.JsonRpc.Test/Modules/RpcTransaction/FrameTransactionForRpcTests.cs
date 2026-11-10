@@ -61,16 +61,20 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
-    public void ToTransaction_NonFrameCreationWithoutData_IsRejected(
+    public void ToCallTransaction_NonFrameCreationWithoutData_UsesCallDefaults(
         [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         Transaction tx = new() { Type = type };
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
         if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
 
-        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+        Result<Transaction> result = rpc.ToCallTransaction(Prague.Instance);
 
-        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(type == TxType.SetCode ? Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction : null));
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        }
     }
 
     [Test]
