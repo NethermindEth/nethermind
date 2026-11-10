@@ -127,7 +127,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Each instance holds two block-processing scopes for the life of the process. Exclusive instances are
             // created on demand up to the capacity, or all at startup with JsonRpc.PreloadRpcModules.
             .AddSingleton<IBatchConcurrencyStrategy, TraceTransactionBatchConcurrency>()
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(GetTraceModuleCapacity(jsonRpcConfig.TraceModuleConcurrentInstances, Environment.ProcessorCount), jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.GetTraceModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
@@ -140,8 +140,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             ;
     }
-
-    internal static int GetTraceModuleCapacity(int? configured, int processorCount) => configured ?? processorCount;
 
     /// <summary>The one budget every parallel block trace on this node draws on, whichever seed the block takes. The
     /// deprecated FlatDb key keeps its published <c>int</c> shape, so its default <c>0</c> stands for "not set"; any other
