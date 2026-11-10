@@ -73,44 +73,57 @@ public sealed partial class OtsRpcModule
         {
             SearchResult<ParityLikeTxTrace> search = ReadTransactionTrace(transactionHash, timeout.Token);
             if (search.IsError) return ResultWrapper<List<OtsInternalOperation>>.Fail(search);
-            ParityLikeTxTrace trace = search.Object!;
-            List<OtsInternalOperation> operations = [];
-            Stack<ParityTraceAction> stack = new();
-            PushChildren(trace.Action!);
-            while (stack.TryPop(out ParityTraceAction? action))
-            {
-                timeout.Token.ThrowIfCancellationRequested();
-                if (action.Type == "create" && action.CreationMethod is not (null or "create" or "create2"))
-                    return ResultWrapper<List<OtsInternalOperation>>.Fail("Stored trace contains an unsupported creation method.", ErrorCodes.ResourceUnavailable);
-                if (action is { Type: "create", To: null, From: not null, Result: null, Error: not null, Subtraces.Count: 0 })
-                    continue;
-                int type = action.Type switch
-                {
-                    "call" when action.CallType == "call" && !action.Value.IsZero => 0,
-                    "suicide" => 1,
-                    "create" when action.CreationMethod == "create2" => 3,
-                    "create" => 2,
-                    _ => -1
-                };
-                if (type >= 0)
-                {
-                    Address? to = action.To ?? action.Result?.Address;
-                    if (action.From is null || to is null)
-                        return ResultWrapper<List<OtsInternalOperation>>.Fail("Stored trace lacks an operation's sender or destination.", ErrorCodes.ResourceUnavailable);
-                    operations.Add(new() { Type = type, From = action.From, To = to, Value = action.Value });
-                }
-                PushChildren(action);
-            }
-            if (blockFinder.FindBlockHash(trace.BlockNumber) != trace.BlockHash)
-                return ResultWrapper<List<OtsInternalOperation>>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
-            return ResultWrapper<List<OtsInternalOperation>>.Success(operations);
-
-            void PushChildren(ParityTraceAction parent)
-            {
-                for (int i = parent.Subtraces.Count - 1; i >= 0; i--) stack.Push(parent.Subtraces[i]);
-            }
+            return ReadInternalOperations(search.Object!, timeout.Token);
         }
         finally { JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout); }
+    }
+
+    private ResultWrapper<List<OtsInternalOperation>> ReadInternalOperations(ParityLikeTxTrace trace, CancellationToken ct)
+    {
+        List<OtsInternalOperation> operations = [];
+        Stack<ParityTraceAction> stack = new();
+        PushChildren(trace.Action!);
+        while (stack.TryPop(out ParityTraceAction? action))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (ConvertInternalOperation(action, out OtsInternalOperation? operation) is { } error)
+                return ResultWrapper<List<OtsInternalOperation>>.Fail(error, ErrorCodes.ResourceUnavailable);
+            if (operation is not null) operations.Add(operation);
+            PushChildren(action);
+        }
+        if (blockFinder.FindBlockHash(trace.BlockNumber) != trace.BlockHash)
+            return ResultWrapper<List<OtsInternalOperation>>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+        return ResultWrapper<List<OtsInternalOperation>>.Success(operations);
+
+        void PushChildren(ParityTraceAction parent)
+        {
+            for (int i = parent.Subtraces.Count - 1; i >= 0; i--) stack.Push(parent.Subtraces[i]);
+        }
+    }
+
+    private static string? ConvertInternalOperation(ParityTraceAction action, out OtsInternalOperation? operation)
+    {
+        operation = null;
+        if (action.Type == "create" && action.CreationMethod is not (null or "create" or "create2"))
+            return "Stored trace contains an unsupported creation method.";
+        if (action is { Type: "create", To: null, From: not null, Result: null, Error: not null, Subtraces.Count: 0 })
+            return null;
+        int type = action.Type switch
+        {
+            "call" when action.CallType == "call" && !action.Value.IsZero => 0,
+            "suicide" => 1,
+            "create" when action.CreationMethod == "create2" => 3,
+            "create" => 2,
+            _ => -1
+        };
+        if (type >= 0)
+        {
+            Address? to = action.To ?? action.Result?.Address;
+            if (action.From is null || to is null)
+                return "Stored trace lacks an operation's sender or destination.";
+            operation = new() { Type = type, From = action.From, To = to, Value = action.Value };
+        }
+        return null;
     }
 
     private SearchResult<ParityLikeTxTrace> ReadTransactionTrace(Hash256 transactionHash, CancellationToken ct)
@@ -148,56 +161,73 @@ public sealed partial class OtsRpcModule
         CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
         try
         {
-            timeout.Token.ThrowIfCancellationRequested();
-            if (!stateReader.HasStateForBlock(head.Header))
-                return ResultWrapper<Hash256?>.Fail($"State for block {head.Number} is unavailable.", ErrorCodes.ResourceUnavailable);
-            bool used = stateReader.TryGetAccount(head.Header, sender, out AccountStruct account) && account.Nonce > nonce;
-            timeout.Token.ThrowIfCancellationRequested();
-            if (!blockFinder.IsMainChain(head.Header))
-                return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            if (CheckSenderNonce(sender, nonce, head.Header, timeout.Token, out bool used) is { } error)
+                return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.ResourceUnavailable);
             // EIP-7702 authorizations can consume nonces, but never decrease this upper bound.
-            if (!used) return ResultWrapper<Hash256?>.Success(null);
-
-            Block? previous = null;
-            for (ulong number = head.Number; number > 0; number--)
-            {
-                timeout.Token.ThrowIfCancellationRequested();
-                Block? block = blockFinder.FindBlock(number);
-                if (block is null)
-                    return ResultWrapper<Hash256?>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
-                if (!blockFinder.IsMainChain(block.Header) || (previous is not null && previous.ParentHash != block.Hash))
-                    return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
-                previous = block;
-                TxReceipt[]? receipts = null;
-                for (int index = 0; index < block.Transactions.Length; index++)
-                {
-                    timeout.Token.ThrowIfCancellationRequested();
-                    Transaction transaction = block.Transactions[index];
-                    if (transaction.Nonce != nonce) continue;
-                    Address? recoveredSender = transaction.SenderAddress;
-                    if (recoveredSender is null)
-                    {
-                        if (receipts is null)
-                        {
-                            receipts = receiptFinder.Get(block);
-                            if (ValidateReceipts(block, receipts, timeout.Token) is { } error)
-                                return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.ResourceUnavailable);
-                        }
-                        recoveredSender = receipts[index].Sender;
-                        if (recoveredSender is null)
-                            return ResultWrapper<Hash256?>.Fail("Transaction sender is unavailable.", ErrorCodes.ResourceUnavailable);
-                    }
-                    if (recoveredSender != sender) continue;
-                    if (!blockFinder.IsMainChain(head.Header) || !blockFinder.IsMainChain(block.Header))
-                        return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
-                    return ResultWrapper<Hash256?>.Success(transaction.Hash);
-                }
-            }
-            timeout.Token.ThrowIfCancellationRequested();
-            return blockFinder.IsMainChain(head.Header)
-                ? ResultWrapper<Hash256?>.Success(null)
-                : ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            return used ? FindSenderTransaction(sender, nonce, head, timeout.Token) : ResultWrapper<Hash256?>.Success(null);
         }
         finally { JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout); }
+    }
+
+    private string? CheckSenderNonce(Address sender, ulong nonce, BlockHeader head, CancellationToken ct, out bool used)
+    {
+        ct.ThrowIfCancellationRequested();
+        used = false;
+        if (!stateReader.HasStateForBlock(head)) return $"State for block {head.Number} is unavailable.";
+        used = stateReader.TryGetAccount(head, sender, out AccountStruct account) && account.Nonce > nonce;
+        ct.ThrowIfCancellationRequested();
+        return blockFinder.IsMainChain(head) ? null : ChainChanged;
+    }
+
+    private ResultWrapper<Hash256?> FindSenderTransaction(Address sender, ulong nonce, Block head, CancellationToken ct)
+    {
+        Block? previous = null;
+        for (ulong number = head.Number; number > 0; number--)
+        {
+            ct.ThrowIfCancellationRequested();
+            Block? block = blockFinder.FindBlock(number);
+            if (block is null)
+                return ResultWrapper<Hash256?>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
+            if (!blockFinder.IsMainChain(block.Header) || (previous is not null && previous.ParentHash != block.Hash))
+                return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            previous = block;
+            if (FindSenderTransactionInBlock(block, sender, nonce, ct, out Transaction? transaction) is { } error)
+                return ResultWrapper<Hash256?>.Fail(error, ErrorCodes.ResourceUnavailable);
+            if (transaction is null) continue;
+            if (!blockFinder.IsMainChain(head.Header) || !blockFinder.IsMainChain(block.Header))
+                return ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<Hash256?>.Success(transaction.Hash);
+        }
+        ct.ThrowIfCancellationRequested();
+        return blockFinder.IsMainChain(head.Header)
+            ? ResultWrapper<Hash256?>.Success(null)
+            : ResultWrapper<Hash256?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+    }
+
+    private string? FindSenderTransactionInBlock(Block block, Address sender, ulong nonce, CancellationToken ct, out Transaction? match)
+    {
+        match = null;
+        TxReceipt[]? receipts = null;
+        for (int index = 0; index < block.Transactions.Length; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            Transaction transaction = block.Transactions[index];
+            if (transaction.Nonce != nonce) continue;
+            Address? recoveredSender = transaction.SenderAddress;
+            if (recoveredSender is null)
+            {
+                if (receipts is null)
+                {
+                    receipts = receiptFinder.Get(block);
+                    if (ValidateReceipts(block, receipts, ct) is { } error) return error;
+                }
+                recoveredSender = receipts[index].Sender;
+                if (recoveredSender is null) return "Transaction sender is unavailable.";
+            }
+            if (recoveredSender != sender) continue;
+            match = transaction;
+            return null;
+        }
+        return null;
     }
 }
