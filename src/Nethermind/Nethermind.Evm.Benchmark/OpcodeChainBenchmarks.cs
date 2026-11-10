@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
@@ -29,6 +30,8 @@ public class OpcodeChainBenchmarks
 {
     private const int BodyOpcodeCount = 3840;
     private const int ExecutedOpcodeCount = BodyOpcodeCount + 6;
+    // Two seed opcodes and eleven per iteration replace the one seed opcode and the body.
+    private const int HashKeyIterations = (BodyOpcodeCount + 1 - 2) / 11;
     private IContainer _container = null!;
     private ILifetimeScope _processingScope = null!;
     private IDisposable _stateScope = null!;
@@ -39,8 +42,10 @@ public class OpcodeChainBenchmarks
     private CodeInfo[] _codePool;
     private int _codeIndex;
     private byte[] _input = new byte[96];
+    private ulong _keySeed;
+    private bool _seedKeys;
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "HashKeyRepeated", "HashKeyUnique", "MappingReadRepeated", "MappingReadUnique")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -98,6 +103,8 @@ public class OpcodeChainBenchmarks
             "JumpTaken" => UInt256.Zero,
             "Byte" or "Shift" or "Sar" => UInt256.Zero,
             "Clz" => (UInt256)248,
+            "HashKeyRepeated" or "MappingReadRepeated" => UInt256.One << 128,
+            "HashKeyUnique" or "MappingReadUnique" => (UInt256.One << 128) + (UInt256)(ulong)HashKeyIterations,
             _ => UInt256.One
         };
         if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
@@ -118,6 +125,8 @@ public class OpcodeChainBenchmarks
     public ReadOnlyMemory<byte> ExecuteContract()
     {
         CodeInfo code = _codePool is { } pool ? pool[_codeIndex++ & (pool.Length - 1)] : _code;
+        // A new seed per execution keeps hashed keys from repeating across executions.
+        if (_seedKeys) BinaryPrimitives.WriteUInt64BigEndian(_input.AsSpan(8), ++_keySeed);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero, codeSource: Address.Zero, caller: Address.Zero,
             codeInfo: code, callDepth: 0, value: 0, inputData: _input);
@@ -180,6 +189,23 @@ public class OpcodeChainBenchmarks
             {
                 code.AddRange([(byte)Instruction.DUP2, (byte)Instruction.DUP2, (byte)opcode]);
                 if (i + 1 != BodyOpcodeCount / 4) code.Add((byte)Instruction.POP);
+            }
+        }
+        else if (Chain is "HashKeyRepeated" or "HashKeyUnique" or "MappingReadRepeated" or "MappingReadUnique")
+        {
+            // keccak(key . slot) as a mapping access computes it: the key goes to memory word 0 and the slot
+            // (zero here) is word 1. Repeated keeps one key per execution, as when a mapping entry is read and
+            // then written; Unique moves to a new key every time.
+            byte step = Chain.EndsWith("Unique", StringComparison.Ordinal) ? (byte)1 : (byte)0;
+            byte consumer = (byte)(Chain.StartsWith("MappingRead", StringComparison.Ordinal) ? Instruction.SLOAD : Instruction.JUMPDEST);
+            _seedKeys = true;
+            code.Clear();
+            code.AddRange([(byte)Instruction.PUSH0, (byte)Instruction.CALLDATALOAD]);
+            for (int i = 0; i < HashKeyIterations; i++)
+            {
+                code.AddRange([(byte)Instruction.PUSH1, step, (byte)Instruction.ADD, (byte)Instruction.DUP1,
+                    (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 64, (byte)Instruction.PUSH0,
+                    (byte)Instruction.KECCAK256, consumer, (byte)Instruction.POP, (byte)Instruction.JUMPDEST]);
             }
         }
         else if (Chain is "JumpTaken" or "JumpUntaken" or "JumpAlternating")
