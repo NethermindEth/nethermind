@@ -56,6 +56,8 @@ public partial class EthRpcModuleTests
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an authorization list")]
     [TestCase("eth_createAccessList", """{"gasPrice":"0x1","authorizationList":[]}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an empty authorization list")]
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Create access list, set-code type with a zero gas price")]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", "maxFeePerGas must be non-zero")]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", "gasPrice must be non-zero after london fork")]
     [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", "maxFeePerGas must be non-zero")]
     [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", "gasPrice must be non-zero after london fork")]
     [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.GasPriceInEip1559)]
@@ -277,8 +279,8 @@ public partial class EthRpcModuleTests
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
         request["data"] = data;
-        request["blobVersionedHashes"] = emptyHashes ? new JsonArray()
-            : new JsonArray("0x0100000000000000000000000000000000000000000000000000000000000000");
+        JsonArray blobHashes = emptyHashes ? [] : ["0x0100000000000000000000000000000000000000000000000000000000000000"];
+        request["blobVersionedHashes"] = blobHashes;
         request["from"] = HeldAccount;
         request["gas"] = "0x76c0";
         request["nonce"] = "0x0";
