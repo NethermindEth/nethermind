@@ -42,6 +42,15 @@ public sealed class RpcExecutionLimiter
         return Math.Max(1, concurrency);
     }
 
+    /// <summary>Acquires an execution permit, waiting asynchronously while none is free.</summary>
+    /// <returns>A task that completes once the caller holds a permit.</returns>
+    /// <remarks>
+    /// Every admission that succeeds must be released by exactly one <see cref="Exit"/> call. An admission that
+    /// throws holds no permit and must not be released. A caller whose execution continues after it returns, such
+    /// as a streamed result, keeps the permit and releases it when that execution ends.
+    /// </remarks>
+    /// <exception cref="LimitExceededException">The queue of waiting requests is full.</exception>
+    /// <exception cref="ModuleRentalTimeoutException">No permit became free within the request timeout.</exception>
     public ValueTask EnterAsync() => _semaphore is null || _semaphore.Wait(0) ? ValueTask.CompletedTask : WaitAsync();
 
     private async ValueTask WaitAsync()
@@ -60,5 +69,7 @@ public sealed class RpcExecutionLimiter
         }
     }
 
+    /// <summary>Releases the permit a successful <see cref="EnterAsync"/> acquired.</summary>
+    /// <remarks>Call it once per admission: a second call hands out a permit that nobody acquired.</remarks>
     public void Exit() => _semaphore?.Release();
 }

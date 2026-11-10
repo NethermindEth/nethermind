@@ -151,11 +151,11 @@ See the [plugin development guide](https://docs.nethermind.io/developers/plugins
 
 ### RPC execution admission
 
-CPU-heavy RPC methods can opt into bounded execution by setting `IsExecutionHeavy = true` on their `JsonRpcMethod` attribute. The built-in `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction` methods use this gate. Calls wait asynchronously before parameter decoding or module rental; streaming results retain the execution permit until disposal.
+CPU-heavy RPC methods can opt into bounded execution by setting `IsExecutionHeavy = true` on their `JsonRpcMethod` attribute. The built-in `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction` methods are marked this way. The gate is off by default: while `JsonRpc.MaxConcurrentExecutionRequests` is unset, these methods are admitted without waiting and only the existing module and shared limits bound them. Once it is set, calls over the limit wait asynchronously before parameter decoding or module rental, and a streamed result keeps its execution permit until the response is disposed.
 
-`JsonRpc.MaxConcurrentExecutionRequests` defaults to twice the logical processor count. The effective limit is also bounded by `JsonRpc.EthModuleConcurrentInstances` (or the logical processor count when unset) and half of a positive `JsonRpc.MaxConcurrentSharedRequests`, with at least one execution slot. This leaves shared admission capacity for lightweight methods when the shared limit permits it.
+A positive `JsonRpc.MaxConcurrentExecutionRequests` is the requested number of concurrent executions. The effective limit is the smallest of that value, `JsonRpc.EthModuleConcurrentInstances` (the logical processor count when unset) and half of a positive `JsonRpc.MaxConcurrentSharedRequests`, and is never below one. Halving the shared limit leaves shared admission capacity for lightweight methods. A zero or negative value turns the gate on without a requested cap, so only the module and shared bounds apply.
 
-An explicit positive execution limit replaces the processor-derived default, not the module/shared bounds. A non-positive value removes only the processor-derived bound. Waiting calls use the existing `JsonRpc.RequestQueueLimit` and `JsonRpc.Timeout`; increasing execution concurrency may also require increasing the module/shared limits. Qualify throughput and chain following together rather than increasing these limits solely to admit more work.
+Waiting calls use the existing `JsonRpc.RequestQueueLimit` and `JsonRpc.Timeout`; raising execution concurrency may also require raising the module/shared limits. Qualify throughput and chain following together rather than raising these limits solely to admit more work.
 
 ### Gas policy at exceptional exits
 

@@ -6,13 +6,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
+using Autofac;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using NUnit.Framework;
-using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -214,16 +214,17 @@ public class RpcExecutionAdmissionTests
     {
         public readonly State State = new();
         public readonly BoundedModulePool<IAdmissionModule> Pool;
-        private readonly GCKeeper _keeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
-        private readonly JsonRpcService _service;
+        private readonly IContainer _container;
+        private readonly IJsonRpcService _service;
 
         public Harness(int timeout = 5_000)
         {
             JsonRpcConfig config = new() { EthModuleConcurrentInstances = 1, MaxConcurrentSharedRequests = 2, MaxConcurrentExecutionRequests = 1, Timeout = timeout, EnabledModules = ["eth"] };
+            _container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+            // Its own limits rather than the node-wide ones, which are process-wide state other fixtures share.
             Pool = new BoundedModulePool<IAdmissionModule>(new AdmissionFactory(State), 1, timeout, new RpcLimits(queuedLimit: 1, sharedLimit: 2));
-            RpcModuleProvider provider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), NullLogManager.Instance);
-            provider.Register(Pool);
-            _service = new JsonRpcService(provider, NullLogManager.Instance, config, _keeper);
+            _container.Resolve<IRpcModuleProvider>().Register(Pool);
+            _service = _container.Resolve<IJsonRpcService>();
         }
 
         public Task<JsonRpcResponse> Send(string method, JsonRpcContext? context = null, params object?[] parameters) =>
@@ -232,7 +233,7 @@ public class RpcExecutionAdmissionTests
         public void Dispose()
         {
             State.Dispose();
-            _keeper.Dispose();
+            _container.Dispose();
         }
     }
 }

@@ -20,9 +20,10 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            The max number of concurrent requests waiting for an execution permit or in the exclusive
-            (non-sharable) module queue. Execution-heavy calls include `eth_call`, `eth_estimateGas`,
-            `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`. Exclusive calls include:
+            The max number of concurrent requests waiting in the exclusive (non-sharable) module queue or,
+            when `MaxConcurrentExecutionRequests` is set, for an execution permit. Execution-heavy calls are
+            `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`.
+            Exclusive calls include:
 
             - `eth_getLogs`
             - `eth_newFilter`

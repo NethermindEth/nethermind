@@ -13,7 +13,15 @@ namespace Nethermind.Facade;
 /// </remarks>
 public sealed class RpcCallExecutionPolicy(bool chargeFees = true, bool validateLegacyGasPriceAgainstBaseFee = true)
 {
+    /// <summary>Whether the call buys its gas up front, refunds the unused part and pays the fee recipients.</summary>
+    /// <remarks>
+    /// When <see langword="false"/>, the sender needs funds for the transferred value only and no account is debited
+    /// or credited for gas.
+    /// </remarks>
     public bool ChargeFees { get; } = chargeFees;
+
+    /// <summary>Whether a legacy <c>gasPrice</c> below the block base fee fails the call.</summary>
+    /// <remarks>Does not change how EIP-1559 fee caps are validated.</remarks>
     public bool ValidateLegacyGasPriceAgainstBaseFee { get; } = validateLegacyGasPriceAgainstBaseFee;
 
     internal ExecutionOptions Options { get; } = ExecutionOptions.CommitAndRestore

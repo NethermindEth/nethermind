@@ -148,9 +148,8 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [TestCase(32)]
-    [TestCase(64)]
-    public async Task RpcCallFeePolicy_huge_legacy_price_does_not_multiply_fees_or_require_funding(int hexDigits)
+    [Test]
+    public async Task RpcCallFeePolicy_huge_legacy_price_does_not_multiply_fees_or_require_funding([Values(32, 64)] int hexDigits)
     {
         using Context ctx = await FeePolicyContext();
         string quantity = new('f', hexDigits);
