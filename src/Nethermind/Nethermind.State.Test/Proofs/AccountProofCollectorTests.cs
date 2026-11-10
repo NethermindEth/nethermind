@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -608,7 +609,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             TreeDumper dumper = new();
-            tree.Accept(dumper, tree.RootHash);
+            tree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
@@ -686,7 +687,7 @@ namespace Nethermind.Store.Test.Proofs
             tree.Commit();
 
             TreeDumper dumper = new();
-            tree.Accept(dumper, tree.RootHash);
+            tree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), tree.RootHash);
             Console.WriteLine(dumper.ToString());
 
             AccountProofCollector accountProofCollector = new(
@@ -797,7 +798,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             tree.Commit();
 
             TreeDumper treeDumper = new();
-            tree.Accept(treeDumper, tree.RootHash);
+            tree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(treeDumper), tree.RootHash);
             TestContext.Out.WriteLine(treeDumper.ToString());
 
             AccountProofCollector collector = new(address, indexes);
