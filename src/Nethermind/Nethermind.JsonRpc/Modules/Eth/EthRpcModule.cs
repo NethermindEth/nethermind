@@ -621,10 +621,11 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
+            using RentedTimeout timeout = _rpcConfig.RentTimeout();
             // The transaction is built for a later block, so its estimate is outside the fork rule as well.
             ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
                 new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
-                rpcTx, BlockParameter.Latest, stateOverride: null);
+                rpcTx, BlockParameter.Latest, stateOverride: null, timeout.Token);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return (gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
@@ -728,19 +729,19 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+    public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default) =>
         ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
-            transactionCall, blockParameter, stateOverride, blockOverride);
+            transactionCall, blockParameter, stateOverride, cancellationToken, blockOverride);
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, CancellationToken cancellationToken = default) =>
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
-            .Execute(payload, blockParameter);
+            .Execute(payload, blockParameter, cancellationToken);
 
-    public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+    public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default) =>
         ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
-            transactionCall, blockParameter, stateOverride, blockOverride);
+            transactionCall, blockParameter, stateOverride, cancellationToken, blockOverride);
 
-    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true)
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true, CancellationToken cancellationToken = default)
     {
         // The fees are filled once, against the header the call then runs on, before anything prices the request.
         SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
@@ -751,8 +752,8 @@ public partial class EthRpcModule(
 
         // A request whose fees are rejected gets that error as it would with explicit frame limits.
         return feeDefaults.Error is null
-            ? ExecuteWithFrameGas(executor, transactionCall, blockParameter, stateOverride, searchResult: search)
-            : executor.ExecuteTx(transactionCall, blockParameter, stateOverride, searchResult: search);
+            ? ExecuteWithFrameGas(executor, transactionCall, blockParameter, stateOverride, cancellationToken, searchResult: search)
+            : executor.ExecuteTx(transactionCall, blockParameter, cancellationToken, stateOverride, searchResult: search);
     }
 
     public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) => GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
@@ -1146,7 +1147,7 @@ public partial class EthRpcModule(
         : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {
@@ -1170,8 +1171,7 @@ public partial class EthRpcModule(
                 : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
 
-        using RentedTimeout timeout = _rpcConfig.RentTimeout();
-        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
+        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, cancellationToken);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys));
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     public interface IProofRpcModule : IRpcModule
     {
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a call against the state at the given block (analogous to `eth_call`) and returns the call output together with the execution witness — flat lists of state-trie node RLP, loaded contract bytecode, accessed keys, and RLP-encoded block headers emitted in ascending block-number order (any block whose hash was read via the `BLOCKHASH` opcode comes first, and the executed-against header is always the last entry). The witness is sufficient for a stateless verifier to independently re-execute the call.", IsSharable = true)]
-        ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
+        ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken);
 
         [JsonRpcMethod(IsImplemented = true,
             ResultCanBeNull = true,
@@ -40,6 +41,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
         ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(
             [JsonRpcParameter(ExampleValue = "\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"")] Address accountAddress,
             [JsonRpcParameter(ExampleValue = "[]", Description = "Storage keys to include in the proof; each key, duplicates included, gets its own entry in request order.")] StorageKeys storageKeys,
-            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter);
+            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter, CancellationToken cancellationToken);
     }
 }

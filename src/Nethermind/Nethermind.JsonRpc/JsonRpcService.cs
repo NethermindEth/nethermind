@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -34,9 +35,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken)
     {
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
             gcKeeper.CancelPendingGC();
@@ -56,7 +58,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context, cancellationToken);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -105,7 +107,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private static string DiagnosticStackTrace(Exception ex) =>
         SensitiveLogMasking.Enabled || ex.StackTrace is not { } stack ? string.Empty : Environment.NewLine + stack;
 
-    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
@@ -118,6 +120,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
+        CancellationTokenSource? methodCancellation = null;
+        CancellationTokenRegistration abortRegistration = default;
         try
         {
             JsonRpcErrorResponse? value;
@@ -145,6 +149,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             {
                 returnImmediately = true;
                 return value;
+            }
+
+            if (method.HasCancellationToken)
+            {
+                // A rented timeout source rather than a linked one, so a request costs no new source.
+                methodCancellation = _jsonRpcConfig.BuildTimeoutCancellationToken();
+                abortRegistration = cancellationToken.UnsafeRegister(static source => ((CancellationTokenSource)source!).Cancel(), methodCancellation);
+                AppendParameter(ref parameters, ref parameterCount, ref returnParametersToPool, methodCancellation.Token);
             }
 
             object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
@@ -178,6 +190,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
         finally
         {
+            if (methodCancellation is not null)
+            {
+                abortRegistration.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(methodCancellation);
+            }
+
             if (returnImmediately)
             {
                 _rpcModuleProvider.Return(method, rpcModule);
@@ -240,6 +258,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         string errorMessage = $"Method {methodName} execution result implements IResultWrapper but not JsonRpcResponse";
         if (_logger.IsError) _logger.Error(errorMessage);
         return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, in request.IdRef, returnAction);
+    }
+
+    private static void AppendParameter(ref object?[]? parameters, ref int parameterCount, ref bool returnToPool, object? parameter)
+    {
+        if (parameters is null || parameters.Length == parameterCount)
+        {
+            object?[] grown = RentParameterArray(parameterCount + 1, out bool grownReturnToPool);
+            parameters?.AsSpan(0, parameterCount).CopyTo(grown);
+            ReturnParameters(parameters, returnToPool);
+            parameters = grown;
+            returnToPool = grownReturnToPool;
+        }
+
+        parameters[parameterCount++] = parameter;
     }
 
     private static void ReturnParameters(object?[]? parameters, bool returnToPool)

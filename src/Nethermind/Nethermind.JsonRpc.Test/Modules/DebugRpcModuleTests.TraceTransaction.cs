@@ -352,13 +352,13 @@ public partial class DebugRpcModuleTests
             object options = new { tracer = script, timeout = "30s" };
             return method switch
             {
-                "debug_traceCall" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, call, "latest", options),
-                "debug_traceCall indexed" => RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall", call, "latest",
+                "debug_traceCall" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, call, "latest", options),
+                "debug_traceCall indexed" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, "debug_traceCall", call, "latest",
                     new { tracer = script, timeout = "30s", txIndex = "0x0" }),
-                "debug_traceTransaction" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, transaction.Hash!, options),
-                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                "debug_traceTransaction" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, transaction.Hash!, options),
+                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method,
                     new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "latest", options),
-                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, new[] { new { transactions = new[] { call } } }, "latest", options)
+                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, new[] { new { transactions = new[] { call } } }, "latest", options)
             };
         }
     }

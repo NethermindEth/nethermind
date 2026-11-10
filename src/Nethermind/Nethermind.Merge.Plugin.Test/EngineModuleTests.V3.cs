@@ -109,7 +109,7 @@ public partial class EngineModuleTests
 
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(payload), "[]", null);
 
-        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None);
         Error error = RpcTest.AssertError(response);
         using (Assert.EnterMultipleScope())
         {
@@ -340,7 +340,7 @@ public partial class EngineModuleTests
         string executionPayloadString = serializer.Serialize(executionPayload);
 
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), executionPayloadString, null!);
-        JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context)) as JsonRpcErrorResponse;
+        JsonRpcErrorResponse? response = (await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None)) as JsonRpcErrorResponse;
 #pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(response?.Error, Is.Not.Null);
 #pragma warning restore NUnit2045
@@ -372,7 +372,7 @@ public partial class EngineModuleTests
                             """;
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
-        JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
+        JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None);
         Assert.That(RpcTest.AssertError(rpcResponse).Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
@@ -408,7 +408,7 @@ public partial class EngineModuleTests
 
         // The control payload carries exactly this version's fields, so no other field is demanded.
         Assert.That(payload.Select(static p => p.Key), Is.EquivalentTo(RequiredPayloadFields(version).Select(static f => f.Field)));
-        using (JsonRpcResponse controlResponse = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context))
+        using (JsonRpcResponse controlResponse = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context, CancellationToken.None))
         {
             Assert.That(controlResponse is ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success }, "the complete payload must pass parameter validation");
         }
@@ -418,7 +418,7 @@ public partial class EngineModuleTests
         else
             payload[field] = null;
 
-        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context);
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context, CancellationToken.None);
         Error error = RpcTest.AssertError(response);
         using (Assert.EnterMultipleScope())
         {
@@ -492,7 +492,7 @@ public partial class EngineModuleTests
         {
             JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString)!;
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
-            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None);
             Assert.That(response, Is.InstanceOf<ResultWrapper<PayloadStatusV1>>());
         }
 
@@ -505,7 +505,7 @@ public partial class EngineModuleTests
             executionPayloadAsJObject[prop] = null;
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None);
             AssertInvalidParams(response);
         }
 
@@ -515,7 +515,7 @@ public partial class EngineModuleTests
             executionPayloadAsJObject.Remove(prop);
 
             JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), serializer.Serialize(executionPayloadAsJObject), blobsString);
-            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+            JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context, CancellationToken.None);
             AssertInvalidParams(response);
         }
 
@@ -938,7 +938,7 @@ public partial class EngineModuleTests
             forkchoiceState[field] = null;
 
         using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(
-            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context);
+            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context, CancellationToken.None);
 
         Error error = RpcTest.AssertError(response);
         using (Assert.EnterMultipleScope())

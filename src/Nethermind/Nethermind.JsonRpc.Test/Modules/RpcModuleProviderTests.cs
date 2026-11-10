@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -235,6 +236,22 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Trailing_cancellation_token_is_supplied_by_the_dispatcher_not_the_request()
+    {
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+        RpcModuleProvider.ResolvedMethodInfo method = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_with_cancellation_token))!;
+        MethodInfo misplaced = typeof(MisplacedCancellationTokenModule).GetMethod(nameof(MisplacedCancellationTokenModule.misplaced_cancellation_token))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(method.HasCancellationToken, Is.True);
+            Assert.That(method.ExpectedParameters, Has.Length.EqualTo(1));
+            Assert.That(method.DirectParameterInvoker, Is.Not.Null);
+            Assert.That(() => new RpcModuleProvider.ResolvedMethodInfo(ModuleType.Net, misplaced, true, RpcEndpoint.All), Throws.InvalidOperationException);
         }
     }
 
@@ -485,7 +502,11 @@ public class RpcModuleProviderTests
             ParameterInfo[] parameters = method.GetParameters();
             for (int j = 0; j < parameters.Length; j++)
             {
-                AddMissingPayloadType(method, $"parameter {parameters[j].Name}", parameters[j].ParameterType, missing);
+                // The dispatcher supplies a CancellationToken, so it is never read from JSON.
+                if (parameters[j].ParameterType != typeof(CancellationToken))
+                {
+                    AddMissingPayloadType(method, $"parameter {parameters[j].Name}", parameters[j].ParameterType, missing);
+                }
             }
         }
     }
@@ -597,6 +618,9 @@ public class RpcModuleProviderTests
 
         public ResultWrapper<int> direct_required_value_param(int value) => ResultWrapper<int>.Success(value);
 
+        public ResultWrapper<bool> direct_with_cancellation_token(string value, CancellationToken cancellationToken) =>
+            ResultWrapper<bool>.Success(cancellationToken.CanBeCanceled);
+
         public ResultWrapper<int> direct_with_converter(
             [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
             ResultWrapper<int>.Success(values[0]);
@@ -626,6 +650,12 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    private sealed class MisplacedCancellationTokenModule
+    {
+        public ResultWrapper<bool> misplaced_cancellation_token(CancellationToken cancellationToken, string value) =>
+            ResultWrapper<bool>.Success(cancellationToken.CanBeCanceled);
+    }
 
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule

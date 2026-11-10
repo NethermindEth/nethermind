@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -577,7 +578,7 @@ public class ReadOnlyQueryModuleTests
         using ResultWrapper<Witness> witness = chain.DebugRpcModule.debug_executionWitness(new BlockParameter(block.Number));
         int afterWitness = probe.Offers;
         using ResultWrapper<CallResultWithProof> proof = chain.ProofRpcModule.proof_call(
-            new LegacyTransactionForRpc { From = TestItem.AddressB, To = Target, Gas = 100_000 }, new BlockParameter(block.Number));
+            new LegacyTransactionForRpc { From = TestItem.AddressB, To = Target, Gas = 100_000 }, new BlockParameter(block.Number), CancellationToken.None);
         int afterProof = probe.Offers;
         string call = await chain.TestEthRpc("eth_call", CallTo(Target), "latest");
 

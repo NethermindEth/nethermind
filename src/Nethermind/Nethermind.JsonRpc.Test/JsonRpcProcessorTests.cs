@@ -642,7 +642,7 @@ public class JsonRpcProcessorTests
             Assert.That(second.Id, Is.EqualTo(new JsonRpcId(2)));
             Assert.That(third.Id, Is.EqualTo(new JsonRpcId(3)));
         }
-        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -777,7 +777,7 @@ public class JsonRpcProcessorTests
             CreateHttpContext());
 
         Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
-        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -799,7 +799,7 @@ public class JsonRpcProcessorTests
             Assert.That(batchItems.Skip(1), Is.All.TypeOf<JsonRpcErrorResponse>());
         }
         // Items 2-4 were already executing when the sink stopped; the fifth never started.
-        await service.Received(4).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(4).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -1159,7 +1159,7 @@ public class JsonRpcProcessorTests
     private static IJsonRpcService CreateAsyncService(Func<JsonRpcRequest, Task<JsonRpcResponse>> responseFactory)
     {
         IJsonRpcService service = CreateEchoService();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => new ValueTask<JsonRpcResponse>(responseFactory(callInfo.Arg<JsonRpcRequest>())));
         return service;
     }
@@ -1167,7 +1167,7 @@ public class JsonRpcProcessorTests
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory, JsonRpcErrorResponse? errorResponse = null)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
-        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => responseFactory(callInfo.Arg<JsonRpcRequest>()));
         if (errorResponse is not null)
         {
@@ -1344,7 +1344,7 @@ public class JsonRpcProcessorTests
             Assert.That(responses[i].Id, Is.EqualTo(new JsonRpcId(expectedId++)));
         }
 
-        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -1382,7 +1382,7 @@ public class JsonRpcProcessorTests
             Assert.That(limitExceeded.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
         }
 
-        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -1407,7 +1407,7 @@ public class JsonRpcProcessorTests
         }
         JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
         Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
-        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [TestCaseSource(nameof(MultipleDocumentRequestCases))]
@@ -1602,7 +1602,7 @@ public class JsonRpcProcessorTests
                 Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
                 Assert.That(response.BatchItems, Is.Null);
             }
-            await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+            await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
             return;
         }
 
@@ -1614,7 +1614,22 @@ public class JsonRpcProcessorTests
             Assert.That(batchItems[0].Id, Is.EqualTo(new JsonRpcId(67)));
             Assert.That(batchItems[1].Id, Is.EqualTo(new JsonRpcId(67)));
         }
-        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>Three batched calls run both inline and in the concurrent batch window.</remarks>
+    [Test]
+    public async Task Dispatch_passes_the_transport_token_to_the_service([Values] RequestTransport transport, [Values(1, 3)] int requestCount)
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 });
+        string[] requests = [.. Enumerable.Range(1, requestCount).Select(static id => CreateRequest(id.ToString(), "eth_call"))];
+        using CancellationTokenSource transportAbort = new();
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor,
+            Encoding.UTF8.GetBytes(requestCount == 1 ? requests[0] : CreateBatchRequest(requests)), transport, cancellationToken: transportAbort.Token);
+
+        await service.Received(requestCount).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), transportAbort.Token);
     }
 
     [Test]
@@ -1897,7 +1912,8 @@ public class JsonRpcProcessorTests
         byte[] request,
         RequestTransport transport,
         CollectingJsonRpcResponseSink? sink = null,
-        JsonRpcContext? context = null)
+        JsonRpcContext? context = null,
+        CancellationToken cancellationToken = default)
     {
         sink ??= new CollectingJsonRpcResponseSink();
         context ??= CreateContext(transport);
@@ -1907,11 +1923,11 @@ public class JsonRpcProcessorTests
 
         if (transport is RequestTransport.HttpMemory or RequestTransport.WsMemory)
         {
-            await processor.ProcessAsync(request.AsMemory(), context, sink, options);
+            await processor.ProcessAsync(request.AsMemory(), context, sink, options, cancellationToken);
         }
         else
         {
-            await processor.ProcessAsync(CreateReader(request, transport), context, sink, options);
+            await processor.ProcessAsync(CreateReader(request, transport), context, sink, options, cancellationToken);
         }
 
         return sink.Responses;
@@ -2124,7 +2140,7 @@ public class JsonRpcProcessorTests
         Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
 #pragma warning restore NUnit2045
         Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [Test]

@@ -166,6 +166,12 @@ internal static class RpcJsonTypeDiscovery
             AddReturnPayloadTypes(method.ReturnType, types);
             for (int j = 0; j < method.Parameters.Length; j++)
             {
+                // The dispatcher supplies a CancellationToken, so it is never read from JSON.
+                if (method.Parameters[j].Type is INamedTypeSymbol parameterType && IsNamedType(parameterType, "System.Threading", "CancellationToken"))
+                {
+                    continue;
+                }
+
                 AddJsonType(method.Parameters[j].Type, types);
             }
         }

@@ -192,7 +192,7 @@ internal sealed class McpContractTools(
             return McpEthHelpers.InvalidInput($"'args' do not match {function}: {error}.");
         }
 
-        return executor.ExecuteAsync("call_function", nameof(IEthRpcModule.eth_call), (eth, _) =>
+        return executor.ExecuteAsync("call_function", nameof(IEthRpcModule.eth_call), (eth, cancellation) =>
         {
             if (!TryResolveBlock(blockParameter, out BlockHeader? header, out BlockParameter? pinned, out CallToolResult? failure))
             {
@@ -200,7 +200,7 @@ internal sealed class McpContractTools(
             }
 
             LegacyTransactionForRpc transaction = new() { To = target, From = sender, Input = callData, Gas = gasLimit };
-            using ResultWrapper<HexBytes> result = eth.eth_call(transaction, pinned);
+            using ResultWrapper<HexBytes> result = eth.eth_call(transaction, pinned, cancellationToken: cancellation);
             if (result.Result.ResultType != ResultType.Success)
             {
                 return Task.FromResult(CallFailure("call_function", function.CanonicalSignature, result));

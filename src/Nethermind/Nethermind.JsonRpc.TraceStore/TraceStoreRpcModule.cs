@@ -99,7 +99,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
-        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => _traceModule.trace_simulateV1(payload, blockParameter, traceTypes);
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null, CancellationToken cancellationToken = default) => _traceModule.trace_simulateV1(payload, blockParameter, traceTypes, cancellationToken);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
