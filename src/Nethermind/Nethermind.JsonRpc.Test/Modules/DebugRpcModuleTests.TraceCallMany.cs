@@ -116,6 +116,29 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_executes_empty_contract_creation([Values] bool streaming, [Values] bool blockOverride)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object bundle = new
+        {
+            transactions = new[] { new { from = TestItem.AddressD, gas = "0x186a0", input = "0x" } },
+            blockOverride = blockOverride ? new { number = "0x100" } : null
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Has.Count.EqualTo(1), response);
+            Assert.That(json["result"]?[0], Has.Count.EqualTo(1), response);
+            Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?[0]?[0]?["gas"], Is.EqualTo(53_000), response);
+            Assert.That(json["result"]?[0]?[0]?["structLogs"], Is.Empty, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_iterator_uses_generated_interface_metadata()
     {
         using Context ctx = await CreateContext();

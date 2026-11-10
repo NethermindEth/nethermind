@@ -738,7 +738,8 @@ public partial class DebugRpcModuleTests
     [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
     [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
     [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
-    [TestCase("""{"authorizationList":[]}""", RpcTransactionErrors.ContractCreationWithoutData)]
+    [TestCase("""{"authorizationList":[]}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
+    [TestCase("""{"authorizationList":[],"input":"0x00"}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
     public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
@@ -754,31 +755,61 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_contract_creation_does_not_change_original_request()
+    public async Task Debug_traceCall_contract_creation_does_not_change_original_request([Values] bool derived)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
             .Build(new TestSpecProvider(Prague.Instance));
-        LegacyTransactionForRpc call = new() { From = TestItem.AddressA, Gas = 100_000 };
-        ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
+        LegacyTransactionForRpc call = derived ? new EmptyCreationCall() : new LegacyTransactionForRpc();
+        call.From = TestItem.AddressA;
+        call.Gas = 100_000;
+        using ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(call.To, Is.Null);
             Assert.That(call.Input, Is.Null);
-            Assert.That(call.ToTransaction(validateUserInput: true).IsError, Is.True,
-                "debug-only empty-creation permission must not leak into the original request");
+            Assert.That(call.Gas, Is.EqualTo(100_000UL));
+            Assert.That(call.From, Is.EqualTo(TestItem.AddressA));
+            if (call is EmptyCreationCall custom) Assert.That(custom.Conversions, Is.EqualTo(1));
+            Assert.That(call.ToCallTransaction(Prague.Instance).IsError, Is.False);
+            Assert.That(call.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        }
+    }
+
+    private sealed class EmptyCreationCall : LegacyTransactionForRpc
+    {
+        public int Conversions { get; private set; }
+
+        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+        {
+            Conversions++;
+            return base.ToTransaction(validateUserInput, gasCap, spec);
         }
     }
 
     [Test]
-    public async Task Debug_traceCall_contract_creation_keeps_sibling_validation(
+    public async Task Debug_traceCall_contract_creation_shares_call_defaults(
         [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
-        string response = await ctx.Blockchain.TestEthRpc(method, new { gas = "0x186a0" }, "latest");
-        Assert.That((string?)JToken.Parse(response)["error"]?["message"],
-            Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData), response);
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EstimateErrorMargin = 0;
+        string response = await ctx.Blockchain.TestEthRpc(method,
+            new { from = TestItem.AddressA.ToString(), gas = "0x186a0" }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            if (method == "eth_createAccessList")
+            {
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo("0xcf08"), response);
+                Assert.That(json["result"]?["accessList"], Is.Empty, response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"], Is.EqualTo(method == "eth_call" ? "0x" : "0xcf08"), response);
+            }
+        }
     }
 
     [Test]
