@@ -687,7 +687,7 @@ public static class FrameTxValidation
     {
         gasPrice = UInt256.Zero;
         UInt256 maxFee = transaction.MaxFee;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
             || UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
             || !FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out UInt256 maxCost))
         {
