@@ -112,10 +112,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return SaveHistorySearchInfo(head, withRewards: false);
             }
 
-            // A block whose header is not found has no body to read.
-            if (hash is null) return null;
+            if (hash is not null)
+            {
+                uncachedRequestSlot.EnsureAcquired();
+            }
+            else if (!uncachedRequestSlot.TryAcquire())
+            {
+                // A block whose header is not found has no body to read, so at the limit it is reported as not found.
+                return null;
+            }
 
-            uncachedRequestSlot.EnsureAcquired();
             Block block = _blockTree.FindBlock(blockParameter);
             return block is null
                 ? null
@@ -292,14 +298,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         /// <summary>
-        /// One of the limited slots for a request that has to read blocks or receipts from the database.
+        /// One of the limited slots for a request that needs a block missing from the fee cache.
         /// </summary>
         /// <remarks>
-        /// Building the fee data of a block not in the cache reads and decodes its body and receipts, which costs
-        /// far more than serving cached data, so the number of such requests running at once is capped.
+        /// Building the fee data of a block not in the cache reads its body, and its receipts when rewards are asked for,
+        /// which costs far more than serving cached data, so the number of such requests running at once is capped.
         /// The slot is taken right before the first such read and held until the request ends, so requests served
-        /// entirely from the cache stay unlimited. That includes the reward percentiles of a cached block: they are
-        /// computed at most once per cached block, on the first request for them, and the cache window bounds that work.
+        /// entirely from the cache take no slot. That includes the reward data of a cached block: it is filled once and
+        /// shared by the requests that ask for it.
         /// </remarks>
         private struct UncachedRequestSlot(FeeHistoryOracle oracle) : IDisposable
         {
@@ -308,15 +314,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             /// <exception cref="LimitExceededException">All slots are taken.</exception>
             public void EnsureAcquired()
             {
-                if (_acquired || oracle._maxUncachedRequests <= 0) return;
+                if (!TryAcquire())
+                {
+                    throw new LimitExceededException($"Too many concurrent eth_feeHistory requests for blocks outside the cache. Limit: {oracle._maxUncachedRequests}.");
+                }
+            }
+
+            /// <returns><c>false</c> when all slots are taken.</returns>
+            public bool TryAcquire()
+            {
+                if (_acquired || oracle._maxUncachedRequests <= 0) return true;
 
                 if (Interlocked.Increment(ref oracle._uncachedRequests) > oracle._maxUncachedRequests)
                 {
                     Interlocked.Decrement(ref oracle._uncachedRequests);
-                    throw new LimitExceededException($"Too many concurrent eth_feeHistory requests for blocks outside the cache. Limit: {oracle._maxUncachedRequests}.");
+                    return false;
                 }
 
                 _acquired = true;
+                return true;
             }
 
             public void Dispose()

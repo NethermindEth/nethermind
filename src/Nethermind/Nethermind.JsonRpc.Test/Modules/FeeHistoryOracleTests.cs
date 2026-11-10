@@ -571,7 +571,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [Test]
         [CancelAfter(30_000)]
-        public async Task GetFeeHistory_NewestHeaderNotFound_ReadsNoBody(CancellationToken cancellationToken)
+        public async Task GetFeeHistory_UncachedRequestsAtLimit_NewestHeaderNotFound_ReadsNoBody(CancellationToken cancellationToken)
         {
             using FeeHistoryTestBlockchain chain = await FeeHistoryTestBlockchain.Create(blockCount: 5);
             using FeeHistoryOracle feeHistoryOracle = chain.CreateOracle(new JsonRpcConfig { FeeHistoryMaxConcurrentRequests = 1 }, maxDistanceFromHead: 0);
