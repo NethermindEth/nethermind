@@ -85,11 +85,8 @@ public abstract class NamedReleaseSpec : ReleaseSpec
 /// Generic base that adds a per-fork-type singleton <see cref="Instance"/>.
 /// Concrete forks inherit as: <c>class Cancun() : NamedReleaseSpec&lt;Cancun&gt;(Shanghai.Instance)</c>.
 /// </summary>
-public abstract class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedReleaseSpec(parent)
-    where TSelf : NamedReleaseSpec<TSelf>, new()
-{
-    public static NamedReleaseSpec Instance { get; } = new TSelf();
-}
+public abstract partial class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedReleaseSpec(parent)
+    where TSelf : NamedReleaseSpec<TSelf>, new();
 
 public static class NamedReleaseSpecExtensions
 {

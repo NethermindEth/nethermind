@@ -3,15 +3,9 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Remove="Contracts\MasternodeVotingContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Contracts\MasternodeVotingContract.json" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />

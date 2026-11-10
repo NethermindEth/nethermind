@@ -4,8 +4,10 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -15,12 +17,13 @@ using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
-using Nethermind.Monitoring.Config;
+using Nethermind.Logging;
 using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.Monitoring.Test")]
@@ -29,15 +32,22 @@ namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
+        private const string RetryNote = "; it is retried on every update and its further failures are not logged";
+
         private readonly int _intervalMilliseconds;
         private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
-        private volatile IMetricUpdater[][] _updaterValues = [];
+        private readonly ILogger _logger;
+        private readonly Lock _reportedFailuresLock = new();
+        private readonly HashSet<object> _reportedFailures = new(ReferenceEqualityComparer.Instance);
+
+        private readonly Dictionary<Type, NamedUpdater[]> _metricUpdaters = [];
+        private volatile NamedUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
+        private readonly bool _prometheusEnabled;
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
@@ -47,6 +57,8 @@ namespace Nethermind.Monitoring.Metrics
         {
             void Update();
         }
+
+        private readonly record struct NamedUpdater(string Name, IMetricUpdater Updater);
 
         public class GaugeMetricUpdater(Gauge gauge, Func<double> accessor, params string[] labels) : IMetricUpdater
         {
@@ -120,6 +132,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Summary.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -127,7 +141,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Summary.Child child = _stableChildren.GetOrAdd(labels, static (l, s) => s.WithLabels(l.Labels), summary);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     summary.WithLabels(labels.Labels).Observe(value);
                 }
@@ -140,6 +159,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Histogram.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -147,7 +168,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Histogram.Child child = _stableChildren.GetOrAdd(labels, static (l, h) => h.WithLabels(l.Labels), histogram);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     histogram.WithLabels(labels.Labels).Observe(value);
                 }
@@ -202,7 +228,7 @@ namespace Nethermind.Monitoring.Metrics
                 : meter.CreateObservableGauge(name, observer, description: description);
         }
 
-        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
+        private static string GetStaticMemberInfo([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type givenInformer, string givenName)
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
@@ -211,7 +237,7 @@ namespace Nethermind.Monitoring.Metrics
             return value.ToString()!;
         }
 
-        public void RegisterMetrics(Type type)
+        public void RegisterMetrics([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {
@@ -221,7 +247,7 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = [];
+                IList<NamedUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
                 foreach (MemberInfo member in members)
                 {
@@ -233,7 +259,7 @@ namespace Nethermind.Monitoring.Metrics
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
-                        metricUpdaters.Add(updater);
+                        metricUpdaters.Add(new($"{type.FullName}.{member.Name}", updater));
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
@@ -339,8 +365,14 @@ namespace Nethermind.Monitoring.Metrics
             ? Prometheus.Metrics.CreateGauge(name, help ?? string.Empty, labels)
             : Prometheus.Metrics.WithLabels(staticLabels).CreateGauge(name, help ?? string.Empty, labels);
 
-        public MetricsController(IMetricsConfig metricsConfig)
+        public MetricsController(IMetricsConfig metricsConfig) : this(metricsConfig, NullLogManager.Instance)
         {
+        }
+
+        public MetricsController(IMetricsConfig metricsConfig, ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger<MetricsController>();
+
             if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
@@ -348,6 +380,7 @@ namespace Nethermind.Monitoring.Metrics
             }
 
             _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;
+            _prometheusEnabled = metricsConfig.Enabled;
             _useCounters = metricsConfig.CountersEnabled;
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
@@ -363,24 +396,65 @@ namespace Nethermind.Monitoring.Metrics
                     UpdateAllMetrics();
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
             }
         }
 
+        /// <summary>
+        /// Runs every registered update action, then, when Prometheus is enabled, every metric updater.
+        /// </summary>
+        /// <remarks>
+        /// A failing action or updater does not stop the others: it is retried on the next call, and only its
+        /// first failure is logged, at Error. An <see cref="OperationCanceledException"/> is not caught and stops the update.
+        /// </remarks>
         public void UpdateAllMetrics()
         {
-            foreach (Action callback in _callbacks)
+            Action[] callbacks = _callbacks;
+            for (int i = 0; i < callbacks.Length; i++)
             {
-                callback();
+                Action callback = callbacks[i];
+                try
+                {
+                    callback();
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    if (ShouldLogFailure(callback))
+                    {
+                        _logger.Error($"Metrics update action #{i} ({callback.Method.DeclaringType?.FullName}.{callback.Method.Name}) failed{RetryNote}", ex);
+                    }
+                }
             }
 
-            foreach (IMetricUpdater[] updaters in _updaterValues)
+            if (!_prometheusEnabled) return;
+
+            foreach (NamedUpdater[] updaters in _updaterValues)
             {
-                foreach (IMetricUpdater metricUpdater in updaters)
+                foreach (NamedUpdater metric in updaters)
                 {
-                    metricUpdater.Update();
+                    try
+                    {
+                        metric.Updater.Update();
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        if (ShouldLogFailure(metric.Updater))
+                        {
+                            _logger.Error($"Metric {metric.Name} failed to update{RetryNote}", ex);
+                        }
+                    }
                 }
+            }
+        }
+
+        private bool ShouldLogFailure(object item)
+        {
+            if (!_logger.IsError) return false;
+
+            lock (_reportedFailuresLock)
+            {
+                return _reportedFailures.Add(item);
             }
         }
 

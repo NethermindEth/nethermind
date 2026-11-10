@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Nethermind.Trie.Test\BranchSpliceTests.cs" Link="BranchSpliceTests.cs" />
     <Compile Include="..\Nethermind.Trie.Test\TrieNodeKindTests.cs" Link="TrieNodeKindTests.cs" />
   </ItemGroup>
 

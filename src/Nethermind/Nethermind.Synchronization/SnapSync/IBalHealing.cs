@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -12,6 +13,9 @@ namespace Nethermind.Synchronization.SnapSync;
 /// <remarks>
 /// Healing writes bypass the WAL, so they are not crash-durable until <see cref="FinalizeSync"/> flushes them, and
 /// they are never rolled back - a failed run is discarded by the next flat snap initialization clearing the columns.
+/// <see cref="ApplyRange"/> is cancelled only between the chunks of blocks it writes, and <see cref="Reassemble"/>
+/// rebuilds the same trie when run again, so once flushed, a run stopped by cancellation can be reassembled and healed
+/// again from the first pivot.
 /// </remarks>
 public interface IBalHealing
 {
@@ -31,6 +35,14 @@ public interface IBalHealing
     /// range is lost.
     /// </returns>
     (bool BaseRootIntact, Hash256? Root) ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token);
+
+    /// <summary>Fetches bytecode the healed state references but the code database lacks.</summary>
+    /// <remarks>
+    /// EIP-8298 records adopted code by hash only, and snap fetches bytecode only for the code hashes it downloaded,
+    /// so an adopted hash whose source has since replaced its code can be left with no bytecode.
+    /// </remarks>
+    /// <returns>Whether no bytecode is missing any more; <c>false</c> leaves the rest for another attempt.</returns>
+    Task<bool> TryRecoverMissingCode(CancellationToken token);
 
     /// <summary>Flushes the healed state and advances the persisted state pointer.</summary>
     /// <remarks>Without it the run is discarded by the next flat snap initialization.</remarks>

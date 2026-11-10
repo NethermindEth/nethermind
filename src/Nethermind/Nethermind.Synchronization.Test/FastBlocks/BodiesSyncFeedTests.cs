@@ -82,7 +82,7 @@ public class BodiesSyncFeedTests
     private static BlockValidator CreateBlockValidator() =>
         new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
-    private BodiesSyncFeed CreateFeed(IBlockValidator blockValidator) =>
+    private BodiesSyncFeed CreateFeed(IBlockValidator blockValidator, ISyncReport? syncReport = null) =>
         new(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
@@ -90,7 +90,7 @@ public class BodiesSyncFeedTests
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
-            new NullSyncReport(),
+            syncReport ?? new NullSyncReport(),
             _historyPruner,
             _blocksDb,
             _metadataDb,
@@ -179,11 +179,14 @@ public class BodiesSyncFeedTests
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
 
-        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
-        Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
+        }
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
@@ -302,6 +305,27 @@ public class BodiesSyncFeedTests
         foreach (BlockInfo? info in batch!.Infos.Where(static i => i is not null))
         {
             Assert.That(info!.BlockNumber, Is.InRange(40, 59));
+        }
+    }
+
+    [Test]
+    public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 60UL, 99UL)] ulong barrier)
+    {
+        ProgressLogger progress = new("Old Bodies", LimboLogs.Instance);
+        ISyncReport syncReport = Substitute.For<ISyncReport>();
+        syncReport.FastBlocksBodies.Returns(progress);
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncPointers.LowestInsertedBodyNumber = barrier;
+        using BodiesSyncFeed feed = CreateFeed(CreateBlockValidator(), syncReport);
+        feed.InitializeFeed();
+
+        using BodiesSyncBatch? _ = await feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.IsFinished, Is.True);
+            Assert.That(progress.TargetValue, Is.EqualTo(_pivotBlock.Number - barrier));
+            Assert.That(progress.CurrentValue, Is.EqualTo(progress.TargetValue));
         }
     }
 

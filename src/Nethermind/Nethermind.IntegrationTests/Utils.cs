@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -22,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using NUnit.Framework.Interfaces;
 
 namespace Nethermind.IntegrationTests;
 
@@ -34,6 +38,14 @@ public static class Utils
     private const string DefaultGenesisGeneratorImage = "ethpandaops/ethereum-genesis-generator:4.0.0";
     private const string DefaultValidatorKeysImage = "protolambda/eth2-val-tools:0.2.1";
 
+    private const int FailureLogTailLines = 500;
+    private const int SummaryTailLines = 200;
+    private const int SummaryMaxLines = 400;
+    private const int SummaryMaxChars = 64 * 1024;
+
+    /// <summary>Byte budget for log excerpts in the step summary, below GitHub's 1 MiB limit that drops the whole summary.</summary>
+    private const int SummaryExcerptBudgetBytes = 768 * 1024;
+
     /// <summary>Mnemonic shared by the genesis generator and the validator keystore generator.</summary>
     public const string DevnetMnemonic = "sleep moment list remain like wall lake industry canvas wonder ecology elite duck salad naive syrup frame brass utility club odor country obey pudding";
 
@@ -42,6 +54,10 @@ public static class Utils
 
     private static readonly SemaphoreSlim s_imageBuildLock = new(1, 1);
     private static readonly SemaphoreSlim s_proxyImageBuildLock = new(1, 1);
+    private static readonly Lock s_stepSummaryLock = new();
+    private static readonly ConcurrentDictionary<string, byte> s_testsWithResponseEnded = new();
+    private static long s_stepSummaryBytes;
+    private static bool s_stepSummaryBudgetExhausted;
     private static IFutureDockerImage s_builtImage;
     private static IFutureDockerImage s_builtProxyImage;
 
@@ -132,8 +148,7 @@ public static class Utils
     public static async Task<ContainerBuilder> BuildEngineApiProxyContainerAsync(string[] command)
     {
         string image = await GetEngineApiProxyImageAsync();
-        return new ContainerBuilder()
-            .WithImage(image)
+        return new ContainerBuilder(image)
             .WithCommand(command);
     }
 
@@ -146,8 +161,7 @@ public static class Utils
     {
         string image = await GetNethermindImageAsync();
 
-        ContainerBuilder builder = new ContainerBuilder()
-            .WithImage(image)
+        ContainerBuilder builder = new ContainerBuilder(image)
             // The image is either explicitly supplied by the test runner or built locally above.
             // Do not contact a registry for a local integration-test image.
             .WithImagePullPolicy(PullPolicy.Never)
@@ -288,8 +302,7 @@ public static class Utils
         };
 
         string jsonString = JsonSerializer.Serialize(request);
-        StringContent content = new(jsonString, Encoding.UTF8, "application/json");
-        HttpResponseMessage response = await httpClient.PostAsync("", content);
+        HttpResponseMessage response = await PostJsonRpcAsync(httpClient, method, jsonString);
         response.EnsureSuccessStatusCode();
         string responseBody = await response.Content.ReadAsStringAsync();
         JsonNode json = JsonNode.Parse(responseBody);
@@ -300,6 +313,164 @@ public static class Utils
         }
 
         return json["result"];
+    }
+
+    /// <summary>
+    /// Posts a JSON-RPC <paramref name="body"/> and, for a read-only <paramref name="method"/>, retries it once
+    /// if the response ended prematurely.
+    /// </summary>
+    /// <remarks>
+    /// Diagnoses #15259, where the first call after a node reports ready intermittently ends with no response. Each
+    /// such failure is reported with the retry's outcome, so it stays visible. The handler discards the failed
+    /// connection, so a first call retries on a new one. Methods with side effects are never retried, since the node
+    /// may already have processed them.
+    /// </remarks>
+    private static async Task<HttpResponseMessage> PostJsonRpcAsync(HttpClient httpClient, string method, string body)
+    {
+        long startTimestamp = Stopwatch.GetTimestamp();
+        try
+        {
+            return await httpClient.PostAsync("", new StringContent(body, Encoding.UTF8, "application/json"));
+        }
+        catch (HttpRequestException e) when (e.HttpRequestError == HttpRequestError.ResponseEnded && IsReadOnly(method))
+        {
+            string failure = $"{DateTime.UtcNow:O} {TestContext.CurrentContext.Test.FullName} {method} {httpClient.BaseAddress?.Authority} {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds:F0} ms";
+            try
+            {
+                HttpResponseMessage response = await httpClient.PostAsync("", new StringContent(body, Encoding.UTF8, "application/json"));
+                ReportResponseEnded($"{failure} retry=ok HTTP {(int)response.StatusCode}");
+                return response;
+            }
+            catch (Exception retryException)
+            {
+                ReportResponseEnded($"{failure} retry=failed: {retryException.Message}");
+                throw;
+            }
+        }
+    }
+
+    private static bool IsReadOnly(string method) =>
+        method.StartsWith("eth_get", StringComparison.Ordinal) || method is "eth_blockNumber" or "eth_syncing" or "web3_clientVersion";
+
+    private static void ReportResponseEnded(string message)
+    {
+        s_testsWithResponseEnded.TryAdd(TestContext.CurrentContext.Test.ID, 0);
+        string line = $"E2E ResponseEnded: {message.ReplaceLineEndings(" ")}";
+        TestContext.Out.WriteLine(line);
+
+        // CI hides the output of passing tests, so a retry that succeeded is only seen in the step summary.
+        AppendToStepSummary($"- `{line}`\n");
+    }
+
+    private static void AppendToStepSummary(string markdown, bool isExcerpt = false)
+    {
+        string stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
+        if (string.IsNullOrEmpty(stepSummary))
+        {
+            return;
+        }
+
+        try
+        {
+            lock (s_stepSummaryLock)
+            {
+                int bytes = Encoding.UTF8.GetByteCount(markdown);
+                if (isExcerpt && s_stepSummaryBytes + bytes > SummaryExcerptBudgetBytes)
+                {
+                    if (s_stepSummaryBudgetExhausted)
+                    {
+                        return;
+                    }
+
+                    s_stepSummaryBudgetExhausted = true;
+                    markdown = "- E2E log excerpt budget exhausted; later excerpts are omitted.\n";
+                    bytes = Encoding.UTF8.GetByteCount(markdown);
+                }
+
+                File.AppendAllText(stepSummary, markdown);
+                s_stepSummaryBytes += bytes;
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            TestContext.Out.WriteLine($"Could not append to the step summary: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Writes the state and logs of <paramref name="container"/> if the current test failed or one of its JSON-RPC
+    /// calls ended with <see cref="HttpRequestError.ResponseEnded"/>.
+    /// </summary>
+    /// <remarks>
+    /// Call from a teardown before disposing the container, which deletes its logs. A failed test gets the tail of
+    /// stdout and stderr in its output; a passing one gets an excerpt in the step summary, since its output is hidden.
+    /// An application exception after the response started shows at Error, but an abort on the cancellation path
+    /// (logged at Debug) or a connection Kestrel never saw leaves no node-side line, so a missing Error line points
+    /// to, but does not prove, a runner-side cause.
+    /// </remarks>
+    public static async Task WriteDiagnosticLogsAsync(this IContainer container, string name)
+    {
+        bool failed = TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed;
+        if (!failed && !s_testsWithResponseEnded.ContainsKey(TestContext.CurrentContext.Test.ID))
+        {
+            return;
+        }
+
+        try
+        {
+            string header = $"{name} container {container.Id} at {DateTime.UtcNow:O}: {await DescribeStateAsync(container)}";
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+            (string stdout, string stderr) = await container.GetLogsAsync(timestampsEnabled: true, ct: timeout.Token);
+            if (failed)
+            {
+                TestContext.Out.WriteLine($"=== {header} ===");
+                TestContext.Out.WriteLine($"--- {name} stdout, last {FailureLogTailLines} lines ---\n{string.Join('\n', stdout.Split('\n').TakeLast(FailureLogTailLines))}");
+                TestContext.Out.WriteLine($"--- {name} stderr, last {FailureLogTailLines} lines ---\n{string.Join('\n', stderr.Split('\n').TakeLast(FailureLogTailLines))}");
+            }
+            else
+            {
+                string title = WebUtility.HtmlEncode($"E2E ResponseEnded: {TestContext.CurrentContext.Test.FullName} {header}");
+                AppendToStepSummary($"<details><summary>{title}</summary>\n\n```text\n{BuildLogExcerpt(stdout, stderr)}\n```\n\n</details>\n\n", isExcerpt: true);
+            }
+        }
+        catch (Exception e)
+        {
+            TestContext.Out.WriteLine($"Could not read the {name} container logs: {e}");
+        }
+    }
+
+    /// <summary>
+    /// Returns the error lines of <paramref name="stdout"/> and <paramref name="stderr"/> followed by the tail of
+    /// <paramref name="stdout"/>, bounded in lines and characters for the step summary.
+    /// </summary>
+    private static string BuildLogExcerpt(string stdout, string stderr)
+    {
+        string[] lines = stdout.Split('\n');
+        int tailStart = Math.Max(0, lines.Length - SummaryTailLines);
+        IEnumerable<string> excerpt = lines.Take(tailStart).Concat(stderr.Split('\n'))
+            .Where(static l => l.Contains("Error") || l.Contains("Exception") || l.Contains("Aborted"))
+            .TakeLast(SummaryMaxLines - SummaryTailLines)
+            .Concat(lines.Skip(tailStart));
+        string text = string.Join('\n', excerpt).Replace("```", "'''");
+        return text.Length <= SummaryMaxChars ? text : text[^SummaryMaxChars..];
+    }
+
+    private static async Task<string> DescribeStateAsync(IContainer container)
+    {
+        // Docker's wait endpoint answers at once for a stopped container and blocks while it runs.
+        using CancellationTokenSource exitWait = new(TimeSpan.FromSeconds(2));
+        try
+        {
+            return $"exited with code {await container.GetExitCodeAsync(exitWait.Token).WaitAsync(exitWait.Token)}";
+        }
+        catch (OperationCanceledException)
+        {
+            return "running";
+        }
+        catch (Exception e)
+        {
+            return $"state unknown: {e.Message}";
+        }
     }
 
     public static async Task CreateBlocksAsync(
@@ -519,8 +690,7 @@ public static class Utils
         long genesisTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         const string genesisDoneMarker = "NETHERMIND_GENESIS_DONE";
-        ContainerBuilder generatorBuilder = new ContainerBuilder()
-            .WithImage(GetGenesisGeneratorImage())
+        ContainerBuilder generatorBuilder = new ContainerBuilder(GetGenesisGeneratorImage())
             .WithEnvironment("PRESET_BASE", "mainnet")
             .WithEnvironment("CHAIN_ID", DevnetChainId.ToString())
             .WithEnvironment("NUMBER_OF_VALIDATORS", validatorCount.ToString())
@@ -547,18 +717,17 @@ public static class Utils
             // strategy can latch onto even though the container exits as soon as generation finishes.
             .WithEntrypoint("/bin/bash", "-c")
             .WithCommand($"/work/entrypoint.sh all && echo {genesisDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await generator.StartAsync();
         await generator.DisposeAsync();
 
         const string keysDoneMarker = "NETHERMIND_KEYS_DONE";
-        IContainer keygen = new ContainerBuilder()
-            .WithImage(GetValidatorKeysImage())
+        IContainer keygen = new ContainerBuilder(GetValidatorKeysImage())
             .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
             .WithEntrypoint("/bin/sh", "-c")
             .WithCommand($"/app/eth2-val-tools keystores --source-mnemonic '{DevnetMnemonic}' --source-min 0 --source-max {validatorCount} --out-loc /data/validators && echo {keysDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await keygen.StartAsync();
         await keygen.DisposeAsync();
@@ -619,8 +788,7 @@ public static class Utils
         string networkAlias,
         string executionEndpoint,
         string feeRecipient) =>
-        new ContainerBuilder()
-            .WithImage(GetLighthouseImage())
+        new ContainerBuilder(GetLighthouseImage())
             .WithNetwork(network)
             .WithNetworkAliases(networkAlias)
             // Expose the beacon HTTP API so tests can query the CL's canonical head from the host.
@@ -652,8 +820,7 @@ public static class Utils
         INetwork network,
         string beaconNodeUrl,
         string feeRecipient) =>
-        new ContainerBuilder()
-            .WithImage(GetLighthouseImage())
+        new ContainerBuilder(GetLighthouseImage())
             .WithNetwork(network)
             .WithBindMount(genesis.TestnetDirHostPath, "/testnet", AccessMode.ReadOnly)
             .WithBindMount(genesis.ValidatorKeysHostPath, "/keys", AccessMode.ReadWrite)

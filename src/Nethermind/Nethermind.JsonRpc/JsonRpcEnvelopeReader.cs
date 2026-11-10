@@ -15,6 +15,9 @@ internal ref struct JsonRpcEnvelopeReader
 
     public JsonRpcEnvelopeReader(ReadOnlySpan<byte> body) => _body = body;
 
+    /// <summary>The length of the root object, valid after <see cref="TryRead"/> succeeds; bytes after it are not read.</summary>
+    public int ObjectLength { get; private set; }
+
     public static JsonRpcEnvelope Read(JsonElement element, out JsonElement paramsElement)
     {
         string? jsonRpc = null;
@@ -24,9 +27,10 @@ internal ref struct JsonRpcEnvelopeReader
         }
 
         JsonRpcId id = JsonRpcId.Missing;
+        bool hasUnsupportedId = false;
         if (element.TryGetProperty("id"u8, out JsonElement idElement))
         {
-            id = ReadId(idElement);
+            hasUnsupportedId = !TryReadId(idElement, out id);
         }
 
         string? method = null;
@@ -36,7 +40,7 @@ internal ref struct JsonRpcEnvelopeReader
         }
 
         bool hasParams = element.TryGetProperty("params"u8, out paramsElement);
-        return new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, hasParams ? paramsElement.ValueKind : JsonValueKind.Undefined, 0, 0);
+        return new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, hasParams ? paramsElement.ValueKind : JsonValueKind.Undefined, 0, 0, hasUnsupportedId);
     }
 
     public bool TryRead(out JsonRpcEnvelope envelope)
@@ -48,8 +52,21 @@ internal ref struct JsonRpcEnvelopeReader
             return false;
         }
 
+        envelope = ReadObject(ref reader);
+        ObjectLength = (int)reader.BytesConsumed;
+        return true;
+    }
+
+    /// <summary>Reads the envelope of the object <paramref name="reader"/> is on, leaving the reader on the object's end.</summary>
+    /// <remarks>
+    /// <paramref name="reader"/> must read the body this instance was created over: token positions, and with them
+    /// <see cref="JsonRpcEnvelope.ParamsStart"/>, are offsets into it.
+    /// </remarks>
+    public readonly JsonRpcEnvelope ReadObject(ref Utf8JsonReader reader)
+    {
         string? jsonRpc = null;
         JsonRpcId id = JsonRpcId.Missing;
+        bool hasUnsupportedId = false;
         string? method = null;
         bool hasParams = false;
         JsonValueKind paramsKind = JsonValueKind.Undefined;
@@ -60,8 +77,7 @@ internal ref struct JsonRpcEnvelopeReader
         {
             if (reader.TokenType == JsonTokenType.EndObject)
             {
-                envelope = new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength);
-                return true;
+                return new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength, hasUnsupportedId);
             }
 
             if (reader.TokenType != JsonTokenType.PropertyName)
@@ -81,7 +97,8 @@ internal ref struct JsonRpcEnvelopeReader
             {
                 ReadValue(ref reader);
                 int valueStart = (int)reader.TokenStartIndex;
-                id = ReadId(ref reader, _body.Slice(valueStart, (int)reader.BytesConsumed - valueStart));
+                hasUnsupportedId = !TryReadId(ref reader, _body.Slice(valueStart, (int)reader.BytesConsumed - valueStart), out id);
+                SkipValue(ref reader);
                 continue;
             }
 
@@ -110,8 +127,7 @@ internal ref struct JsonRpcEnvelopeReader
         }
 
         ThrowIncompleteObject();
-        envelope = default;
-        return false;
+        return default;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowExpectedPropertyName() =>
@@ -134,29 +150,35 @@ internal ref struct JsonRpcEnvelopeReader
             throw new JsonException("Expected JSON-RPC property value.");
     }
 
-    private static JsonRpcId ReadId(ref Utf8JsonReader reader, ReadOnlySpan<byte> rawToken) =>
-        reader.TokenType switch
+    /// <returns><c>false</c> when the ID is not a String, Number or Null; <paramref name="id"/> is then <see cref="JsonRpcId.Missing"/>.</returns>
+    private static bool TryReadId(ref Utf8JsonReader reader, ReadOnlySpan<byte> rawToken, out JsonRpcId id)
+    {
+        id = reader.TokenType switch
         {
             JsonTokenType.Null => JsonRpcId.Null,
             JsonTokenType.String => JsonRpcId.FromValidatedRawStringToken(rawToken),
             JsonTokenType.Number when reader.TryGetInt64(out long value) => new JsonRpcId(value),
             JsonTokenType.Number when reader.TryGetDecimal(out decimal value) && value.Scale == 0 => JsonRpcId.FromValidatedRawDecimalToken(rawToken, value),
-            _ => ThrowUnsupportedId()
+            JsonTokenType.Number => JsonRpcId.FromValidatedRawNumberToken(rawToken),
+            _ => JsonRpcId.Missing
         };
+        return reader.TokenType is JsonTokenType.Null or JsonTokenType.String or JsonTokenType.Number;
+    }
 
-    private static JsonRpcId ReadId(JsonElement idElement) =>
-        idElement.ValueKind switch
+    /// <inheritdoc cref="TryReadId(ref Utf8JsonReader, ReadOnlySpan{byte}, out JsonRpcId)"/>
+    private static bool TryReadId(JsonElement idElement, out JsonRpcId id)
+    {
+        id = idElement.ValueKind switch
         {
             JsonValueKind.Number when idElement.TryGetInt64(out long idNumber) => new JsonRpcId(idNumber),
             JsonValueKind.Number when idElement.TryGetDecimal(out decimal value) && value.Scale == 0 => JsonRpcId.FromValidatedRawDecimalToken(Encoding.UTF8.GetBytes(idElement.GetRawText()), value),
+            JsonValueKind.Number => JsonRpcId.FromValidatedRawNumberToken(Encoding.UTF8.GetBytes(idElement.GetRawText())),
             JsonValueKind.Null => JsonRpcId.Null,
             JsonValueKind.String => new JsonRpcId(idElement.GetString()!),
-            _ => ThrowUnsupportedId()
+            _ => JsonRpcId.Missing
         };
-
-    [DoesNotReturn, StackTraceHidden]
-    private static JsonRpcId ThrowUnsupportedId() =>
-        throw new JsonException("Unsupported JSON-RPC ID value.");
+        return idElement.ValueKind is JsonValueKind.Null or JsonValueKind.String or JsonValueKind.Number;
+    }
 
     private static JsonValueKind GetValueKind(JsonTokenType tokenType) =>
         tokenType switch

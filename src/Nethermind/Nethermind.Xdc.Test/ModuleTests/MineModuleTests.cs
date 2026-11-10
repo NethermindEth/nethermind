@@ -58,8 +58,11 @@ internal class MineModuleTests
         Snapshot? snapshotAfter = blockchain.SnapshotManager.GetSnapshotByGapNumber(newHead.Number);
 
         Assert.That(snapshotAfter, Is.Not.Null);
-        Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
-        Assert.That(snapshotAfter.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshotAfter.BlockNumber, Is.EqualTo(gapBlock.Number));
+            Assert.That(snapshotAfter.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
+        }
         Assert.That(snapshotAfter.NextEpochCandidates.Contains(newValidator.Address), Is.True);
     }
 
@@ -71,11 +74,8 @@ internal class MineModuleTests
 
         XdcHotStuff _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
-        int blocksProposed = 0;
-        xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) =>
-        {
-            blocksProposed++;
-        };
+        ProposalTracker tracker = new();
+        xdcBlockchain.ConsensusModule.BlockProduced += tracker.OnBlockProduced;
 
         TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         xdcBlockchain.XdcContext.NewRoundSetEvent += (sender, args) =>
@@ -97,7 +97,9 @@ internal class MineModuleTests
         {
             Assert.Fail("Timeout waiting for new round event");
         }
-        Assert.That(blocksProposed, Is.EqualTo(1));
+        // XdcBlockSuggester handles BlockProduced first, so the round can finish before the tracker runs.
+        await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(tracker.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -119,8 +121,11 @@ internal class MineModuleTests
         Snapshot? snapshot = blockchain.SnapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
         Assert.That(snapshot, Is.Not.Null);
-        Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
-        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.BlockNumber, Is.EqualTo(0));
+            Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(30));
+        }
 
         Block gapBlock = await blockchain.AddBlock();
         while (!ISnapshotManager.IsTimeForSnapshot(tree.Head!.Header!.Number, spec))
@@ -135,8 +140,11 @@ internal class MineModuleTests
         snapshot = blockchain.SnapshotManager.GetSnapshotByGapNumber(header.Number);
 
         Assert.That(snapshot, Is.Not.Null);
-        Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
-        Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.BlockNumber, Is.EqualTo(gapBlock.Number));
+            Assert.That(snapshot.NextEpochCandidates.Length, Is.EqualTo(blockchain.MasterNodeCandidates.Count));
+        }
 
         Block epochSwitchBlock = await blockchain.AddBlock();
         while (!blockchain.EpochSwitchManager.IsEpochSwitchAtBlock((XdcBlockHeader)tree.Head!.Header!))
@@ -161,9 +169,12 @@ internal class MineModuleTests
         XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
 
         XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
-        Assert.That(tree.IsSyncing().isSyncing, Is.True);
-        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
-        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsSyncing().isSyncing, Is.True);
+            Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+            Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+        }
 
         IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
         Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
@@ -199,8 +210,11 @@ internal class MineModuleTests
         XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
 
         XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
-        Assert.That(tree.IsSyncing().isSyncing, Is.True);
-        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsSyncing().isSyncing, Is.True);
+            Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+        }
 
         IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
         Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
@@ -292,13 +306,16 @@ internal class MineModuleTests
             parentHash = announced.Hash!;
         }
 
-        Assert.That(tree.Head!.Number, Is.EqualTo(genesis.Number), "the announced blocks must stay unprocessed");
-        // Asserting bestSuggested rather than isSyncing: isSyncing is also true when bestSuggested is 0,
-        // so it would still hold if the suggestions above had silently not taken.
-        Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).bestSuggested,
-            Is.GreaterThan(genesis.Number + XdcConstants.MaxSyncDistanceForConsensus));
-        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Hash, Is.EqualTo(genesis.Hash),
-            "HighestQC must still be the genesis QC, otherwise this exercises the same path as the SyncInfo test");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.Head!.Number, Is.EqualTo(genesis.Number), "the announced blocks must stay unprocessed");
+            // Asserting bestSuggested rather than isSyncing: isSyncing is also true when bestSuggested is 0,
+            // so it would still hold if the suggestions above had silently not taken.
+            Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).bestSuggested,
+                Is.GreaterThan(genesis.Number + XdcConstants.MaxSyncDistanceForConsensus));
+            Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Hash, Is.EqualTo(genesis.Hash),
+                "HighestQC must still be the genesis QC, otherwise this exercises the same path as the SyncInfo test");
+        }
 
         blockchain.XdcContext.SetNewRound(2);
 

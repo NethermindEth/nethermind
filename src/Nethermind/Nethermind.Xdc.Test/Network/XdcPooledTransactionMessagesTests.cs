@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test;
@@ -39,9 +40,12 @@ public class XdcPooledTransactionMessagesTests
         using NewPooledTransactionHashesMessage upstream = new(Hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
+            Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
@@ -50,9 +54,12 @@ public class XdcPooledTransactionMessagesTests
         using XdcGetPooledTransactionsMessage message = new(ValueHashes.ToPooledList());
         using GetPooledTransactionsMessage upstream = new(ValueHashes.ToPooledList());
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
-        Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => new GetPooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
+            Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => new GetPooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
@@ -62,9 +69,12 @@ public class XdcPooledTransactionMessagesTests
         using PooledTransactionsMessage upstream = new(Transactions());
         PooledTransactionsMessageSerializer serializer = new();
 
-        Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
+            Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+                Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        }
     }
 
     [Test]
@@ -77,7 +87,7 @@ public class XdcPooledTransactionMessagesTests
         serializer.Serialize(buffer, message);
         using XdcGetPooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Hashes.AsSpan().ToArray(), Is.EqualTo(ValueHashes));
+        Assert.That(deserialized.Hashes.AsSpan(), Is.SequenceEqualTo(ValueHashes));
         Assert.That(deserialized.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
     }
 

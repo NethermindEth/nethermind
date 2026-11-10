@@ -17,7 +17,6 @@ public sealed class HistoricalFlatDbManager(
     IFlatDbManager inner,
     IPersistenceManager persistenceManager,
     HistoryReader historyReader,
-    ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
     HistoryScopeGate scopeGate,
@@ -33,10 +32,13 @@ public sealed class HistoricalFlatDbManager(
         Unavailable
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         HistoricalReadMode mode = Classify(baseBlock);
-        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherSnapshotBundle(baseBlock, usage);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads);
         if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
 
         // A historical bundle reads values at baseBlock but exposes the current trie; executing main-chain
@@ -53,7 +55,7 @@ public sealed class HistoricalFlatDbManager(
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
         try
         {
-            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage);
+            return new SnapshotBundle(bundle, null, resourcePool, usage);
         }
         catch
         {
@@ -80,6 +82,9 @@ public sealed class HistoricalFlatDbManager(
         IsBlockProcessing(usage)
             ? Classify(stateId) == HistoricalReadMode.NotHistorical && inner.HasStateForBlock(stateId, usage)
             : HasStateForBlock(stateId);
+
+    public bool IsHistoricalState(in StateId stateId) =>
+        Classify(stateId) is HistoricalReadMode.Normal or HistoricalReadMode.Restricted;
 
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
@@ -126,6 +131,7 @@ public sealed class HistoricalFlatDbManager(
                 reader,
                 enableDetailedMetrics,
                 PersistedSnapshotStack.Empty(enableDetailedMetrics),
+                bufferPin: null,
                 isHistorical: true);
         }
         catch

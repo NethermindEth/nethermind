@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// that run used, tries an optimistic guess derived from its peak gas, then bisects with a midpoint skewed to
 /// the low side until the bounds are within the allowed error ratio of the upper bound.
 /// </remarks>
-public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
+public partial class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
 {
     /// <summary>Error margin used if none other is specified, expressed in basis points.</summary>
     public const int DefaultErrorMargin = 150;
@@ -61,7 +61,7 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         tx.SenderAddress ??= Address.Zero;
 
         if (tx.SupportsFrames)
-            return EstimateFrameTx(tx, header, spec);
+            return EstimateFrameTx(tx, header, spec, gasCap);
 
         ulong hi = tx.GasLimit >= GasCostOf.Transaction ? tx.GasLimit : header.GasLimit;
 
@@ -211,8 +211,11 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
     /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.
     /// The reported budget is the combined reservation, but admission bounds the execution and state
     /// dimensions separately, so the combined figure is not what either limit is tested against.</remarks>
-    private static GasEstimation EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
+    private static GasEstimation EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec, ulong gasCap)
     {
+        if (!spec.IsEip8141Enabled)
+            return GasEstimation.Failure(TxErrorMessages.InvalidTxType(spec.Name));
+
         // The budget below is computable from an empty or oversized frame list, so a count no valid
         // transaction can carry is reported rather than priced.
         if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
@@ -221,6 +224,9 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
             || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation, estimateSignatureBytes: true))
             return GasEstimation.Failure(FrameTxGasLimitOverflows);
+
+        if (gasCap != 0 && maxGas > gasCap)
+            return GasEstimation.Failure($"{GasExceedsAllowanceMsgPrefix} ({gasCap})");
 
         // EIP-8037: each dimension gets its own block budget, and execution carries the per-tx cap on top.
         return executionReservation > Math.Min(header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap) || stateReservation > header.GasLimit
@@ -251,7 +257,9 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
     private sealed class Execution
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly Transaction _tx;
+        // Every run reuses one copy; PrepareRun drops its memoized encoded length, the only state derived from the gas limit or blob fee cap.
+        private readonly Transaction _runTx = new();
+        private readonly UInt256? _maxFeePerBlobGas;
         private readonly BlockExecutionContext _blockContext;
         private readonly EstimationTracer _tracer;
         private readonly ITxTracer _cancellableTracer;
@@ -261,7 +269,8 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         {
             _transactionProcessor = transactionProcessor;
             _token = token;
-            _tx = tx;
+            tx.CopyTo(_runTx, copyHash: false);
+            _maxFeePerBlobGas = tx.MaxFeePerBlobGas;
             _blockContext = blockContext;
             // Only a creation can run out of gas after its frame completes, while depositing the code.
             _tracer = new EstimationTracer(tracksFrames: tx.IsContractCreation);
@@ -273,14 +282,14 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         private readonly string? _tipAboveFeeCap;
 
         public bool TryDescribeFailure(ulong gasLimit, in Run run, out string text) =>
-            ExecutionFailureText.TryDescribe(_transactionProcessor, CloneWithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
+            ExecutionFailureText.TryDescribe(_transactionProcessor, PrepareRun(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
 
-        private Transaction CloneWithGasLimit(ulong gasLimit)
+        private Transaction PrepareRun(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
         {
-            Transaction txClone = new();
-            _tx.CopyTo(txClone, copyHash: false);
-            txClone.GasLimit = gasLimit;
-            return txClone;
+            _runTx.GasLimit = gasLimit;
+            _runTx.MaxFeePerBlobGas = maxFeePerBlobGas ?? _maxFeePerBlobGas;
+            _runTx.ClearLengthCache();
+            return _runTx;
         }
 
         public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
@@ -288,15 +297,13 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             if (_tipAboveFeeCap is not null)
                 return new Run(RunStatus.Rejected, Error: _tipAboveFeeCap);
 
-            Transaction txClone = CloneWithGasLimit(gasLimit);
-            if (maxFeePerBlobGas is not null)
-                txClone.MaxFeePerBlobGas = maxFeePerBlobGas;
+            Transaction runTx = PrepareRun(gasLimit, maxFeePerBlobGas);
 
             _tracer.ResetRun();
             TransactionResult result;
             try
             {
-                result = _transactionProcessor.CallAndRestore(txClone, in _blockContext, _cancellableTracer);
+                result = _transactionProcessor.CallAndRestore(runTx, in _blockContext, _cancellableTracer);
             }
             catch (InsufficientBalanceException)
             {
@@ -318,17 +325,29 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
                 return new Run(RunStatus.Succeeded, _tracer.GasSpent, _tracer.MaxUsedGas);
 
             bool reverted = result.EvmExceptionType == EvmExceptionType.Revert;
+            EvmExceptionType exceptionType = GetExceptionType(in result);
             return new Run(
                 RunStatus.Failed,
                 _tracer.GasSpent,
                 _tracer.MaxUsedGas,
                 result.GetErrorMessage(_tracer.Error) ?? (reverted ? ExecutionReverted : TransactionExecutionFails),
                 reverted,
-                result.EvmExceptionType == EvmExceptionType.OutOfGas && (!_tracer.TracksFrames || _tracer.TopFrameOutOfGas),
+                exceptionType == EvmExceptionType.OutOfGas && (!_tracer.TracksFrames || _tracer.TopFrameOutOfGas),
                 _tracer.ReturnValue,
-                result.EvmExceptionType,
+                exceptionType,
                 _tracer.Error);
         }
+
+        /// <summary>How a run failed, with a precompile that rejected its input told apart from running out of gas.</summary>
+        /// <remarks>
+        /// The VM halts a called precompile that rejects its input the way it halts one that runs out of gas, and
+        /// the precompile's own error, the only description an exception result carries, is what sets it apart.
+        /// More gas does not fix it, so the estimate ends with that error instead of searching for an allowance.
+        /// </remarks>
+        private static EvmExceptionType GetExceptionType(in TransactionResult result) =>
+            result.EvmExceptionType == EvmExceptionType.OutOfGas && result.ErrorDescription.Length > 0
+                ? EvmExceptionType.PrecompileFailure
+                : result.EvmExceptionType;
     }
 
     /// <summary>Output tracer that can also tell whether the outermost frame itself ran out of gas.</summary>

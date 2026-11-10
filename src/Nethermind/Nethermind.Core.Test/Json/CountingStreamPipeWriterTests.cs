@@ -41,7 +41,7 @@ public class CountingStreamPipeWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.ToArray(), Is.EqualTo("prefix[1,2]"u8.ToArray()));
+            Assert.That(stream, Is.SequenceEqualTo("prefix[1,2]"u8));
             Assert.That(writer.WrittenCount, Is.EqualTo(initialWrittenCount + 5));
             Assert.That(writer.UnflushedBytes, Is.Zero);
         }
@@ -74,11 +74,17 @@ public class CountingStreamPipeWriterTests
 
         writer.Complete();
 
-        Assert.That(stream.Length, Is.EqualTo(first + second));
-        Assert.That(writer.WrittenCount, Is.EqualTo(first + second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.EqualTo(first + second));
+            Assert.That(writer.WrittenCount, Is.EqualTo(first + second));
+        }
         byte[] written = stream.ToArray();
-        Assert.That(written.AsSpan(0, first).ToArray(), Is.All.EqualTo((byte)0xAB));
-        Assert.That(written.AsSpan(first, second).ToArray(), Is.All.EqualTo((byte)0xCD));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written.AsSpan(0, first).ToArray(), Is.All.EqualTo((byte)0xAB));
+            Assert.That(written.AsSpan(first, second).ToArray(), Is.All.EqualTo((byte)0xCD));
+        }
     }
 
     [Test]
@@ -113,5 +119,17 @@ public class CountingStreamPipeWriterTests
         Assert.That(written, Is.EqualTo(stream.Length));
         stream.Position = 0;
         Assert.That(serializer.Deserialize<string[]>(stream), Is.EqualTo(payload));
+    }
+
+    [Test]
+    public void Stream_output_is_escaped_like_string_output()
+    {
+        const string value = "1 < 2 & 'é'";
+        EthereumJsonSerializer serializer = new();
+        using MemoryStream stream = new();
+
+        serializer.Serialize(stream, value);
+
+        Assert.That(System.Text.Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(serializer.Serialize(value)));
     }
 }

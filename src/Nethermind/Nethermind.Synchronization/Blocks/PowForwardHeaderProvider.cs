@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -61,6 +62,14 @@ public class PowForwardHeaderProvider(
 
     public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation)
     {
+        cancellation.ThrowIfCancellationRequested();
+
+        if (TryGetPinnedCachedHeaders(skipLastN, maxHeaders, out IOwnedReadOnlyList<BlockHeader>? pinnedHeaders))
+        {
+            syncReport.FullSyncBlocksDownloaded.TargetValue = _currentBestPeer!.HeadNumber;
+            return pinnedHeaders;
+        }
+
         // PrepareRequest must return to the dispatcher when no better peer exists so a feed-state
         // transition is observed; an unbounded allocation would remain parked inside this method.
         using SyncPeerAllocation allocation = await syncPeerPool.Allocate(
@@ -79,11 +88,9 @@ public class PowForwardHeaderProvider(
 
         syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
 
-        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
+        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo:hide} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 
-        // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
-        // TODO: Unit test this mechanism.
-        IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
+        IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch(peerInfo.HeadNumber, skipLastN, maxHeaders);
         if (headers is not null)
         {
             ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
@@ -95,7 +102,7 @@ public class PowForwardHeaderProvider(
         if (headers is not null)
         {
             ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
-            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo:hide} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
         }
         else
         {
@@ -103,42 +110,137 @@ public class PowForwardHeaderProvider(
             _currentBestPeer = null;
         }
 
-        if (headers is not null && headers.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.AsSpan().ToPooledList();
+        if (headers is not null && headers.Count > 1) LastResponseBatch = headers.AsSpan().ToPooledList();
         return headers;
     }
 
-    private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()
+    private bool TryGetPinnedCachedHeaders(ulong skipLastN, ulong maxHeaders, out IOwnedReadOnlyList<BlockHeader>? headers)
+    {
+        headers = null;
+        IOwnedReadOnlyList<BlockHeader>? cached = LastResponseBatch;
+        PeerInfo? owner = _currentBestPeer;
+        if (cached is null || cached.Count < 2 || owner is null)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(syncPeerPool.GetPeer(owner.SyncPeer.Node), owner)
+            || !owner.IsInitialized
+            || owner.IsAsleep(AllocationContexts.ForwardHeader)
+            || !ImprovementRequirementSatisfied(owner))
+        {
+            LastResponseBatch = null;
+            return false;
+        }
+
+        ulong headNumber = owner.HeadNumber;
+        ReadOnlySpan<BlockHeader> cachedSpan = cached.AsSpan();
+        if (HasConflictingAdvertisedHead(cachedSpan, headNumber, owner.HeadHash))
+        {
+            LastResponseBatch = null;
+            return false;
+        }
+
+        BlockHeader? bestSuggested = blockTree.BestSuggestedHeader;
+        int startIndex = IndexOfCurrentNumber(cachedSpan);
+        BlockHeader? parent = startIndex < 0 ? null : cachedSpan[startIndex];
+        if (parent is null || !blockTree.IsKnownBlock(parent.Number, parent.Hash!))
+        {
+            LastResponseBatch = null;
+            return false;
+        }
+
+        if (bestSuggested is null || bestSuggested.Number != _currentNumber)
+        {
+            return false;
+        }
+
+        if (bestSuggested.Hash != parent.Hash)
+        {
+            LastResponseBatch = null;
+            return false;
+        }
+
+        headers = AssembleResponseFromLastResponseBatch(cachedSpan, startIndex, headNumber, skipLastN, maxHeaders);
+        return headers is not null;
+    }
+
+    private static bool HasConflictingAdvertisedHead(ReadOnlySpan<BlockHeader> cached, ulong headNumber, Hash256? headHash)
+    {
+        for (int i = 0; i < cached.Length; i++)
+        {
+            BlockHeader header = cached[i];
+            if (header.Number == headNumber)
+            {
+                return header.Hash != headHash;
+            }
+        }
+
+        return false;
+    }
+
+    private int IndexOfCurrentNumber(ReadOnlySpan<BlockHeader> headers)
+    {
+        for (int i = 0; i < headers.Length; i++)
+        {
+            if (headers[i].Number == _currentNumber)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch(ulong headNumber, ulong skipLastN, ulong maxHeaders)
     {
         IOwnedReadOnlyList<BlockHeader>? lastResponseBatch = LastResponseBatch;
         if (lastResponseBatch is null) return null;
 
-        ulong currentNumber = _currentNumber;
-        bool sameFound = false;
-        ArrayPoolList<BlockHeader>? newResponse = null;
         ReadOnlySpan<BlockHeader> lastResponseBatchSpan = lastResponseBatch.AsSpan();
-        for (int i = 0; i < lastResponseBatchSpan.Length; i++)
-        {
-            if (!sameFound && lastResponseBatchSpan[i].Number != currentNumber) continue;
-            sameFound = true;
-
-            newResponse ??= new ArrayPoolList<BlockHeader>(lastResponseBatchSpan.Length - i);
-            newResponse.Add(lastResponseBatchSpan[i]);
-        }
-
-        if (newResponse is null || newResponse.Count <= MinCachedHeaderBatchSize)
+        int startIndex = IndexOfCurrentNumber(lastResponseBatchSpan);
+        if (startIndex < 0)
         {
             LastResponseBatch = null;
-            newResponse?.Dispose();
             return null;
         }
 
-        LastResponseBatch = newResponse;
-        return newResponse.AsSpan().ToPooledList();
+        return AssembleResponseFromLastResponseBatch(lastResponseBatchSpan, startIndex, headNumber, skipLastN, maxHeaders);
+    }
+
+    private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch(ReadOnlySpan<BlockHeader> lastResponseBatchSpan, int startIndex, ulong headNumber, ulong skipLastN, ulong maxHeaders)
+    {
+        ulong upperDownloadBoundary = headNumber.SaturatingSub(skipLastN);
+        if (_currentNumber > upperDownloadBoundary)
+        {
+            return null;
+        }
+
+        ulong available = upperDownloadBoundary - _currentNumber;
+        ulong maxCount = available == ulong.MaxValue ? ulong.MaxValue : available + 1;
+        ulong remainingCount = (ulong)(lastResponseBatchSpan.Length - startIndex);
+        int responseCount = (int)Math.Min(remainingCount, Math.Min(maxHeaders, maxCount));
+        if (responseCount < 2)
+        {
+            if (remainingCount <= 1)
+            {
+                LastResponseBatch = null;
+            }
+            return null;
+        }
+
+        IOwnedReadOnlyList<BlockHeader> response = lastResponseBatchSpan.Slice(startIndex, responseCount).ToPooledList();
+        if (startIndex > 0)
+        {
+            LastResponseBatch = lastResponseBatchSpan[startIndex..].ToPooledList();
+        }
+
+        return response;
     }
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
     {
-        if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer}, new best peer: {newBestPeer}");
+        if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer:hide}, new best peer: {newBestPeer:hide}");
         if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
         {
             LastResponseBatch = null;
@@ -159,7 +261,7 @@ public class PowForwardHeaderProvider(
             if (!ImprovementRequirementSatisfied(bestPeer)) return null;
             if (_currentNumber > bestPeer!.HeadNumber) return null;
 
-            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {blockTree.BestKnownNumber})");
+            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer:hide} (our best {blockTree.BestKnownNumber})");
 
             ulong upperDownloadBoundary = bestPeer.HeadNumber.SaturatingSub(skipLastN);
             if (_currentNumber > upperDownloadBoundary)
@@ -174,7 +276,7 @@ public class PowForwardHeaderProvider(
             }
 
             headersToRequest = Math.Min(headersToRequest, (ulong)bestPeer.MaxHeadersPerRequest());
-            if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
+            if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer:hide} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
             try
@@ -210,7 +312,7 @@ public class PowForwardHeaderProvider(
             }
             catch (EthSyncException e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");
+                if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer:hide}, {e:hide}");
                 syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
             }
 
@@ -228,7 +330,7 @@ public class PowForwardHeaderProvider(
             _ancestorLookupLevel++;
             if (_ancestorLookupLevel >= _ancestorJumps.Length)
             {
-                if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer:hide}");
                 throw new EthSyncException("Peer with inconsistent chain in sync");
             }
 
@@ -264,7 +366,7 @@ public class PowForwardHeaderProvider(
     {
         if (headers.Length > 0 && headers[0] is not null && headers[0].Number != startNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer} does not start at the requested {startNumber}");
+            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer:hide} does not start at the requested {startNumber}");
             throw new EthSyncException("Peer sent a block list that does not start at the requested number");
         }
 
@@ -280,7 +382,7 @@ public class PowForwardHeaderProvider(
             BlockHeader? previous = headers[i - 1];
             if (previous is null || headers[i].ParentHash != previous.Hash || headers[i].Number != previous.Number + 1)
             {
-                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer:hide}");
                 throw new EthSyncException("Peer sent an inconsistent block list");
             }
         }

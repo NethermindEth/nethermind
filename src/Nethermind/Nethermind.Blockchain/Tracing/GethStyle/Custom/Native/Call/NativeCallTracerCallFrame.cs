@@ -31,15 +31,21 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public Address? To { get; set; }
 
-    public ArrayPoolList<byte>? Input { get; set; }
+    public ReadOnlyMemory<byte> Input { get; set; }
 
-    public ArrayPoolList<byte>? Output { get; set; }
+    public ReadOnlyMemory<byte> Output { get; set; }
 
     public string? Error { get; set; }
 
     public string? RevertReason { get; set; }
 
-    public ArrayPoolList<NativeCallTracerCallFrame> Calls { get; } = new(8);
+    private ArrayPoolList<NativeCallTracerCallFrame>? _calls;
+
+    public ArrayPoolList<NativeCallTracerCallFrame> Calls => _calls ??= new(8);
+
+    internal ReadOnlySpan<NativeCallTracerCallFrame> CallsSpan => _calls is null ? [] : _calls.AsSpan();
+
+    internal bool HasCalls => _calls is not null;
 
     public ArrayPoolList<NativeCallTracerLogEntry>? Logs { get; set; }
 
@@ -49,10 +55,8 @@ public class NativeCallTracerCallFrame : IDisposable
     {
         if (Interlocked.CompareExchange(ref _disposed, Disposed, Alive) == Alive)
         {
-            Input?.Dispose();
-            Output?.Dispose();
             Logs?.Dispose();
-            Calls.DisposeRecursive();
+            _calls?.DisposeRecursive();
         }
     }
 }

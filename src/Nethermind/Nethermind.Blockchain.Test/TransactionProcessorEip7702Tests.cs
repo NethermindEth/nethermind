@@ -135,8 +135,11 @@ internal class TransactionProcessorEip7702Tests
             receiptsTracer);
         receiptsTracer.EndTxTrace();
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+        }
         // Intrinsic execution = TX base + value-bearing recipient touch + EIP-7702 per-auth execution.
         // Applying a valid authorization writes the authority leaf once; state charges are direct
         // top-frame charges and are not refunded.
@@ -145,15 +148,18 @@ internal class TransactionProcessorEip7702Tests
         ulong topFrameExecutionGas = Eip8038Constants.AccountWrite;
         ulong topFrameStateGas = (ulong)expectedTopFrameStateGas;
         ulong expectedSpentGas = intrinsicExecutionGas + topFrameExecutionGas + topFrameStateGas;
-        Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
-        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicExecutionGas + topFrameExecutionGas, topFrameStateGas)));
-        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
+            Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicExecutionGas + topFrameExecutionGas, topFrameStateGas)));
+            Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
+        }
 
         byte[] expectedCode = clearDelegation
             ? []
             : [.. Eip7702Constants.DelegationHeader, .. newDelegation.Bytes];
-        Assert.That(_stateProvider.GetCode(authority.Address).ToArray(), Is.EqualTo(expectedCode));
+        Assert.That(_stateProvider.GetCode(authority.Address), Is.SequenceEqualTo(expectedCode));
     }
 
     [Test]
@@ -232,7 +238,7 @@ internal class TransactionProcessorEip7702Tests
 
         byte[] expectedCode = shouldInsert ? [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes] : authorityCode;
 
-        Assert.That(signerCode.ToArray(), Is.EqualTo(expectedCode));
+        Assert.That(signerCode, Is.SequenceEqualTo(expectedCode));
     }
 
     public static IEnumerable<TestCaseData> SenderSignerCases()
@@ -270,7 +276,7 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue2);
         ReadOnlySpan<byte> cellValue = storageValue2.ToMinimalBigEndian();
 
-        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes.ToArray()));
+        Assert.That(cellValue, Is.SequenceEqualTo(sender.Address.Bytes));
     }
 
     public static IEnumerable<TestCaseData> DifferentAuthorityTupleValues()
@@ -703,7 +709,7 @@ internal class TransactionProcessorEip7702Tests
         CallOutputTracer callOutputTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), callOutputTracer);
 
-        Assert.That(callOutputTracer.ReturnValue?.ToArray(), Is.EqualTo(expectedValue));
+        Assert.That(callOutputTracer.ReturnValue, Is.SequenceEqualTo(expectedValue));
     }
 
     public static IEnumerable<TestCaseData> EXTCODEHASHAccountSetup()
@@ -777,7 +783,7 @@ internal class TransactionProcessorEip7702Tests
 
         _stateProvider.Get(new StorageCell(codeSource, 0), out UInt256 storageValue5);
         ReadOnlySpan<byte> actual = storageValue5.ToMinimalBigEndian();
-        Assert.That(actual.ToArray(), Is.EqualTo(expected));
+        Assert.That(actual, Is.SequenceEqualTo(expected));
     }
     public static IEnumerable<TestCaseData> AccountAccessGasCases()
     {
@@ -1084,8 +1090,11 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         actual = _stateProvider.GetCode(authority.Address).ToArray();
 
-        Assert.That(actual, Is.EqualTo(Array.Empty<byte>()));
-        Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(Array.Empty<byte>()));
+            Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
+        }
     }
 
     [Test]

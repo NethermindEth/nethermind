@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>
-/// Measures the EIP-8272 reference and EIP-8250 nonce-key calldata an EIP-8141 frame transaction is priced
-/// on, for the transactions that did not reach the pool through the RLP decoder.
+/// Measures the EIP-8250 nonce-key calldata an EIP-8141 frame transaction is priced on, for the transactions
+/// that did not reach the pool through the RLP decoder.
 /// </summary>
 /// <remarks>
 /// <see cref="FrameTxDecoder"/> measures everything off the wire, but a transaction built field-by-field over
@@ -33,11 +32,6 @@ internal sealed class FrameTxCalldataStatsFilter : IIncomingTxFilter
         if (tx.NonceKeys is { Length: <= Eip8250Constants.MaxNonceKeys })
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
-        }
-
-        if (tx.RecentRootReferences is null or { Length: <= Eip8272Constants.MaxRecentRootReferences })
-        {
-            tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         }
 
         return AcceptTxResult.Accepted;

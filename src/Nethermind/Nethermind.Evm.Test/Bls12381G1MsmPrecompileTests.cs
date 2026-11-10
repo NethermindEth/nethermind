@@ -130,18 +130,53 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     [Test]
     public void Msm_with_interleaved_infinity_point_matches_single_point_result()
     {
-        // 160-byte item = 128-byte G1 point + 32-byte scalar. Valid single-point vector below has a
-        // known output; the all-zero item is the point at infinity with a zero scalar.
-        const string validItem =
-            "0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992feeb3c940fe79b6966489b527955de7599194a9ac69a6ff58b8d99e7b1084f0464e";
-        const string expectedOutput =
-            "000000000000000000000000000000000f1f230329be03ac700ba718bc43c8ee59a4b2d1e20c7de95b22df14e7867eae4658ed2f2dfed4f775d4dcedb4235cf00000000000000000000000000000000012924104fdb82fb074cfc868bdd22012694b5bae2c0141851a5d6a97d8bc6f22ecb2f6ddec18cba6483f2e73faa5b942";
+        // the all-zero item is the point at infinity with a zero scalar
         string infinityItem = new('0', Bls12381G1MsmPrecompile.ItemSize * 2);
 
         // infinity first, then valid, then infinity again -> dead slots on both sides of the live one
-        RunTest(infinityItem + validItem + infinityItem, expectedOutput, true);
+        RunTest(infinityItem + ValidItem + infinityItem, ValidItemOutput, true);
         // valid first, infinity trailing
-        RunTest(validItem + infinityItem, expectedOutput, true);
+        RunTest(ValidItem + infinityItem, ValidItemOutput, true);
+    }
+
+    // 160-byte item = 128-byte G1 point + 32-byte scalar, with its known single-point output.
+    private const string ValidItem =
+        "0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992feeb3c940fe79b6966489b527955de7599194a9ac69a6ff58b8d99e7b1084f0464e";
+    private const string ValidItemOutput =
+        "000000000000000000000000000000000f1f230329be03ac700ba718bc43c8ee59a4b2d1e20c7de95b22df14e7867eae4658ed2f2dfed4f775d4dcedb4235cf00000000000000000000000000000000012924104fdb82fb074cfc868bdd22012694b5bae2c0141851a5d6a97d8bc6f22ecb2f6ddec18cba6483f2e73faa5b942";
+    // ValidItemOutput doubled through the G1 add precompile, independent of the MSM path.
+    private const string ValidItemDoubledOutput =
+        "000000000000000000000000000000000d5b12983899523be907f30d18f5015a65141d66f1a6a76bcd00547683e069b3e8573a0e9ded4cb854875fef5c81bff6000000000000000000000000000000001513ae12919597acc7b0232520c29e4fb9fa61ed45a816a9dd621e917bba7e0965978ae20798fb64e8b18307d4ad83a3";
+    private const string NotOnCurvePoint =
+        "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21";
+    private const string NotInSubgroupPoint =
+        "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a";
+    private static readonly string ZeroScalar = new('0', 64);
+    private static readonly string ZeroScalarItem = ValidItem[..^64] + ZeroScalar;
+
+    // A term with a zero scalar contributes nothing, so dropping it must leave the MSM result unchanged.
+    [Test]
+    public void Msm_with_zero_scalar_terms_matches_result_without_them()
+    {
+        string infinityItem = new('0', Bls12381G1MsmPrecompile.ItemSize * 2);
+        string infinityOutput = new('0', 256);
+
+        RunTest(ZeroScalarItem + ValidItem, ValidItemOutput, true);
+        RunTest(ValidItem + ZeroScalarItem + infinityItem + ZeroScalarItem, ValidItemOutput, true);
+        RunTest(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, ValidItemDoubledOutput, true);
+        RunTest(ZeroScalarItem + ZeroScalarItem, infinityOutput, true);
+        RunTest(infinityItem + ZeroScalarItem, infinityOutput, true);
+    }
+
+    // A zero-scalar term is dropped from the MSM only after its point has been fully validated.
+    [TestCase(NotOnCurvePoint, "invalid point: not on curve")]
+    [TestCase(NotInSubgroupPoint, "g1 point is not on correct subgroup")]
+    public void Msm_rejects_invalid_point_with_zero_scalar(string point, string error)
+    {
+        string invalidItem = point + ZeroScalar;
+
+        RunFailureTest(ValidItem + invalidItem, error);
+        RunFailureTest(invalidItem + ZeroScalarItem, error);
     }
 
     // A multi-point MSM where every item is the point at infinity (npoints == 0 after compaction)
@@ -260,4 +295,11 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     [TestCase("000000000000000000000000000000000106df8eba767e90cce0eabdaacc24d8e226c6865012ef8cb1460de5a319d443fdc6b4f4e58fb668943e0528b1809da10000000000000000000000000000000019789f464c95c179af18704c0b67b881991880f75ee7b03b9feafa3eafcd0f7d30a17fdd9cf439ff7fe683adca2083b50000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", true)]
     [TestCase("1000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000002", "", false)]
     public void TestScalar(string input, string output, bool status) => RunTest(input, output, status);
+
+    // The reasons go-ethereum gives for these inputs.
+    // item 0 is outside the subgroup and item 1 has non-zero top bytes: the first item's reason wins
+    [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000a989badd40d6212b33cffc3f3763e9bc760f988c9926b26da9dd85e928483446346b8ed00e1de5d5ea93e354abe706c000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "g1 point is not on correct subgroup")]
+    // the same items swapped
+    [TestCase("0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000a989badd40d6212b33cffc3f3763e9bc760f988c9926b26da9dd85e928483446346b8ed00e1de5d5ea93e354abe706c0000000000000000000000000000000000000000000000000000000000000000", "invalid field element top bytes")]
+    public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
 }

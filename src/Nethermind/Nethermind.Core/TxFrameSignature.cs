@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
 
@@ -52,10 +53,21 @@ public class TxFrameSignature(byte scheme, Address? signer, ReadOnlyMemory<byte>
     /// <summary>Whether this entry leaves <see cref="Msg"/> empty, so a protocol-verified scheme signs the
     /// transaction's canonical signature hash rather than a digest of its own.</summary>
     /// <remarks>Every such entry of one transaction shares a digest, so it is computed once; entries carrying an
-    /// explicit <see cref="Msg"/> never need it at all. The canonical hash elides these entries' own
-    /// <see cref="Signature"/> bytes, which is what lets them sign a transaction that contains them. EIP-8141
+    /// explicit <see cref="Msg"/> never need it at all. The canonical hash replaces these entries' own
+    /// <see cref="Signature"/> bytes with their length, which is what lets them sign a transaction that contains them. EIP-8141
     /// § Signature Hash keys that elision on the empty <c>msg</c> alone, so a <see cref="SchemeArbitrary"/> entry
-    /// — which signs nothing the protocol checks — is elided too, and its bytes stay rewritable without
-    /// disturbing any canonical-hash signature.</remarks>
+    /// — which signs nothing the protocol checks — is elided too, and its bytes stay rewritable at the same length
+    /// without disturbing any canonical-hash signature.</remarks>
     public bool SignsCanonicalHash => Msg.IsEmpty;
+
+    /// <summary>The address a <see cref="SchemeSecp256k1"/> <see cref="Signature"/> last recovered to, with the
+    /// digest it was recovered against.</summary>
+    /// <remarks>Lets block pre-processing recover signers in parallel, off the execution thread. A reader may use it
+    /// only when <see cref="SignerRecovery.Message"/> equals the digest it verifies, so a copy of the transaction
+    /// whose fields changed since never reuses a stale signer. Keying on the digest alone is sound only because
+    /// <see cref="Signature"/> is immutable per instance.</remarks>
+    public SignerRecovery? Recovered { get; set; }
+
+    /// <summary>A recovered signer and the digest it was recovered against.</summary>
+    public sealed record SignerRecovery(ValueHash256 Message, Address Signer);
 }

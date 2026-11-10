@@ -8,13 +8,33 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
+GUEST_PACKAGE := Nethermind.Sp1.Runtime
+
+# MUL on the uint256_mul precompile without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
+
+# SP1 charges per executed instruction, so trade compile time and code size for
+# fewer of them (values in hex). Tracking every local is most of the gain: the
+# default 0x400 leaves locals of the largest methods out of register allocation.
+OPT_FLAGS += \
+	--codegenopt JitMaxLocalsToTrack=10000 \
+	--codegenopt JitInlineBudget=100 \
+	--codegenopt JitExtDefaultPolicyMaxIL=400 \
+	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
+	--codegenopt JitExtDefaultPolicyMaxBB=40 \
+	--codegenopt JitCloneLoopsSizeLimit=1000 \
+	--codegenopt JitLoopInversionSizeLimit=400 \
+	--codegenopt 'JitOptRepeat=*' \
+	--codegenopt JitOptRepeatCount=2 \
+	--codegenopt JitEnableHeadTailMerge=0
+
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
-# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.5.0 to print the
+# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.9.0 to print the
 # cycle count and public values. SP1_RUNNER overrides it with a host binary.
-SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deba3f76f2531677c84b6d3afef47e579b229b3
+SP1_IMAGE ?= nethermindeth/sp1-runner:v6.9.0@sha256:9f3a66911e441c3e988eeebb448f833c2d15fde3792ed963275ee6a5629dddb2
 # The native executor maps guest memory through /dev/shm. Docker's 64 MB default
 # fails and so does 1g; 4g is the smallest tested value that carries a mainnet
 # block (~2.7 GB actual). A ceiling, not a reservation, so headroom is free.

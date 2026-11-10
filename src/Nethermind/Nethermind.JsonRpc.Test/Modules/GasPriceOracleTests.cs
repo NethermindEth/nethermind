@@ -5,11 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -31,8 +34,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
 
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(list, Has.Count.EqualTo(values.Length));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expected));
+                Assert.That(list, Has.Count.EqualTo(values.Length));
+            }
             Assert.That(list, Is.EquivalentTo(values.Select(static v => (UInt256)v))); // ensures mutation doesn't lose/duplicate items
         }
 
@@ -157,6 +163,35 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(result, Is.EqualTo(500.GWei));
         }
 
+        /// <summary>
+        /// Blocks 0..20 each carry three legacy transactions paying their base fee plus 1 gwei. The 60th percentile of the
+        /// sampled blocks 1..20 is 14 gwei, which with a base fee rising 1 gwei per block is below the head's 21 gwei, so
+        /// the estimate is floored at the head base fee plus the minimum gas price after London.
+        /// </summary>
+        [TestCase(true, true, 21_000_000_001ul, TestName = "GasPriceEstimate_RisingBaseFee_FlooredAtHeadBaseFee")]
+        [TestCase(false, true, 11_000_000_000ul, TestName = "GasPriceEstimate_FlatBaseFee_Unchanged")]
+        [TestCase(true, false, 14_000_000_000ul, TestName = "GasPriceEstimate_RisingBaseFeeBeforeLondon_Unchanged")]
+        public async Task GasPriceEstimate_FloorsAtHeadBaseFeeAfterLondon(bool risingBaseFee, bool eip1559Enabled, ulong expected)
+        {
+            const ulong headNumber = 20;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            Block? block = null;
+            for (ulong number = 0; number <= headNumber; number++)
+            {
+                UInt256 baseFee = risingBaseFee ? (number + 1) * 1.GWei : 10.GWei;
+                Transaction[] transactions = [.. Enumerable.Range(0, 3).Select(_ => Build.A.Transaction.WithGasPrice(baseFee + 1.GWei).TestObject)];
+                block = Build.A.Block.WithNumber(number).WithBaseFeePerGas(baseFee).WithTransactions(transactions).TestObject;
+                blockFinder.FindBlock(number).Returns(block);
+            }
+
+            blockFinder.Head.Returns(block);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
+
+            UInt256 estimate = await gasPriceOracle.GetGasPriceEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
         [Test]
         public void GetGasPricesFromRecentBlocks_IfEightBlocksWithTwoTransactions_CheckEightBlocks()
         {
@@ -265,6 +300,35 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             Assert.That(results, Is.EquivalentTo(expected));
+        }
+
+        [Test]
+        public async Task GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_ReturnsLowestGasPricesInAscendingOrder()
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithGasPrice(6).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(5).TestObject
+            ];
+            await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block testBlock = Build.A.Block.WithParent(genesis).WithTransactions(transactions).TestObject;
+            foreach (Block block in (Block[])[genesis, testBlock])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
+
+            GasPriceOracle testGasPriceOracle = (GasPriceOracle)container.Resolve<IGasPriceOracle>();
+
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(testBlock.Number);
+
+            Assert.That(results.Take(EthGasPriceConstants.TxLimitFromABlock), Is.EqualTo((UInt256[])[3, 3, 4]), "the empty genesis block after it adds its own price");
         }
 
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()

@@ -9,7 +9,9 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -25,14 +27,15 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly ITrieNodeCache _trieNodeCache;
+    private readonly INodeRecordBuffer _nodeRecordBuffer;
+    private OverlayNodeRecordBuffer? _overlayNodeRecordBuffer;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        ITrieNodeCache trieNodeCache,
+        INodeRecordBuffer nodeRecordBuffer,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -41,7 +44,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _codeDbOverlay = new ReadOnlyDb(codeDb, true);
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
-        _trieNodeCache = trieNodeCache;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
@@ -54,6 +57,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
+    /// <remarks>Created on first use after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
+    private OverlayNodeRecordBuffer OverlayBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer);
+
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
@@ -64,6 +70,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         }
 
         _snapshots.Clear();
+        DisposeOverlay();
+    }
+
+    private void DisposeOverlay()
+    {
+        _overlayNodeRecordBuffer?.Dispose();
+        _overlayNodeRecordBuffer = null;
     }
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
@@ -106,12 +119,16 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             throw;
         }
 
+        // Everything this scope executes is read-only (calls, simulations, traces, proofs, Flashbots block validation,
+        // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
+        // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _trieNodeCache,
+            OverlayBuffer,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            snapshots
+            snapshots,
+            filterInMemorySlotReads: true
         );
     }
 
@@ -123,6 +140,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             kvp.Value.Dispose();
         }
         _snapshots.Clear();
+        DisposeOverlay();
     }
 
     private class OverridableFlatScopeProvider(
@@ -197,7 +215,10 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public byte[]? GetCode(in ValueHash256 codeHash)
             => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+            RunTreeVisitor(new TreeVisitorAdapter<TCtx>(treeVisitor), baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
@@ -211,10 +232,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                     baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
             }
 
-            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle);
-
-            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+            snapshotBundle.RunTreeVisitor(visitor, stateId.StateRoot.ToCommitment(), visitingOptions ?? VisitingOptions.Default, diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

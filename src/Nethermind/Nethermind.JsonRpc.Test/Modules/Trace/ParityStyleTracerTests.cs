@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
@@ -33,7 +34,8 @@ public class ParityStyleTracerTests
     [SetUp]
     public async Task Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        // trace_rawTransaction rejects a transaction type the latest block's fork doesn't enable, so it must enable access lists.
+        ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
 
         _blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -70,7 +72,7 @@ public class ParityStyleTracerTests
     public void Can_trace_raw_parity_style_berlin_tx()
     {
         // trace_rawTransaction rejects a transaction for another chain, so it is signed for this one.
-        ulong chainId = MainnetSpecProvider.Instance.ChainId;
+        ulong chainId = _blockTree!.ChainId;
         Transaction transaction = Build.A.Transaction
             .WithType(TxType.AccessList)
             .WithChainId(chainId)
@@ -98,7 +100,10 @@ public class ParityStyleTracerTests
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
-        Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(rpcResult.Data, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(rpcResult.Data, Is.Empty);
+        }
     }
 }

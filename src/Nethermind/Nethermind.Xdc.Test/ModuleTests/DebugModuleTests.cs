@@ -4,19 +4,26 @@
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.RLP;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,10 +58,17 @@ public class DebugModuleTests
         _debugBridge,
         _jsonRpcConfig,
         _specProvider,
+        Substitute.For<IForkInfo>(),
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        Substitute.For<ICodeInfoRepository>(),
+        new ReceiptConfig(),
+        Substitute.For<ISyncPointers>(),
+        Substitute.For<ISyncProgressResolver>(),
+        new SyncConfig(),
+        Substitute.For<IHistoryPruner>());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -63,8 +77,7 @@ public class DebugModuleTests
     public async Task DebugGetRawHeader_WhenXdcHeader_ReturnsXdcShapedRlp()
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
-        Block block = Build.A.Block.WithHeader(header).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
 

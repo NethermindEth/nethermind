@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -79,7 +80,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Reports_zero_for_stop_call_with_calldata_floor(bool amsterdam)
+    public async Task Reports_zero_for_stop_call_with_calldata_floor(bool amsterdam)
     {
         byte[] code = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -94,7 +95,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             gasLimit: 5_000_000,
             postHash: stopCallPostHash);
 
-        AssertTraceGas(test, 0);
+        await AssertTraceGas(test, 0);
     }
 
     // PUSH1 + PUSH0 + SSTORE consumes 12,105 execution gas; constrained gas adds a 97,920 state-gas spill.
@@ -102,7 +103,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
     // which is why it cannot be derived from the receipt.
     [TestCase(20_000_000UL, 12_105UL)]
     [TestCase(200_000UL, 12_105UL + 97_920UL)]
-    public void Reports_state_gas_only_when_it_spills_into_execution(ulong gasLimit, ulong expectedGasUsed)
+    public async Task Reports_state_gas_only_when_it_spills_into_execution(ulong gasLimit, ulong expectedGasUsed)
     {
         byte[] code = Prepare.EvmCode
             .PushData(1)
@@ -118,11 +119,11 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             gasLimit: gasLimit,
             postHash: stateGasSpillPostHash);
 
-        AssertTraceGas(test, expectedGasUsed);
+        await AssertTraceGas(test, expectedGasUsed);
     }
 
     [Test]
-    public void Reports_refunded_state_gas_on_revert()
+    public async Task Reports_refunded_state_gas_on_revert()
     {
         byte[] code = Prepare.EvmCode
             .PushData(1)
@@ -140,11 +141,11 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             gasLimit: 200_000,
             postHash: revertedStateGasPostHash);
 
-        AssertTraceGas(test, 12_111);
+        await AssertTraceGas(test, 12_111);
     }
 
     [Test]
-    public void Does_not_charge_code_deposit_for_revert_data()
+    public async Task Does_not_charge_code_deposit_for_revert_data()
     {
         byte[] initCode = Prepare.EvmCode
             .PushData(1)
@@ -163,11 +164,11 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             postHash: createRevertPostHash,
             contractCreation: true);
 
-        AssertTraceGas(test, 18);
+        await AssertTraceGas(test, 18);
     }
 
     [Test]
-    public void Falls_back_to_receipt_gas_for_create_collision()
+    public async Task Falls_back_to_receipt_gas_for_create_collision()
     {
         byte[] initCode = Prepare.EvmCode
             .PushData((byte)0)
@@ -188,7 +189,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             (long)test.Fork.GasCosts.DestroyRefund);
 
         // 100,000 gas limit minus the 53,058 creation intrinsic gas.
-        AssertTraceGas(test, 46_942, collisionTracer);
+        await AssertTraceGas(test, 46_942, collisionTracer);
     }
 
     [Test]
@@ -416,7 +417,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
     }
 
     [Test, NonParallelizable]
-    public void Jsonl_trace_includes_refund_and_opcode_name()
+    public async Task Jsonl_trace_includes_refund_and_opcode_name()
     {
         GeneralStateTest test = CreateStateTest(
             Osaka.Instance,
@@ -424,7 +425,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             input: [0],
             gasLimit: 5_000_000,
             postHash: new Hash256("0x9efbc3518d97c09664295c8fcf82ddc73ea94a770bfbd59bb98f4c2c6c8219a4"));
-        (EthereumTestResult result, string trace) = RunAndCaptureJsonl(test, traceMemory: false);
+        (EthereumTestResult result, string trace) = await RunAndCaptureJsonl(test, traceMemory: false);
 
         using StringReader lines = new(trace);
         using JsonDocument operation = JsonDocument.Parse(lines.ReadLine()!);
@@ -439,7 +440,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
     }
 
     [Test, NonParallelizable]
-    public void Jsonl_trace_includes_memory_when_enabled()
+    public async Task Jsonl_trace_includes_memory_when_enabled()
     {
         byte[] code = Prepare.EvmCode
             .PushData(1)
@@ -458,7 +459,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             input: [],
             gasLimit: 200_000,
             postHash: new Hash256("0x57efb01840362d55bfc0f9b920788f3446023a16688d71bf6b80b144259e6b2e"));
-        (EthereumTestResult result, string trace) = RunAndCaptureJsonl(test, traceMemory: true);
+        (EthereumTestResult result, string trace) = await RunAndCaptureJsonl(test, traceMemory: true);
 
         string revertLine = trace
             .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
@@ -472,7 +473,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         }
     }
 
-    private static (EthereumTestResult Result, string Trace) RunAndCaptureJsonl(GeneralStateTest test, bool traceMemory)
+    private static async Task<(EthereumTestResult Result, string Trace)> RunAndCaptureJsonl(GeneralStateTest test, bool traceMemory)
     {
         TextWriter originalError = Console.Error;
         using StringWriter error = new();
@@ -481,7 +482,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         try
         {
             StateTestsRunner runner = new(WhenTrace.Always, traceMemory, traceStack: true, chainId: 1);
-            return (runner.RunSingleTest(test), error.ToString());
+            return (await runner.RunSingleTestAsync(test), error.ToString());
         }
         finally
         {
@@ -505,12 +506,12 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         throw new AssertionException($"No {operation} trace entry was found.");
     }
 
-    private void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed)
+    private Task AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed)
         => AssertTraceGas(test, expectedGasUsed, tracer);
 
-    private static void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed, StateTestTxTracer txTracer)
+    private static async Task AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed, StateTestTxTracer txTracer)
     {
-        EthereumTestResult result = new StateTestExecutor().Execute(test, txTracer);
+        EthereumTestResult result = await new StateTestExecutor().Execute(test, txTracer);
 
         using (Assert.EnterMultipleScope())
         {
@@ -584,6 +585,6 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
 
     private sealed class StateTestExecutor : GeneralStateTestBase
     {
-        public EthereumTestResult Execute(GeneralStateTest test, ITxTracer txTracer) => RunTest(test, txTracer);
+        public Task<EthereumTestResult> Execute(GeneralStateTest test, ITxTracer txTracer) => RunTest(test, txTracer);
     }
 }

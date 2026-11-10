@@ -59,8 +59,11 @@ internal class E2StoreWriterTests
         await sut.WriteEntry(EntryTypes.CompressedHeader, TestBytes);
         byte[] bytes = stream.ToArray();
 
-        Assert.That(bytes[6], Is.EqualTo(0));
-        Assert.That(bytes[7], Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bytes[6], Is.EqualTo(0));
+            Assert.That(bytes[7], Is.EqualTo(0));
+        }
     }
 
     [Test]

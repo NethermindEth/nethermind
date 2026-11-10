@@ -7,7 +7,6 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie;
 
-#pragma warning disable NETH003 // Build variant: only one of TrackingCappedArrayPool.std.cs / TrackingCappedArrayPool.zkevm.cs is compiled per build
 /// <summary>
 /// Allocating buffer source for the zkVM guest &mdash; see the std counterpart for the tracking pool.
 /// </summary>
@@ -26,6 +25,7 @@ public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
 
     public CappedArray<byte> Rent(int size) => size == 0 ? CappedArray<byte>.Empty : new(new byte[size], size);
 
+    // Must not reuse returned arrays: a decoded leaf reads its key from its original RLP (see LeafData.zkevm.cs).
     public void Return(in CappedArray<byte> buffer) { }
 
     public void Dispose() { }

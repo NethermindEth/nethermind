@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -50,7 +52,10 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1)];
+
+    private const string ForksThroughShanghaiAtGenesis =
+        "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0";
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -63,10 +68,10 @@ public class GethGenesisLoaderTests
         return new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
     }
 
-    private static ChainSpec LoadAutoDetecting(string json)
+    private static ChainSpec LoadAutoDetecting(string json, ILogManager? logManager = null)
     {
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), logManager ?? LimboLogs.Instance).Load(stream);
     }
 
     private static ChainSpec LoadAutoDetectingNonSeekable(string json)
@@ -112,7 +117,8 @@ public class GethGenesisLoaderTests
         int chainId = 1,
         string configExtra = "",
         string allocJson = "{}",
-        ulong? timestamp = null)
+        ulong? timestamp = null,
+        string genesisExtra = "")
     {
         string configSuffix = configExtra.Length > 0 ? ", " + configExtra : "";
         string timestampField = timestamp.HasValue ? $"\"timestamp\": {timestamp.Value}, " : "";
@@ -127,6 +133,7 @@ public class GethGenesisLoaderTests
               },
               {{timestampField}}"difficulty": "0x1",
               "gasLimit": "0x8000000",
+              {{genesisExtra}}
               "alloc": {{allocJson}}
             }
             """;
@@ -136,8 +143,9 @@ public class GethGenesisLoaderTests
         int chainId = 1,
         string configExtra = "",
         string allocJson = "{}",
-        ulong? timestamp = null) =>
-        LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp));
+        ulong? timestamp = null,
+        string genesisExtra = "") =>
+        LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp, genesisExtra));
 
     private static void AssertAmsterdamEipsEnabled(IReleaseSpec spec, bool expected)
     {
@@ -165,9 +173,12 @@ public class GethGenesisLoaderTests
 
         // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
         // if they were inside the same EnterMultipleScope (which records failure but keeps going).
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -203,9 +214,12 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadChainSpec(
             Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json"));
 
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -275,6 +289,275 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("", 4_712_388UL)]
+    [TestCase("\"gasLimit\": null,", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x0\",", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x1000\",", 0x1000UL)]
+    public void Defaults_zero_or_missing_gas_limit_to_geth_genesis_gas_limit(string genesisExtra, ulong expectedGasLimit)
+    {
+        string json = $$"""{ "config": { "chainId": 1 }, {{genesisExtra}} "difficulty": "0x1", "alloc": {} }""";
+
+        Assert.That(LoadFromString(json).Genesis!.Header.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
+    [TestCase("", null)]
+    [TestCase("\"daoForkBlock\": null", null)]
+    [TestCase("\"daoForkBlock\": 0", 0UL)]
+    [TestCase("\"daoForkBlock\": 1234", 1234UL)]
+    [TestCase("\"daoForkSupport\": null", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": null", 1234UL)]
+    [TestCase("\"daoForkSupport\": false", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": false", 1234UL)]
+    [TestCase("\"daoForkSupport\": true", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": true", 1234UL)]
+    public void Dao_fork_is_enabled_by_block(string configExtra, ulong? expectedBlock)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters.DaoHardforkTransition, Is.EqualTo(expectedBlock));
+            Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(expectedBlock));
+            Assert.That(provider.DaoBlockNumber, Is.EqualTo(expectedBlock));
+        }
+    }
+
+    private static readonly (ulong Block, ulong Delay)[] GlacierForkCases =
+    [
+        (9, 9_000_000),
+        (10, 9_700_000),
+        (11, 9_700_000),
+        (19, 9_700_000),
+        (20, 10_700_000),
+        (21, 10_700_000),
+        (29, 10_700_000),
+        (30, 11_400_000),
+        (31, 11_400_000)
+    ];
+
+    [Test]
+    public void Glacier_forks_add_difficulty_bomb_delays(
+        [ValueSource(nameof(GlacierForkCases))] (ulong Block, ulong Delay) fork,
+        [Values] bool mergedAtGenesis,
+        [Values] bool activateMuirGlacier)
+    {
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 10, \"londonBlock\": 10, \"arrowGlacierBlock\": 20, \"grayGlacierBlock\": 30";
+        if (activateMuirGlacier) configExtra += ", \"muirGlacierBlock\": 0";
+        if (mergedAtGenesis) configExtra += ", \"terminalTotalDifficulty\": \"0x0\"";
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: configExtra));
+
+        ulong expectedDelay = mergedAtGenesis ? 0 : fork.Block < 10 && !activateMuirGlacier ? 5_000_000 : fork.Delay;
+        Assert.That(provider.GetSpec(new ForkActivation(fork.Block)).DifficultyBombDelay, Is.EqualTo(expectedDelay));
+    }
+
+    [Test]
+    public void Historical_forks_keep_validation_enabled([Values(0UL, 9UL, 10UL, 19UL, 20UL, 29UL, 30UL)] ulong blockNumber)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra:
+            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"constantinopleBlock\": 20, \"petersburgBlock\": 20, \"istanbulBlock\": 20, \"berlinBlock\": 30, \"londonBlock\": 30"));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.ValidateChainId, Is.True);
+            Assert.That(spec.ValidateReceipts, Is.True);
+            Assert.That(spec.IsEip3607Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Spurious_dragon_eips_follow_geth_fork_blocks([Values(0UL, 9UL, 10UL)] ulong blockNumber)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: "\"eip158Block\": 10"));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+        bool eip158Active = blockNumber >= 10;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip155Enabled, Is.True);
+            Assert.That(spec.IsEip158Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip160Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip170Enabled, Is.EqualTo(eip158Active));
+        }
+    }
+
+    [Test]
+    public void Absent_pre_merge_forks_never_activate([Values] bool spuriousDragon, [Values(0UL, 1_000_000UL)] ulong blockNumber)
+    {
+        string json = spuriousDragon
+            ? BuildStandardGethGenesisJson()
+            : """{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+        ChainSpecBasedSpecProvider provider = new(LoadFromString(json));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TransitionActivations, Is.Empty);
+            Assert.That(spec.IsEip2Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip7Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip150Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip155Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip158Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip160Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip170Enabled, Is.EqualTo(spuriousDragon));
+            Assert.That(spec.IsEip100Enabled, Is.False);
+            Assert.That(spec.IsEip140Enabled, Is.False);
+            Assert.That(spec.IsEip196Enabled, Is.False);
+            Assert.That(spec.IsEip197Enabled, Is.False);
+            Assert.That(spec.IsEip198Enabled, Is.False);
+            Assert.That(spec.IsEip211Enabled, Is.False);
+            Assert.That(spec.IsEip214Enabled, Is.False);
+            Assert.That(spec.IsEip649Enabled, Is.False);
+            Assert.That(spec.IsEip658Enabled, Is.False);
+            Assert.That(spec.IsEip145Enabled, Is.False);
+            Assert.That(spec.IsEip1014Enabled, Is.False);
+            Assert.That(spec.IsEip1052Enabled, Is.False);
+            Assert.That(spec.IsEip1234Enabled, Is.False);
+        }
+    }
+
+    [Test]
+    public void Copied_ethash_parameters_keep_absent_forks_off([Values] bool forksSet, [Values(0UL, 1_000_000UL)] ulong blockNumber)
+    {
+        string json = forksSet
+            ? BuildStandardGethGenesisJson(configExtra: "\"byzantiumBlock\": 0")
+            : """{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+        EthashChainSpecEngineParameters ethashParameters = LoadFromString(json).EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ReleaseSpec spec = new();
+        ethashParameters.ApplyToReleaseSpec(spec, blockNumber, null);
+        ulong? expectedTransition = forksSet ? 0 : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters.HomesteadTransition, Is.EqualTo(expectedTransition));
+            Assert.That(ethashParameters.Eip100bTransition, Is.EqualTo(expectedTransition));
+            Assert.That(spec.IsEip2Enabled, Is.EqualTo(forksSet));
+            Assert.That(spec.IsEip7Enabled, Is.EqualTo(forksSet));
+            Assert.That(spec.IsEip100Enabled, Is.EqualTo(forksSet));
+        }
+    }
+
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"byzantiumBlock\": 0", "eip158Block not enabled, but byzantiumBlock enabled at block 0")]
+    [TestCase("\"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"shanghaiTime\": 0", "petersburgBlock not enabled, but istanbulBlock enabled at block 0")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"londonBlock\": 5", "berlinBlock not enabled, but londonBlock enabled at block 5")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"cancunTime\": 10", "shanghaiTime not enabled, but cancunTime enabled at timestamp 10")]
+    [TestCase("\"eip8141PrototypeTime\": 15", "shanghaiTime not enabled, but eip8141PrototypeTime enabled at timestamp 15")]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"bogotaDevnet2Time\": 10", "shanghaiTime not enabled, but bogotaDevnet2Time enabled at timestamp 10")]
+    [TestCase("\"homesteadBlock\": 0, \"tangerineWhistleBlock\": 0, \"spuriousDragonBlock\": 0, \"byzantiumBlock\": 0", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"pragueTime\": 10, \"amsterdamTime\": 20", null)]
+    [TestCase("\"homesteadBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, " + ForksThroughShanghaiAtGenesis + ", \"eip4758PrototypeTime\": 15", null)]
+    [TestCase("\"homesteadBlock\": 0, \"daoForkBlock\": 0, \"eip150Block\": 0, \"eip155Block\": 0, \"eip158Block\": 0, \"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"petersburgBlock\": 0, \"istanbulBlock\": 0, \"muirGlacierBlock\": 0, \"berlinBlock\": 0, \"londonBlock\": 0, \"grayGlacierBlock\": 0, \"mergeNetsplitBlock\": 0", null)]
+    public void Fork_schedule_must_not_skip_a_required_fork(string config, string? expectedError)
+    {
+        string json = $$"""{ "config": { "chainId": 1, {{config}} }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }""";
+
+        Assert.That(() => LoadFromString(json), expectedError is null
+            ? Throws.Nothing
+            : Throws.InstanceOf<InvalidDataException>().With.Message.Contains($"Unsupported fork ordering: {expectedError}"));
+    }
+
+    private static readonly string[] RequiredForks =
+    [
+        "homesteadBlock", "eip150Block", "eip155Block", "eip158Block", "byzantiumBlock", "constantinopleBlock",
+        "petersburgBlock", "istanbulBlock", "berlinBlock", "londonBlock", "shanghaiTime"
+    ];
+
+    [TestCaseSource(nameof(RequiredForks))]
+    public void Fork_schedule_must_set_every_required_fork(string skippedFork)
+    {
+        // Fork i is set at i + 1, with cancunTime after shanghaiTime so that every required fork has a later set fork.
+        string[] schedule = [.. RequiredForks, "cancunTime"];
+        string config = string.Join(", ", schedule
+            .Select(static (fork, i) => $"\"{fork}\": {i + 1}")
+            .Where(entry => !entry.StartsWith($"\"{skippedFork}\"", StringComparison.Ordinal)));
+        int next = Array.IndexOf(schedule, skippedFork) + 1;
+        string nextKind = schedule[next].EndsWith("Time", StringComparison.Ordinal) ? "timestamp" : "block";
+
+        Fork_schedule_must_not_skip_a_required_fork(config, $"{skippedFork} not enabled, but {schedule[next]} enabled at {nextKind} {next + 1}");
+    }
+
+    [Test]
+    public void Petersburg_defaults_to_constantinople_block([Values] bool explicitPetersburg)
+    {
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 5";
+        if (explicitPetersburg) configExtra += ", \"petersburgBlock\": 5";
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip145Enabled, Is.True);
+            Assert.That(spec.IsEip1283Enabled, Is.False);
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(5));
+            Assert.That(provider.TransitionActivations, Is.EqualTo(new[] { new ForkActivation(5) }));
+        }
+    }
+    [Test]
+    public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
+    {
+        const string enode = "enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303";
+        const string enr = "enr:-KG4QHn1Os72NN5Z44Ehf9CHPmN490GBphTFirfk33pFuWnkY9UNrQMfHkuCw6a-ykeRhGKrPL5ppMXiZQchgPrCDJQBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQJK_ye9jx9mela-ME_Kt5e017Ywv3hYH_5rwNhIUrtzNoN1ZHCCTriEdWRwNoJOuA";
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger classLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<GethGenesisLoader>().Returns(classLogger);
+        string invalidRecord = includeInvalid ? "\"invalid\", " : "";
+        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(genesisExtra: $$"""
+            "bootnodes": [" {{enode}} ", {{invalidRecord}}"{{enr}}"],
+            """), logManager);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Bootnodes.Select(static node => node.ToString()), Is.EqualTo(new[] { enode, enr }));
+            Assert.That(chainSpec.Bootnodes.Select(static node => node.NodeId),
+                Is.EqualTo(new[] { new NetworkNode(enode).NodeId, new NetworkNode(enr).NodeId }));
+        }
+
+        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.Contains("invalid")), Arg.Any<Exception>());
+    }
+
+    [TestCase("", null)]
+    [TestCase("\"name\": null,", null)]
+    [TestCase("\"name\": \"\",", "")]
+    [TestCase("\"name\": \"Custom Testnet\",", "Custom Testnet")]
+    public void Loads_optional_chain_name(string genesisExtra, string? expectedName)
+    {
+        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(genesisExtra: genesisExtra));
+
+        Assert.That(chainSpec.Name, Is.EqualTo(expectedName));
+    }
+
+    [Test]
+    public void Defaults_bootnodes_to_empty([Values("", "\"bootnodes\": null,", "\"bootnodes\": [],")] string genesisExtra)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(genesisExtra: genesisExtra);
+
+        Assert.That(chainSpec.Bootnodes, Is.Empty);
+    }
+
+    [Test]
+    public void Maps_zero_nonce_storage_accounts()
+    {
+        Address[] accounts = [new("0x00000000000000000000000000000000000000a1"), new("0x00000000000000000000000000000000000000b2")];
+        string list = string.Join(", ", accounts.Select(static a => $"\"{a}\""));
+
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"zeroNonceStorageAccounts\": [{list}]");
+
+        Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(accounts));
+    }
+
+    [Test]
+    public void Rejects_invalid_extension_types([Values(
+        "\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],",
+        "\"name\": 1,", "\"name\": true,", "\"name\": [],", "\"name\": {},")] string genesisExtra) =>
+        Assert.That(() => LoadStandardGethGenesis(genesisExtra: genesisExtra), Throws.TypeOf<InvalidDataException>());
+
     [Test]
     public void Can_load_genesis_with_timestamp_forks()
     {
@@ -309,7 +592,7 @@ public class GethGenesisLoaderTests
     [TestCase("eip8141PrototypeTime", false, true)]
     public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
@@ -329,10 +612,71 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("eip8250PrototypeTime", true, false, false)]
+    [TestCase("eip8272PrototypeTime", false, true, false)]
+    [TestCase("eip7906PrototypeTime", false, false, true)]
+    public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(eip8250 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.EqualTo(eip8272 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip7906TransitionTimestamp, Is.EqualTo(eip7906 ? (ulong?)15 : null));
+        }
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.False);
+            Assert.That(after.IsEip8250Enabled, Is.EqualTo(eip8250));
+            Assert.That(after.IsEip8272Enabled, Is.EqualTo(eip8272));
+            Assert.That(after.IsEip7906Enabled, Is.EqualTo(eip7906));
+        }
+    }
+
+    [Test]
+    public void Genesis_can_schedule_the_whole_frame_transaction_family_without_inclusion_lists()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            {{ForksThroughShanghaiAtGenesis}},
+            "amsterdamTime": 0,
+            "eip8141PrototypeTime": 15,
+            "eip8250PrototypeTime": 15,
+            "eip8272PrototypeTime": 15,
+            "eip7906PrototypeTime": 15
+            """);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip7928Enabled, Is.True);
+            Assert.That(before.IsEip8141Enabled, Is.False);
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.True);
+            Assert.That(after.IsEip8250Enabled, Is.True);
+            Assert.That(after.IsEip8272Enabled, Is.True);
+            Assert.That(after.IsEip7906Enabled, Is.True);
+            Assert.That(after.IsEip7805Enabled, Is.False);
+        }
+    }
+
     [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 15");
 
         Assert.That(chainSpec.AmsterdamTimestamp, Is.EqualTo(15));
         AssertAmsterdamTransitionTimestamps(chainSpec, 15);
@@ -345,7 +689,7 @@ public class GethGenesisLoaderTests
         Assert.That(amsterdam.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
 
         // When genesis timestamp matches amsterdamTime, genesis header fields are set
-        ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
+        ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
         Block amsterdamGenesis = genesisAtAmsterdam.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
@@ -359,48 +703,10 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
-    public void Maps_additional_eips_to_standard_fork_timestamps()
-    {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 1,
-            "eip150Block": 2,
-            "eip155Block": 3,
-            "eip158Block": 4,
-            "byzantiumBlock": 5,
-            "constantinopleBlock": 6,
-            "petersburgBlock": 7,
-            "istanbulBlock": 8,
-            "berlinBlock": 9,
-            "londonBlock": 10,
-            "terminalTotalDifficulty": "0x0",
-            "shanghaiTime": 11,
-            "cancunTime": 12,
-            "pragueTime": 13,
-            "osakaTime": 14
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chainSpec.Parameters.Eip7Transition, Is.EqualTo(1));
-            Assert.That(chainSpec.Parameters.ValidateChainIdTransition, Is.EqualTo(3));
-            Assert.That(chainSpec.Parameters.ValidateReceiptsTransition, Is.EqualTo(5));
-        }
-    }
-
-    [Test]
     public void Can_load_genesis_with_blob_schedule()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            {{ForksThroughShanghaiAtGenesis}},
             "cancunTime": 1710338135,
             "pragueTime": 1800000000,
             "blobSchedule": {
@@ -624,7 +930,7 @@ public class GethGenesisLoaderTests
     public void Can_load_genesis_with_deposit_contract()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
-            "\"pragueTime\": 1800000000, " +
+            $"{ForksThroughShanghaiAtGenesis}, \"pragueTime\": 1800000000, " +
             "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
         using (Assert.EnterMultipleScope())
@@ -637,7 +943,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Defaults_deposit_contract_to_zero_when_unspecified()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
+        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: $"{ForksThroughShanghaiAtGenesis}, \"pragueTime\": 1800000000");
 
         using (Assert.EnterMultipleScope())
         {
@@ -654,6 +960,29 @@ public class GethGenesisLoaderTests
 
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
+
+    [TestCase("", HistoryRetentionConstants.MinEpochsForBlockRequests)]
+    [TestCase("\"minHistoryRetentionEpochs\": null", HistoryRetentionConstants.MinEpochsForBlockRequests)]
+    [TestCase("\"minHistoryRetentionEpochs\": 14299", HistoryRetentionConstants.HistoryPruneEpochs)]
+    [TestCase("\"minHistoryRetentionEpochs\": \"0x37db\"", HistoryRetentionConstants.HistoryPruneEpochs)]
+    [TestCase("\"minHistoryRetentionEpochs\": 0", 0UL)]
+    [TestCase("\"minHistoryRetentionEpochs\": 4294967295", (ulong)uint.MaxValue)]
+    [TestCase("\"minHistoryRetentionEpochs\": \"0xffffffff\"", (ulong)uint.MaxValue)]
+    public void Loads_minimum_history_retention(string configExtra, ulong expected)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(expected));
+            Assert.That(provider.GenesisSpec.MinHistoryRetentionEpochs, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Rejects_invalid_minimum_history_retention([Values("-1", "1.5", "true", "[]", "{}", "\"invalid\"", "4294967296", "\"0x100000000\"", "18446744073709551615")] string value) =>
+        Assert.That(() => LoadStandardGethGenesis(configExtra: $"\"minHistoryRetentionEpochs\": {value}"), Throws.TypeOf<InvalidDataException>());
 
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
@@ -802,7 +1131,8 @@ public class GethGenesisLoaderTests
     [Test]
     public void LoadParameters_maps_all_fork_eips()
     {
-        List<ForkActivationInfo> forks = DiscoverGethForks();
+        static bool SharesNoEipWithAnotherLabel(ForkActivationInfo fork) => fork.Fork is not BogotaDevnet2;
+        List<ForkActivationInfo> forks = [.. DiscoverGethForks().Where(SharesNoEipWithAnotherLabel)];
         Assert.That(forks, Is.Not.Empty);
 
         // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
@@ -861,6 +1191,21 @@ public class GethGenesisLoaderTests
         Assert.That(mismatches, Is.Empty, "GethGenesisLoader.LoadParameters must map every EIP from Fork classes.\n" +
             "If a new EIP was added to a Fork class, update LoadParameters to set its transition timestamp.\n" +
             string.Join("\n", mismatches));
+    }
+
+    [Test]
+    public void BogotaDevnet2Time_schedules_the_eips_bogota_devnet_2_adds()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"bogotaDevnet2Time\": 26, \"terminalTotalDifficulty\": \"0x0\"");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8253TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip4758TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8298TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8151TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+        }
     }
 
     public static IEnumerable<TestCaseData> HoodiEip7949Activations

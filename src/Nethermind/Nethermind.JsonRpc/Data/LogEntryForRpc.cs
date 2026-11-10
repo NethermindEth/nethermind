@@ -3,9 +3,11 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [GenerateJsonWriter]
     public class LogEntryForRpc
     {
         public bool? Removed { get; set; }

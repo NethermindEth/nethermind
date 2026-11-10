@@ -77,13 +77,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_FreeSpaceBelowExtractionEstimate_ThrowsIOException()
+    public async Task Execute_FreeSpaceBelowExtractionEstimate_ThrowsIOException()
     {
         long snapshotSize = WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(snapshotSize));
 
-        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -95,13 +95,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_FreeSpaceBelowDownloadRequirement_ThrowsIOExceptionBeforeDownloading()
+    public async Task Execute_FreeSpaceBelowDownloadRequirement_ThrowsIOExceptionBeforeDownloading()
     {
         using SnapshotServer server = SnapshotServer.Start(contentLength: 1_000_000);
         _snapshotConfig.DownloadUrl = server.Url;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(1_000_000));
 
-        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,14 +133,14 @@ public class InitDatabaseSnapshotTests
 
     [TestCase(0, TestName = "Zero")]
     [TestCase(17, TestName = "AboveMaximum")]
-    public void Execute_StreamingConnectionsOutOfRange_Throws(int connections)
+    public async Task Execute_StreamingConnectionsOutOfRange_Throws(int connections)
     {
         _snapshotConfig.Streaming = true;
         _snapshotConfig.StreamingConnections = connections;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(timeout.Token),
+        await Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(timeout.Token),
             "a connection count outside 1-16 must be rejected before any network activity");
     }
 
@@ -222,13 +222,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_ArchiveNotMatchingStripComponents_Throws()
+    public async Task Execute_ArchiveNotMatchingStripComponents_Throws()
     {
         File.WriteAllBytes(_snapshotPath, TestArchive.BuildTarWithoutTopLevelDirectory());
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
-        InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None))!;
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None)))!;
 
         Assert.That(exception.Message, Does.Contain("StripComponents"),
             "an extraction that produced no files must point the operator at the strip configuration");
@@ -250,6 +250,39 @@ public class InitDatabaseSnapshotTests
                 "a complete archive left by a crash between extraction and completion must be reused instead of re-downloaded");
             Assert.That(File.Exists(_snapshotPath), Is.False,
                 "the archive must be deleted after the successful extraction");
+        }
+    }
+
+    [Test]
+    public async Task Execute_RelativeDatabasePath_ExtractsSnapshot()
+    {
+        // The default BaseDbPath is relative to the working directory, which is how most nodes run.
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = Path.GetRelativePath(Environment.CurrentDirectory, _dbPath) });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True);
+    }
+
+    [TestCase(false, TestName = "Execute_EntryEscapingAbsoluteDatabasePath_ThrowsIOException")]
+    [TestCase(true, TestName = "Execute_EntryEscapingRelativeDatabasePath_ThrowsIOException")]
+    public async Task Execute_EntryEscapingDatabasePath_ThrowsIOException(bool relativeDbPath)
+    {
+        if (relativeDbPath)
+            _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = Path.GetRelativePath(Environment.CurrentDirectory, _dbPath) });
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTarEscapingDestination());
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("outside the destination directory"));
+            Assert.That(File.Exists(Path.Combine(_tempDir.Path, "escaped.bin")), Is.False);
         }
     }
 

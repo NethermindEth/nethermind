@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Stateless.Execution.IO;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -42,6 +52,153 @@ public class WitnessTests
             using ArrayPoolList<BlockHeader> decoded = witness.DecodeHeaders();
             Assert.That(decoded.Count, Is.EqualTo(count));
             Assert.That(decoded[^1].Hash, Is.EqualTo(parent));
+        }
+    }
+
+    [Test]
+    public void Decoding_rejects_trailing_bytes_after_a_header()
+    {
+        using Witness witness = new()
+        {
+            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes, 0x00]]),
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = IOwnedReadOnlyList<byte[]>.Empty,
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+
+        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decoded_ssz_witness_keeps_its_state_nodes([Values(0, 1, 3)] int count)
+    {
+        byte[][] nodes = new byte[count][];
+        for (int i = 0; i < count; i++) nodes[i] = [(byte)i, 0xc0, (byte)(i * 7)];
+        using Witness original = new()
+        {
+            Headers = IOwnedReadOnlyList<byte[]>.Empty,
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = new ArrayPoolList<byte[]>(nodes),
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        ExecutionWitness.Decode(ExecutionWitness.Encode(ExecutionWitness.From(original)), out ExecutionWitness decoded);
+
+        Assert.That(Unsafe.SizeOf<SszWitnessState>(), Is.EqualTo(Unsafe.SizeOf<byte[]>()));
+        using Witness witness = decoded.ToWitness();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(witness.State.AsSpan().ToArray(), Is.EqualTo(nodes));
+            Assert.That(witness.State, Is.EqualTo(nodes));
+            Assert.That(witness.State.Count, Is.EqualTo(count));
+            for (int i = 0; i < count; i++) Assert.That(witness.State[i], Is.EqualTo(nodes[i]));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PlacedWitnessCases()
+    {
+        // Long nodes among short ones, so that with little input decoded before the witness some are copied.
+        byte[][] nodes = new byte[40][];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodes[i] = new byte[i % 4 == 0 ? 300 : 5 + i];
+            nodes[i].AsSpan().Fill((byte)i);
+        }
+
+        foreach (int decodedBefore in (int[])[0, 64, 4096])
+            yield return new TestCaseData(nodes, new byte[][] { [0x60, 0x01, 0x00] }, new byte[][] { [0xc0] }, decodedBefore);
+
+        // The second node moves down by none of its bytes and ends the input off a word boundary.
+        yield return new TestCaseData(new byte[][] { new byte[28], [1, 2, 3, 4, 5] }, Array.Empty<byte[]>(), Array.Empty<byte[]>(), 0)
+            .SetName("Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input(last node at the unaligned input end)");
+    }
+
+    [TestCaseSource(nameof(PlacedWitnessCases))]
+    public unsafe void Decoded_ssz_witness_keeps_placed_state_nodes_in_its_input(byte[][] nodes, byte[][] codes, byte[][] headers, int decodedBefore)
+    {
+        using Witness original = new()
+        {
+            Headers = new ArrayPoolList<byte[]>(headers),
+            Codes = new ArrayPoolList<byte[]>(codes),
+            State = new ArrayPoolList<byte[]>(nodes),
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        byte[] encoded = ExecutionWitness.Encode(ExecutionWitness.From(original));
+        int length = decodedBefore + encoded.Length;
+        byte* start = (byte*)NativeMemory.AlignedAlloc((nuint)length, sizeof(ulong));
+
+        try
+        {
+            Span<byte> input = new(start, length);
+            encoded.CopyTo(input[decodedBefore..]);
+            WitnessNode.PlaceInInput(input, decodedBefore + BinaryPrimitives.ReadInt32LittleEndian(encoded));
+            ExecutionWitness.Decode(input[decodedBefore..], out ExecutionWitness decoded);
+            int placedLength = WitnessNode.EndPlacement(input);
+            using Witness witness = decoded.ToWitness();
+
+            int placed = 0;
+            foreach (byte[] node in witness.State)
+            {
+                byte* data = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(node));
+                bool inInput = data >= start && data < start + length;
+                Assert.That(!inInput || (data + node.Length <= start + placedLength && ((nuint)data & 7) == 0), Is.True, "placed within the length reported, on a word boundary");
+                placed += inInput ? 1 : 0;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(placedLength, Is.InRange(0, length));
+                Assert.That(witness.State, Is.EqualTo(nodes));
+                Assert.That(witness.Codes, Is.EqualTo(codes));
+                Assert.That(witness.Headers, Is.EqualTo(headers));
+                Assert.That(placed, Is.Positive);
+            }
+        }
+        finally
+        {
+            // Ends the placement a failed decode left open; after the call above it does nothing.
+            WitnessNode.EndPlacement(new ReadOnlySpan<byte>(start, length));
+            NativeMemory.AlignedFree(start);
+        }
+    }
+
+    [Test]
+    public void Decoded_ssz_witness_serves_its_codes_as_the_memory_they_were_decoded_into()
+    {
+        byte[][] codes = [[0x60, 0x01, 0x00], [0x5b], []];
+        using Witness original = new()
+        {
+            Headers = IOwnedReadOnlyList<byte[]>.Empty,
+            Codes = new ArrayPoolList<byte[]>(codes),
+            State = IOwnedReadOnlyList<byte[]>.Empty,
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        ExecutionWitness.Decode(ExecutionWitness.Encode(ExecutionWitness.From(original)), out ExecutionWitness decoded);
+        using Witness witness = decoded.ToWitness();
+        IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> decodedCodes = (IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>)witness.Codes;
+
+        IKeyValueStoreWithBatching codeDb = witness.CreateCodeDb();
+        TrieStoreScopeProvider provider = new(new RawTrieStore(witness.CreateNodeStorage()), codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        Assert.That(provider.TryBeginScope(null, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+        using IWorldStateScopeProvider.IScope opened = scope;
+
+        byte[] deployed = [0x60, 0x02];
+        ValueHash256 deployedHash = ValueKeccak.Compute(deployed);
+        using (IWorldStateScopeProvider.ICodeSetter setter = opened.CodeDb.BeginCodeWrite()) setter.Set(deployedHash, deployed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(witness.Codes, Is.EqualTo(codes));
+            for (int i = 0; i < codes.Length; i++)
+            {
+                ReadOnlyMemory<byte> code = opened.CodeDb.GetCode(ValueKeccak.Compute(codes[i]));
+                Assert.That(code.ToArray(), Is.EqualTo(codes[i]));
+                Assert.That(code.Equals(decodedCodes[i].Code), Is.True, "served as decoded rather than copied");
+                Assert.That(codeDb.Get(ValueKeccak.Compute(codes[i]).Bytes), Is.EqualTo(codes[i]), "key-value view");
+            }
+
+            Assert.That(opened.CodeDb.GetCode(deployedHash).ToArray(), Is.EqualTo(deployed));
+            Assert.That(opened.CodeDb.GetCode(ValueKeccak.Compute([0xfe])).IsNull(), Is.True);
         }
     }
 }

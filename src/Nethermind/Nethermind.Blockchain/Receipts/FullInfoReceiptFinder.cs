@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -31,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             TxReceipt[] receipts = _receiptStorage.Get(blockHash);
 
-            if (recover && _receiptsRecovery.NeedRecover(receipts))
+            if (recover && _receiptsRecovery.NeedRecover(receipts, forceRecoverSender: false))
             {
                 Block block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (_receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false) == ReceiptsRecoveryResult.NeedReinsert)
@@ -45,5 +47,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
+            _receiptStorage.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
     }
 }

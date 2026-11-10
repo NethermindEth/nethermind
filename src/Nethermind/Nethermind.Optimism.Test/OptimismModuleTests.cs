@@ -73,6 +73,37 @@ public class OptimismModuleTests
     }
 
     [Test]
+    public void Payload_transaction_count_guard_is_disabled()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+
+        Assert.That(container.Resolve<Merge.Plugin.Data.PayloadTransactionCountGuard>(), Is.SameAs(Merge.Plugin.Data.PayloadTransactionCountGuard.Disabled));
+    }
+
+    // The eth_sendTransaction tests wire their forwarding node the same way.
+    [Test]
+    public void Node_that_forwards_to_the_sequencer_has_no_transaction_pool()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(Substitute.For<ITxPool>()).As<ITxPool>();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig { SequencerUrl = "http://localhost:8545" }));
+        using IContainer container = builder.Build();
+
+        Assert.That(container.Resolve<ITxPool>(), Is.SameAs(NullTxPool.Instance));
+    }
+
+    [Test]
     public void Proof_rpc_module_is_decorated_with_deposit_receipt_fields()
     {
         ChainSpec chainSpec = new()
@@ -209,7 +240,6 @@ public class OptimismModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
-            Assert.That(result.IsIntrinsicGasError, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
         }
     }

@@ -121,7 +121,7 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
 
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(PyspecTestRef testRef) => Assert.That(RunTest(PyspecLoader.LoadTest<GeneralStateTest>(testRef)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<GeneralStateTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<GeneralStateTest, TSelf>("state_tests", "StateTests");

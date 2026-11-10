@@ -13,6 +13,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm;
 
@@ -24,26 +25,22 @@ namespace Nethermind.Evm;
 /// <paramref name="nonceKeys"/> is set.</param>
 /// <param name="frames">The envelope's frames, in execution order.</param>
 /// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
-/// <param name="sigHash">The canonical signature hash the entries that carry no explicit <c>msg</c> sign.</param>
-/// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
+/// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
+/// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
+/// <param name="maxCost">The <c>max_cost</c> the payer's approval collects up front.</param>
 /// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
-/// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
-/// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
 /// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
-/// <param name="recentRootReferences">EIP-8272 recent-root references of the signed envelope.</param>
 /// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
     TxFrame[] frames,
     TxFrameSignature[] signatures,
-    ValueHash256 sigHash,
+    Transaction transaction,
+    ValueHash256? sigHash,
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
-    in UInt256 maxFeePerGas,
-    in UInt256 maxFeePerBlobGas,
     in UInt256 legacyNonce,
-    RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
     /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
@@ -53,7 +50,7 @@ public sealed class FrameTxContext(
     public ulong Nonce { get; } = nonce;
 
     /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
-    /// <remarks>When set, <see cref="Nonce"/> is the shared <c>nonce_seq</c> every key currently sits at.</remarks>
+    /// <remarks>When non-empty, <see cref="Nonce"/> is the shared <c>nonce_seq</c>: every key sits at it, or for a single-use set every key reads 0. The empty set selects the account nonce.</remarks>
     public UInt256[]? NonceKeys { get; } = nonceKeys;
 
     /// <summary>The sender's account nonce before any frame executed.</summary>
@@ -61,13 +58,13 @@ public sealed class FrameTxContext(
     public UInt256 LegacyNonce { get; } = legacyNonce;
 
     /// <summary><c>keccak256(bytes32(len(nonce_keys)) || concat(bytes32(k) for k in nonce_keys))</c>.</summary>
-    /// <remarks>The EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its account nonce occupies.</remarks>
+    /// <remarks>The EIP-8141 envelope hashes as the empty key set, the domain its account nonce occupies.</remarks>
     public ValueHash256 NonceKeysHash =>
         NonceKeys is { } keys ? _nonceKeysHash ??= ComputeNonceKeysHash(keys) : AccountNonceKeySetHash;
 
     private ValueHash256? _nonceKeysHash;
 
-    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
+    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([]);
 
     /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;
@@ -76,24 +73,24 @@ public sealed class FrameTxContext(
     public TxFrameSignature[] Signatures { get; } = signatures;
 
     /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
-    public ValueHash256 SigHash { get; } = sigHash;
+    /// <remarks>Computed on first read unless validation supplied it: only a canonical-hash signature entry and
+    /// <c>TXPARAM(0x08)</c> need it.</remarks>
+    public ValueHash256 SigHash => _sigHash ??= FrameTxSigHash.ComputeValue(transaction);
 
-    /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
-    /// envelope's maximum prices.</summary>
+    private ValueHash256? _sigHash = sigHash;
+
+    /// <summary>The <c>max_cost</c> an approving payer is charged up front: <c>required_max_fee</c> at the block's
+    /// base fees plus the largest tip the <c>max_fee</c> budget allows.</summary>
     public UInt256 MaxCost { get; } = maxCost;
+
+    /// <summary>Whether a restored gas-search probe defers escrow without changing fee introspection.</summary>
+    internal bool SkipFeeReservation { get; init; }
 
     /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
 
-    /// <summary>EIP-1559 <c>max_fee_per_gas</c> of the envelope.</summary>
-    public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
-
-    /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
-    public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
-
-    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
-    /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
-    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
+    /// <summary>EIP-8141 <c>max_fee</c> of the envelope.</summary>
+    public UInt256 MaxFee => transaction.MaxFee;
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
@@ -129,8 +126,8 @@ public sealed class FrameTxContext(
     /// <summary>The frame the outer loop is currently executing.</summary>
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
-    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
-    internal TransactionDiffView? PostTxDiffView { get; set; }
+    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its ASSERT frames.</summary>
+    internal TransactionDiffView? AssertFrameDiffView { get; set; }
 
     /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
@@ -205,12 +202,12 @@ public sealed class FrameTxContext(
             if (Payer is not null) return FrameApprovalOutcome.Rejected;
             // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
             if (!approvesExecution && !SenderApproved) return FrameApprovalOutcome.Rejected;
-            if (worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
+            if (!SkipFeeReservation && worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
 
             if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
             {
                 if (worldState.GetNonce(Sender) >= Eip8250Constants.MaxNonceSeq) return FrameApprovalOutcome.NonceExhausted;
-                createsSender = !worldState.AccountExists(Sender);
+                createsSender = worldState.IsDeadAccount(Sender);
             }
         }
 
@@ -246,7 +243,7 @@ public sealed class FrameTxContext(
         if (!plan.ApprovesPayment) return;
 
         if (plan.CreatesSender) worldState.CreateAccountIfNotExists(Sender, UInt256.Zero);
-        worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
+        if (!SkipFeeReservation) worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
         if (NonceKeys is { } nonceKeys)
         {
             KeyedNonceManager.ConsumeNonceSet(worldState, Sender, nonceKeys, Nonce);

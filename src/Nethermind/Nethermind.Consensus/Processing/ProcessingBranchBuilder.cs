@@ -53,7 +53,9 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             Block firstBlock = blocksToProcess[0];
             if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
+                BlockHeader? parentOfFirstBlock = processingBranch.BaseBlock is { } baseBlock && baseBlock.Hash == firstBlock.ParentHash
+                    ? baseBlock
+                    : _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     ThrowOrphanedBlock(firstBlock);
@@ -107,6 +109,12 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             if (isTrace) TraceProcessingBlock(suggestedBlock, toBeProcessed);
             if (toBeProcessed.IsGenesis)
             {
+                // Only GenesisLoader processes genesis without a base state. A longer branch that reaches
+                // genesis found no state on its ancestry, and would replay genesis on an empty state.
+                if (blocksToBeAddedToMain.Count > 1)
+                {
+                    ThrowNoAncestorState(suggestedBlock);
+                }
                 break;
             }
 
@@ -207,6 +215,10 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMaxBranchSizeReached()
             => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNoAncestorState(Block suggestedBlock)
+            => throw new InvalidOperationException($"No ancestor of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} has state.");
     }
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]

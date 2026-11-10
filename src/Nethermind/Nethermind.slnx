@@ -31,6 +31,14 @@
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Mcp/">
+    <Project Path="Nethermind.Mcp.Plugin.Test/Nethermind.Mcp.Plugin.Test.csproj" />
+    <Project Path="Nethermind.Mcp.Plugin/Nethermind.Mcp.Plugin.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/SendPolicy/">
+    <Project Path="Nethermind.SendPolicy.Plugin.Test/Nethermind.SendPolicy.Plugin.Test.csproj" />
+    <Project Path="Nethermind.SendPolicy.Plugin/Nethermind.SendPolicy.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
   </Folder>
@@ -77,6 +85,7 @@
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
     <Project Path="Nethermind.Init.Snapshot.Test/Nethermind.Init.Snapshot.Test.csproj" />
+    <Project Path="Nethermind.Init.Test/Nethermind.Init.Test.csproj" />
     <Project Path="Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
@@ -89,6 +98,7 @@
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
     <Project Path="Nethermind.Runner.Test/Nethermind.Runner.Test.csproj" />
+    <Project Path="Nethermind.Serialization.JsonGenerator.Test/Nethermind.Serialization.JsonGenerator.Test.csproj" />
     <Project Path="Nethermind.Serialization.Ssz.Test/Nethermind.Serialization.Ssz.Test.csproj" />
     <Project Path="Nethermind.Serialization.SszGenerator.Test/Nethermind.Serialization.SszGenerator.Test.csproj" />
     <Project Path="Nethermind.Shutter.Test/Nethermind.Shutter.Test.csproj" />
@@ -152,7 +162,12 @@
   <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
   <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
+  <Project Path="Nethermind.Serialization.JsonGenerator/Nethermind.Serialization.JsonGenerator.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Benchmark/Nethermind.Serialization.FluentRlp.Benchmark.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Test/Nethermind.Serialization.FluentRlp.Test.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Generator/Nethermind.Serialization.FluentRlp.Generator.csproj" />
   <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
   <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
   <Project Path="Nethermind.Shutter/Nethermind.Shutter.csproj" />
@@ -168,4 +183,5 @@
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
+  <Project Path="Nethermind.Zkvm.Abstractions/Nethermind.Zkvm.Abstractions.csproj" />
 </Solution>

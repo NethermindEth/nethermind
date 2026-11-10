@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -31,12 +30,7 @@ public interface IBlockCachePreWarmer : IDisposable
     /// block's commit already wrote its final values into them, so the next <see cref="PreWarmCaches"/> or
     /// <see cref="StartSpeculativePreWarm"/> keeps them when it builds on that block, and clears them otherwise.
     /// </remarks>
-    /// <returns>
-    /// The built-in implementation only reports <see cref="CacheType.Rlp"/>, which means that RLP node-storage caching
-    /// was enabled, not necessarily that it contained entries. The storage, state, and precompile caches do not report
-    /// whether they contained entries.
-    /// </returns>
-    CacheType ClearCaches();
+    void ClearCaches();
 
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 

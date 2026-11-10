@@ -54,6 +54,8 @@ namespace Nethermind.Core.Extensions
         private static ulong LastSlot2;
         private static ulong LastSlot3;
         private static ulong LastSlotHash;
+        // The index's share of LastSlotHash, which MixSlotIndex finalizes for the index-keyed maps probed next.
+        private static ulong LastSlotIndexSum;
 
         /// <inheritdoc />
         public static partial void SeedHashes(in Int256.UInt256 seed)
@@ -68,7 +70,8 @@ namespace Nethermind.Core.Extensions
             SlotSeeds = [DeriveSlotSeed(seed.u0, 0), DeriveSlotSeed(seed.u1, 1), DeriveSlotSeed(seed.u2, 2), DeriveSlotSeed(seed.u3, 3)];
             // The memo's all-zero key must map to what MixSlot would compute for it.
             LastSlotAddressSum = LastSlot0 = LastSlot1 = LastSlot2 = LastSlot3 = 0;
-            LastSlotHash = SumSlot(0, 0, 0, 0, 0);
+            LastSlotIndexSum = SumIndexLanes(0, 0, 0, 0);
+            LastSlotHash = FinalizeSum(LastSlotIndexSum);
             AesHashSeed0 = seed.u0 ^ 0x6A09E667F3BCC909UL;
             AesHashSeed1 = seed.u1 ^ 0xBB67AE8584CAA73BUL;
             AesHash20Seed0 = seed.u0 ^ 0x510E527FADE682D1UL;
@@ -115,6 +118,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ulong FinalizeAddressSum(ulong addressSum) => FinalizeSum(addressSum);
 
+        /// <summary>A lane of a slot index, a <see cref="UInt256"/> and so word aligned.</summary>
+        /// <remarks>Airbender reads it as two plain words: an unaligned read there tests alignment per word.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReadIndexLane(ref byte lane) =>
+            AirbenderFlag.IsActive ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
+
         /// <summary>Hashes a 32-byte slot index of the address whose <see cref="SumAddressWords"/> is given.</summary>
         /// <remarks>
         /// One NH sum over the address' three words and the index's four, so an address kept summed costs only its
@@ -123,15 +132,17 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ulong MixSlot(ulong addressSum, ref byte index)
         {
-            ulong i0 = Unsafe.ReadUnaligned<ulong>(ref index);
-            ulong i1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 8));
-            ulong i2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 16));
-            ulong i3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 24));
+            ulong i0 = ReadIndexLane(ref index);
+            ulong i1 = ReadIndexLane(ref Unsafe.Add(ref index, 8));
+            ulong i2 = ReadIndexLane(ref Unsafe.Add(ref index, 16));
+            ulong i3 = ReadIndexLane(ref Unsafe.Add(ref index, 24));
             if (addressSum == LastSlotAddressSum && i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3)
                 return LastSlotHash;
 
-            ulong hash = SumSlot(addressSum, i0, i1, i2, i3);
+            ulong indexSum = SumIndexLanes(i0, i1, i2, i3);
+            ulong hash = FinalizeSum(addressSum + indexSum);
             LastSlotAddressSum = addressSum;
+            LastSlotIndexSum = indexSum;
             LastSlot0 = i0;
             LastSlot1 = i1;
             LastSlot2 = i2;
@@ -140,18 +151,31 @@ namespace Nethermind.Core.Extensions
             return hash;
         }
 
+        /// <summary>Hashes a 32-byte slot index on its own, keyed as <see cref="MixSlot"/> keys the index words.</summary>
+        /// <remarks>
+        /// A storage access probes the index-keyed maps of its contract right after the cell-keyed ones, so the index
+        /// <see cref="MixSlot"/> hashed last reuses its sum. An index alone is a different key type from a cell, so
+        /// sharing the index keys keeps each map's NH bound.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static ulong MixSlotIndex(ulong i0, ulong i1, ulong i2, ulong i3)
+        {
+            ulong indexSum = i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3
+                ? LastSlotIndexSum
+                : SumIndexLanes(i0, i1, i2, i3);
+            return FinalizeSum(indexSum);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong SumSlot(ulong addressSum, ulong i0, ulong i1, ulong i2, ulong i3)
+        private static ulong SumIndexLanes(ulong i0, ulong i1, ulong i2, ulong i3)
         {
             Debug.Assert(SlotSeeds is not null, $"{nameof(SeedHashes)} must run before hashing.");
             ulong mask = HashLaneMask;
             ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(SlotSeeds!);
-            ulong sum = addressSum
-                + MixLanes(i0, seeds, mask)
+            return MixLanes(i0, seeds, mask)
                 + MixLanes(i1, Unsafe.Add(ref seeds, 1), mask)
                 + MixLanes(i2, Unsafe.Add(ref seeds, 2), mask)
                 + MixLanes(i3, Unsafe.Add(ref seeds, 3), mask);
-            return FinalizeSum(sum);
         }
 
         // NH over three words, the last ending at the address' last byte and so overlapping the middle one: the words
@@ -192,9 +216,15 @@ namespace Nethermind.Core.Extensions
         /// The lane keys have to stay independent per position: sharing one across words would leave the
         /// sum invariant under permuting them.
         /// </remarks>
+        /// <remarks>
+        /// Airbender computes the same lanes as 32-bit values: there the masks are free and the product of two of them
+        /// one widening multiply, where the masked 64-bit form adds with carries and multiplies all four halves.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixLanes(ulong word, ulong key, ulong mask)
-            => ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
+            => AirbenderFlag.IsActive
+                ? Math.BigMul((uint)word + (uint)key, (uint)(word >> 32) + (uint)(key >> 32))
+                : ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
 
         /// <inheritdoc />
         /// <remarks>Hand-rolled from 32-bit products: ILC has no <c>mulhu</c> intrinsic on this target.</remarks>

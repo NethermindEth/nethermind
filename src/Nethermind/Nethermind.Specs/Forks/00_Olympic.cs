@@ -23,7 +23,7 @@ public class Olympic() : NamedReleaseSpec<Olympic>(null)
         spec.ValidateChainId = true;
         spec.ValidateReceipts = true;
         spec.MinHistoryRetentionEpochs = HistoryRetentionConstants.MinEpochsForBlockRequests;
-        spec.MinBalRetentionEpochs = HistoryRetentionConstants.WeakSubjectivityPeriodEpochs;
+        spec.MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs;
 
         // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
         spec.Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;

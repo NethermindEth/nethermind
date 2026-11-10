@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Authors>Nethermind</Authors>
     <Description>Generic Kademlia routing table, lookup, and active discovery primitives used by Nethermind peer discovery.</Description>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Nethermind.Kademlia</PackageId>
@@ -15,6 +16,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/NethermindEth/nethermind</RepositoryUrl>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

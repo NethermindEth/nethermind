@@ -20,13 +20,6 @@ jobs:
       matrix:
         language: ['csharp', 'actions']
     steps:
-      - name: Free up disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -34,11 +27,11 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          queries: security-and-quality
+          queries: ${{ matrix.language == 'actions' && 'security-and-quality' || 'security-extended' }}
           packs: githubsecuritylab/codeql-csharp-queries
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Build Nethermind
         working-directory: src/Nethermind

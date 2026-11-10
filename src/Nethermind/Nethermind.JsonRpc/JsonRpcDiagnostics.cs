@@ -105,7 +105,7 @@ internal sealed class JsonRpcDiagnostics
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResultSlow(in JsonRpcResult.Entry response) =>
-        _logger.Trace($"Sending JSON RPC response: {SerializeForDiagnostics(response)}");
+        _logger.Trace($"Sending JSON RPC response: {SerializeForDiagnostics(response, SensitiveLogMasking.Enabled)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceResultSlow(JsonRpcErrorResponse response) =>
@@ -117,6 +117,11 @@ internal sealed class JsonRpcDiagnostics
 
     private static string SerializeResponseForDiagnostics(JsonRpcResponse response)
     {
+        if (SensitiveLogMasking.Enabled && TryGetDiagnosticResponse(response, maskErrorDetails: true, out JsonRpcResponse? diagnosticResponse))
+        {
+            response = diagnosticResponse;
+        }
+
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptionsIndented);
         return Encoding.UTF8.GetString(writer.WrittenSpan);
@@ -129,20 +134,20 @@ internal sealed class JsonRpcDiagnostics
         return result;
     }
 
-    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response)
+    private static string SerializeForDiagnostics(in JsonRpcResult.Entry response, bool maskErrorDetails = false)
     {
-        JsonRpcResponse responseToSerialize = TryGetDiagnosticResponse(response.Response, out JsonRpcResponse? diagnosticResponse)
+        JsonRpcResponse responseToSerialize = TryGetDiagnosticResponse(response.Response, maskErrorDetails, out JsonRpcResponse? diagnosticResponse)
             ? diagnosticResponse
             : response.Response;
 
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, responseToSerialize, EthereumJsonSerializer.JsonOptionsIndented);
         using JsonDocument document = JsonDocument.Parse(writer.WrittenMemory);
-        return JsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
+        return TypeInfoJsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
     }
 
-    /// <summary>Replaces a streamed result with a placeholder, since diagnostics must not consume the stream.</summary>
-    private static bool TryGetDiagnosticResponse(JsonRpcResponse response, [NotNullWhen(true)] out JsonRpcResponse? diagnosticResponse)
+    /// <summary>Omits streamed results and optionally masks error details in diagnostic copies.</summary>
+    private static bool TryGetDiagnosticResponse(JsonRpcResponse response, bool maskErrorDetails, [NotNullWhen(true)] out JsonRpcResponse? diagnosticResponse)
     {
         diagnosticResponse = response switch
         {
@@ -151,15 +156,16 @@ internal sealed class JsonRpcDiagnostics
                 Id = response.Id,
                 Result = "# streamable response omitted #"
             },
-            JsonRpcErrorResponse { Error.Data: IStreamableResult } errorResponse => new JsonRpcErrorResponse
+            JsonRpcErrorResponse { Error: { } error } errorResponse when maskErrorDetails || error.Data is IStreamableResult => new JsonRpcErrorResponse
             {
                 Id = errorResponse.Id,
                 Error = new Error
                 {
-                    Code = errorResponse.Error.Code,
-                    Message = errorResponse.Error.Message,
-                    Data = "# streamable error data omitted #",
-                    SuppressWarning = errorResponse.Error.SuppressWarning
+                    Code = error.Code,
+                    Message = maskErrorDetails ? "[redacted]" : error.Message,
+                    Data = maskErrorDetails ? error.Data is null ? null : "[redacted]" : "# streamable error data omitted #",
+                    SuppressWarning = error.SuppressWarning,
+                    OperatorActionable = error.OperatorActionable
                 }
             },
             _ => null
@@ -168,5 +174,5 @@ internal sealed class JsonRpcDiagnostics
         return diagnosticResponse is not null;
     }
 
-    private readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
+    internal readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
 }

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Core.Test;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
 
@@ -36,11 +37,17 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.Count, Is.EqualTo(source.Count));
         foreach (KeyValuePair<int, int> kv in source)
         {
-            Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True);
-            Assert.That(value, Is.EqualTo(kv.Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True);
+                Assert.That(value, Is.EqualTo(kv.Value));
+            }
         }
-        Assert.That(dict.TryGetValue(-1, out _), Is.False);
-        Assert.That(dict.TryGetValue(10_000, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dict.TryGetValue(-1, out _), Is.False);
+            Assert.That(dict.TryGetValue(10_000, out _), Is.False);
+        }
 
         List<int> keys = dict.Select(static kv => kv.Key).ToList();
         Assert.That(keys, Is.Ordered);
@@ -68,8 +75,11 @@ public class SortedMergeDictionaryTests
 
         SortedMergeDictionary<int, int> merged = SortedMergeDictionary<int, int>.Merge([a, b], Cmp);
 
-        Assert.That(merged.Select(static kv => kv.Key), Is.EqualTo(new[] { 1, 2, 3, 4, 5, 6 }));
-        Assert.That(merged.Select(static kv => kv.Value), Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(merged.Select(static kv => kv.Key), Is.EqualTo(new[] { 1, 2, 3, 4, 5, 6 }));
+            Assert.That(merged.Select(static kv => kv.Value), Is.EqualTo(new[] { 10, 20, 30, 40, 50, 60 }));
+        }
     }
 
     [Test]
@@ -140,7 +150,7 @@ public class SortedMergeDictionaryTests
         {
             using SortedMergeDictionary<int, int> typed = new();
             typed.BuildFromMerge(sources.Select(static source => source.AsRun()).ToArray(), Cmp, default(RandomizedKeep));
-            Assert.That(typed.ToArray(), Is.EqualTo(merged.ToArray()));
+            Assert.That(typed, Is.SequenceEqualTo(merged));
         }
 
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
@@ -149,8 +159,11 @@ public class SortedMergeDictionaryTests
         Assert.That(keys, Is.Unique);
         foreach (KeyValuePair<int, int> kv in reference)
         {
-            Assert.That(merged.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
-            Assert.That(value, Is.EqualTo(kv.Value), $"wrong priority for key {kv.Key}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(merged.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
+                Assert.That(value, Is.EqualTo(kv.Value), $"wrong priority for key {kv.Key}");
+            }
         }
     }
 
@@ -188,7 +201,7 @@ public class SortedMergeDictionaryTests
             new(4, 30),
             new(5, 30),
         ];
-        Assert.That(actual.ToArray(), Is.EqualTo(expectedEntries));
+        Assert.That(actual, Is.SequenceEqualTo(expectedEntries));
     }
 
     [Test]
@@ -215,8 +228,11 @@ public class SortedMergeDictionaryTests
         for (int i = 0; i < 300; i++) first[i] = i * 10;
         dict.BuildFromUnsorted(first, Cmp);
         Assert.That(dict.Count, Is.EqualTo(300));
-        Assert.That(dict.TryGetValue(5, out int v1), Is.True);
-        Assert.That(v1, Is.EqualTo(50));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dict.TryGetValue(5, out int v1), Is.True);
+            Assert.That(v1, Is.EqualTo(50));
+        }
 
         dict.NoResizeClear();
         Assert.That(dict.Count, Is.EqualTo(0));
@@ -228,12 +244,15 @@ public class SortedMergeDictionaryTests
         dict.BuildFromMerge([a, b], Cmp);
 
         Assert.That(dict.Count, Is.EqualTo(3));
-        Assert.That(dict.TryGetValue(5, out _), Is.False);       // old data gone
-        Assert.That(dict.TryGetValue(1001, out int v2), Is.True);
-        Assert.That(v2, Is.EqualTo(2));
-        Assert.That(dict.TryGetValue(1002, out int v3), Is.True);
-        Assert.That(v3, Is.EqualTo(2));                          // newest source wins
-        Assert.That(dict.Select(static kv => kv.Key), Is.EqualTo(new[] { 1000, 1001, 1002 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dict.TryGetValue(5, out _), Is.False);       // old data gone
+            Assert.That(dict.TryGetValue(1001, out int v2), Is.True);
+            Assert.That(v2, Is.EqualTo(2));
+            Assert.That(dict.TryGetValue(1002, out int v3), Is.True);
+            Assert.That(v3, Is.EqualTo(2));                          // newest source wins
+            Assert.That(dict.Select(static kv => kv.Key), Is.EqualTo(new[] { 1000, 1001, 1002 }));
+        }
     }
 
     [Test]
@@ -257,8 +276,11 @@ public class SortedMergeDictionaryTests
             Assert.That(dict.Count, Is.EqualTo(sizes[cycle]));
             foreach (KeyValuePair<int, int> kv in source)
             {
-                Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"cycle {cycle}: missing key {kv.Key}");
-                Assert.That(value, Is.EqualTo(kv.Value));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"cycle {cycle}: missing key {kv.Key}");
+                    Assert.That(value, Is.EqualTo(kv.Value));
+                }
             }
             foreach (int stale in previousKeys)
             {
@@ -285,8 +307,11 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.Count, Is.EqualTo(3));
         foreach (KeyValuePair<int, int> kv in small)
         {
-            Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
-            Assert.That(value, Is.EqualTo(kv.Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
+                Assert.That(value, Is.EqualTo(kv.Value));
+            }
         }
         foreach (int stale in big.Keys)
         {
@@ -365,8 +390,11 @@ public class SortedMergeDictionaryTests
         Assert.That(BucketSaltField.GetValue(dict), Is.EqualTo(replacement.Count));
         foreach (KeyValuePair<int, int> kv in replacement)
         {
-            Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
-            Assert.That(value, Is.EqualTo(kv.Value), $"key {kv.Key}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
+                Assert.That(value, Is.EqualTo(kv.Value), $"key {kv.Key}");
+            }
         }
         foreach (int staleKey in initial.Keys)
         {
@@ -440,8 +468,11 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.Count, Is.EqualTo(2));
         for (int i = 1; i <= 2; i++)
         {
-            Assert.That(dict.TryGetValue(i * 3, out int value), Is.True, $"missing key {i * 3} after recovery");
-            Assert.That(value, Is.EqualTo(i));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dict.TryGetValue(i * 3, out int value), Is.True, $"missing key {i * 3} after recovery");
+                Assert.That(value, Is.EqualTo(i));
+            }
         }
     }
 
@@ -457,8 +488,11 @@ public class SortedMergeDictionaryTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(dict.TryGetValue(i * 65536, out int value), Is.True, $"missing chain entry {i}");
-            Assert.That(value, Is.EqualTo(i));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dict.TryGetValue(i * 65536, out int value), Is.True, $"missing chain entry {i}");
+                Assert.That(value, Is.EqualTo(i));
+            }
         }
         Assert.That(dict.TryGetValue(500 * 65536, out _), Is.False);
     }
@@ -515,8 +549,11 @@ public class SortedMergeDictionaryTests
 
     private static void AssertValue(SortedMergeDictionary<int, int> dict, int key, int expected)
     {
-        Assert.That(dict.TryGetValue(key, out int value), Is.True, $"missing key {key}");
-        Assert.That(value, Is.EqualTo(expected), $"key {key}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dict.TryGetValue(key, out int value), Is.True, $"missing key {key}");
+            Assert.That(value, Is.EqualTo(expected), $"key {key}");
+        }
     }
 
     private static void AssertEmptyAndReusable(SortedMergeDictionary<int, int> dict, params int[] absentKeys)

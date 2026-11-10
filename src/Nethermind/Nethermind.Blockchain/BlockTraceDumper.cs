@@ -37,7 +37,7 @@ public static class BlockTraceDumper
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 diagnosticFile.Write(rlp.Bytes);
                 if (logger.IsInfo)
-                    logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name:hide}");
             }
 
             if (toLog)
@@ -65,7 +65,7 @@ public static class BlockTraceDumper
                 TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
 
             if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
@@ -75,7 +75,7 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Geth-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Geth-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
 
             if (blockTracer is ParityLikeBlockTracer parityTracer)
@@ -85,13 +85,13 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Parity-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Parity-style trace of {logCondition} block {blockHash} in file {diagnosticFile.Name:hide}");
             }
         }
         catch (IOException e)
         {
             if (logger.IsError)
-                logger.Error($"Cannot save trace of {logCondition} block {blockHash} in file {fileName}", e);
+                logger.Error($"Cannot save trace of {logCondition} block {blockHash} in file {fileName:hide}", SensitiveLogMasking.Enabled ? null : e);
         }
     }
 

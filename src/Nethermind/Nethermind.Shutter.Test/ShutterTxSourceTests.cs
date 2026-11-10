@@ -1,0 +1,88 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
+
+namespace Nethermind.Shutter.Test;
+
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+class ShutterTxSourceTests
+{
+    [Test]
+    public void Load_transactions_does_not_deadlock_with_concurrent_cancel()
+    {
+        const int waiterCount = 1000;
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterTxSource txSource = ShutterTestsCommon.InitApi(rnd, timestamper).TxSource;
+
+        using CancellationTokenSource source = new();
+        Task[] waitTasks = Enumerable.Range(0, waiterCount)
+            .Select(_ => txSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, source.Token))
+            .ToArray();
+
+        // Registered last, so it runs first (LIFO) and holds the cancel thread until LoadTransactions has started
+        // completing waiters; the tx source's own callbacks then run while it is still disposing registrations.
+        using ManualResetEventSlim cancelStarted = new();
+        source.Token.Register(() =>
+        {
+            cancelStarted.Set();
+            SpinWait.SpinUntil(() => waitTasks[0].IsCompleted, TimeSpan.FromSeconds(10));
+        });
+        Task.Run(source.Cancel);
+        cancelStarted.Wait();
+
+        IShutterKeyValidator.ValidatedKeys keys = new() { Slot = ShutterTestsCommon.InitialSlot, Keys = new([], 0) };
+        Task load = Task.Run(() => txSource.LoadTransactions(null, Build.A.BlockHeader.TestObject, keys));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(load.Wait(TimeSpan.FromSeconds(10)), Is.True, "LoadTransactions deadlocked against the cancel callback");
+            Assert.That(waitTasks, Is.All.Matches<Task>(static t => t is { IsCompletedSuccessfully: true }));
+        }
+    }
+
+    [Test]
+    public void Cancelled_waits_do_not_keep_their_slots()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterTxSource txSource = ShutterTestsCommon.InitApi(rnd, timestamper).TxSource;
+
+        for (ulong slot = ShutterTestsCommon.InitialSlot; slot < ShutterTestsCommon.InitialSlot + 5; slot++)
+        {
+            using CancellationTokenSource source = new();
+            Task wait = txSource.WaitForTransactions(slot, source.Token);
+            source.Cancel();
+            Assert.That(wait.IsCompleted, Is.True);
+        }
+
+        IDictionary keyWaitTasks = (IDictionary)typeof(ShutterTxSource)
+            .GetField("_keyWaitTasks", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(txSource)!;
+        Assert.That(keyWaitTasks, Is.Empty);
+    }
+
+    // Register runs the callback inline for an already cancelled token, before the wait could be stored.
+    [Test]
+    public void Wait_for_transactions_with_an_already_cancelled_token_ends_cancelled()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterTxSource txSource = ShutterTestsCommon.InitApi(rnd, timestamper).TxSource;
+
+        Task wait = txSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, new CancellationToken(canceled: true));
+
+        Assert.That(() => wait.Wait(TimeSpan.FromSeconds(5)), Throws.InstanceOf<AggregateException>()
+            .With.InnerException.InstanceOf<OperationCanceledException>());
+    }
+}

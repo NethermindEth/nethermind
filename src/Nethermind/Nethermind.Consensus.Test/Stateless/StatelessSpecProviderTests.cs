@@ -4,7 +4,10 @@
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -13,6 +16,7 @@ namespace Nethermind.Consensus.Test.Stateless;
 
 public class StatelessSpecProviderTests
 {
+    private const ulong DevnetChainId = 1337;
     private static readonly ForkActivation _gnosisOsakaActivation = (GnosisSpecProvider.LondonBlockNumber, GnosisSpecProvider.OsakaTimestamp);
 
     [Test]
@@ -37,6 +41,57 @@ public class StatelessSpecProviderTests
         [Values] bool bogota) =>
         Assert.That(() => StatelessSpecProvider.Create(BlockchainIds.Mainnet, fork,
             bogota ? MainnetSpecProvider.BogotaActivation : MainnetSpecProvider.AmsterdamActivation), Throws.Nothing);
+
+    /// <remarks>The guest resolves these chains with its own switch in <c>StatelessSpecProvider.zkevm.cs</c>.</remarks>
+    [Test]
+    public void Guest_chain_switch_covers_every_built_in_provider() =>
+        Assert.That(ChainSpecBasedSpecProvider.KnownProvidersByChainId.Keys, Is.EquivalentTo(new[]
+        {
+            BlockchainIds.Mainnet, BlockchainIds.Gnosis, BlockchainIds.Chiado,
+            BlockchainIds.Sepolia, BlockchainIds.Hoodi, BlockchainIds.Morden
+        }));
+
+    /// <summary>
+    /// The London fork-block rules (doubled gas limit target, initial base fee) belong to the chain's own London block,
+    /// not to mainnet's block number on chains that are post-merge long before reaching it.
+    /// </summary>
+    [TestCase(BlockchainIds.Sepolia, ProtocolFork.Current, SepoliaSpecProvider.BPO2Timestamp)]
+    [TestCase(BlockchainIds.Hoodi, ProtocolFork.Current, HoodiSpecProvider.BPO2Timestamp)]
+    [TestCase(BlockchainIds.Chiado, ProtocolFork.Current, ChiadoSpecProvider.OsakaTimestamp)]
+    [TestCase(DevnetChainId, ProtocolFork.Amsterdam, MainnetSpecProvider.BPO2BlockTimestamp)]
+    public void Does_not_apply_london_fork_block_rules_at_mainnet_london_block(ulong chainId, ProtocolFork fork, ulong timestamp)
+    {
+        ForkActivation activation = (MainnetSpecProvider.LondonBlockNumber, timestamp);
+        IReleaseSpec spec = StatelessSpecProvider.Create(chainId, fork, activation).GetSpec(activation);
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(MainnetSpecProvider.LondonBlockNumber - 1)
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(15_000_000)
+            .WithBaseFee(7 * Unit.GWei)
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, MainnetSpecProvider.LondonBlockNumber), Is.EqualTo(parent.GasLimit));
+            Assert.That(BaseFeeCalculator.Calculate(parent, spec), Is.EqualTo(parent.BaseFeePerGas));
+        }
+    }
+
+    [Test]
+    public void Follows_the_chain_schedule([Values(BlockchainIds.Mainnet, BlockchainIds.Gnosis)] ulong chainId)
+    {
+        ForkActivation activation = GetOsakaActivation(chainId);
+        IReleaseSpec scheduled = ChainSpecBasedSpecProvider.KnownProvidersByChainId[chainId].GetSpec(activation);
+
+        Assert.That(StatelessSpecProvider.Create(chainId, ProtocolFork.Current, activation).GetSpec(activation), Is.SameAs(scheduled));
+    }
+
+    [Test]
+    public void Pins_the_fork_the_chain_schedules_under_that_name() =>
+        Assert.That(
+            StatelessSpecProvider.Create(BlockchainIds.Mainnet, ProtocolFork.Amsterdam, MainnetSpecProvider.OsakaActivation)
+                .GetSpec(MainnetSpecProvider.OsakaActivation),
+            Is.SameAs(Amsterdam.Instance));
 
     private static ForkActivation GetOsakaActivation(ulong chainId) =>
         chainId == BlockchainIds.Gnosis ? _gnosisOsakaActivation : MainnetSpecProvider.OsakaActivation;

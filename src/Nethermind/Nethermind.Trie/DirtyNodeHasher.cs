@@ -58,6 +58,12 @@ internal static class DirtyNodeHasher
         private Vector256<byte> _element0;
     }
 
+    [InlineArray(MaxPaddedClass * HashBatchSize)]
+    private struct NodesByClass
+    {
+        private TrieNode _element0;
+    }
+
     private readonly struct PendingNode(TrieNode node, in TreePath path)
     {
         public readonly TrieNode Node = node;
@@ -112,18 +118,15 @@ internal static class DirtyNodeHasher
         int count = BitOperations.PopCount(dirtyChildren);
         if (count < MinimumSubtrees) return false;
 
-        int[] childIndexes = new int[count];
-        for (int i = 0; i < count; i++)
-        {
-            childIndexes[i] = BitOperations.TrailingZeroCount(dirtyChildren);
-            dirtyChildren &= dirtyChildren - 1;
-        }
-
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (childIndexes, root, resolver, pool, maxCollectedNodes),
+            (dirtyChildren, root, resolver, pool, maxCollectedNodes),
             static (i, state) =>
             {
-                int childIndex = state.childIndexes[i];
+                // The i-th set bit of the mask.
+                uint remaining = state.dirtyChildren;
+                for (int skipped = 0; skipped < i; skipped++) remaining &= remaining - 1;
+                int childIndex = BitOperations.TrailingZeroCount(remaining);
                 state.root.TryGetDirtyChild(childIndex, out TrieNode? child);
                 TreePath childPath = TreePath.Empty;
                 childPath.AppendMut(childIndex);
@@ -151,7 +154,8 @@ internal static class DirtyNodeHasher
         int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
         Unsafe.SkipInit(out HashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-        TrieNode[] byClass = new TrieNode[MaxPaddedClass * HashBatchSize];
+        NodesByClass nodesByClass = default;
+        Span<TrieNode> byClass = nodesByClass;
         Span<int> classCount = stackalloc int[MaxPaddedClass + 1];
         classCount.Clear();
 
@@ -185,7 +189,7 @@ internal static class DirtyNodeHasher
             byClass[start + classCount[paddedClass]] = node;
             if (++classCount[paddedClass] == widestBatch)
             {
-                HashGroup(byClass.AsSpan(start, widestBatch), paddedClass, storage);
+                HashGroup(byClass.Slice(start, widestBatch), paddedClass, storage);
                 classCount[paddedClass] = 0;
             }
         }
@@ -193,13 +197,13 @@ internal static class DirtyNodeHasher
         HashRemainingGroups(byClass, classCount, storage);
     }
 
-    private static void HashRemainingGroups(TrieNode[] byClass, Span<int> classCount, Span<byte> storage)
+    private static void HashRemainingGroups(Span<TrieNode> byClass, Span<int> classCount, Span<byte> storage)
     {
         for (int paddedClass = 1; paddedClass <= MaxPaddedClass; paddedClass++)
         {
             int count = classCount[paddedClass];
             if (count == 0) continue;
-            HashGroup(byClass.AsSpan((paddedClass - 1) * HashBatchSize, count), paddedClass, storage);
+            HashGroup(byClass.Slice((paddedClass - 1) * HashBatchSize, count), paddedClass, storage);
             classCount[paddedClass] = 0;
         }
     }

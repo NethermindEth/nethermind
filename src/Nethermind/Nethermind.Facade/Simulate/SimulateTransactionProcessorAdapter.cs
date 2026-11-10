@@ -3,12 +3,14 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -24,7 +26,8 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
-    private ulong _maxTotalGasLimit = ulong.MaxValue;
+    private BlockHeader? _header;
+    private IReleaseSpec? _spec;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
@@ -41,10 +44,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 
         ulong blockGasUsed = transaction.BlockGasUsed;
         ulong blockStateGasUsed = receiptsTracer?.BlockStateGasUsed.SaturatingSub(cumulativeStateGasBefore) ?? 0;
-        // A transaction's gas limit funds both EIP-8037 dimensions, so the request-wide cap — which is what
-        // clamps that limit — depletes by their sum, while the block budgets below track one dimension each.
-        simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed.SaturatingAdd(blockStateGasUsed));
-        // Validation:false admits explicit gas above the remaining block gas, which must not wrap the clamp budget.
+        // execution-apis: the request-wide cap depletes by the call's receipt gas; the block budgets track one EIP-8037 dimension each.
+        simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(transaction.SpentGas);
         simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
         // The BAL inclusion check refreshes this from receipt totals when it runs; otherwise — non-BAL specs,
         // ForceSequentialBlockAccessList, block production, Validation:false — this running value is authoritative.
@@ -57,7 +58,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
+        _header = blockExecutionContext.Header;
+        _spec = blockExecutionContext.Spec;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -67,18 +69,53 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         simulateRequestState.BlockStateGasLeft = stateGasAvailable;
 
         // The per-dimension budgets shrink as the block is processed.
-        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+        ulong blockGasAvailable = GetBlockGasAvailable(stateGasAvailable);
+        if (!simulateRequestState.Calls[_currentTxIndex].HadGasLimitInRequest)
         {
-            // EIP-8037 inclusion requires tx.gas <= remaining state budget whatever state gas the tx uses,
-            // so a defaulted limit clamps to it even for a state-free call.
-            transaction.GasLimit = Math.Min(
-                Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
-                Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
+            transaction.GasLimit = Math.Min(blockGasAvailable, simulateRequestState.TotalGasLeft);
+        }
+        else if (simulateRequestState.Calls[_currentTxIndex].GasLimitToFitBlock is { } requestedGas
+            && !FitsBlock(transaction, requestedGas, blockGasAvailable, stateGasAvailable, out ulong remaining, out ulong required))
+        {
+            TransactionResult result = TransactionResult.ErrorType.BlockGasLimitExceeded.WithDetail(
+                $"block gas limit reached: remaining: {remaining}, required: {required}");
+            throw new InvalidTransactionException(_header!, result.ErrorDescription, result);
         }
 
         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
         {
             transaction.GasLimit = simulateRequestState.TotalGasLeft;
         }
+    }
+
+    /// <summary>The largest gas limit the block can still include.</summary>
+    /// <remarks>
+    /// EIP-8037 inclusion requires tx.gas &lt;= remaining state budget whatever state gas the tx uses, and reserves at most
+    /// TX_MAX_GAS_LIMIT of execution gas, so with validation the execution budget stops binding once it holds a full cap.
+    /// Without validation the execution gas is not capped, so the whole gas limit must fit the execution budget too.
+    /// </remarks>
+    private ulong GetBlockGasAvailable(ulong stateGasAvailable)
+    {
+        ulong executionGasAvailable = simulateRequestState.BlockGasLeft;
+        return _spec?.IsEip8037Enabled == true && simulateRequestState.Validate && executionGasAvailable >= Eip7825Constants.DefaultTxGasLimitCap
+            ? stateGasAvailable
+            : Math.Min(executionGasAvailable, stateGasAvailable);
+    }
+
+    /// <remarks>
+    /// EIP-8141: a frame transaction reserves block gas per dimension from its frames, not from its summed gas limit,
+    /// so <paramref name="remaining"/> and <paramref name="required"/> report the dimension that does not fit.
+    /// </remarks>
+    private bool FitsBlock(Transaction transaction, ulong requestedGas, ulong blockGasAvailable, ulong stateGasAvailable, out ulong remaining, out ulong required)
+    {
+        (remaining, required) = (blockGasAvailable, requestedGas);
+        if (!transaction.SupportsFrames) return required <= remaining;
+        // A malformed frame transaction is left to the processor, which reports its actual error.
+        if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)) return true;
+
+        (remaining, required) = executionReservation > simulateRequestState.BlockGasLeft
+            ? (simulateRequestState.BlockGasLeft, executionReservation)
+            : (stateGasAvailable, stateReservation);
+        return required <= remaining;
     }
 }

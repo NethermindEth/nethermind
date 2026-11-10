@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,8 +56,11 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             Signer signer = new(1, (PrivateKey?)null, LimboLogs.Instance);
             ValueHash256 hash = Keccak.Zero;
-            Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "signer with no key cannot sign");
-            Assert.That(signature, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signer.TrySign(in hash, out Signature signature), Is.False, "signer with no key cannot sign");
+                Assert.That(signature, Is.Null);
+            }
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -65,8 +69,32 @@ namespace Nethermind.Blockchain.Test.Consensus
             Signer signer = new(1, TestItem.PrivateKeyA, LimboLogs.Instance);
             Assert.That(signer.TrySign(Build.A.Transaction.TestObject), Is.True, "signer with key signs a transaction");
             ValueHash256 hash = Keccak.Zero;
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(signer.TrySign(in hash, out Signature signature), Is.True, "signer with key signs a hash");
+#pragma warning restore NUnit2045
             Assert.That(signature.Bytes.Length, Is.EqualTo(64));
+        }
+
+        [Test, MaxTime(Timeout.MaxTestTime)]
+        public void Legacy_v_at_the_largest_chain_id_round_trips()
+        {
+            Signer signer = new(EthereumEcdsaExtensions.MaxEip155ChainId, TestItem.PrivateKeyA, LimboLogs.Instance);
+            Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signer.TrySign(tx), Is.True);
+                Assert.That(tx.Signature!.ChainId, Is.EqualTo(EthereumEcdsaExtensions.MaxEip155ChainId));
+            }
+        }
+
+        [Test, MaxTime(Timeout.MaxTestTime)]
+        public void Legacy_v_throws_where_it_would_wrap()
+        {
+            Signer signer = new(ulong.MaxValue, TestItem.PrivateKeyA, LimboLogs.Instance);
+            Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).TestObject;
+
+            Assert.Throws<OverflowException>(() => signer.TrySign(tx));
         }
     }
 }

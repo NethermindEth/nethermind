@@ -92,6 +92,4 @@ public interface IJsonRpcLocalStats
     bool IsEnabled { get; }
 
     void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null);
-
-    MethodStats GetMethodStats(string methodName);
 }

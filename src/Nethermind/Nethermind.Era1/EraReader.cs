@@ -79,6 +79,11 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
+                if (err.Block.Header.Number != blockNumber)
+                {
+                    throw new EraVerificationException($"Mismatched header number {err.Block.Header.Number}. Block number {blockNumber}.");
+                }
+
                 if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
                     throw new EraVerificationException($"Mismatched block body against header: {error}. Block number {blockNumber}.");
@@ -124,6 +129,25 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
             out ValueHash256 hash);
 
         return hash;
+    }
+
+    /// <summary>
+    /// Computes the accumulator root from the block hashes and total difficulties stored in this file.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="VerifyContent"/>, this does not validate blocks or receipts.
+    /// Compare the result with <see cref="ReadAccumulator"/> to detect a stored accumulator that does not match the content.
+    /// </remarks>
+    internal async Task<ValueHash256> CalculateAccumulator(CancellationToken cancellation = default)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach (ulong blockNumber in EnumerateBlockNumber())
+        {
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+            calculator.Add(result.Block.Header.Hash!, result.Block.TotalDifficulty!.Value);
+        }
+
+        return calculator.ComputeRoot();
     }
 
     public async Task<(Block, TxReceipt[])> GetBlockByNumber(ulong number, CancellationToken cancellation = default)

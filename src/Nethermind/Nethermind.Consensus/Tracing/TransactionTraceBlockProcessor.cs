@@ -19,6 +19,8 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>RPC-only processor which omits block finalization after a completed transaction prefix.</summary>
+/// <remarks>An unpersisted replay returns no receipts, so this must not be installed where its caller reads them, such as
+/// receipt regeneration.</remarks>
 public sealed class TransactionTraceBlockProcessor(
     ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
     TransactionTraceExecutor executor, IWorldState state, IReceiptStorage receipts,
@@ -27,12 +29,15 @@ public sealed class TransactionTraceBlockProcessor(
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
         beaconRoot, blockHashes, logManager, withdrawals, requests, balManager)
 {
+    private readonly bool _reportsProcessedTransactions = executor.ReportsProcessedTransactions;
+
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (TransactionTraceBoundary.Get(blockTracer, options) is not null && !_balManager.ForceConstructGeneratedBlockAccessList)
             options |= ProcessingOptions.ForceSequentialBlockAccessList;
 
+        ReceiptsTracer.BuildsReceipts = _reportsProcessedTransactions || !TransactionTraceBoundary.IsUnpersistedReplay(options);
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 

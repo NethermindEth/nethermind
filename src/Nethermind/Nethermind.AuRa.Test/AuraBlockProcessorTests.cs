@@ -29,6 +29,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -58,7 +59,7 @@ namespace Nethermind.AuRa.Test
         {
             ITxFilter txFilter = Substitute.For<ITxFilter>();
             txFilter
-                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
                 .Returns(AcceptTxResult.Accepted);
             (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
 
@@ -71,7 +72,77 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>());
+            txFilter.Received().IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>());
+        }
+
+        [Test]
+        public void Tx_filter_checks_with_the_spec_of_the_block_being_processed()
+        {
+            TxFilterContext received = default;
+            ITxFilter txFilter = Substitute.For<ITxFilter>();
+            txFilter
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
+                .Returns(call =>
+                {
+                    received = call.ArgAt<TxFilterContext>(1);
+                    return AcceptTxResult.Accepted;
+                });
+            (BranchProcessor processor, _, IBlockTree blockTree, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
+            (BlockHeader parent, BlockHeader header) = AtGnosisLondon(stateHeaderProvider, blockTree);
+            Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
+                .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
+            _ = processor.Process(parent, new List<Block> { block }, ProcessingOptions.None, NullBlockTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received.Parent.Hash, Is.EqualTo(parent.Hash));
+                Assert.That(received.Spec, Is.SameAs(GnosisSpecProvider.Instance.GetSpec(header)));
+                Assert.That(received.Spec.IsEip1559Enabled, Is.True);
+                Assert.That(GnosisSpecProvider.Instance.GetSpec(parent).IsEip1559Enabled, Is.False);
+            }
+        }
+
+        [Test]
+        public void Tx_filter_rechecks_with_the_spec_of_the_block_after_recovering_the_sender()
+        {
+            List<TxFilterContext> received = [];
+            ITxFilter txFilter = Substitute.For<ITxFilter>();
+            txFilter
+                .IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
+                .Returns(call =>
+                {
+                    received.Add(call.ArgAt<TxFilterContext>(1));
+                    return received.Count == 1 ? AcceptTxResult.Invalid : AcceptTxResult.Accepted;
+                });
+            (BranchProcessor processor, _, IBlockTree blockTree, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
+            (BlockHeader parent, BlockHeader header) = AtGnosisLondon(stateHeaderProvider, blockTree);
+            // Signed by one key but carrying another sender, so the first check rejects it and the processor recovers
+            // the sender and checks again.
+            Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
+                .WithGasPrice(0).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            tx.SenderAddress = TestItem.AddressB;
+            Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
+            _ = processor.Process(parent, new List<Block> { block }, ProcessingOptions.None, NullBlockTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received, Has.Count.EqualTo(2));
+                Assert.That(tx.SenderAddress, Is.Not.EqualTo(TestItem.AddressB));
+                Assert.That(received[^1].Parent.Hash, Is.EqualTo(parent.Hash));
+                Assert.That(received[^1].Spec, Is.SameAs(GnosisSpecProvider.Instance.GetSpec(header)));
+            }
+        }
+
+        /// <summary>A parent the block tree knows, just before Gnosis's London fork, and the first block of the fork,
+        /// whose spec therefore differs from its parent's.</summary>
+        private static (BlockHeader Parent, BlockHeader Header) AtGnosisLondon(TestStateHeaderProvider stateHeaderProvider, IBlockTree blockTree)
+        {
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(GnosisSpecProvider.LondonBlockNumber - 1)
+                .WithStateRoot(stateHeaderProvider.Parent!.StateRoot!).WithTotalDifficulty(0).TestObject;
+            blockTree.Insert(parent);
+            stateHeaderProvider.Parent = parent;
+            return (parent, Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(parent).TestObject);
         }
 
         [Test]
@@ -163,10 +234,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Array.Empty<byte>()));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Array.Empty<byte>()));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -174,10 +245,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Bytes.FromHexString("0x321")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Bytes.FromHexString("0x123")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x321")));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
@@ -185,10 +256,10 @@ namespace Nethermind.AuRa.Test
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(stateProvider.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(Bytes.FromHexString("0x654")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressC).ToArray(), Is.EqualTo(Bytes.FromHexString("0x456")));
-                Assert.That(stateProvider.GetCode(TestItem.AddressD).ToArray(), Is.EqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.SequenceEqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.SequenceEqualTo(Bytes.FromHexString("0x654")));
             }
         }
 
@@ -237,7 +308,8 @@ namespace Nethermind.AuRa.Test
                 stateProvider,
                 blockhashProvider,
                 new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IWorldStateManager>());
 
             return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);
         }

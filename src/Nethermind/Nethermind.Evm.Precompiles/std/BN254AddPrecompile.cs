@@ -3,11 +3,14 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254AddPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(6);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Add(ReadOnlySpan<byte> input, byte[] output) => BN254.Add(output, input);
+    private static string? Add(ReadOnlySpan<byte> input, byte[] output) => BN254.Add(output, input);
 }

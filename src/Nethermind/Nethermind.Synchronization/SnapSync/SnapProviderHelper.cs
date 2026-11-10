@@ -106,7 +106,7 @@ namespace Nethermind.Synchronization.SnapSync
             // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
             // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
             // that is after the range from being persisted, which prevent double write again.
-            ValueHash256 lastPath = entries[entries.Count - 1].Path;
+            ValueHash256 lastPath = entries.Count == 0 ? limitHash : entries[entries.Count - 1].Path;
             ValueHash256 upperBound = lastPath;
             if (upperBound > limitHash)
             {
@@ -137,7 +137,10 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs) where TEntry : ISnapEntry
         {
-            if (entries.Count == 0)
+            // Without entries a proof is a proof of absence: on its own it has to rebuild the root with all of
+            // [startingHash, limitHash] cleared, which leaves nothing more to fetch in the range.
+            bool isProofOfAbsence = entries.Count == 0;
+            if (isProofOfAbsence && proofs is not { Count: > 0 })
                 return (AddRangeResult.EmptyRange, null, false);
 
             // Validate sorting order
@@ -147,10 +150,10 @@ namespace Nethermind.Synchronization.SnapSync
                     return (AddRangeResult.InvalidOrder, null, false);
             }
 
-            if (entries[0].Path < startingHash)
+            if (!isProofOfAbsence && entries[0].Path < startingHash)
                 return (AddRangeResult.InvalidOrder, null, false);
 
-            ValueHash256 lastPath = entries[entries.Count - 1].Path;
+            ValueHash256 lastPath = isProofOfAbsence ? limitHash : entries[entries.Count - 1].Path;
 
             AddRangeResult result;
             List<(TrieNode, TreePath)> sortedBoundaryList;
@@ -168,12 +171,22 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, null, false);
 
-            tree.BulkSetAndUpdateRootHash(entries);
+            try
+            {
+                tree.BulkSetAndUpdateRootHash(entries);
+            }
+            catch (TrieException e) when (e is MissingTrieNodeException or TrieNodeException)
+            {
+                // The tree holds only the proof nodes, so the bulk set loads a node only when an entry reaches a child
+                // the proof keeps as a hash, such as a leaf beside the range: the entries do not fit the proof. Patricia
+                // stores report the node they cannot load as a MissingTrieNodeException, flat ones as a TrieNodeException.
+                return (AddRangeResult.InvalidProof, null, false);
+            }
 
             if (tree.RootHash.ValueHash256 != expectedRootHash)
                 return (AddRangeResult.DifferentRootHash, null, false);
 
-            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
+            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight && !isProofOfAbsence);
         }
 
         [SkipLocalsInit]
@@ -249,12 +262,23 @@ namespace Nethermind.Synchronization.SnapSync
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0)
                         {
-                            node.SetChild(0, child);
+                            if (dict.TryGetValue(childKeccak, out TrieNode child))
+                            {
+                                node.SetChild(0, child);
 
-                            proofNodesToProcess.Push((child, childPath));
-                            sortedBoundaryList.Add((child, childPath));
+                                proofNodesToProcess.Push((child, childPath));
+                                sortedBoundaryList.Add((child, childPath));
+                            }
+                            else if (childPath.CompareTo(rightBoundaryPath.Truncate(childPath.Length)) <= 0)
+                            {
+                                // The child's keys overlap [start, end]: the path of the start or of the end runs through
+                                // this extension, or it is a root extension inside the range. Kept as a hash, the child
+                                // would stand for every key of the range under it: the entries could leave them out and
+                                // the root would still match.
+                                return (AddRangeResult.InvalidProof, null, true);
+                            }
                         }
                     }
                 }

@@ -11,7 +11,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc.Test;
+using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
@@ -41,10 +43,13 @@ public class XdcBlockForRpcTests
 
         foreach (JsonElement json in Serialize(header))
         {
-            Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo(Hex(Seal())));
-            Assert.That(json.GetProperty("validators").GetString(), Is.EqualTo(Hex(Pack(Masternodes))));
-            Assert.That(json.GetProperty("penalties").GetString(), Is.EqualTo(Hex(Pack(Penalised))));
-            Assert.That(json.TryGetProperty("nextValidators", out _), Is.False, "mainnet headers have no next-epoch list");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo(Hex(Seal())));
+                Assert.That(json.GetProperty("validators").GetString(), Is.EqualTo(Hex(Pack(Masternodes))));
+                Assert.That(json.GetProperty("penalties").GetString(), Is.EqualTo(Hex(Pack(Penalised))));
+                Assert.That(json.TryGetProperty("nextValidators", out _), Is.False, "mainnet headers have no next-epoch list");
+            }
         }
     }
 
@@ -56,10 +61,13 @@ public class XdcBlockForRpcTests
 
         foreach (JsonElement json in Serialize(builder.TestObject))
         {
-            Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo(Hex(Seal())));
-            Assert.That(Addresses(json, "validators"), Is.EqualTo(Masternodes));
-            Assert.That(Addresses(json, "nextValidators"), Is.EqualTo(NextMasternodes));
-            Assert.That(Addresses(json, "penalties"), Is.EqualTo(Penalised));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo(Hex(Seal())));
+                Assert.That(Addresses(json, "validators"), Is.EqualTo(Masternodes));
+                Assert.That(Addresses(json, "nextValidators"), Is.EqualTo(NextMasternodes));
+                Assert.That(Addresses(json, "penalties"), Is.EqualTo(Penalised));
+            }
         }
     }
 
@@ -71,9 +79,12 @@ public class XdcBlockForRpcTests
 
         foreach (JsonElement json in Serialize(mainnet))
         {
-            Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo("0x"));
-            Assert.That(json.GetProperty("validators").GetString(), Is.EqualTo("0x"));
-            Assert.That(json.GetProperty("penalties").GetString(), Is.EqualTo("0x"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json.GetProperty("validator").GetString(), Is.EqualTo("0x"));
+                Assert.That(json.GetProperty("validators").GetString(), Is.EqualTo("0x"));
+                Assert.That(json.GetProperty("penalties").GetString(), Is.EqualTo("0x"));
+            }
         }
 
         XdcSubnetBlockHeader subnet = Build.A.XdcSubnetBlockHeader().WithNextValidators(Array.Empty<byte>()).TestObject;
@@ -82,9 +93,12 @@ public class XdcBlockForRpcTests
 
         foreach (JsonElement json in Serialize(subnet))
         {
-            Assert.That(Addresses(json, "validators"), Is.Empty);
-            Assert.That(Addresses(json, "nextValidators"), Is.Empty);
-            Assert.That(Addresses(json, "penalties"), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Addresses(json, "validators"), Is.Empty);
+                Assert.That(Addresses(json, "nextValidators"), Is.Empty);
+                Assert.That(Addresses(json, "penalties"), Is.Empty);
+            }
         }
     }
 
@@ -94,8 +108,11 @@ public class XdcBlockForRpcTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
 
-        Assert.That(_factory.Create(block, false, SpecProvider()), Is.TypeOf<BlockForRpc>());
-        Assert.That(_factory.CreateHeader(header), Is.TypeOf<BlockHeaderForRpc>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_factory.Create(block, false, SpecProvider()), Is.TypeOf<BlockForRpc>());
+            Assert.That(_factory.CreateHeader(header), Is.TypeOf<BlockHeaderForRpc>());
+        }
     }
 
     /// <remarks>
@@ -135,6 +152,17 @@ public class XdcBlockForRpcTests
 
         Assert.That(factory, Is.TypeOf<XdcBlockForRpcFactory>());
         Assert.That(factory.Create(chain.BlockTree.Head!, false, chain.SpecProvider), Is.TypeOf<XdcBlockForRpc>());
+    }
+
+    [TestCase(true, "xdc-full")]
+    [TestCase(false, "xdc-hashes")]
+    public void Block_transactions_keep_their_wire_format(bool full, string fixture)
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader().WithValidator(Seal()).WithValidators(Masternodes).WithPenalties(Penalised).TestObject;
+        // Size comes from whichever block decoder other tests registered, so it is pinned to the captured value.
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(BlockForRpcWireFormatTests.AllTypes()).WithEncodedSize(0x4e6).TestObject;
+
+        JsonFixture.AssertMatches(typeof(XdcBlockForRpcTests).Assembly, fixture, BlockForRpcWireFormatTests.Serialize(_factory.Create(block, full, SpecProvider())));
     }
 
     /// <summary>The block and standalone-header models, which must agree on the XDPoS fields.</summary>

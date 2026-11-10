@@ -91,6 +91,24 @@ public class FrameTxPrefixSimulatorTests
         }
     }
 
+    // Admission reads this to defer before verifying signatures, so it must flip with the budget itself.
+    [Test]
+    public void IsHeadBudgetSpent_FollowsTheHeadBudget()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        bool spentBefore = simulator.IsHeadBudgetSpent;
+
+        // The first simulation overruns the 1 ms budget.
+        simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spentBefore, Is.False);
+            Assert.That(simulator.IsHeadBudgetSpent, Is.True);
+        }
+    }
+
     [Test]
     public void Simulate_LocalSubmission_IsExemptFromTheExhaustedHeadBudget()
     {
@@ -433,10 +451,13 @@ public class FrameTxPrefixSimulatorTests
 
         Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
         // Reading the head is the last step before contending for the env, so the env is still held here.
-        Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
-        // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
-        // fails deterministically on a zero wait is the reason check below.
-        Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
+            // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
+            // fails deterministically on a zero wait is the reason check below.
+            Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        }
 
         release.Set();
         Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);
@@ -513,13 +534,43 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
 
+    [TestCase(41ul, 42ul, TestName = "Simulate_ExecutesAtTheMempoolCurrentSlot_OnePastTheHead")]
+    [TestCase(null, null, TestName = "Simulate_HeadWithoutASlot_ExecutesWithoutOne")]
+    public void Simulate_ExecutesAtTheMempoolCurrentSlot(ulong? headSlot, ulong? expectedSlot)
+    {
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, headSlot: headSlot);
+
+        simulator.Simulate(FrameTx());
+
+        processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
+    }
+
+    [TestCase(0ul, 300_000ul)]
+    [TestCase(1ul, 100_000ul)]
+    [TestCase(100_000ul, 100_000ul)]
+    [TestCase(300_000ul, 300_000ul)]
+    [TestCase(500_000ul, 500_000ul)]
+    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheSharedFloor(ulong configured, ulong expected)
+    {
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, maxVerifyGas: configured);
+
+        simulator.Simulate(FrameTx());
+
+        processor.Received(1).Process(
+            Arg.Any<Transaction>(),
+            Arg.Is<ITxTracer>(tracer => ((IFrameTxPrefixTracer)tracer).MaxVerifyGas == expected),
+            Arg.Any<ExecutionOptions>());
+    }
+
     /// <summary>A simulator over an env that builds, so a test can choose where inside it the failure lands.</summary>
     private static FrameTxPrefixSimulator CreateOverBuiltEnv(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
         InterfaceLogger? logSink = null,
         int timeoutMs = 250,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        ulong? headSlot = null,
+        ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -532,15 +583,15 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink, timeoutMs, time);
+        return CreateSimulator(envFactory, BlockFinderAtHead(headSlot: headSlot), budgetPerHeadMs: 1000, logSink, timeoutMs, time, maxVerifyGas);
     }
 
     /// <param name="secondCallerReachedTheLock">Set when a second caller reads the head, which is the last
     /// step before it contends for the env.</param>
-    private static IBlockFinder BlockFinderAtHead(ManualResetEventSlim? secondCallerReachedTheLock = null)
+    private static IBlockFinder BlockFinderAtHead(ManualResetEventSlim? secondCallerReachedTheLock = null, ulong? headSlot = null)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        Block head = Build.A.Block.WithNumber(1).TestObject;
+        Block head = Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject;
         if (secondCallerReachedTheLock is null)
         {
             blockFinder.Head.Returns(head);
@@ -563,11 +614,12 @@ public class FrameTxPrefixSimulatorTests
         int budgetPerHeadMs,
         InterfaceLogger? logSink = null,
         int timeoutMs = 250,
-        TimeProvider? time = null) =>
+        TimeProvider? time = null,
+        ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas) =>
         new(envFactory,
             blockFinder,
             new TestSpecProvider(Eip8141Prototype.Instance),
-            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs },
+            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs, FrameTxMaxVerifyGas = maxVerifyGas },
             logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)),
             time);
 

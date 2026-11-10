@@ -12,7 +12,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBuffe
     internal const int ColumnCount = 7;
     internal const long DefaultWriteBufferFloor = 16 * MemorySizes.MiB;
 
-    private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
+    internal static long MaxWriteBufferSize(FlatDbColumns column) => column switch
     {
         FlatDbColumns.Account => 32 * MemorySizes.MiB,
         FlatDbColumns.Storage => 64 * MemorySizes.MiB,

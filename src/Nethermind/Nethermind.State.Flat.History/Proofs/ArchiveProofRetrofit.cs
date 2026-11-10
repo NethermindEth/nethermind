@@ -24,7 +24,8 @@ public sealed class ArchiveProofRetrofit(
 
     public ulong WindowGranularity => policy.Interval;
 
-    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata, deepStorageSnapshots: settings.RecentEpochs > 0);
+    public CommitmentEmitter CreateEmitter(Action<CommitmentEmitter>? release = null) =>
+        CommitmentEmitter.ForWalk(history, policy, metadata, deepStorageSnapshots: settings.RecentEpochs > 0, release);
 
     public void Prepare()
     {

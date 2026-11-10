@@ -4,8 +4,7 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet_archive",
-    "LogFileName": "mainnet_archive.log",
-    "MemoryHint": 4096000000
+    "LogFileName": "mainnet_archive.log"
   },
   "Sync": {
     "DownloadBodiesInFastSync": false,
@@ -25,6 +24,10 @@
   },
   "Pruning": {
     "Mode": "None"
+  },
+  "Db": {
+    "SharedBlockCacheSize": 2147483648,
+    "StateDbRowCacheSize": 536870912
   },
   "JsonRpc": {
     "Enabled": true,

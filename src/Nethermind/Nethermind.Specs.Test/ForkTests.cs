@@ -73,9 +73,88 @@ public class ForkTests
         }
     }
 
-    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
-    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
-    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
+    [Test]
+    public void Eip4758Prototype_enables_only_sendall_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip4758Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Eip4758Prototype.Instance.IsEip4758Enabled, Is.True);
+            Assert.That(Eip4758Prototype.Instance.IsEip7805Enabled, Is.False);
+            Assert.That(SpecNameParser.Parse("Eip4758Prototype"), Is.SameAs(Eip4758Prototype.Instance));
+            Assert.That(Bogota.Instance.IsEip4758Enabled, Is.False);
+        }
+    }
+
+    [Test]
+    public void Frame_transaction_extension_prototypes_each_add_one_eip_to_Eip8141Prototype()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8250Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(Eip8272Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(Eip7906Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+
+            Assert.That(Eip8250Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip8250Prototype.Instance.IsEip8250Enabled, Is.True);
+            Assert.That(Eip8250Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip8250Prototype.Instance.IsEip7906Enabled, Is.False);
+
+            Assert.That(Eip8272Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip8272Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip8272Prototype.Instance.IsEip8272Enabled, Is.True);
+            Assert.That(Eip8272Prototype.Instance.IsEip7906Enabled, Is.False);
+
+            Assert.That(Eip7906Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip7906Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip7906Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip7906Prototype.Instance.IsEip7906Enabled, Is.True);
+
+            Assert.That(Eip8141Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip8141Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip8141Prototype.Instance.IsEip7906Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip8250Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip8272Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip7906Enabled, Is.False);
+        }
+    }
+
+    [Test]
+    public void FramesDevnet1_enables_frame_transactions_with_all_their_extensions()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("FramesDevnet1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(FramesDevnet1.Instance));
+            Assert.That(FramesDevnet1.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip8250Enabled, Is.True);
+            Assert.That(spec.IsEip8272Enabled, Is.True);
+            Assert.That(spec.IsEip7906Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
+    [Test]
+    public void BogotaDevnet2_adds_its_eips_to_frames_devnet_1()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("BogotaDevnet2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(BogotaDevnet2.Instance));
+            Assert.That(BogotaDevnet2.Instance.Parent, Is.SameAs(FramesDevnet1.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip8250Enabled, Is.True);
+            Assert.That(spec.IsEip8272Enabled, Is.True);
+            Assert.That(spec.IsEip7906Enabled, Is.True);
+            Assert.That(spec.IsEip8253Enabled, Is.True);
+            Assert.That(spec.IsEip4758Enabled, Is.True);
+            Assert.That(spec.IsEip8298Enabled, Is.True);
+            Assert.That(spec.IsEip8151Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
     [Test]
     public void Bogota_enables_inclusion_lists_without_frame_transactions()
     {

@@ -5,14 +5,18 @@ using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -110,6 +114,8 @@ public class PersistenceManagerTests
         // AddStateId is needed for GetStatesAtBlockNumber to work
         _snapshotRepository.AddStateId(to);
 
+        // The repository owns the snapshot it holds, so the caller gets a lease of its own to dispose.
+        snapshot.AcquireLease();
         return snapshot;
     }
 
@@ -409,9 +415,12 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
-        Assert.That(toConvert, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
     }
 
     [TestCase(true, TestName = "DetermineSnapshotAction_SufficientDepthAndFinalized_ReturnsCompactedSnapshot")]
@@ -432,11 +441,17 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toConvert, Is.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(persisted));
-        Assert.That(toPersist.To, Is.EqualTo(target));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Not.Null);
+            Assert.That(toConvert, Is.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(persisted));
+            Assert.That(toPersist.To, Is.EqualTo(target));
+        }
 
         toPersist.Dispose();
     }
@@ -479,10 +494,16 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(StateId.PreGenesis));
-        Assert.That(toPersist.To, Is.EqualTo(Block0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(toPersist.To, Is.EqualTo(Block0));
+        }
 
         toPersist.Dispose();
     }
@@ -499,9 +520,12 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
-        Assert.That(toConvert, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
     }
 
     [Test]
@@ -535,8 +559,11 @@ public class PersistenceManagerTests
         // toPersist may still be populated by the normal finalized-snapshot-to-RocksDB
         // fall-through (its behaviour is unchanged), but no persisted-snapshot conversion
         // and no force-persisted-snapshot was returned.
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toConvert, Is.Null, "Conversion path must be gated when EnableLongFinality is false");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toConvert, Is.Null, "Conversion path must be gated when EnableLongFinality is false");
+        }
 
         // Sanity: with the flag off no snapshot was converted into the persisted tier.
         toPersist?.Dispose();
@@ -559,12 +586,18 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(toConvert, Is.Null);
-        // The backstop seed lands on tierTip; the BFS finds the in-memory base whose From == Block0
-        // (currentPersistedState) and returns it as toPersist.
-        Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(Block0));
-        Assert.That(toPersist.To, Is.EqualTo(tierTip));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toConvert, Is.Null);
+            // The backstop seed lands on tierTip; the BFS finds the in-memory base whose From == Block0
+            // (currentPersistedState) and returns it as toPersist.
+            Assert.That(toPersist, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(Block0));
+            Assert.That(toPersist.To, Is.EqualTo(tierTip));
+        }
 
         toPersist.Dispose();
     }
@@ -610,6 +643,169 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
+    [TestCase(0UL, 40UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 40UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedOneBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedAtFloor_Persists")]
+    public void DetermineSnapshotAction_ByteBudget_FinalizedTriggerKeepsMinReorgDepth(ulong byteBudget, ulong latestBlock, bool expectPersist)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        AssertPersistKeepsMinReorgDepth(toPersist, latestBlock, expectPersist);
+    }
+
+    private static void AssertPersistKeepsMinReorgDepth(Snapshot? toPersist, ulong latestBlock, bool expectPersist)
+    {
+        Assert.That(toPersist is not null, Is.EqualTo(expectPersist));
+        if (toPersist is not null)
+        {
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(ByteBudgetMinReorgDepth));
+            toPersist.Dispose();
+        }
+    }
+
+    private const ulong ByteBudgetMinReorgDepth = 64;
+
+    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160, IFlatPersistenceCaptureHook? captureHook = null)
+    {
+        _config.MinReorgDepth = ByteBudgetMinReorgDepth;
+        _config.EnableLongFinality = enableLongFinality;
+        _config.MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount;
+        _config.MaxInMemorySnapshotBytes = byteBudget;
+
+        _persistenceManager.Dispose();
+        _tier.Dispose();
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder =>
+        {
+            builder
+                .AddSingleton(_persistence)
+                .AddSingleton(_persistedSnapshotCompactor);
+            if (captureHook is not null) builder.AddSingleton<IFlatPersistenceCaptureHook>(captureHook);
+        });
+        _snapshotRepository = _tier.Repository;
+        _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
+        return _persistenceManager;
+    }
+
+    // The byte budget is the one persist that fires with finality stalled and the depth far below the backstop.
+    [Test]
+    public void DetermineSnapshotAction_OverByteBudget_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothing()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount: 1, hook);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        hook.Hold();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null, "a byte-budget persist would move the state the pivot image reads");
+        }
+
+        toPersist?.Dispose();
+    }
+
+    [TestCase(0, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AboveInMemoryFloor_PrefersConversion")]
+    [TestCase(1, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AtInMemoryFloor_KeepsWindowAndPersists")]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_ConversionRespectsInMemoryFloor(int maxInMemoryBaseSnapshotCount, bool expectConversion)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        Assert.That(toConvert is not null, Is.EqualTo(expectConversion));
+        AssertPersistKeepsMinReorgDepth(toPersist, 100, !expectConversion);
+        toConvert?.Compacted?.Dispose();
+        toConvert?.Base?.Dispose();
+    }
+
+    [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
+    [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
+    [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
+    [TestCase(1UL, 65UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsAfterFold")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsOneBelowBoundary")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_PersistsAtBoundary")]
+    [TestCase(1UL, 80UL, false, 79UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_KeepsFloor")]
+    [TestCase(1UL, 81UL, true, 80UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_PersistsAtFloor")]
+    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist, ulong? committedBlock = null)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        if (committedBlock is { } headBlock)
+        {
+            StateId head = CreateStateId(headBlock);
+            CreateSnapshot(tierTip, head);
+            _snapshotRepository.SetLastCommittedStateId(head);
+        }
+        string leasesBefore = expected.ToString();
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toConvert, Is.Null);
+        AssertPersistKeepsMinReorgDepth(toPersist, committedBlock ?? latestBlock, expectPersist);
+        Assert.That(expected.ToString(), Is.EqualTo(leasesBefore), "a rejected or returned candidate must not keep a lease");
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_NeverPersistsPersistedTierCandidate()
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true);
+
+        StateId persistedTierTip = CreateStateId(16);
+        PersistBase(Block0, persistedTierTip);
+        using Snapshot inMemory = CreateSnapshot(persistedTierTip, CreateStateId(32), compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        Assert.That(_snapshotRepository.TryLeaseBasePersistedSnapshot(persistedTierTip, out PersistedSnapshot? persistedTierSnapshot), Is.True);
+        string leasesBefore = persistedTierSnapshot!.ToString();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+            Assert.That(persistedTierSnapshot.ToString(), Is.EqualTo(leasesBefore), "the rejected persisted-tier candidate must be released");
+        }
+
+        persistedToPersist?.Dispose();
+        toPersist?.Dispose();
+        persistedTierSnapshot.Dispose();
+    }
+
+    [Test]
+    public void SnapshotRepository_InMemoryBytes_ReturnsToZeroAfterRemove([Values] bool compacted)
+    {
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+
+        Snapshot snapshot = CreateSnapshot(Block0, CreateStateId(1), compacted);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        _snapshotRepository.RemoveAndReleaseInMemoryKnownState(snapshot.To, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+    }
+
     [Test]
     public void DetermineSnapshotAction_FinalizedGatePassesButSeedMissing_BackstopStillForcesPersist()
     {
@@ -650,9 +846,12 @@ public class PersistenceManagerTests
         (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(90017));
 
         Assert.That(toPersist, Is.Not.Null, "Backstop must force a persist even when the finalized branch ran but found no seed");
-        Assert.That(toPersist!.From, Is.EqualTo(Block0));
-        Assert.That(toPersist.To, Is.EqualTo(tierTip));
-        Assert.That(toConvert, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(Block0));
+            Assert.That(toPersist.To, Is.EqualTo(tierTip));
+            Assert.That(toConvert, Is.Null);
+        }
         toPersist.Dispose();
     }
 
@@ -676,10 +875,16 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(toConvert, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(persisted));
-        Assert.That(toPersist.To, Is.EqualTo(boundary));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toConvert, Is.Null);
+            Assert.That(toPersist, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(persisted));
+            Assert.That(toPersist.To, Is.EqualTo(boundary));
+        }
 
         toPersist.Dispose();
     }
@@ -703,7 +908,9 @@ public class PersistenceManagerTests
         PersistenceManager.ConversionCandidate? result = InvokeTryFindSnapshotToConvert(persisted);
 
         Assert.That(result, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(result!.Compacted, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(result.Compacted!.From, Is.EqualTo(persisted));
         Assert.That(result.Compacted.To, Is.EqualTo(compactedTo));
         Assert.That(result.Base, Is.Null);
@@ -739,7 +946,7 @@ public class PersistenceManagerTests
         _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
         InvokeConvertCompactedRange(compactedForConvert!);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_snapshotRepository.HasState(outsider), Is.True, "state below `start` must survive");
             // Gathered states are converted into the persisted tier (so HasState still sees them) but
@@ -747,7 +954,7 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseA, SnapshotTier.InMemoryBase, out _), Is.False, "baseA removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
-        });
+        }
     }
 
     [Test]
@@ -805,15 +1012,20 @@ public class PersistenceManagerTests
             CreateSnapshot(Block0, setup, populate: snapshot => snapshot.Content.Accounts[TestItem.AddressB] = setupAccount);
             CreateSnapshot(setup, latest);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(compactor.DoCompactSnapshot(latest), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(latest, SnapshotTier.InMemoryCompacted, out Snapshot? compacted), Is.True);
             using (compacted)
             {
                 convertedCompacts.Add(compacted!);
                 await _persistenceManager.AddToPersistence(latest);
 
-                Assert.That(compacted!.TryGetAccount(TestItem.AddressB, out Account? account), Is.True);
-                Assert.That(account, Is.EqualTo(setupAccount), "an active reader must survive conversion");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(compacted!.TryGetAccount(TestItem.AddressB, out Account? account), Is.True);
+                    Assert.That(account, Is.EqualTo(setupAccount), "an active reader must survive conversion");
+                }
             }
         }
 
@@ -907,9 +1119,12 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
-        Assert.That(toConvert, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
     }
 
     [Test]
@@ -933,8 +1148,11 @@ public class PersistenceManagerTests
         (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(head);
 
         Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(persisted));
-        Assert.That(toPersist.To, Is.EqualTo(target2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(persisted));
+            Assert.That(toPersist.To, Is.EqualTo(target2));
+        }
 
         toPersist.Dispose();
     }
@@ -966,8 +1184,11 @@ public class PersistenceManagerTests
         (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(longHead);
 
         Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.From, Is.EqualTo(persisted));
-        Assert.That(toPersist.To, Is.EqualTo(target2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toPersist!.From, Is.EqualTo(persisted));
+            Assert.That(toPersist.To, Is.EqualTo(target2));
+        }
 
         toPersist.Dispose();
     }
@@ -982,8 +1203,11 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+        }
     }
 
     [Test]
@@ -1001,9 +1225,12 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Not.Null);
-        Assert.That(toPersist, Is.Null);
-        Assert.That(toConvert, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Not.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
 
         persistedToPersist!.Dispose();
     }
@@ -1023,8 +1250,11 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+        }
     }
 
     [Test]
@@ -1044,9 +1274,12 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
-        Assert.That(toPersist!.To.StateRoot.Bytes.ToArray(), Is.EqualTo(target2.StateRoot.Bytes.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Not.Null);
+        }
+        Assert.That(toPersist!.To.StateRoot.Bytes, Is.SequenceEqualTo(target2.StateRoot.Bytes));
 
         toPersist.Dispose();
     }
@@ -1088,8 +1321,11 @@ public class PersistenceManagerTests
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
         using Snapshot? toDispose = toPersist; // dispose if the buggy underflow path returned a snapshot
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+        }
     }
 
     [Test]
@@ -1103,8 +1339,11 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+        }
     }
 
     [Test]
@@ -1123,8 +1362,11 @@ public class PersistenceManagerTests
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
-        Assert.That(persistedToPersist, Is.Null);
-        Assert.That(toPersist, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Not.Null);
+        }
 
         toPersist!.Dispose();
     }
@@ -1158,7 +1400,8 @@ public class PersistenceManagerTests
         // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
 
         // Add accounts
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
@@ -1170,8 +1413,7 @@ public class PersistenceManagerTests
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
-        TrieNode node = new(NodeType.Leaf, Keccak.Zero);
-        snapshot.Content.StateNodes[path] = node;
+        snapshot.Content.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
 
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
@@ -1181,11 +1423,13 @@ public class PersistenceManagerTests
 
         // Assert
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
-        Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
-        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
-        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
-        Assert.That(writeBatch.SetStateTrieNodeCalls, Is.Not.Empty);
-        Assert.That(node.IsPersisted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
+            Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
+            Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
+            Assert.That(writeBatch.SetStateTrieNodeCalls, Has.Some.Matches<(TreePath Path, byte[] Rlp)>(c => c.Path == path && c.Rlp.AsSpan().SequenceEqual(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
+        }
     }
 
     [Test]
@@ -1431,6 +1675,95 @@ public class PersistenceManagerTests
         }
     }
 
+    [Test]
+    public async Task AddToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothingUntilReleased()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        await manager.AddToPersistence(latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+
+        hook.Release();
+        await manager.AddToPersistence(latest);
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+    }
+
+    [Test]
+    public async Task AddToPersistence_HeldPastTheBackstop_WaitsForTheReleaseInsteadOfForcingAPersist()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId latest = CreateStateId(95000);
+        StateId tierTip = CreateStateId(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+        _ = CreateSnapshot(Block0, tierTip, compacted: false);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        Task persist = manager.AddToPersistence(latest);
+        await hook.ReleaseAwaited.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persist.IsCompleted, Is.False, "block processing must wait while the hold keeps the flat state in place");
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+
+        hook.Release();
+        await persist.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(tierTip), "the forced persist runs once the hold is released");
+    }
+
+    [Test]
+    public void FlushToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_KeepsThePersistedState()
+    {
+        RecordingCaptureHook hook = new();
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
+
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        StateId flushed = manager.FlushToPersistence(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.EqualTo(Block0));
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+    }
+
+    // The production registration over the shared tier, with this fixture's persistence and compactor and the given hook.
+    private ILifetimeScope CreateManagerScope(IFlatPersistenceCaptureHook hook) => _tier.BeginScope(builder => builder
+        .AddSingleton<IPersistence>(_persistence)
+        .AddSingleton<IPersistedSnapshotCompactor>(_persistedSnapshotCompactor)
+        .AddSingleton<IFlatPersistenceCaptureHook>(hook)
+        .AddSingleton<IPersistenceManager, PersistenceManager>());
+
     // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
     [Test]
     public void FlushToPersistence_WhenCaptureHookThrows_DoesNotPersist()
@@ -1487,7 +1820,7 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
-        Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
+        await Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the barrier must not advance past a failed capture");
@@ -1717,7 +2050,7 @@ public class PersistenceManagerTests
 
         StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
-        Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
+        Assert.That(result.StateRoot.Bytes, Is.SequenceEqualTo(finalizedState.StateRoot.Bytes));
     }
 
     [Test]
@@ -1853,14 +2186,49 @@ public class PersistenceManagerTests
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
     {
+        private readonly TaskCompletionSource _releaseAwaited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public RecordingCaptureHook() => _released.SetResult();
+
+        /// <summary>Completes once the persistence manager takes <see cref="FlatPersistReleased"/> to wait on it.</summary>
+        public Task ReleaseAwaited => _releaseAwaited.Task;
+
         public StateId? CapturedUpTo { get; private set; }
+
+        public bool HoldsFlatPersist { get; private set; }
+
+        public Task FlatPersistReleased
+        {
+            get
+            {
+                _releaseAwaited.TrySetResult();
+                return _released.Task;
+            }
+        }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             CapturedUpTo = persistedHead;
+
+        public void Hold()
+        {
+            _released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            HoldsFlatPersist = true;
+        }
+
+        public void Release()
+        {
+            HoldsFlatPersist = false;
+            _released.TrySetResult();
+        }
     }
 
     private sealed class FlakyCaptureHook(int failures) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         private int _remainingFailures = failures;
 
         public StateId? CapturedUpTo { get; private set; }
@@ -1874,6 +2242,10 @@ public class PersistenceManagerTests
 
     private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         public StateId BarrierAtCapture { get; private set; }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>

@@ -8,6 +8,7 @@ using DotNetty.Codecs;
 using DotNetty.Common;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -46,7 +47,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             actualChannel.WriteOutbound(Unpooled.Buffer(length).WriteZero(length));
             using DisposableByteBuffer expected = expectedChannel.ReadOutbound<IByteBuffer>().AsDisposable();
             using DisposableByteBuffer actual = actualChannel.ReadOutbound<IByteBuffer>().AsDisposable();
-            Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()));
+            Assert.That(actual.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
         }
         finally
         {
@@ -56,7 +57,7 @@ public class ZeroNettyFrameEncodeDecodeTests
     }
 
     [Test]
-    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
+    public async Task Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
         IFrameCipher cipher = Substitute.For<IFrameCipher>();
@@ -72,9 +73,9 @@ public class ZeroNettyFrameEncodeDecodeTests
         context.Allocator.Returns(detector.Allocator);
         IByteBuffer input = detector.Allocator.Buffer(17).WriteZero(17);
 
-        Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
+        await Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
         Assert.That(input.ReferenceCount, Is.Zero);
-        context.DidNotReceive().WriteAsync(Arg.Any<object>());
+        await context.DidNotReceive().WriteAsync(Arg.Any<object>());
     }
 
     [Test]
@@ -117,7 +118,7 @@ public class ZeroNettyFrameEncodeDecodeTests
                 using DisposableByteBuffer actual = newChannel.ReadOutbound<IByteBuffer>().AsDisposable();
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()), $"message {i}");
+                    Assert.That(actual.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()), $"message {i}");
                     Assert.That(oldInput.ReferenceCount, Is.Zero);
                     Assert.That(newInput.ReferenceCount, Is.Zero);
                 }
@@ -162,7 +163,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             combined.Encode(input, output);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(output.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()));
+                Assert.That(output.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
                 Assert.That(dirty.AsSpan(0, 20).ToArray(), Is.All.EqualTo(0xa5));
                 Assert.That(dirty.AsSpan(dirty.Length - 19).ToArray(), Is.All.EqualTo(0xa5));
             }

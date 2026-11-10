@@ -3,9 +3,9 @@
 
 namespace Nethermind.State.Flat.History;
 
-/// <summary>A per-pass work budget, checked once per scanned row. <see cref="HistoryWindowPruner"/> uses a real
-/// wall-clock budget in production; tests inject a deterministic implementation instead of racing one, per the
-/// project's no-timing-tests rule.</summary>
+/// <summary>A per-pass work budget, shared by every column the pass sweeps and checked once per scanned row.
+/// <see cref="HistoryWindowPruner"/> uses a real wall-clock budget in production; tests inject a deterministic
+/// implementation instead of racing one, per the project's no-timing-tests rule.</summary>
 internal interface IPruneBudget
 {
     bool Exhausted { get; }

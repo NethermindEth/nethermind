@@ -5,13 +5,10 @@ using System;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -28,7 +25,7 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
+public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
     public UInt256 BaseFeePerGas { get; set => field = Bind(value, PayloadFields.BaseFeePerGas); }
 
@@ -127,7 +124,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             _unboundFields &= ~PayloadFields.Transactions;
             _encodedTransactions = value;
             _transactions = null;
-            _txRootTask = null;
+            TransactionsRoot = null;
         }
     }
 
@@ -221,14 +218,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
-        // and carries no task machinery for it.
-        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
-            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
 
@@ -253,11 +246,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = TransactionsRoot ??= TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
+        Block block = new(header, new BlockBody(transactions.Data, [], Withdrawals))
         {
             EncodedTransactions = encodedTransactions
         };
@@ -268,28 +261,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
-    private Task<Hash256>? _txRootTask;
-
-    private const int MinTxsForParallelDecoding = 32;
-
-    /// <summary>
-    /// Starts computing the transactions-trie root in the background, letting callers overlap it
-    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
-    /// </summary>
-    /// <remarks>
-    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
-    /// race the memoized task. Callers must invoke both sequentially per payload instance.
-    /// </remarks>
-    /// <returns>
-    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
-    /// </returns>
-    internal Task<Hash256>? StartTxRootComputation()
-    {
-        byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
-    }
+    internal Hash256? TransactionsRoot { get; set; }
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
@@ -347,12 +319,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         { Withdrawals: not null } => 2,
         _ => 1
     };
-
-    /// <inheritdoc/>
-    /// <remarks>Answers for the getPayloadV1 shape only. Not virtual: subclasses gate newPayload through
-    /// <see cref="ValidateForkOnNewPayload"/> instead.</remarks>
-    public bool ValidateFork(ISpecProvider specProvider) =>
-        !specProvider.GetSpec(BlockNumber, Timestamp).IsCancunEnabled;
 
     /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
     public virtual bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>

@@ -13,6 +13,14 @@ namespace Nethermind.Blockchain
         // Cap per-flush memory of the upward scan at a few MB (~50-200 B per entry).
         private const int ClearStaleMarkersFlushThreshold = 65_536;
 
+        /// <summary>
+        /// Whether a forced head update (FCU reorg) clears canonical markers left above the new head.
+        /// Overlay trees that discard their writes (eth_simulateV1) turn this off: the levels above the base
+        /// head belong to the base tree, and walking them up to <see cref="BestKnownNumber"/> costs a write
+        /// per level when the head is far behind, e.g. during snap sync.
+        /// </summary>
+        public bool ClearStaleMarkersOnForcedHeadUpdate { get; init; } = true;
+
         public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
         {
             BlockHeader? start = FindHeader(startHash, BlockTreeLookupOptions.None);

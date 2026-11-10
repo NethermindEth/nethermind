@@ -89,7 +89,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node:c} because of the {details}");
+            if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node?.ToString("c"):hide} because of the {details:hide}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -143,7 +143,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"Sending headers request to {Session.Node?.ToString("c"):hide}:");
                 Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
                 Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");
@@ -205,6 +205,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token) =>
+            GetReceipts(blockHashes, token);
+
         public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
@@ -231,20 +234,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false) => SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
-
-        private IEnumerable<Transaction> TxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx = false)
         {
+            using ArrayPoolListRef<Transaction> txsToSend = new(txs.Length);
             foreach (Transaction tx in txs)
             {
                 if (ShouldNotifyTransaction(tx, sendFullTx))
                 {
-                    yield return tx;
+                    txsToSend.Add(tx);
                 }
+            }
+
+            if (txsToSend.Count > 0)
+            {
+                SendNewTransactionsCore(txsToSend.AsSpan(), sendFullTx);
             }
         }
 
-        protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+        protected virtual void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             ArrayPoolList<Transaction> txsToSend = new(1024);
@@ -290,7 +297,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             long startTime = Stopwatch.GetTimestamp();
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Received headers request from {Session.Node:c}:");
+                Logger.Trace($"Received headers request from {Session.Node?.ToString("c"):hide}:");
                 Logger.Trace($"  MaxHeaders: {message.MaxHeaders}");
                 Logger.Trace($"  Reverse: {message.Reverse}");
                 Logger.Trace($"  Skip: {message.Skip}");
@@ -313,7 +320,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }
@@ -341,13 +348,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
         {
             using GetBlockBodiesMessage message = request;
-            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
+            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node?.ToString("c"):hide}:");
 
             long startTime = Stopwatch.GetTimestamp();
 
             Interlocked.Increment(ref Counter);
             BlockBodiesMessage resp = await FulfillBlockBodiesRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             return resp;
         }
 
@@ -400,7 +407,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using GetReceiptsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }
@@ -431,7 +438,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
                 {
                     // An empty prefix means the block alone does not fit, so this peer can never get it from us.
-                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node:c}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node?.ToString("c"):hide}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
                     break;
                 }
 

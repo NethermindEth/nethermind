@@ -1,8 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -24,7 +30,7 @@ public partial struct ExecutionWitness
         SszWitnessCodes[] codes = new SszWitnessCodes[witness.Codes.Count];
 
         for (int i = 0; i < codes.Length; i++)
-            codes[i] = new() { Bytes = witness.Codes[i] };
+            codes[i] = new() { Bytes = new WitnessCode(witness.Codes[i].AsMemory()) };
 
         SszWitnessHeader[] headers = new SszWitnessHeader[witness.Headers.Count];
 
@@ -34,7 +40,7 @@ public partial struct ExecutionWitness
         SszWitnessState[] state = new SszWitnessState[witness.State.Count];
 
         for (int i = 0; i < state.Length; i++)
-            state[i] = new() { Bytes = witness.State[i] };
+            state[i] = new() { Node = new WitnessNode(witness.State[i]) };
 
         return new()
         {
@@ -46,18 +52,6 @@ public partial struct ExecutionWitness
 
     public readonly Witness ToWitness()
     {
-        ArrayPoolList<byte[]> state = new(State.Length, State.Length);
-        Span<byte[]> stateSpan = state.AsSpan();
-
-        for (int i = 0; i < State.Length; i++)
-            stateSpan[i] = State[i].Bytes;
-
-        ArrayPoolList<byte[]> codes = new(Codes.Length, Codes.Length);
-        Span<byte[]> codesSpan = codes.AsSpan();
-
-        for (int i = 0; i < Codes.Length; i++)
-            codesSpan[i] = Codes[i].Bytes;
-
         ArrayPoolList<byte[]> headers = new(Headers.Length, Headers.Length);
         Span<byte[]> headersSpan = headers.AsSpan();
 
@@ -66,11 +60,77 @@ public partial struct ExecutionWitness
 
         return new()
         {
-            Codes = codes,
+            Codes = new CodeList(Codes),
             Headers = headers,
             Keys = ArrayPoolList<byte[]>.Empty(),
-            State = state
+            State = new StateNodeList(State)
         };
+    }
+
+    /// <summary>The decoded state nodes as the list of their bytes, read in place rather than copied into a list of their own.</summary>
+    /// <remarks>The witness of a block holds tens of thousands of state nodes, and the zkVM guest pays for every one it copies.</remarks>
+    private sealed class StateNodeList(SszWitnessState[] nodes) : IOwnedReadOnlyList<byte[]>
+    {
+        public int Count => nodes.Length;
+
+        public byte[] this[int index] => nodes[index].Node.Bytes;
+
+        /// <inheritdoc/>
+        /// <remarks><see cref="SszWitnessState"/> wraps a lone array, so an array of them is laid out as one of array references.</remarks>
+        public ReadOnlySpan<byte[]> AsSpan()
+        {
+            Debug.Assert(Unsafe.SizeOf<SszWitnessState>() == Unsafe.SizeOf<byte[]>());
+            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<SszWitnessState, byte[]>(ref MemoryMarshal.GetArrayDataReference(nodes)), nodes.Length);
+        }
+
+        public IEnumerator<byte[]> GetEnumerator()
+        {
+            foreach (SszWitnessState node in nodes)
+                yield return node.Node.Bytes;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
+    }
+
+    /// <summary>The decoded codes, read in place with their hashes as the memory they were decoded into, or as arrays
+    /// copied on request.</summary>
+    /// <remarks>The witness code store reads the memory, so the zkVM guest runs each code without copying it again, and
+    /// takes the hashes of the codes the guest hashed as it placed them.</remarks>
+    private sealed class CodeList(SszWitnessCodes[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>
+    {
+        public int Count => codes.Length;
+
+        public byte[] this[int index] => codes[index].Bytes.Code.ToArray();
+
+        (ValueHash256 Hash, ReadOnlyMemory<byte> Code) IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.this[int index] =>
+            (codes[index].Bytes.Hash, codes[index].Bytes.Code);
+
+        public ReadOnlySpan<byte[]> AsSpan()
+        {
+            byte[][] arrays = new byte[codes.Length][];
+            for (int i = 0; i < arrays.Length; i++)
+                arrays[i] = this[i];
+
+            return arrays;
+        }
+
+        public IEnumerator<byte[]> GetEnumerator()
+        {
+            foreach (SszWitnessCodes code in codes)
+                yield return code.Bytes.Code.ToArray();
+        }
+
+        IEnumerator<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> IEnumerable<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.GetEnumerator()
+        {
+            foreach (SszWitnessCodes code in codes)
+                yield return (code.Bytes.Hash, code.Bytes.Code);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
     }
 }
 
@@ -78,7 +138,104 @@ public partial struct ExecutionWitness
 public partial struct SszWitnessCodes
 {
     [SszList(0x1_0000)]
-    public byte[] Bytes { get; set; }
+    public WitnessCode Bytes { get; set; }
+}
+
+/// <summary>Contract code from the witness, held in executable code memory when decoded so the EVM runs it in place.</summary>
+public sealed partial class WitnessCode
+{
+    /// <summary>Holds <paramref name="code"/>, decoded from the input, in executable code memory, which the EVM runs it
+    /// from without another copy.</summary>
+    /// <remarks>See <c>WitnessCode.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    public WitnessCode(ReadOnlySpan<byte> code) => Code = Hold(code);
+
+    /// <summary>Wraps <paramref name="code"/> as it is.</summary>
+    internal WitnessCode(ReadOnlyMemory<byte> code) => Code = code;
+
+    public ReadOnlyMemory<byte> Code
+    {
+        get;
+        private set
+        {
+            field = value;
+            _hash = null;
+        }
+    }
+
+    public ReadOnlySpan<byte> AsSpan() => Code.Span;
+
+    private ValueHash256? _hash;
+
+    /// <summary>The Keccak-256 hash of <see cref="Code"/>.</summary>
+    /// <remarks>Set where <see cref="MoveToFront"/> places the code, which hashes it as it copies it.</remarks>
+    internal ValueHash256 Hash => _hash ??= ValueKeccak.Compute(Code.Span);
+
+    private static partial ReadOnlyMemory<byte> Hold(ReadOnlySpan<byte> code);
+
+    /// <summary>Moves the decoded <paramref name="codes"/> that still lie in the input to the front of
+    /// <paramref name="consumed"/>, the decoded input, which nothing else reads again.</summary>
+    /// <returns>The number of bytes at the front of <paramref name="consumed"/> the codes now take.</returns>
+    /// <remarks>See <c>WitnessCode.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial int PlaceInConsumedInput(SszWitnessCodes[] codes, ReadOnlySpan<byte> consumed);
+
+    /// <summary>Moves <paramref name="codes"/>, which lie in <paramref name="consumed"/>, to its front, each padded for
+    /// execution.</summary>
+    /// <returns>The number of bytes at the front of <paramref name="consumed"/> the codes now take.</returns>
+    /// <remarks>A code goes where it overwrites no code still to be moved; one that would is copied to fresh memory
+    /// instead, as are all of them unless they lie in order.</remarks>
+    internal static unsafe int MoveToFront(SszWitnessCodes[] codes, ReadOnlySpan<byte> consumed)
+    {
+        byte* start = Address(consumed);
+        byte* end = start + consumed.Length;
+
+        // In order, no code lies before the next one to move; inside the input, none is written past its end.
+        byte* previousEnd = start;
+        for (int i = 0; i < codes.Length; i++)
+        {
+            ReadOnlySpan<byte> code = codes[i].Bytes.Code.Span;
+            if (Address(code) < previousEnd)
+                return CopyAll(codes);
+
+            previousEnd = Address(code) + code.Length;
+        }
+
+        if (previousEnd > end)
+            return CopyAll(codes);
+
+        byte* free = Align(start);
+        for (int i = 0; i < codes.Length; i++)
+        {
+            WitnessCode code = codes[i].Bytes;
+            ReadOnlySpan<byte> source = code.Code.Span;
+            byte* next = i + 1 < codes.Length ? Address(codes[i + 1].Bytes.Code.Span) : end;
+            byte* placedEnd = free + source.Length + CodeInfo.ExecutionPadding;
+
+            if (placedEnd <= next)
+            {
+                code.Code = ExecutableCodeMemory.Place(new Span<byte>(free, (int)(placedEnd - free)), source, out ValueHash256 hash);
+                code._hash = hash;
+                free = Align(placedEnd);
+            }
+            else
+            {
+                code.Code = ExecutableCodeMemory.Copy(source);
+            }
+        }
+
+        return free > end ? consumed.Length : (int)(free - start);
+    }
+
+    private static int CopyAll(SszWitnessCodes[] codes)
+    {
+        foreach (SszWitnessCodes code in codes)
+            code.Bytes.Code = ExecutableCodeMemory.Copy(code.Bytes.Code.Span);
+
+        return 0;
+    }
+
+    private static unsafe byte* Address(ReadOnlySpan<byte> span) => (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(span));
+
+    private static unsafe byte* Align(byte* pointer) => (byte*)(((nuint)pointer + 7) & ~(nuint)7);
 }
 
 [SszContainer(isCollectionItself: true)]
@@ -88,9 +245,121 @@ public partial struct SszWitnessHeader
     public byte[] Bytes { get; set; }
 }
 
+/// <remarks>Must keep <see cref="Node"/> as its only field: the witness reads an array of these as one of byte arrays.</remarks>
 [SszContainer(isCollectionItself: true)]
 public partial struct SszWitnessState
 {
     [SszList(0x400)]
-    public byte[] Bytes { get; set; }
+    public WitnessNode Node { get; set; }
+}
+
+/// <summary>A state node from the witness, kept in the input when decoded where <see cref="PlaceInInput"/> lets it.</summary>
+/// <remarks>Must keep <see cref="Bytes"/> as its only field: the witness reads an array of these as one of byte arrays.</remarks>
+public readonly partial struct WitnessNode
+{
+    /// <summary>Holds <paramref name="node"/>, decoded from the input, in the input or else as a copy.</summary>
+    public WitnessNode(ReadOnlySpan<byte> node) => Bytes = Hold(node);
+
+    public WitnessNode(byte[] node) => Bytes = node;
+
+    public byte[] Bytes { get; }
+
+    public ReadOnlySpan<byte> AsSpan() => Bytes;
+
+    /// <summary>Whether a decoded node may stay in the input; see <see cref="PlaceInInput"/>.</summary>
+    private static partial bool CanPlaceInInput { get; }
+
+    /// <summary>The bytes before the data of a 64-bit array: the object header, the method table and the length, padded
+    /// to a word.</summary>
+    private const int ArrayPrefix = 3 * sizeof(ulong);
+
+    /// <summary>Where <see cref="PlaceInInput"/> lets the nodes decoded next go.</summary>
+    private static class Placement
+    {
+        /// <summary>Where the next node goes.</summary>
+        public static unsafe byte* Free;
+        /// <summary>The start of the state list, the end of the input decoded before it.</summary>
+        public static unsafe byte* StateList;
+        /// <summary>The bytes of the first node, past the offsets the decoder reads as it goes; null until it is decoded.</summary>
+        public static unsafe byte* FirstNode;
+        public static unsafe byte* InputEnd;
+        public static nint ArrayMethodTable;
+    }
+
+    /// <summary>Lets the state nodes decoded next from <paramref name="input"/> stay in it, as arrays built over the input
+    /// decoded already, until <see cref="EndPlacement"/>.</summary>
+    /// <param name="input">The input, which must outlive the run.</param>
+    /// <param name="stateList">The offset of the witness state list in <paramref name="input"/>; the input before it must
+    /// be decoded already.</param>
+    /// <remarks>Only for a runtime that never collects, as on the zkVM guests: such an array lies outside the managed
+    /// heap. SP1 charges for every word of memory a run touches, and the input is touched already, so a node kept there
+    /// is nearly free while a copy is not. A node goes below the state list while it fits there, and then over the nodes
+    /// decoded already; one that would overwrite input still to be decoded is copied.</remarks>
+    internal static unsafe void PlaceInInput(ReadOnlySpan<byte> input, int stateList)
+    {
+        byte[] any = [];
+        byte* start = Address(input);
+        Placement.Free = Align(start);
+        Placement.StateList = start + stateList;
+        Placement.FirstNode = null;
+        Placement.InputEnd = start + input.Length;
+        Placement.ArrayMethodTable = **(nint**)Unsafe.AsPointer(ref any);
+    }
+
+    /// <summary>Stops the placement <see cref="PlaceInInput"/> began.</summary>
+    /// <returns>The number of bytes at the front of <paramref name="input"/> the placed nodes take, or 0 where none
+    /// began.</returns>
+    internal static unsafe int EndPlacement(ReadOnlySpan<byte> input)
+    {
+        byte* free = Placement.Free;
+        Placement.Free = Placement.StateList = Placement.FirstNode = Placement.InputEnd = null;
+        if (free == null) return 0;
+
+        // The alignment past the last placed node can reach beyond the end of the input.
+        byte* start = Address(input);
+        return free > start + input.Length ? input.Length : (int)(free - start);
+    }
+
+    /// <summary>Copies <paramref name="node"/> as the generated decoder copies a byte list.</summary>
+    /// <remarks>Corelib's <c>ToArray</c> copy goes through a GC-transition wrapper on ZisK; see <c>Bytes.Copy</c>.</remarks>
+    private static byte[] Copy(ReadOnlySpan<byte> node)
+    {
+        byte[] copy = GC.AllocateUninitializedArray<byte>(node.Length);
+        Core.Extensions.Bytes.Copy(node, copy);
+        return copy;
+    }
+
+    private static unsafe byte[] Hold(ReadOnlySpan<byte> node)
+    {
+        if (!CanPlaceInInput)
+            return Copy(node);
+
+        byte* source = Address(node);
+        if (source < Placement.StateList || source >= Placement.InputEnd)
+            return Copy(node);
+
+        if (Placement.FirstNode == null)
+            Placement.FirstNode = source;
+
+        byte* free = Placement.Free;
+        if (free < Placement.FirstNode && free + ArrayPrefix + node.Length > Placement.StateList)
+            free = Placement.Free = Align(Placement.FirstNode);
+
+        // The array's data may overlap the node, which it moves down; its prefix may not.
+        if (free >= Placement.FirstNode && free + ArrayPrefix > source)
+            return Copy(node);
+
+        Core.Extensions.Bytes.Copy(node, new Span<byte>(free + ArrayPrefix, node.Length));
+        *(ulong*)free = 0;
+        *(nint*)(free + sizeof(ulong)) = Placement.ArrayMethodTable;
+        *(ulong*)(free + 2 * sizeof(ulong)) = (uint)node.Length;
+        Placement.Free = Align(free + ArrayPrefix + node.Length);
+
+        nint array = (nint)(free + sizeof(ulong));
+        return Unsafe.As<nint, byte[]>(ref array);
+    }
+
+    private static unsafe byte* Address(ReadOnlySpan<byte> span) => (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(span));
+
+    private static unsafe byte* Align(byte* pointer) => (byte*)(((nuint)pointer + 7) & ~(nuint)7);
 }

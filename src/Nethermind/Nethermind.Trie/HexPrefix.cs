@@ -10,8 +10,6 @@ namespace Nethermind.Trie;
 
 public static partial class HexPrefix
 {
-    private static readonly byte[][] SingleNibblePaths = CreateSingleNibblePaths();
-    private static readonly byte[][] DoubleNibblePaths = CreateDoubleNibblePaths();
     private const int TripleNibblePathCount = 4096;
 
     public static int ByteLength(byte[] path) => path.Length / 2 + 1;

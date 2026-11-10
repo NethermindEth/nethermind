@@ -15,6 +15,12 @@ public sealed class BlocksRequest : IDisposable
     public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
     public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
+
+    /// <summary>
+    /// Per block in <see cref="ReceiptsRequests"/>, its transaction count, which bounds the receipts a peer may return for it.
+    /// </summary>
+    public ArrayPoolList<int>? ExpectedReceiptCounts { get; set; }
+
     public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 
     public int? NumberOfLatestBlocksToBeIgnored { get; }
@@ -32,6 +38,7 @@ public sealed class BlocksRequest : IDisposable
         BodiesRequests.Dispose();
         BlockAccessListsRequests.Dispose();
         ReceiptsRequests.Dispose();
+        ExpectedReceiptCounts?.Dispose();
         OwnedBodies?.Dispose();
         BlockAccessLists?.Dispose();
         Receipts?.Dispose();

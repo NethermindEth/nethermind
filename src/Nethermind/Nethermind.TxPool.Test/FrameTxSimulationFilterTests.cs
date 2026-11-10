@@ -195,14 +195,17 @@ public class FrameTxSimulationFilterTests
         simulator.Received(1).Simulate(tx, Arg.Any<bool>(), local: expected, token: Arg.Any<CancellationToken>());
     }
 
-    [TestCase(TxHandlingOptions.None, true)]
-    [TestCase(TxHandlingOptions.PersistentBroadcast, false)]
-    public void Accept_WhileProcessingABlock_PreemptsOnlyGossipedSimulation(TxHandlingOptions options, bool deferred)
+    [TestCase(false, TxHandlingOptions.None, true)]
+    [TestCase(false, TxHandlingOptions.PersistentBroadcast, false)]
+    [TestCase(true, TxHandlingOptions.None, true)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false)]
+    public void Accept_WhileProcessingOrBuildingABlock_PreemptsOnlyGossipedSimulation(bool building, TxHandlingOptions options, bool deferred)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
-        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsProcessingBlock.Returns(!building);
+        headInfo.IsBuildingBlock.Returns(building);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
         simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
             .Returns(static call => call.ArgAt<Func<bool>?>(4)?.Invoke() == true
@@ -212,6 +215,24 @@ public class FrameTxSimulationFilterTests
         AcceptTxResult result = Accept(state, simulator, tx, options: options, headInfo: headInfo);
 
         Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
+    }
+
+    [Test]
+    public void Accept_WhileProcessingABlock_NeverPreemptsATxReAddedFromAReorg()
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsBuildingBlock.Returns(true);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { ReAddedFromReorg = true };
+
+        Assert.That(filter.Accept(tx, ref filteringState, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), null);
     }
 
     [TestCase(true, TxHandlingOptions.None, false, true)]
@@ -236,7 +257,7 @@ public class FrameTxSimulationFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
-            Assert.That(filteringState.FrameSimulationYielded, Is.EqualTo(expected));
+            Assert.That(filteringState.FrameValidationYielded, Is.EqualTo(expected));
         }
     }
 

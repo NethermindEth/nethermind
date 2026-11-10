@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -29,6 +30,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base
 {
@@ -56,13 +58,23 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
+        protected Task<EthereumTestResult> RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        /// <summary>Runs <paramref name="test"/> and fails with the runner's error, which names the mismatch.</summary>
+        protected async Task RunTestAndAssertPass(GeneralStateTest test)
+        {
+            EthereumTestResult result = await RunTest(test);
+            Assert.That(result.Pass, Is.True, result.Error);
+        }
+
+        protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
+                Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            }
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
@@ -84,9 +96,12 @@ namespace Ethereum.Test.Base
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
             flatDbConfig.EnableLongFinality = false;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
-            using IContainer container = new ContainerBuilder()
+            // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
+            // disposing the container synchronously makes Autofac block on them and trace a warning per test.
+            await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
+                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();
@@ -135,18 +150,22 @@ namespace Ethereum.Test.Base
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
-                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot ?? (spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null),
                 ExcessBlobGas = spec.IsEip4844Enabled ? test.CurrentExcessBlobGas ?? 0ul : null,
                 SlotNumber = test.CurrentSlotNumber ?? (test.Fork.IsEip7843Enabled ? 0ul : null),
                 BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
                 BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
+                Bloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : null,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 ReceiptsRoot = test.PostReceiptsRoot,
             };
 
             header.Hash = header.CalculateHash();
             Block block = new(header, new BlockBody(transactions, [], withdrawals));
+
+            // Zero is a placeholder rather than a keccak256 output: generated tests that pin no logs put it there.
+            StateTestLogsTracer? logsTracer = test.PostReceiptsRoot is null || test.PostReceiptsRoot == Keccak.Zero ? null : new();
 
             Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -156,7 +175,7 @@ namespace Ethereum.Test.Base
             {
                 try
                 {
-                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), logsTracer?.Wrap(txTracer) ?? txTracer);
                 }
                 catch (InvalidDataException e)
                 {
@@ -200,7 +219,7 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            List<string> differences = RunAssertions(test, stateProvider);
+            List<string> differences = RunAssertions(test, stateProvider, logsTracer);
             string? txError = txResult is { TransactionExecuted: false } failedResult
                 ? failedResult.ErrorDescription
                 : blockValidationError;
@@ -240,12 +259,18 @@ namespace Ethereum.Test.Base
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider, StateTestLogsTracer? logsTracer)
         {
             List<string> differences = [];
             if (test.PostHash != stateProvider.StateRoot)
             {
                 differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
+            }
+
+            Hash256? logsHash = logsTracer?.LogsHash;
+            if (logsHash is not null && logsHash != test.PostReceiptsRoot)
+            {
+                differences.Add($"LOGS HASH exp: {test.PostReceiptsRoot}, actual: {logsHash}");
             }
 
             foreach (string difference in differences)

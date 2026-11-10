@@ -9,6 +9,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Test;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -68,6 +72,24 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
         Rlp rlp = Rlp.Encode(header);
         Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000"));
+    }
+
+    [Test]
+    public void Zero_base_fee_is_encoded_with_the_Eip1559Header_behavior()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
+        HeaderDecoder decoder = new();
+        byte[] withoutBaseFee = decoder.Encode(header).Bytes;
+        byte[] withBaseFee = decoder.Encode(header, RlpBehaviors.Eip1559Header).Bytes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutBaseFee[..3], Is.EqualTo(Bytes.FromHexString("f901f6")));
+            Assert.That(withBaseFee, Is.EqualTo((byte[])[.. Bytes.FromHexString("f901f7"), .. withoutBaseFee[3..], Rlp.EmptyByteArrayByte]));
+            Assert.That(decoder.GetLength(header, RlpBehaviors.Eip1559Header), Is.EqualTo(withBaseFee.Length));
+            Assert.That(header.CalculateHash(RlpBehaviors.Eip1559Header), Is.EqualTo(Keccak.Compute(withBaseFee)));
+            Assert.That(DecodeHeader(new Rlp(withBaseFee)).BaseFeePerGas, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -290,6 +312,37 @@ public class HeaderDecoderTests
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
+    }
+
+    [Test]
+    public void Spec_aware_decoder_accepts_empty_rlp_string_bloom_only_when_eip7668_is_active([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        HeaderDecoder decoder = new(new TestSingleReleaseSpecProvider(spec));
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, [0x80]);
+
+        if (eip7668)
+        {
+            BlockHeader decoded = Decode(decoder);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Bloom, Is.SameAs(Bloom.ZeroLength));
+                Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(crafted));
+            }
+        }
+        else
+        {
+            // Before the fork it fails exactly as the spec-less decoder does.
+            string expected = Assert.Throws<RlpException>(() => Decode(new HeaderDecoder()))!.Message;
+            Assert.That(() => Decode(decoder), Throws.TypeOf<RlpException>().With.Message.EqualTo(expected));
+        }
+
+        BlockHeader Decode(HeaderDecoder headerDecoder)
+        {
+            RlpReader reader = new(crafted);
+            return headerDecoder.Decode(ref reader)!;
+        }
     }
 
     [Test]

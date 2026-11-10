@@ -10,6 +10,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -56,8 +57,11 @@ namespace Nethermind.TxPool.Test.Collections
             int filterCalls = 0;
             Predicate<(AddressAsKey key, Transaction first)> filter = _ => { filterCalls++; return true; };
             IDictionary<AddressAsKey, Transaction[]> empty = _sortedPool.GetProductionSnapshot(initiallyFiltered ? filter : null);
-            Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(empty));
-            Assert.That(filterCalls, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(empty));
+                Assert.That(filterCalls, Is.Zero);
+            }
 
             Transaction transaction = _transactions[1];
             InsertSnapshotTransaction(transaction);
@@ -71,13 +75,19 @@ namespace Nethermind.TxPool.Test.Collections
 
             Assert.That(_sortedPool.TryRemove(transaction.Hash!), Is.True);
             IDictionary<AddressAsKey, Transaction[]> drained = _sortedPool.GetProductionSnapshot(filter);
-            Assert.That(drained, Is.Empty);
-            Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(drained));
-            Assert.That(filterCalls, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(drained, Is.Empty);
+                Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(drained));
+                Assert.That(filterCalls, Is.EqualTo(1));
+            }
 
             InsertSnapshotTransaction(transaction);
-            Assert.That(_sortedPool.GetProductionSnapshot(filter)[transaction.SenderAddress!], Is.EqualTo(new[] { transaction }));
-            Assert.That(drained, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_sortedPool.GetProductionSnapshot(filter)[transaction.SenderAddress!], Is.EqualTo(new[] { transaction }));
+                Assert.That(drained, Is.Empty);
+            }
         }
 
         [Test]
@@ -117,10 +127,13 @@ namespace Nethermind.TxPool.Test.Collections
             IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
             Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
             InsertSnapshotTransaction(replacement);
-            Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
-            Assert.That(_sortedPool.GetProductionSnapshot(_ => false), Is.Empty);
-            Assert.That(_sortedPool.GetProductionSnapshot(_ => true)[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
-            Assert.That(before[first.SenderAddress!], Is.EqualTo(new[] { first }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
+                Assert.That(_sortedPool.GetProductionSnapshot(_ => false), Is.Empty);
+                Assert.That(_sortedPool.GetProductionSnapshot(_ => true)[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
+                Assert.That(before[first.SenderAddress!], Is.EqualTo(new[] { first }));
+            }
         }
 
         [Test]
@@ -146,8 +159,11 @@ namespace Nethermind.TxPool.Test.Collections
             if (cacheBuckets) _sortedPool.GetProductionSnapshot();
 
             Transaction[] snapshot = _sortedPool.GetSnapshot();
-            Assert.That(snapshot, Is.EqualTo(new[] { first, next, other }));
-            Assert.That(_sortedPool.GetSnapshot(), Is.SameAs(snapshot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot, Is.EqualTo(new[] { first, next, other }));
+                Assert.That(_sortedPool.GetSnapshot(), Is.SameAs(snapshot));
+            }
 
             _sortedPool.TryRemove(first.Hash!);
             Transaction[] changed = _sortedPool.GetSnapshot();
@@ -196,7 +212,7 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 Assert.That(snapshot.Count, Is.EqualTo(count));
                 Assert.That(snapshot.IsReadOnly, Is.True);
-                Assert.That(snapshot.ToArray(), Is.EqualTo(entries.Take(count)));
+                Assert.That(snapshot, Is.SequenceEqualTo(entries.Take(count)));
                 Assert.That(readOnly.Keys, Is.EqualTo(entries.Take(count).Select(entry => entry.Key)));
                 Assert.That(readOnly.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
                 Assert.That(copy.Skip(1).Take(count), Is.EqualTo(entries.Take(count)));
@@ -216,7 +232,9 @@ namespace Nethermind.TxPool.Test.Collections
             using IEnumerator<object> second = snapshot.Values.GetEnumerator();
             for (int i = 0; i < count; i++)
             {
+#pragma warning disable NUnit2045 // Snapshot lookup and enumerator advancement are sequencing prerequisites.
                 Assert.That(snapshot.TryGetValue(new(i, collisions), out object value), Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(first.MoveNext(), Is.True);
                 Assert.That(second.MoveNext(), Is.True);
                 using (Assert.EnterMultipleScope())
@@ -227,8 +245,11 @@ namespace Nethermind.TxPool.Test.Collections
                 }
             }
 
-            Assert.That(first.MoveNext(), Is.False);
-            Assert.That(second.MoveNext(), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.MoveNext(), Is.False);
+                Assert.That(second.MoveNext(), Is.False);
+            }
             Assert.That(first.MoveNext(), Is.False);
         }
 
@@ -248,8 +269,11 @@ namespace Nethermind.TxPool.Test.Collections
                     Assert.That(snapshot[entries[index].Key], Is.SameAs(entries[index].Value));
                 }
 
-                Assert.That(snapshot.ContainsKey(new(count, collisions)), Is.False);
-                Assert.That(snapshot.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snapshot.ContainsKey(new(count, collisions)), Is.False);
+                    Assert.That(snapshot.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
+                }
             });
         }
 
@@ -276,8 +300,11 @@ namespace Nethermind.TxPool.Test.Collections
                 Transaction tx = _transactions[^(i + 1)];
                 tx.Hash = tx.CalculateHash();
                 _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
-                Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null, Is.EqualTo(i > 15 ? null : tx));
+                    Assert.That(_sortedPool.Count, Is.EqualTo(Math.Min(16, i + 1)));
+                }
             }
 
             Assert.That(_sortedPool.GetSnapshot().Length, Is.EqualTo(Capacity));
@@ -286,8 +313,11 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
-                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                    Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
+                }
             }
         }
 
@@ -306,8 +336,11 @@ namespace Nethermind.TxPool.Test.Collections
             {
                 _sortedPool.TryTakeFirst(out Transaction tx);
                 UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
-                Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_sortedPool.Count, Is.EqualTo(Capacity - i - 1));
+                    Assert.That(tx.GasPrice, Is.EqualTo(gasPrice));
+                }
             }
         }
 
@@ -342,8 +375,11 @@ namespace Nethermind.TxPool.Test.Collections
             _sortedPool.TryInsert(lowPriority.Hash, lowPriority);
             _sortedPool.TryInsert(highPriority.Hash, highPriority);
 
-            Assert.That(_sortedPool.GetBest(), Is.EqualTo(highPriority));
-            Assert.That(_sortedPool.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_sortedPool.GetBest(), Is.EqualTo(highPriority));
+                Assert.That(_sortedPool.Count, Is.EqualTo(2));
+            }
         }
 
         private static IEnumerable<TestCaseData> VisitBucketCases()

@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -32,7 +35,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
-        ILogManager logManager)
+        IBlocksConfig blocksConfig,
+        BlockAccessListServingWindow balServingWindow,
+        IBlockAccessListStore balStore,
+        ILogManager logManager,
+        FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
             blockTree,
             blockValidator,
@@ -46,15 +53,50 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            balServingWindow,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
+        private readonly bool _executionUsesAccessLists = BlockAccessListRecoveryStep.ExecutionUsesAccessLists(blocksConfig);
+        private readonly BlockAccessListServingWindow _balServingWindow = balServingWindow;
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// <c>engine_newPayload</c> stores the bodies of beacon blocks at or above the beacon pivot, while beacon headers sync
+        /// fills the levels below it with headers only, so the block store is read only for levels marked as having a beacon body.
+        /// </remarks>
+        protected override Block? FindLocalBlock(BlockHeader header) =>
+            beaconPivot.BeaconPivotExists()
+            && header.Number >= beaconPivot.PivotNumber
+            && header.Hash is { } hash
+            && _blockTree.GetInfo(header.Number, hash).Info is { IsBeaconBody: true }
+                ? _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number)
+                : null;
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// A block that executes also takes its list when parallel execution or read warming uses it, as a block from
+        /// <c>engine_newPayload</c> does. Such a block executes without the list when peers do not serve it. Below the serving
+        /// window of the best known header, peers may have pruned the list, so the block does not wait for retries that fail.
+        /// </remarks>
+        protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
+            base.ShouldDownloadAccessList(header, shouldProcess)
+            || (shouldProcess && _executionUsesAccessLists && _balServingWindow.Contains(header.Number, ulong.MaxValue))
+            || finalizedBalPolicy?.CanReconstruct(header) == true;
+
+        /// <inheritdoc/>
+        /// <remarks><c>engine_newPayload</c> stores the list of a beacon body, which full sync then takes from the block store.</remarks>
+        protected override bool IsAccessListStored(BlockHeader header) =>
+            header.BlockAccessListHash is not null && balStore.Exists(header.Number, header.Hash!);
+
+        protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
+            base.ShouldDownloadReceipts(header, shouldProcess, requested)
+            || (shouldProcess && header.HasTransactions && finalizedBalPolicy?.CanReconstruct(header) == true);
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            BlockTreeSuggestOptions suggestOptions =
-                shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+            BlockTreeSuggestOptions suggestOptions = base.GetSuggestOption(shouldProcess, currentBlock);
 
             bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
             if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BeaconPivot: {beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");

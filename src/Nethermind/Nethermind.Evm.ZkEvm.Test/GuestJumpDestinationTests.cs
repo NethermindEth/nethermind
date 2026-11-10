@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -60,6 +62,9 @@ public class GuestJumpDestinationTests
         push32Run[396] = JUMPDEST;
         yield return Shape("JUMPDEST after a PUSH32 run longer than the look-back distance", push32Run);
 
+        // Once the first JUMPDEST is marked, the later ones scan from it: one inside the PUSH32's data, one past it.
+        yield return Shape("JUMPDESTs scanned from a marked one", Code(160, (40, JUMPDEST), (70, PUSH32), (100, JUMPDEST), (120, JUMPDEST)));
+
         yield return Shape("every byte a JUMPDEST", Filled(200, JUMPDEST));
         yield return Shape("every byte a PUSH32", Filled(200, PUSH32));
         yield return Shape("no byte in range", Filled(200, (byte)Instruction.STOP));
@@ -93,16 +98,66 @@ public class GuestJumpDestinationTests
         Assert.That(stack.IsJumpDestination(0), Is.False);
     }
 
+    [Test]
+    public void Call_destination_switch_updates_the_guest_bit_test()
+    {
+        byte[] code = [PUSH1, (byte)Instruction.CALLDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+
+        stack.UseCallDestinations();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stack.IsAnalyzedJumpDestination(1), Is.False, "PUSH data");
+            Assert.That(stack.IsAnalyzedJumpDestination(2), Is.True, "CALLDEST");
+        }
+    }
+
+    [TestCase(false, TestName = "Code without a CALLDEST byte keeps the incremental bitmap")]
+    [TestCase(true, TestName = "Code with a CALLDEST byte takes a complete bitmap")]
+    public void Call_destinations_keep_the_incremental_bitmap_only_without_a_calldest_byte(bool hasCallDest)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, hasCallDest ? (byte)Instruction.CALLDEST : (byte)0, JUMPDEST });
+
+        Assert.That(ReferenceEquals(codeInfo.JumpAndCallDestinationBitmap, codeInfo.IncrementalJumpBitmap), Is.EqualTo(!hasCallDest));
+    }
+
+    [Test]
+    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
+    {
+        // The PUSH32 data JUMPDEST lies too far past the real one for it to anchor a scan, so a scan resumes at the cursor.
+        const int dataJumpDest = 100;
+        byte[] code = [PUSH1, 0, JUMPDEST, .. Enumerable.Repeat((byte)Instruction.PUSH32, dataJumpDest), (byte)Instruction.CALLDEST];
+        code[dataJumpDest] = JUMPDEST;
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
+        enabled.UseCallDestinations();
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
+        Assert.That(enabled.IsJumpDestination(dataJumpDest), Is.False, "PUSH data");
+#pragma warning restore NUnit2045
+        Assert.That(enabled.AnalyzeJumpDestination(dataJumpDest, ref code[0]), Is.False, "PUSH data, jump handler");
+
+        EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
+        Assert.That(disabled.IsKnownJumpDestination(2), Is.False, "the misses left the plain bitmap unanalyzed");
+#pragma warning restore NUnit2045
+        Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
+    }
+
     /// <remarks>
     /// The scan classifies a byte by comparing it <em>signed</em> against <c>[JUMPDEST, PUSH32]</c>, which
     /// is only equivalent across the whole byte range - which this walks. The trailing JUMPDESTs are enough that
     /// even a PUSH32 immediate stays inside the code, so the bytes an opcode masks are visible rather
     /// than truncated. The look-back classifies each of the 32 bytes before a destination against its own
     /// distance, so the byte also sits far enough in that the JUMPDESTs after it see it at every distance
-    /// from a fresh cursor, where the look-back rather than the scan decides.
+    /// from a fresh cursor, where the look-back rather than the scan decides, and at every offset in its aligned
+    /// word, which meets each row of the look-back's biases.
     /// </remarks>
     [Test]
-    public void Scan_matches_the_reference_for_every_opcode_value([Range(0, 255)] int op, [Values(1, 40)] int position)
+    public void Scan_matches_the_reference_for_every_opcode_value([Range(0, 255)] int op, [Values(1, 40, 41, 42, 43, 44, 45, 46, 47)] int position)
     {
         byte[] code = Filled(position + 40, JUMPDEST);
         code[position] = (byte)op;
@@ -113,6 +168,15 @@ public class GuestJumpDestinationTests
     [Test]
     public void Scan_matches_the_reference_over_random_bytecode([Range(1, 300)] int length, [Values] bool pushDense)
         => AssertMatchesReference(RandomCode(length, pushDense));
+
+    [Test]
+    public void Highest_set_bit_ignores_the_bits_below_it([Range(0, 63)] int bit)
+    {
+        ulong highest = 1UL << bit;
+        ulong below = (ulong)new Random(bit).NextInt64() & (highest - 1);
+
+        Assert.That(JumpDestinationAnalyzer.HighestSetBit(highest | below), Is.EqualTo((nint)bit));
+    }
 
     private static TestCaseData Shape(string name, byte[] code) => new TestCaseData(code).SetName($"{{m}}({name})");
 
@@ -200,7 +264,9 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, code, codeInfo);
 
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
         Assert.That(stack.IsKnownJumpDestination(3), Is.False, "not scanned yet");
+#pragma warning restore NUnit2045
         Assert.That(stack.IsJumpDestination(3), Is.True);
 
         using (Assert.EnterMultipleScope())
@@ -227,6 +293,55 @@ public class GuestJumpDestinationTests
         AssertQueriesMatch(code, expected, "backward", backward);
         AssertQueriesMatch(code, expected, "shuffled", Shuffled(code.Length));
         AssertQueriesMatch(code, expected, "forward then backward", [.. forward, .. backward]);
+        if (code[0] != (byte)Instruction.STOP)
+        {
+            AssertJumpHandlerQueriesMatch(code, expected, backward);
+            AssertJumpHandlerQueriesMatch(code, expected, Shuffled(code.Length));
+            AssertFullyAnalyzedQueriesMatch(code, expected, Shuffled(code.Length));
+        }
+    }
+
+    /// <summary>Queries <paramref name="order"/> the way the guest jump handlers do, analyzing only what the bit test misses.</summary>
+    private static void AssertJumpHandlerQueriesMatch(byte[] code, long[] expected, int[] order)
+    {
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+        foreach (int i in order)
+        {
+            bool isJumpDestination = stack.IsKnownJumpDestination(i) ||
+                stack.TryMarkJumpDestination(i, ref code[0]) ||
+                stack.AnalyzeJumpDestination(i, ref code[0]);
+            Assert.That(isJumpDestination, Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"jump handler {i}");
+        }
+    }
+
+    /// <summary>
+    /// Queries <paramref name="order"/> through every jump path on a code info whose bitmap is complete before the first
+    /// query, the state ZisK's JUMPDEST bitmap precompile leaves.
+    /// </summary>
+    /// <remarks>The state is set by reflection, as only the ZisK guest can run the precompile.</remarks>
+    private static void AssertFullyAnalyzedQueriesMatch(byte[] code, long[] expected, int[] order)
+    {
+        CodeInfo codeInfo = new(code);
+        const BindingFlags fields = BindingFlags.NonPublic | BindingFlags.Instance;
+        typeof(CodeInfo).GetField("_incrementalJumpBitmap", fields)!.SetValue(codeInfo, expected.Clone());
+        typeof(CodeInfo).GetField("_analyzedUntil", fields)!.SetValue(codeInfo, (nint)code.Length);
+        long[] bitmap = codeInfo.IncrementalJumpBitmap;
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+        foreach (int i in order)
+        {
+            bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
+            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i, ref code[0]);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
+            Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
+#pragma warning restore NUnit2045
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
+            Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
+        }
+
+        Assert.That(bitmap, Is.EqualTo(expected), "bitmap after the queries");
     }
 
     /// <summary>Queries <paramref name="order"/> on one fresh code info, each query leaving its bitmap and cursor to the next.</summary>
@@ -243,7 +358,9 @@ public class GuestJumpDestinationTests
         foreach (int i in order)
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {orderName} {i}");
+#pragma warning restore NUnit2045
             Assert.That(incremental.AnalyzeJump(i, incrementalBitmap, code), Is.EqualTo(isJumpDestination), $"{orderName} {i}");
         }
     }

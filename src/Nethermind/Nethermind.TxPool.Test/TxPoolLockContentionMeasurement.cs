@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Events;
@@ -313,6 +314,7 @@ public class TxPoolLockContentionMeasurement
             new SpecChangeTxValidator(_specProvider.ChainId),
             LimboLogs.Instance,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(config),
             ShouldGossip.Instance,
             incomingTxFilters: null,
             thereIsPriorityContract: false,

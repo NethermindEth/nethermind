@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// One process-wide thread that applies committed storage writes to early storage trees while the block executes.
 /// It runs under SCHED_IDLE on Linux, never blocks the block thread, and is skipped by blocks processed back to back.
 /// </summary>
-internal sealed class IdleStorageApplier
+internal sealed partial class IdleStorageApplier
 {
     private const int SchedIdle = 5;
     private const int YieldsBeforeSleeping = 64;
@@ -140,6 +140,6 @@ internal sealed class IdleStorageApplier
         public int SchedPriority;
     }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int sched_setscheduler(int pid, int policy, ref SchedParam param);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int sched_setscheduler(int pid, int policy, ref SchedParam param);
 }

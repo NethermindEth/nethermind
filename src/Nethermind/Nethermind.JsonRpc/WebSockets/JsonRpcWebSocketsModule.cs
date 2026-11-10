@@ -15,7 +15,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
+public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
     IJsonRpcService jsonRpcService,
     IJsonRpcLocalStats jsonRpcLocalStats,
     ILogManager logManager,
@@ -23,11 +23,12 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
     IJsonRpcUrlCollection jsonRpcUrlCollection,
     IRpcAuthentication rpcAuthentication,
     long? maxBatchResponseBodySize,
-    int processingConcurrency) : IWebSocketsModule
+    int processingConcurrency,
+    long? maxRequestBodySize = null) : IWebSocketsModule
 {
     private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
-    private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+    private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
     private readonly IJsonRpcService _jsonRpcService = jsonRpcService;
     private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
     private readonly ILogManager _logManager = logManager;
@@ -35,6 +36,7 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
     private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
     private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
     private readonly long? _maxBatchResponseBodySize = maxBatchResponseBodySize;
+    private readonly long? _maxRequestBodySize = maxRequestBodySize;
     private readonly int _processingConcurrency = processingConcurrency;
 
     public string Name { get; } = "json-rpc";
@@ -62,7 +64,10 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            _processingConcurrency);
+            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency),
+            jsonRpcUrl.MaxRequestBodySize ?? _maxRequestBodySize,
+            context.Connection.RemoteIpAddress,
+            context.Request.Headers["X-Forwarded-For"]);
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 

@@ -58,17 +58,12 @@ public sealed class OptimismBaseFeeCalculator(
         return baseFeeCalculator.Calculate(parent, spec);
     }
 
+    // The parent is the shared cached header, read concurrently by RPC, validation and block production,
+    // so the override is applied to a copy rather than written into it.
     private UInt256 CalculateWithGasUsedOverride(BlockHeader parent, IEip1559Spec spec, ulong gasOverride)
     {
-        ulong prevGasUsed = parent.GasUsed;
-        try
-        {
-            parent.GasUsed = gasOverride;
-            return baseFeeCalculator.Calculate(parent, spec);
-        }
-        finally
-        {
-            parent.GasUsed = prevGasUsed;
-        }
+        BlockHeader overridden = parent.Clone();
+        overridden.GasUsed = gasOverride;
+        return baseFeeCalculator.Calculate(overridden, spec);
     }
 }

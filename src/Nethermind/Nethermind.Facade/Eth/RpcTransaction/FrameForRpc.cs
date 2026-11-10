@@ -14,7 +14,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 public class FrameForRpc
 {
     /// <summary>The frame's kind, one of the <see cref="FrameMode"/> values: <c>0</c> default,
-    /// <c>1</c> verify, <c>2</c> sender, <c>3</c> post-tx.</summary>
+    /// <c>1</c> verify, <c>2</c> sender, <c>3</c> assert.</summary>
     /// <remarks>It fixes both the caller the frame runs as and where the frame may appear in the transaction.
     /// Kept as the raw byte the RLP field carries, and written as a quantity.</remarks>
     [JsonConverter(typeof(ByteConverter))]
@@ -32,11 +32,13 @@ public class FrameForRpc
     public Address? Target { get; set; }
 
     /// <summary>EIP-8141 <c>limits.execution</c>: the frame's execution-gas budget, in gas.</summary>
-    public ulong ExecutionGas { get; set; }
+    /// <remarks>Omit in eth_fillTransaction or eth_estimateGas to estimate this budget. An explicit zero is preserved.</remarks>
+    public ulong? ExecutionGas { get; set; }
 
     /// <summary>EIP-8141 <c>limits.state</c>: the frame's EIP-8037 state-gas budget, in gas.</summary>
-    /// <remarks>The payer reserves the two budgets summed; neither is spendable as the other.</remarks>
-    public ulong StateGas { get; set; }
+    /// <remarks>The payer reserves the two budgets summed; neither is spendable as the other.
+    /// Omit in eth_fillTransaction or eth_estimateGas to estimate this budget. An explicit zero is preserved.</remarks>
+    public ulong? StateGas { get; set; }
 
     /// <summary>Wei the frame moves from its caller to <see cref="Target"/>.</summary>
     public UInt256 Value { get; set; }
@@ -61,7 +63,7 @@ public class FrameForRpc
     /// <summary>Widens the request's raw <c>mode</c>/<c>flags</c> into the domain type.</summary>
     /// <remarks>Unchecked, as the RLP decoder is: a value outside the defined set is rejected by
     /// <see cref="FrameTxValidation.IsWellFormed"/> rather than here.</remarks>
-    public TxFrame ToFrame() => new((FrameMode)Mode, (FrameFlags)Flags, Target, ExecutionGas, StateGas, Value, Data);
+    public TxFrame ToFrame() => new((FrameMode)Mode, (FrameFlags)Flags, Target, ExecutionGas ?? 0, StateGas ?? 0, Value, Data);
 
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames)
     {

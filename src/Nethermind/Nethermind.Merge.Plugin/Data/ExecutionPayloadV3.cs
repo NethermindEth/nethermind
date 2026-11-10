@@ -50,7 +50,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxsBorrowingBuffers(InclusionListTransactions, skipErrors: true).Transactions : null;
         return baseResult;
     }
 

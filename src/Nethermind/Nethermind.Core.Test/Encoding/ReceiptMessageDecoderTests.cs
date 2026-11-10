@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -42,6 +43,25 @@ public class ReceiptMessageDecoderTests
         byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
         Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
+    }
+
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Decode_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(() => DecodeReceipt(encoded), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_accepts_valid_post_state_length([Values(0, 32)] int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(DecodeReceipt(encoded).PostTransactionState, Is.EqualTo(length == 0 ? null : Keccak.Zero));
     }
 
     internal static TxReceipt DecodeReceipt(byte[] bytes)
@@ -88,6 +108,26 @@ public class ReceiptMessageDecoderTests
         else
         {
             Assert.That(Decode(decoder, encoded).Logs, Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Decode_TypedReceiptWrapperLengthMustMatchItsContent([Values(-1, 0, 1)] int lengthDelta)
+    {
+        TxReceipt receipt = new() { TxType = TxType.EIP1559, StatusCode = 1, GasUsedTotal = 21_000, Bloom = new Bloom(), Logs = [] };
+        ReceiptMessageDecoder decoder = new();
+        // A trailing byte keeps an over-declared wrapper inside the buffer, so only the wrapper check can reject it.
+        byte[] encoded = [.. decoder.EncodeNew(receipt, RlpBehaviors.Eip658Receipts), 0x00];
+        (int wrapperPrefixLength, _) = new RlpReader(encoded).PeekPrefixAndContentLength();
+        encoded[wrapperPrefixLength - 1] = (byte)(encoded[wrapperPrefixLength - 1] + lengthDelta);
+
+        if (lengthDelta == 0)
+        {
+            Assert.That(Decode(decoder, encoded).TxType, Is.EqualTo(TxType.EIP1559));
+        }
+        else
+        {
+            Assert.That(() => Decode(decoder, encoded), Throws.TypeOf<RlpException>());
         }
     }
 

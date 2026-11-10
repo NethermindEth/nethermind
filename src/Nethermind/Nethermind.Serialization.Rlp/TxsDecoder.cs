@@ -18,7 +18,7 @@ public static partial class TxsDecoder
     /// fails the whole call.
     /// </param>
     /// <remarks>Copies calldata and delayed-hash bytes so decoded transactions do not borrow the input.
-    /// Long lists decode in parallel and fall back to the serial pass on any failure, so the
+    /// Long lists decode in parallel. A failure the parallel pass does not skip falls back to the serial pass, so the
     /// reported error is always the one a single-threaded decode would have produced.</remarks>
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: false);
 

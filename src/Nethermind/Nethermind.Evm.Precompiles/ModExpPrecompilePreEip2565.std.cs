@@ -11,11 +11,11 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ModExpPrecompilePreEip2565
 {
+    public static Address Address { get; } = Address.FromNumber(5);
+
     /// <inheritdoc/>
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.ModExpPrecompile++;
-
         ReadOnlySpan<byte> span = inputData.Span;
         int baseLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger());
         int expLength = SafeCast(span.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger());

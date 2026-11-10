@@ -314,8 +314,18 @@ namespace Nethermind.Synchronization.Test
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0].ToArray(), Is.EqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "data[0]");
             Assert.That(data[1].IsEmpty, Is.True, "data[1]");
+        }
+
+        [Test]
+        public void Node_values_response_stops_after_the_byte_limit([Values] bool code)
+        {
+            IDbProvider dbProvider = _container.Resolve<IDbProvider>();
+            (code ? dbProvider.CodeDb : dbProvider.StateDb).Set(TestItem.KeccakA, new byte[Synchronization.SyncServer.NodeDataSoftResponseByteLimit / 2 + 1]);
+            using IByteArrayList data = SyncServer.GetNodeData([TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA], CancellationToken.None);
+
+            Assert.That(data.Count, Is.EqualTo(2));
         }
 
         [Test]
@@ -325,9 +335,12 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
-            Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
-            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
+                Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
+                Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
+            }
         }
     }
 }

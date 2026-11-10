@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -15,7 +14,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Core;
 
 [JsonConverter(typeof(BloomConverter))]
-public class Bloom : IEquatable<Bloom>
+public partial class Bloom : IEquatable<Bloom>
 {
     public static readonly Bloom Empty = new();
     public const int BitLength = 2048;
@@ -48,14 +47,25 @@ public class Bloom : IEquatable<Bloom>
         Add(logEntries, blockBloom);
     }
 
-    public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(Bytes);
+    public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(_bloomData.AsSpan());
+
+    private static Bloom CreateZeroLength()
+    {
+        Bloom bloom = new();
+        bloom._bloomData.AsSpan().Fill(byte.MaxValue);
+        return bloom;
+    }
 
     [JsonIgnore]
-    public Span<byte> Bytes => _bloomData.AsSpan();
+    public Span<byte> Bytes => IsZeroLength ? default : _bloomData.AsSpan();
     [JsonIgnore]
-    public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
+    public ReadOnlySpan<byte> ReadOnlyBytes => IsZeroLength ? default : _bloomData.AsReadOnlySpan();
+    /// <summary>Whether this is the zero-length <see cref="ZeroLength"/> bloom.</summary>
+    [JsonIgnore]
+    public bool IsZeroLength => ReferenceEquals(this, ZeroLength);
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
+    [SkipLocalsInit]
     public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
     {
         if (ReferenceEquals(this, Empty))
@@ -63,18 +73,14 @@ public class Bloom : IEquatable<Bloom>
             ThrowInvalidUpdate();
         }
 
-        BloomExtract indexes = GetExtract(sequence);
+        KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
+        ReadOnlySpan<byte> hash = keccak.Bytes;
+        (int b1, byte m1) = ByteMask(hash[0], hash[1]);
+        (int b2, byte m2) = ByteMask(hash[2], hash[3]);
+        (int b3, byte m3) = ByteMask(hash[4], hash[5]);
 
-        // Compute word/masks once.
-        (int w1, ulong m1) = WordMask(indexes.Index1);
-        (int w2, ulong m2) = WordMask(indexes.Index2);
-        (int w3, ulong m3) = WordMask(indexes.Index3);
-
-        // Write to this bloom using 64-bit words.
-        SetWordMasks(w1, m1, w2, m2, w3, m3);
-
-        // Write to master bloom using bit indexes.
-        masterBloom?.SetWordMasks(w1, m1, w2, m2, w3, m3);
+        SetByteMasks(b1, m1, b2, m2, b3, m3);
+        masterBloom?.SetByteMasks(b1, m1, b2, m2, b3, m3);
     }
 
     public bool Matches(ReadOnlySpan<byte> sequence) => Matches(GetExtract(sequence));
@@ -98,7 +104,9 @@ public class Bloom : IEquatable<Bloom>
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
 
-        return Nethermind.Core.Extensions.Bytes.AreEqual(ReadOnlyBytes, other.ReadOnlyBytes);
+        // Raw data keeps the getters' EIP-7668 check off this path; ZeroLength's storage could equal a full bloom's.
+        return Nethermind.Core.Extensions.Bytes.AreEqual(_bloomData.AsReadOnlySpan(), other._bloomData.AsReadOnlySpan())
+               && !IsZeroLength && !other.IsZeroLength;
     }
 
     public override bool Equals(object? obj)
@@ -145,12 +153,13 @@ public class Bloom : IEquatable<Bloom>
 
     public void Accumulate(Bloom? bloom)
     {
-        if (bloom is null)
+        if (bloom is null || ReferenceEquals(bloom, Empty))
         {
             return;
         }
 
-        Bytes.Or(bloom.Bytes);
+        Debug.Assert(!bloom.IsZeroLength || IsZeroLength, "EIP-7668: Bloom.ZeroLength must not be accumulated into a real bloom.");
+        _bloomData.AsSpan().Or(bloom._bloomData.AsReadOnlySpan());
     }
 
     public bool Matches(LogEntry logEntry)
@@ -187,12 +196,23 @@ public class Bloom : IEquatable<Bloom>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void SetWordMasks(int w1, ulong m1, int w2, ulong m2, int w3, ulong m3)
+    private void SetByteMasks(int b1, byte m1, int b2, byte m2, int b3, byte m3)
     {
-        Span<ulong> words = ULongs; // 256 / 8 = 32 ulongs
-        words[w1] |= m1;
-        words[w2] |= m2;
-        words[w3] |= m3;
+        Span<byte> bytes = _bloomData.AsSpan();
+        bytes[b1] |= m1;
+        bytes[b2] |= m2;
+        bytes[b3] |= m3;
+    }
+
+    /// <remarks>
+    /// The low 11 bits of the big-endian pair select a bit counted from the end of the bloom; byte-wise access
+    /// avoids 64-bit shifts, which 32-bit targets emulate.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (int byteIndex, byte mask) ByteMask(byte high, byte low)
+    {
+        int bit = (high & 7) << 8 | low;
+        return (ByteLength - 1 - (bit >> 3), (byte)(1 << (bit & 7)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -221,10 +241,8 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
     {
-        ref byte k = ref MemoryMarshal.GetReference(KeccakCache.Compute(sequence).BytesAsSpan);
-        ulong u = Unsafe.ReadUnaligned<ulong>(ref k);
-        u = BinaryPrimitives.ReverseEndianness(u);
-        return new BloomExtract(u);
+        KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
+        return new BloomExtract(ReadIndexBits(ref Unsafe.As<ValueHash256, byte>(ref keccak)));
     }
 
     public readonly struct BloomExtract(ulong indexes)
@@ -240,6 +258,8 @@ public class Bloom : IEquatable<Bloom>
 
     public Bloom Clone()
     {
+        if (IsZeroLength) return this;
+
         Bloom clone = new();
         ReadOnlyBytes.CopyTo(clone.Bytes);
         return clone;

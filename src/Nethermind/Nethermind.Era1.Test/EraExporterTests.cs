@@ -7,6 +7,8 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
@@ -52,7 +54,69 @@ public class EraExporterTests
 
                     ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
                     Assert.That(secondWord.EndsWith(".era1".AsSpan()));
+                    string fileName = secondWord.ToString();
+                    Assert.That(File.Exists(Path.Combine(tmpDirectory, fileName)), $"{fileName} does not exist");
                 }
+            }
+        }
+    }
+
+    [TestCase(0UL, 31UL, 32UL, 63UL, false, false)]
+    [TestCase(32UL, 63UL, 0UL, 31UL, false, false)]
+    [TestCase(0UL, 47UL, 16UL, 63UL, false, false)]
+    [TestCase(0UL, 31UL, 32UL, 63UL, true, false)]
+    [TestCase(32UL, 63UL, 16UL, 31UL, false, true)]
+    [TestCase(16UL, 47UL, 48UL, 63UL, false, true)]
+    public async Task Export_IntoDirectoryWithEarlierExport_WritesManifestsOfWholeDirectory(
+        ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile, bool hashOnly)
+    {
+        const ulong eraSize = 16;
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, firstFrom, firstTo);
+
+        // Rewrite the earlier manifests as older exports wrote them, naming each epoch's placeholder file, or as hash-only
+        // (geth-style) lines matched by position, and give the epochs the second export rewrites stale hashes that must be
+        // replaced, not kept.
+        foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+        {
+            string path = Path.Combine(directory, manifest);
+            string[] lines = await File.ReadAllLinesAsync(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string[] columns = lines[i].Split(' ');
+                ulong epoch = ulong.Parse(columns[1].Split('-')[1]);
+                string hash = epoch >= secondFrom / eraSize && epoch <= secondTo / eraSize ? $"0x{new string('0', 64)}" : columns[0];
+                lines[i] = hashOnly ? hash : $"{hash} {EraPathUtils.Filename(EraTestModule.TestNetwork, epoch, Keccak.Zero)}";
+            }
+            await File.WriteAllLinesAsync(path, lines);
+        }
+
+        ulong from = Math.Min(firstFrom, secondFrom);
+        if (removeFirstEraFile)
+        {
+            File.Delete(Directory.GetFiles(directory, "*.era1").Order().First());
+            from += eraSize;
+        }
+
+        await sut.Export(directory, secondFrom, secondTo);
+
+        using TempPath reference = TempPath.GetTempDirectory();
+        await sut.Export(reference.Path, from, Math.Max(firstTo, secondTo));
+        using IEraStore eraStore = container.Resolve<IEraStoreFactory>().Create(directory, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+            {
+                Assert.That(await File.ReadAllLinesAsync(Path.Combine(directory, manifest)),
+                    Is.EqualTo(await File.ReadAllLinesAsync(Path.Combine(reference.Path, manifest))), manifest);
+            }
+
+            for (ulong block = from; block < 64; block += eraSize)
+            {
+                Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
             }
         }
     }
@@ -69,7 +133,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0UL, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => { _ = sut.Export(tmpDirectory, 0UL, to); }, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

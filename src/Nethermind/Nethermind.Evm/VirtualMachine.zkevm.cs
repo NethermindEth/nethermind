@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -16,18 +17,96 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // Keeping this call boundary reduces guest execution cost.
     private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
 
+    /// <remarks>
+    /// Calls the body directly: a generic virtual call resolves through reflection metadata, which a guest built
+    /// without reflection data does not have. An override of <see cref="ExecuteTransaction{TTracingInst}"/> is therefore
+    /// not reached here.
+    /// </remarks>
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);
+
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static readonly OpcodeTable _opcodeTable = new();
+    private static OpcodeTable? _opcodeTable;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable ??= new();
 
     /// <inheritdoc/>
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
     private partial bool ShouldRefreshOpcodes() => false;
 
+    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
+    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
+    internal void PrepareFrameHandlersForTests()
+    {
+        PrepareOpcodes<OffFlag>();
+        _executionHandlers = new ExecutionHandlers(Spec);
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
+        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
+            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
+    internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] guest = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[handlers.Length];
+        if (SpecFlags.Eip8038(spec))
+            SetCallHandlers<OnFlag, Eip8038On>(guest);
+        else
+            SetCallHandlers<OffFlag, Eip8038Off>(guest);
+
+        foreach (Instruction opcode in (ReadOnlySpan<Instruction>)[Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL])
+        {
+            if ((nint)handlers[(int)opcode] != (nint)guest[(int)opcode]) return false;
+        }
+
+        return true;
+    }
+
     public object? ReturnData;
+
+    /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
+    /// <remarks>
+    /// The guest has no GC, so a copy per output would grow the heap with the gas spent on outputs rather than with the
+    /// largest one. Memory gas keeps every output far below this; it only keeps the power-of-two growth in range.
+    /// </remarks>
+    private const int MaxRetainedReturnDataLength = 1 << 30;
+
+    /// <inheritdoc/>
+    /// <remarks>A reverted output, or code above the EIP-170 limit, is never deposited, so it can share the nested-output scratch.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => isRevert || (Spec.LimitCodeSize && length > Spec.MaxCodeSize);
+
+    /// <summary>
+    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// </summary>
+    /// <remarks>
+    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
+    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
+    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
+    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// </remarks>
+    private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+            return true;
+
+        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
+    }
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
@@ -36,6 +115,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// Mirrors the loop's frame-finished handling for the (non-create) case.
     /// </summary>
     /// <remarks>Omits the action-end/revert tracing the mainline return does; the guest never action-traces.</remarks>
+    [SkipLocalsInit]
     internal EvmExceptionType InlinePrecompileCall<TTracingInst>(
         ExecutionEnvironment callEnv,
         TGasPolicy childGas,
@@ -129,4 +209,61 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         child.Dispose();
         return push;
     }
+
+    /// <summary>The deepest frame <see cref="TryRunStagedFrameNested"/> runs; a deeper one goes through the frame loop.</summary>
+    /// <remarks>Each nested frame holds a few native frames of its caller, so the depth bounds the native stack.</remarks>
+    private const int MaxNestedCallDepth = 16;
+
+    /// <summary>
+    /// Runs the frame a CALL or CREATE staged to completion inside its caller's dispatch chain, then resumes the caller
+    /// as <see cref="ExecuteCall{TTracingInst}"/> would: the result pushed and the output copied.
+    /// </summary>
+    /// <param name="stack">The caller's stack, its head current.</param>
+    /// <param name="resumeResult">What resuming the caller came to; anything but <c>None</c> halts it.</param>
+    /// <returns>Whether the child ran here; if not, the caller's chain leaves with the child staged, as without nesting.</returns>
+    /// <remarks>
+    /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
+    /// caller's stack and enter its chain again. Only an untraced run nests: tracers observe the loop's order of events.
+    /// </remarks>
+    internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
+    {
+        VmState<TGasPolicy> child = Unsafe.As<VmState<TGasPolicy>>(ReturnData!);
+        if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth)
+        {
+            resumeResult = EvmExceptionType.Suspend;
+            return false;
+        }
+
+        ReturnData = null;
+        _stateStack.Push(_currentState);
+        _currentState = child;
+        _previousCallResult = default;
+        nuint previousCallOutputLength = 0;
+        RunFrames<OffFlag>(_stateStack.Count, ref previousCallOutputLength, out _);
+
+        // As RunByteCode starts the caller again: nothing staged yet.
+        ReturnData = null;
+        _returnDataScratch.ResetStaged();
+
+        resumeResult = EvmExceptionType.None;
+        if (_previousCallResult.Success.HasValue)
+        {
+            resumeResult = _previousCallResult.CreatedAddress is { } createdAddress
+                ? stack.PushAddress<OffFlag>(createdAddress)
+                : stack.PushUInt32<OffFlag, OnFlag>(_previousCallResult.Success.GetValueOrDefault() ? 1u : 0u);
+            if (resumeResult != EvmExceptionType.None)
+                return true;
+        }
+
+        // CALL already expanded this range; returned output is clipped to the requested length.
+        if (previousCallOutputLength > 0)
+            _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
+
+        return true;
+    }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SelectInitializeFrameCore(spec);
 }

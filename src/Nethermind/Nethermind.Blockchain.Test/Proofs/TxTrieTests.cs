@@ -11,6 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
@@ -298,7 +299,7 @@ public class TxTrieTests(bool useEip2718)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(TxTrie.CalculateRoot(values)));
-            Assert.That(buffer.AsSpan(1, encoded.Length).ToArray(), Is.EqualTo(encoded));
+            Assert.That(buffer.AsSpan(1, encoded.Length), Is.SequenceEqualTo(encoded));
             Assert.That(buffer[0], Is.EqualTo(0xff));
             Assert.That(buffer[^1], Is.EqualTo(0xff));
         }
@@ -548,8 +549,11 @@ public class TxTrieCodecTests
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
+                Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
+            }
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();
             writer.StartSequence(1);

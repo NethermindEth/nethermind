@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -22,6 +23,8 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private readonly HistoryScopeGate _scopeGate;
     private readonly StorageClearsScopeCache _clearsCache = new();
     private readonly long _scopeToken;
+    // Must remain mutable: readonly would run scope transitions and disposal on defensive copies.
+    private HistoryReader.ReadScopeState _readScope;
 
     // Non-null only below the general floor, where per-address slices are all that remains.
     private readonly ScopeFloor[]? _sliceScopes;
@@ -43,6 +46,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
                     $"Historical state for block {block.BlockNumber} is unavailable" +
                     (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (below the flat history retention floor)." : ".")));
             }
+            _readScope = historyReader.CreateReadScopeState();
         }
         catch
         {
@@ -58,9 +62,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account)
-                ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
-                : null;
+            return _historyReader.GetAccount(_block.BlockNumber, address, _readScope.GetScope());
         }
         catch (StateUnavailableException e)
         {
@@ -73,7 +75,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache, _readScope.GetScope())) return false;
             outValue = value;
             return true;
         }
@@ -101,13 +103,19 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
-    public void Dispose() => _scopeGate.ExitScope(_scopeToken);
+    public void Dispose()
+    {
+        _readScope.Dispose();
+        _scopeGate.ExitScope(_scopeToken);
+    }
 
     public bool IsPreimageMode => false;
 
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw Unsupported();
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw Unsupported();
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw Unsupported();
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw Unsupported();
 

@@ -21,10 +21,6 @@ public static partial class IReleaseSpecExtensions
 
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
         public bool AddCoinbaseToTxAccessList => spec.IsEip3651Enabled;
-        public bool ModExpEnabled => spec.IsEip198Enabled;
-        public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
-        public bool BlakeEnabled => spec.IsEip152Enabled;
-        public bool Bls12381Enabled => spec.IsEip2537Enabled;
 
         public bool UseExpDDosProtection => spec.IsEip160Enabled;
         public bool UseLargeStateDDosProtection => spec.IsEip1884Enabled;
@@ -47,10 +43,23 @@ public static partial class IReleaseSpecExtensions
         public bool SelfdestructOnlyOnSameTransaction => spec.IsEip6780Enabled;
         public bool RemoveSelfdestructBurn => spec.IsEip8246Enabled;
         public bool IsBeaconBlockRootAvailable => spec.IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => spec.IsEip7709Enabled;
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
+
+        /// <summary>Whether a transaction of <paramref name="type"/> is valid under this spec; types without a fork flag, such as
+        /// chain-specific ones, are left to their own validation.</summary>
+        public bool IsTxTypeEnabled(TxType type) => type switch
+        {
+            TxType.AccessList => spec.IsEip2930Enabled,
+            TxType.EIP1559 => spec.IsEip1559Enabled,
+            TxType.Blob => spec.IsEip4844Enabled,
+            TxType.SetCode => spec.IsEip7702Enabled,
+            // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+            TxType.FrameTx => spec.IsEip8141Enabled,
+            _ => true,
+        };
+
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 

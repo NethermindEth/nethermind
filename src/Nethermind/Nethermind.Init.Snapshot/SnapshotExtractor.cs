@@ -29,7 +29,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         Task.Factory.StartNew(() =>
         {
             if (_logger.IsInfo)
-                _logger.Info($"Extracting streamed snapshot to {destinationPath}. Do not interrupt!");
+                _logger.Info($"Extracting streamed snapshot to {destinationPath:hide}. Do not interrupt!");
 
             Stream decompressedStream = OpenDecompressedStream(archiveStream, extension, leaveOpen: true);
             try
@@ -48,7 +48,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Extracting snapshot to {destinationPath}. Do not interrupt!");
+            _logger.Info($"Extracting snapshot to {destinationPath:hide}. Do not interrupt!");
 
         string extension = Path.GetExtension(archivePath).ToLowerInvariant();
         string innerExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(archivePath)).ToLowerInvariant();
@@ -58,7 +58,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         else if (SnapshotArchiveFormat.IsTarBased(extension, innerExtension))
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
-            throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
+            throw new NotSupportedException($"Unsupported snapshot archive format: {(SensitiveLogMasking.Enabled ? "[redacted]" : archivePath)}");
 
         EnsureNotEmpty(destinationPath);
     }
@@ -91,7 +91,8 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
         using TarReader tarReader = new(decompressedStream, leaveOpen: true);
 
-        string destinationRoot = destinationPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        // Entry paths are compared as full paths, so the root must be one too or a relative destination rejects every entry.
+        string destinationRoot = Path.GetFullPath(destinationPath).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
         TarEntry? entry;
         while ((entry = tarReader.GetNextEntry()) is not null)
@@ -105,7 +106,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             if (strippedPath is null)
                 continue;
 
-            string destinationEntryPath = Path.GetFullPath(Path.Combine(destinationPath, strippedPath));
+            string destinationEntryPath = Path.GetFullPath(Path.Combine(destinationRoot, strippedPath));
 
             if (!destinationEntryPath.StartsWith(destinationRoot, StringComparison.Ordinal))
                 throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");

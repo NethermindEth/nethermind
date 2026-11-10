@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Security;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -49,9 +51,20 @@ namespace Nethermind.Wallet.Test
             filePath ??= NodeKeyManager.UnsecuredNodeKeyFilePath;
             filePath = filePath.GetApplicationResourcePath(test.KeyStoreConfig.KeyStoreDirectory);
             test.FileSystem.File.ReadAllBytes(filePath).Returns(TestItem.PrivateKeyA.KeyBytes);
+            MemoryStream written = new();
+            FileStreamOptions options = null;
+            test.FileSystem.FileStream.New(filePath, Arg.Do<FileStreamOptions>(o => options = o)).Returns(new TestFileSystemStream(written, filePath));
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
-            Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
-            test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
+                Assert.That(written.ToArray(), Is.EqualTo(nodeKey.KeyBytes));
+                Assert.That(options.Mode, Is.EqualTo(FileMode.Create));
+            }
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.That(options.UnixCreateMode, Is.EqualTo(UnixFileMode.UserRead | UnixFileMode.UserWrite));
+            }
         }
 
         [Test]
@@ -65,7 +78,7 @@ namespace Nethermind.Wallet.Test
             test.FileSystem.File.Exists(filePath).Returns(true);
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
             Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
-            test.FileSystem.File.DidNotReceive().WriteAllBytes(filePath, nodeKey.KeyBytes);
+            test.FileSystem.FileStream.DidNotReceive().New(filePath, Arg.Any<FileStreamOptions>());
         }
 
         [Test]
@@ -87,6 +100,19 @@ namespace Nethermind.Wallet.Test
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             Assert.That(test.NodeKeyManager.LoadSignerKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+        }
+
+        [Test]
+        public void LoadSignerKey_throws_when_BlockAuthorAccount_key_cannot_be_loaded([Values] bool keyStoreThrows)
+        {
+            NodeKeyManagerTest test = CreateTest();
+            test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyB.ToString();
+            test.KeyStoreConfig.BlockAuthorAccount = TestItem.AddressA.ToString();
+            test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(_ => keyStoreThrows
+                ? throw new InvalidOperationException("key store unavailable")
+                : ((ProtectedPrivateKey)null, Result.Fail("not found")));
+            Assert.That(() => test.NodeKeyManager.LoadSignerKey(), Throws.TypeOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
         }
 
         private NodeKeyManagerTest CreateTest()
@@ -118,5 +144,6 @@ namespace Nethermind.Wallet.Test
             public IFileSystem FileSystem { get; set; }
         }
 
+        private sealed class TestFileSystemStream(Stream stream, string path) : FileSystemStream(stream, path, false);
     }
 }

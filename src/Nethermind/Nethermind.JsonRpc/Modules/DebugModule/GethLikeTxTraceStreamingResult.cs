@@ -23,6 +23,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeTxTrace> traces)
     : IStreamableResult, IReadOnlyCollection<GethLikeTxTrace>, IDisposable
 {
+    internal bool IncludeErrorResult { get; init; }
+
     public int Count => traces.Count;
     public IEnumerator<GethLikeTxTrace> GetEnumerator() => traces.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -34,7 +36,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, StreamingResultBase.WriterOptions);
 
         jsonWriter.WriteStartArray();
         jsonWriter.Flush();
@@ -43,12 +45,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         {
             foreach (GethLikeTxTrace trace in traces)
             {
-                jsonWriter.WriteStartObject();
-                jsonWriter.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WritePropertyName("txHash"u8);
-                JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WriteEndObject();
+                GethLikeTxTraceCollectionConverter.WriteEntry(jsonWriter, trace, EthereumJsonSerializer.JsonOptions, IncludeErrorResult);
                 jsonWriter.Flush();
 
                 FlushResult flushResult = await writer.FlushAsync(cancellationToken);
@@ -71,6 +68,6 @@ public class GethLikeTxTraceStreamingResultConverter : JsonConverter<GethLikeTxT
     public override void Write(Utf8JsonWriter writer, GethLikeTxTraceStreamingResult? value, JsonSerializerOptions options)
     {
         if (value is null) { writer.WriteNullValue(); return; }
-        JsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
+        TypeInfoJsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value) { IncludeErrorResult = value.IncludeErrorResult }, options);
     }
 }

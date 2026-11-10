@@ -2,7 +2,7 @@
 
 using System.Net;
 using System;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Network;
 
 namespace Nethermind.HealthChecks

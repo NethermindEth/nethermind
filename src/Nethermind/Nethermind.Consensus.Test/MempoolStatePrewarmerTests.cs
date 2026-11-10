@@ -17,7 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -66,9 +66,12 @@ public class MempoolStatePrewarmerTests
 
         Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
-        Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
-        Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
-        Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
+            Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
+            Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
+        }
     }
 
     [Test]
@@ -113,8 +116,11 @@ public class MempoolStatePrewarmerTests
         Assert.That(MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch), Is.Empty);
 
         Transaction[] extended = BuildSenderTxs(TestItem.PrivateKeyB, count + 1);
-        Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
-        Assert.That(scratch, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
+            Assert.That(scratch, Is.Empty);
+        }
     }
 
     [Test]
@@ -197,6 +203,31 @@ public class MempoolStatePrewarmerTests
             Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
             Assert.That(deltaHeader.GasBeneficiary, Is.EqualTo(parentHeader.GasBeneficiary), "Beneficiary resolves to the parent's actual coinbase (Author), not a diverging governance vote target");
             txSource.Received(1).GetTransactions(parentHeader, deltaHeader, deltaHeader.GasLimit);
+        }
+    }
+
+    /// <summary>
+    /// A run on the predicted header is taken over only where its blob gas is the block's: the block's is set by its
+    /// parent, so the prediction must be too, or no run would be taken after Cancun.
+    /// </summary>
+    [Test]
+    public async Task PreWarmFromMempool_PredictsTheExcessBlobGasTheParentSets()
+    {
+        BlockHeader parentHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithHash(TestItem.KeccakB)
+            .WithExcessBlobGas(Cancun.Instance.TargetBlobCount * Eip4844Constants.GasPerBlob * 2)
+            .WithBlobGasUsed(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob)
+            .WithBaseFee(7).TestObject;
+        DeltaCapturingPreWarmer preWarmer = new();
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, parentHeader, out IBlockTree blockTree, out _, out _, Cancun.Instance);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(parentHeader)));
+
+        BlockHeader deltaHeader = await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        ulong? expected = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Cancun.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Is.Not.Null.And.Not.Zero, "precondition: the parent sets a non-zero excess");
+            Assert.That(deltaHeader.ExcessBlobGas, Is.EqualTo(expected));
         }
     }
 
@@ -361,7 +392,7 @@ public class MempoolStatePrewarmerTests
 
     /// <summary>A prewarmer whose clock reads the head's timestamp, so the head is fresh enough to warm from.</summary>
     private static MempoolStatePrewarmer CreatePrewarmer(IBlockCachePreWarmer preWarmer, BlockHeader head, out IBlockTree blockTree,
-        out ITxSource txSource, out IBlockProcessingQueue processingQueue)
+        out ITxSource txSource, out IBlockProcessingQueue processingQueue, IReleaseSpec spec = null)
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
@@ -373,7 +404,7 @@ public class MempoolStatePrewarmerTests
         IBlockProcessingQueue queue = processingQueue = Substitute.For<IBlockProcessingQueue>();
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? London.Instance);
 
         DateTime headTime = DateTimeOffset.FromUnixTimeSeconds((long)head.Timestamp).UtcDateTime;
         ITimestamper timestamper = Substitute.For<ITimestamper>();
@@ -409,7 +440,7 @@ public class MempoolStatePrewarmerTests
         public CancellationToken DeltaToken { get; init; }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
@@ -439,7 +470,7 @@ public class MempoolStatePrewarmerTests
         }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)

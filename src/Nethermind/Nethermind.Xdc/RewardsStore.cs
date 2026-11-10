@@ -75,7 +75,7 @@ internal sealed class RewardsStore(
         ArgumentNullException.ThrowIfNull(epochBlockHash);
         ArgumentNullException.ThrowIfNull(rewards);
 
-        _rewardsDb[BuildKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
+        _rewardsDb[BuildKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards, XdcEpochRewardsJsonContext.Default.XdcEpochRewards);
     }
 
     public bool HasEpochRewards(Hash256 epochBlockHash) =>
@@ -90,7 +90,7 @@ internal sealed class RewardsStore(
             return false;
         }
 
-        rewards = JsonSerializer.Deserialize<XdcEpochRewards>(bytes);
+        rewards = JsonSerializer.Deserialize(bytes, XdcEpochRewardsJsonContext.Default.XdcEpochRewards);
         return rewards is not null;
     }
 

@@ -32,6 +32,8 @@ public class GCKeeper : IDisposable
     private bool _disposed;
     private int _pendingEntries;
     private TaskCompletionSource? _entriesDrained;
+    // Held across a payload's region entry, and across the re-commit's entry and end, so the two never overlap.
+    private readonly Lock _runtimeLock = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
@@ -194,7 +196,11 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
+                lock (keeper._runtimeLock)
+                {
+                    started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                }
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
@@ -290,6 +296,105 @@ public class GCKeeper : IDisposable
 
     private long? _lastGcTimeMs;
 
+    /// <summary>
+    /// Enters and at once ends a no-GC region right after a decommit, so the next payload's entry finds its budget
+    /// committed rather than committing it inside its own suspension.
+    /// </summary>
+    /// <remarks>
+    /// <para>The aggressive collection decommits every free region, so the entry after it commits the whole budget
+    /// while every thread is suspended, on the payload's path. Ending a region leaves the regions it linked committed
+    /// until the next collection (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the
+    /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
+    /// grow until they are allocated in. The decommit still returns everything else.</para>
+    /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
+    /// when the strategy disallows regions, and on shutdown. A payload admitted meanwhile queues its entry, which waits
+    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// </remarks>
+    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    {
+        bool allowed = _gcStrategy.CanStartNoGCRegion();
+        lock (_lock)
+        {
+            if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _region is not null || _runtime.IsActive) return;
+            // Taken under the keeper's lock, so no entry can be between its admission and its runtime call here.
+            _runtimeLock.Enter();
+        }
+
+        try
+        {
+            if (_runtime.TryStart(_defaultSize, _lohSize) && _runtime.IsActive) _runtime.End();
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"No-GC region re-commit failed: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region re-commit failed.", e);
+        }
+        finally
+        {
+            _runtimeLock.Exit();
+        }
+    }
+
+    private enum DecommitDecision { None, Skip, Pressure, SafetyNet, LoadUnknown }
+
+    /// <summary>A decision on a due decommit and the inputs it was made from, kept for its log line.</summary>
+    private readonly record struct DecommitCheck(DecommitDecision Decision, GcMemoryLoad Load, int LoadPercent, int Unconditional, long Payloads);
+
+    private DecommitDecision _lastLoggedDecommitDecision;
+
+    /// <summary>Decides whether a due decommit runs: under memory pressure, or once the unconditional count is reached.</summary>
+    /// <remarks>
+    /// A skipped decommit stays due, so the load is checked again after every later payload; the count is not reset.
+    /// Without a threshold (0 or less) every due decommit runs, the memory load is not read and nothing is logged.
+    /// A skip is logged here; a decommit only once its collection has run (<see cref="LogDecommitDecision"/>).
+    /// </remarks>
+    private DecommitCheck CheckDecommit(long payloadsSinceDecommit)
+    {
+        int loadPercent = _gcStrategy.DecommitMemoryLoadPercent;
+        if (loadPercent <= 0) return default;
+
+        GcMemoryLoad load = _runtime.GetMemoryLoad();
+        int unconditional = _gcStrategy.CollectionsPerUnconditionalDecommit;
+        DecommitDecision decision =
+            load.TotalMemoryBytes <= 0 ? DecommitDecision.LoadUnknown
+            // The derived total can be a byte short of the runtime's; one part in 10^4 covers that and keeps "at or above".
+            : load.MemoryLoadBytes * 100 + load.TotalMemoryBytes / 10_000 >= load.TotalMemoryBytes * loadPercent ? DecommitDecision.Pressure
+            : unconditional >= 0 && payloadsSinceDecommit >= unconditional ? DecommitDecision.SafetyNet
+            : DecommitDecision.Skip;
+
+        DecommitCheck check = new(decision, load, loadPercent, unconditional, payloadsSinceDecommit);
+        if (decision == DecommitDecision.Skip) LogDecommitDecision(check);
+        return check;
+    }
+
+    /// <summary>Logs a decision when it differs from the last one logged, rather than at every payload: a skip repeats after each one until it ends.</summary>
+    private void LogDecommitDecision(in DecommitCheck check)
+    {
+        if (check.Decision == DecommitDecision.None || check.Decision == _lastLoggedDecommitDecision) return;
+        _lastLoggedDecommitDecision = check.Decision;
+        if (_logger.IsInfo) _logger.Info(DescribeDecommitDecision(check.Decision, check.Load, check.LoadPercent, check.Unconditional, check.Payloads));
+    }
+
+    private static string DescribeDecommitDecision(DecommitDecision decision, GcMemoryLoad load, int loadPercent, int unconditional, long payloads)
+    {
+        string memory = load.TotalMemoryBytes > 0
+            ? $"memory load {load.MemoryLoadBytes * 100.0 / load.TotalMemoryBytes:F0}% of {load.TotalMemoryBytes / (1024.0 * 1024 * 1024):F1} GiB"
+            : "memory load unknown";
+        return decision switch
+        {
+            DecommitDecision.Pressure => $"GC decommit: {memory} is at or above {loadPercent}%, releasing memory after {payloads} payloads.",
+            DecommitDecision.SafetyNet => $"GC decommit: {memory} is below {loadPercent}%, releasing memory anyway after {payloads} payloads (unconditional after {unconditional}).",
+            DecommitDecision.LoadUnknown => $"GC decommit: {memory}, releasing memory after {payloads} payloads.",
+            _ => unconditional >= 0
+                ? $"GC decommit deferred: {memory} is below {loadPercent}%; releasing memory once it is reached or after {unconditional} payloads."
+                : $"GC decommit deferred: {memory} is below {loadPercent}%; releasing memory once it is reached.",
+        };
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -339,7 +444,13 @@ public class GCKeeper : IDisposable
                     int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
                     GCCollectionMode mode = GCCollectionMode.Forced;
-                    bool decommit = collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit;
+                    DecommitCheck decommitCheck = default;
+                    bool decommit = false;
+                    if (collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit)
+                    {
+                        decommitCheck = CheckDecommit(payloadsSinceDecommit);
+                        decommit = decommitCheck.Decision != DecommitDecision.Skip;
+                    }
                     if (decommit)
                     {
                         // Keep the debt pending through a longer idle gap; new payloads cancel this wait.
@@ -367,7 +478,8 @@ public class GCKeeper : IDisposable
                             _lastGcTimeMs = timeStamp;
                         }
 
-                        if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+                        // A decommit stays cancellable through its collection: the next payload still calls off the re-commit.
+                        if (!decommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
@@ -375,6 +487,9 @@ public class GCKeeper : IDisposable
                     if (collected && decommit)
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
+                        RecommitAfterDecommit(pendingGcCts);
+                        // Only now: a payload can cancel the idle wait above, and the retry may run under another decision.
+                        LogDecommitDecision(decommitCheck);
                     }
                 }
             }

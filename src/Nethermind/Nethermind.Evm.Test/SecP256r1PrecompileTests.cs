@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -53,8 +55,17 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(output, Is.SequenceEqualTo(Array.Empty<byte>()));
             }
+        }
+
+        [Test]
+        public void ListPrecompiles_includes_P256Verify_when_active([Values] bool isRip7212Enabled, [Values] bool isEip7951Enabled)
+        {
+            ReleaseSpec spec = new() { IsRip7212Enabled = isRip7212Enabled, IsEip7951Enabled = isEip7951Enabled };
+
+            Assert.That(spec.ListPrecompiles().GetValueOrDefault(SecP256r1Precompile.Instance.Name),
+                Is.EqualTo(isRip7212Enabled || isEip7951Enabled ? SecP256r1Precompile.Address : null));
         }
 
         [TestCaseSource(nameof(RandomECDsaInputs))]
@@ -64,7 +75,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EqualTo(ValidResult));
+                Assert.That(output, Is.SequenceEqualTo(ValidResult));
             }
         }
 

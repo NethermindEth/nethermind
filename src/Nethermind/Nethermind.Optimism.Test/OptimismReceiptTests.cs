@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -18,7 +22,7 @@ public class OptimismReceiptTests
 {
     [SetUp]
     public void SetUp() =>
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
 
     [Test]
     public void ContainsOperatorFeeParameters_PreIsthmus_IsNull()
@@ -47,8 +51,11 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(null));
-        Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(null));
+            Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(null));
+        }
     }
 
     [Test]
@@ -86,24 +93,29 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 0, expectedOperatorFeeConstant: 0);
+        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: null, expectedOperatorFeeConstant: null);
     }
 
     // A transaction without data sits at the 100-byte minimum DA size, so its DA footprint is 100 * daFootprintGasScalar.
-    [TestCase(false, null, null, 0, TestName = "Isthmus 176-byte L1 attributes")]
-    [TestCase(true, 802UL, 80_200UL, 0, TestName = "Jovian 178-byte L1 attributes")]
-    [TestCase(true, 802UL, 169_222UL, 2_000, TestName = "Jovian 178-byte L1 attributes, above the minimum DA size")]
-    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed, int txDataLength)
+    // op-geth sets the operator fee receipt fields only when the scalar or the constant is non-zero.
+    [TestCase(false, null, null, 0, 7u, 9UL, TestName = "Isthmus 176-byte L1 attributes")]
+    [TestCase(false, null, null, 0, 7u, 0UL, TestName = "Isthmus 176-byte L1 attributes, operator fee scalar only")]
+    [TestCase(false, null, null, 0, 0u, 9UL, TestName = "Isthmus 176-byte L1 attributes, operator fee constant only")]
+    [TestCase(false, null, null, 0, 0u, 0UL, TestName = "Isthmus 176-byte L1 attributes, operator fee unset")]
+    [TestCase(true, 802UL, 80_200UL, 0, 7u, 9UL, TestName = "Jovian 178-byte L1 attributes")]
+    [TestCase(true, 802UL, 80_200UL, 0, 0u, 0UL, TestName = "Jovian 178-byte L1 attributes, operator fee unset")]
+    [TestCase(true, 802UL, 169_222UL, 2_000, 7u, 9UL, TestName = "Jovian 178-byte L1 attributes, above the minimum DA size")]
+    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed, int txDataLength, uint operatorFeeScalar, ulong operatorFeeConstant)
     {
         // Isthmus style l1 attributes with:
         // - baseFeeScalar = 2
         // - blobBaseFeeScalar = 3
         // - baseFee = 1000*1e6
         // - blobBaseFee = 10*1e6
-        // - operatorFeeScalar = 7
-        // - operatorFeeConstant = 9
+        // - operatorFeeScalar and operatorFeeConstant from the test case
         // Jovian uses its own selector and appends daFootprintGasScalar = 802.
-        const string isthmusFields = "000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009";
+        string isthmusFields = "000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2"
+            + operatorFeeScalar.ToString("x8") + operatorFeeConstant.ToString("x16");
         byte[] l1Attributes = Bytes.FromHexString(isJovian ? "3db6be2b" + isthmusFields + "0322" : "098999be" + isthmusFields);
 
         Block block = Build.A.Block
@@ -135,7 +147,8 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 7, expectedOperatorFeeConstant: 9);
+        bool operatorFeeSet = operatorFeeScalar != 0 || operatorFeeConstant != 0;
+        AssertL1AndOperatorFees(receipt, operatorFeeSet ? operatorFeeScalar : null, operatorFeeSet ? operatorFeeConstant : null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.DaFootprintGasScalar, Is.EqualTo(expectedDaFootprintGasScalar));
@@ -145,8 +158,51 @@ public class OptimismReceiptTests
         }
     }
 
-    private static void AssertL1AndOperatorFees(OptimismReceiptForRpc receipt, UInt256 expectedOperatorFeeScalar, UInt256 expectedOperatorFeeConstant)
+    // ReceiptForRpc has a generated writer that matches only its exact type, so the subclass must keep the metadata path
+    // and its Optimism fields, while writing every base field as the generated writer does.
+    [Test]
+    public void Receipt_json_keeps_optimism_fields_and_writes_base_fields_as_the_base_receipt([Values] bool deposit)
     {
+        LogEntry[] logs = [new(TestItem.AddressA, [1, 2], [TestItem.KeccakC])];
+        TxReceipt txReceipt = new()
+        {
+            TxType = deposit ? TxType.DepositTx : TxType.EIP1559,
+            StatusCode = 1,
+            TxHash = TestItem.KeccakA,
+            BlockHash = TestItem.KeccakB,
+            BlockNumber = 1_000,
+            Index = 2,
+            GasUsed = 21_000,
+            GasUsedTotal = 42_000,
+            Sender = TestItem.AddressA,
+            Recipient = TestItem.AddressB,
+            Logs = logs,
+            Bloom = new Bloom(logs),
+        };
+        TxGasInfo gasInfo = new(10 * Unit.GWei);
+        OptimismReceiptForRpc receipt = deposit
+            ? new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { DepositNonce = 7, DepositReceiptVersion = 1 }
+            : new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { L1Fee = 1, L1GasPrice = 2, L1GasUsed = 3, L1FeeScalar = "4", L1BaseFeeScalar = 5, L1BlobBaseFee = 6, L1BlobBaseFeeScalar = 7, OperatorFeeScalar = 8, OperatorFeeConstant = 9, DaFootprintGasScalar = 10 };
+        string[] optimismFields = deposit
+            ? ["depositNonce", "depositReceiptVersion"]
+            : ["l1Fee", "l1GasPrice", "l1GasUsed", "l1FeeScalar", "l1BaseFeeScalar", "l1BlobBaseFee", "l1BlobBaseFeeScalar", "operatorFeeScalar", "operatorFeeConstant", "daFootprintGasScalar"];
+
+        using JsonDocument full = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(OptimismReceiptForRpc))));
+        using JsonDocument asBase = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(ReceiptForRpc))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.RootElement.EnumerateObject().Select(static p => p.Name).Except(asBase.RootElement.EnumerateObject().Select(static p => p.Name)), Is.EquivalentTo(optimismFields));
+            foreach (JsonProperty property in asBase.RootElement.EnumerateObject())
+            {
+                Assert.That(full.RootElement.GetProperty(property.Name).GetRawText(), Is.EqualTo(property.Value.GetRawText()), property.Name);
+            }
+        }
+    }
+
+    private static void AssertL1AndOperatorFees(OptimismReceiptForRpc receipt, UInt256? expectedOperatorFeeScalar, UInt256? expectedOperatorFeeConstant)
+    {
+        using JsonDocument json = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(OptimismReceiptForRpc))));
         using (Assert.EnterMultipleScope())
         {
             // L1 attribute fields are identical across the Ecotone-postIsthmus and Isthmus payloads — only the operator-fee tail differs
@@ -156,6 +212,8 @@ public class OptimismReceiptTests
             Assert.That(receipt.L1BlobBaseFee, Is.EqualTo((UInt256)(10 * 1e6)));
             Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(expectedOperatorFeeScalar));
             Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(expectedOperatorFeeConstant));
+            Assert.That(json.RootElement.TryGetProperty("operatorFeeScalar", out _), Is.EqualTo(expectedOperatorFeeScalar is not null));
+            Assert.That(json.RootElement.TryGetProperty("operatorFeeConstant", out _), Is.EqualTo(expectedOperatorFeeConstant is not null));
         }
     }
 }

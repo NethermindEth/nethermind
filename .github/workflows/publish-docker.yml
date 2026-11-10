@@ -28,10 +28,16 @@ on:
         type: choice
         options: [release, debug]
 
+permissions:
+  contents: read
+
 jobs:
   publish-docker:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check whether the nightly is already built from this commit
         id: nightly
@@ -40,14 +46,6 @@ jobs:
           revision=$(docker buildx imagetools inspect nethermindeth/nethermind:nightly \
             --format '{{ index (index .Image "linux/amd64").Config.Labels "org.opencontainers.image.revision" }}' || true)
           if [ "$revision" = "$GITHUB_SHA" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Free up disk space
-        if: steps.nightly.outputs.unchanged != 'true'
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
 
       - name: Check out repository
         if: steps.nightly.outputs.unchanged != 'true'
@@ -61,5 +59,5 @@ jobs:
           tag: ${{ github.event.inputs.tag || (github.event_name == 'schedule' && 'nightly') || '' }}
           dockerfile: ${{ github.event.inputs.dockerfile || 'Dockerfile' }}
           build-config: ${{ github.event.inputs.build-config || 'release' }}
-          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          docker-hub-organization: ${{ vars.DOCKERHUB_ORGANIZATION }}
+          docker-hub-oidc-connection-id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}

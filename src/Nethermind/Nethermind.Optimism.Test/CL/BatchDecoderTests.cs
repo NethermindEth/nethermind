@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL.Decoding;
 using NUnit.Framework;
@@ -70,8 +71,8 @@ public class BatchDecoderTests
         {
             Assert.That(actual.RelTimestamp, Is.EqualTo(expected.RelTimestamp));
             Assert.That(actual.L1OriginNum, Is.EqualTo(expected.L1OriginNum));
-            Assert.That(actual.ParentCheck.ToArray(), Is.EqualTo(expected.ParentCheck.ToArray()));
-            Assert.That(actual.L1OriginCheck.ToArray(), Is.EqualTo(expected.L1OriginCheck.ToArray()));
+            Assert.That(actual.ParentCheck, Is.SequenceEqualTo(expected.ParentCheck));
+            Assert.That(actual.L1OriginCheck, Is.SequenceEqualTo(expected.L1OriginCheck));
             Assert.That(actual.BlockCount, Is.EqualTo(expected.BlockCount));
             Assert.That(actual.OriginBits, Is.EqualTo(expected.OriginBits));
             Assert.That(actual.BlockTxCounts, Is.EqualTo(expected.BlockTxCounts));

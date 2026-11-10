@@ -72,6 +72,16 @@ public readonly struct TraceStack(ReadOnlyMemory<byte> slots, Memory<byte> bigEn
         return raw;
     }
 
+    /// <summary>Length in bytes of the raw stack, <see cref="Count"/> words of 32 bytes.</summary>
+    public int RawByteLength => _slots.Length;
+
+    /// <summary>Writes the same bytes as <see cref="ToRawBytes"/> into <paramref name="destination"/>, which holds at least <see cref="RawByteLength"/> bytes.</summary>
+    public void CopyRawBytesTo(Span<byte> destination)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, _slots.Length, nameof(destination));
+        EvmStack.WriteBigEndianWords(_slots.Span, destination);
+    }
+
     public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;
 
     /// <remarks>Read straight out of the slot, which already holds the <see cref="UInt256"/> layout.</remarks>

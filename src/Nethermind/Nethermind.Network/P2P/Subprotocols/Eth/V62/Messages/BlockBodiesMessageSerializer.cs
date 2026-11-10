@@ -1,25 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IZeroInnerMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IMessageSerializer<BlockBodiesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = blockBodyDecoder ?? BlockBodyDecoder.Instance;
 
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public int Serialize(Span<byte> destination, BlockBodiesMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(message));
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
                 if (body is null)
@@ -31,9 +28,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     _blockBodyDecoder.Encode(ref writer, body);
                 }
             }
+
+            return writer.Position;
         }
 
-        public int GetLength(BlockBodiesMessage message, out int contentLength)
+        public int GetLength(BlockBodiesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
+
+        private int GetContentLength(BlockBodiesMessage message)
         {
             int length = 0;
             foreach (BlockBody? body in message.Bodies.Bodies)
@@ -45,28 +46,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 };
             }
 
-            contentLength = length;
-            return Rlp.LengthOfSequence(length);
+            return length;
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        public BlockBodiesMessage Deserialize(ReadOnlySpan<byte> data)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            OwnedBlockBodies? ownedBodies = null;
 
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startingPosition = ctx.Position;
+            RlpReader ctx = new(data);
             try
             {
-                BlockBody?[] bodies = ctx.DecodeNullableArray(_blockBodyDecoder, false, limit: RlpLimit);
-                OwnedBlockBodies ownedBodies = new(bodies, memoryOwner, ownsPooledTransactions: true);
-                memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                ctx.ReadSequenceLength();
+                int count = ctx.PeekNumberOfItemsRemaining(ctx.Length, RlpLimit.Limit + 1);
+                ctx.GuardLimit(count, RlpLimit);
+                BlockBody?[] bodies = new BlockBody?[count];
+                ownedBodies = new(bodies, ownsPooledTransactions: true);
+                for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref ctx);
+                ctx.CheckEnd();
 
                 return new() { Bodies = ownedBodies };
             }
             catch
             {
-                memoryOwner?.Dispose();
+                ownedBodies?.Dispose();
                 throw;
             }
         }

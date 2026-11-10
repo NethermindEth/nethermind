@@ -567,7 +567,7 @@ public class FrameTxReceiptDecoderTests
             for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
-                Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
+                Assert.That(actual[i].Data, Is.SequenceEqualTo(expected[i].Data), $"log {i} data");
                 Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
             }
         }
@@ -751,10 +751,13 @@ public class FrameTxReceiptDecoderTests
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(secondFrameLogs))));
 
         RlpLimit.InitMaxBlockGas(EightLogBlockGas);
-        Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
-        // Otherwise the per-frame guard trips first and the rejection stops covering the shared budget.
-        Assert.That(Math.Max(firstFrameLogs, secondFrameLogs), Is.LessThanOrEqualTo(EightLogBlockGasLimit),
-            "each frame has to stay within the ceiling on its own");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
+            // Otherwise the per-frame guard trips first and the rejection stops covering the shared budget.
+            Assert.That(Math.Max(firstFrameLogs, secondFrameLogs), Is.LessThanOrEqualTo(EightLogBlockGasLimit),
+                "each frame has to stay within the ceiling on its own");
+        }
 
         if (rejected)
         {

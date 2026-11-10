@@ -5,10 +5,9 @@ using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
@@ -19,9 +18,9 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// <see cref="ExecutionPayload.TryGetBlock"/> call.
 /// </summary>
 /// <remarks>
-/// <see cref="HandlerPrefix"/> reproduces the <c>NewPayloadHandler.HandleAsync</c> order:
-/// <c>TryGetTransactions</c> runs first (for sender recovery) on the handler thread, then
-/// <c>TryGetBlock</c> starts the transactions-root task and blocks on it. Transactions are
+/// <see cref="HandlerPrefix"/> decodes transactions before computing their trie root inline.
+/// <see cref="HandlerPrefixWithEarlyRoot"/> overlaps root computation with decoding through
+/// the same preparation object used by <c>NewPayloadHandler.HandleAsync</c>. Transactions are
 /// real signed EIP-1559 transactions with a mainnet-like calldata mix, not opaque blobs,
 /// so decode and trie-leaf costs are honest.
 /// </remarks>
@@ -78,10 +77,7 @@ public class NewPayloadPrefixBenchmarks
     [Benchmark(Description = "WithdrawalTrie root")]
     public Hash256 WithdrawalsRoot() => WithdrawalTrie.CalculateRoot(_withdrawals);
 
-    // No decode-memoized TryGetBlock arm: the memoized root task makes any in-loop measurement
-    // either reuse the completed task or re-include decode; derive it as HandlerPrefix minus decode.
-
-    [Benchmark(Description = "decode + TryGetBlock (handler order)", Baseline = true)]
+    [Benchmark(Description = "decode + inline root + TryGetBlock", Baseline = true)]
     public Block HandlerPrefix()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
@@ -93,9 +89,8 @@ public class NewPayloadPrefixBenchmarks
     public Block HandlerPrefixWithEarlyRoot()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
-        _payload.StartTxRootComputation();
-        _payload.TryGetTransactions();
-        return _payload.TryGetBlock().Data!;
+        using ExecutionPayloadPreparation preparation = new(_payload);
+        return preparation.TryGetBlock().Data!;
     }
 
     private static Transaction[] BuildTransactions(int count)

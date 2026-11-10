@@ -54,9 +54,12 @@ public class BlockTests
 
         foreach ((byte[] key, byte[] value) in entries)
         {
-            Assert.That(SeekCeiling(block, key, out byte[] gotKey, out byte[] gotVal), Is.True);
-            Assert.That(gotKey, Is.EqualTo(key));
-            Assert.That(gotVal, Is.EqualTo(value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SeekCeiling(block, key, out byte[] gotKey, out byte[] gotVal), Is.True);
+                Assert.That(gotKey, Is.EqualTo(key));
+                Assert.That(gotVal, Is.EqualTo(value));
+            }
         }
     }
 
@@ -76,14 +79,20 @@ public class BlockTests
             entries[i] = (key, (long)i * 4096);
         }
         byte[] block = BuildIndexBlock(restartInterval, entries);
-        Assert.That(block[0], Is.EqualTo(Block.FlagIndex), "the Index flag selects 4-byte offsets");
-        Assert.That(block.Length, Is.GreaterThan(ushort.MaxValue), "block must exceed 64 KiB to exercise the 4-byte path");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block[0], Is.EqualTo(Block.FlagIndex), "the Index flag selects 4-byte offsets");
+            Assert.That(block.Length, Is.GreaterThan(ushort.MaxValue), "block must exceed 64 KiB to exercise the 4-byte path");
+        }
 
         foreach (int i in (int[])[0, 1, 100, 4000, 11999])
         {
-            Assert.That(SeekCeilingIndex(block, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
-            Assert.That(gotKey, Is.EqualTo(entries[i].Key));
-            Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"offset for entry {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SeekCeilingIndex(block, entries[i].Key, out byte[] gotKey, out long gotVal), Is.True);
+                Assert.That(gotKey, Is.EqualTo(entries[i].Key));
+                Assert.That(gotVal, Is.EqualTo(entries[i].Value), $"offset for entry {i}");
+            }
         }
 
         byte[] pastEnd = new byte[4];
@@ -100,9 +109,12 @@ public class BlockTests
             (Bytes.FromHexString("20"), Bytes.FromHexString("a1")),
             (Bytes.FromHexString("30"), Bytes.FromHexString("a2")),
         ]);
-        Assert.That(SeekCeiling(block, Bytes.FromHexString("05"), out byte[] key, out byte[] value), Is.True);
-        Assert.That(key, Is.EqualTo(Bytes.FromHexString("10")));
-        Assert.That(value, Is.EqualTo(Bytes.FromHexString("a0")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SeekCeiling(block, Bytes.FromHexString("05"), out byte[] key, out byte[] value), Is.True);
+            Assert.That(key, Is.EqualTo(Bytes.FromHexString("10")));
+            Assert.That(value, Is.EqualTo(Bytes.FromHexString("a0")));
+        }
     }
 
     // 9 records at interval 8 ⇒ two restart runs (records 0..7, then record 8). A target between the
@@ -116,9 +128,12 @@ public class BlockTests
         entries[8] = (Bytes.FromHexString("10"), Bytes.FromHexString("ff")); // first key of restart run 1
 
         byte[] block = BuildBlock(8, entries);
-        Assert.That(SeekCeiling(block, Bytes.FromHexString("0a"), out byte[] key, out byte[] value), Is.True);
-        Assert.That(key, Is.EqualTo(Bytes.FromHexString("10")));
-        Assert.That(value, Is.EqualTo(Bytes.FromHexString("ff")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SeekCeiling(block, Bytes.FromHexString("0a"), out byte[] key, out byte[] value), Is.True);
+            Assert.That(key, Is.EqualTo(Bytes.FromHexString("10")));
+            Assert.That(value, Is.EqualTo(Bytes.FromHexString("ff")));
+        }
     }
 
     [Test]
@@ -195,21 +210,27 @@ public class BlockTests
 
         foreach ((byte[] key, long value) in entries)
         {
-            Assert.That(SeekCeilingIndex(block, key, out byte[] gotKey, out long gotVal), Is.True);
-            Assert.That(gotKey, Is.EqualTo(key));
-            Assert.That(gotVal, Is.EqualTo(value), $"offset for key {key.ToHexString()}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SeekCeilingIndex(block, key, out byte[] gotKey, out long gotVal), Is.True);
+                Assert.That(gotKey, Is.EqualTo(key));
+                Assert.That(gotVal, Is.EqualTo(value), $"offset for key {key.ToHexString()}");
+            }
         }
 
         // Target before the first key ⇒ ceiling is the head record (offset 0).
-        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0100"), out _, out long beforeFirst), Is.True);
-        Assert.That(beforeFirst, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0100"), out _, out long beforeFirst), Is.True);
+            Assert.That(beforeFirst, Is.EqualTo(0));
 
-        // "0109" sits between run 0's tail (0108) and run 1's head (010a): the ceiling is the next run's
-        // head, a restart that fully restates its value to 1_000_000.
-        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0109"), out byte[] crossKey, out long crossVal), Is.True);
-        Assert.That(crossKey, Is.EqualTo(Bytes.FromHexString("010a")));
-        Assert.That(crossVal, Is.EqualTo(1_000_000));
+            // "0109" sits between run 0's tail (0108) and run 1's head (010a): the ceiling is the next run's
+            // head, a restart that fully restates its value to 1_000_000.
+            Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0109"), out byte[] crossKey, out long crossVal), Is.True);
+            Assert.That(crossKey, Is.EqualTo(Bytes.FromHexString("010a")));
+            Assert.That(crossVal, Is.EqualTo(1_000_000));
 
-        Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0119"), out _, out _), Is.False);
+            Assert.That(SeekCeilingIndex(block, Bytes.FromHexString("0119"), out _, out _), Is.False);
+        }
     }
 }

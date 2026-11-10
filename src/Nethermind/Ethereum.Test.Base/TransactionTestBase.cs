@@ -22,6 +22,10 @@ public abstract class TransactionTestBase
 
     protected static Result RunTest(TransactionTest test)
     {
+        if (test.LoadFailure is not null)
+        {
+            return Result.Fail(test.LoadFailure);
+        }
         if (string.IsNullOrEmpty(test.TxBytes))
         {
             return Result.Fail("Missing txbytes");
@@ -99,6 +103,13 @@ public abstract class TransactionTestBase
         try
         {
             byte[] bytes = Bytes.FromHexString(txBytesHex);
+            // An empty envelope fails before any RLP item is read, where the decoder gives only its generic wrapper message.
+            if (bytes.Length == 0)
+            {
+                error = "RLP data is truncated";
+                return false;
+            }
+
             tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
             return tx is not null;
         }
@@ -183,7 +194,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["Length starts with 0"],
         ["TransactionException.RLP_INVALID_DATA"] = ["sequence prefix"],
         ["TransactionException.RLP_INVALID_GASLIMIT"] = ["Unexpected length of integer value"],
-        ["TransactionException.RLP_INVALID_HEADER"] = ["sequence prefix"],
+        ["TransactionException.RLP_INVALID_HEADER"] = ["sequence prefix", "Expected length of length"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = ["Non-canonical integer", .. s_rlpDecodeFragments],
         ["TransactionException.RLP_INVALID_NONCE"] = ["NonceTooWide", .. s_rlpDecodeFragments],
@@ -194,6 +205,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_DATA_SIZE"] = ["Length starts with 0"],
         ["TransactionException.RLP_LEADING_ZEROS_GASLIMIT"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_GASPRICE"] = ["Non-canonical integer"],
+        ["TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_R"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["Non-canonical integer"],

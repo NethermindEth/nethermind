@@ -27,10 +27,28 @@ namespace Nethermind.Blockchain.Find
 
         bool HasBlock(ulong blockNumber, Hash256 blockHash);
 
+        /// <summary>Gets the stored block metadata and chain level, if available.</summary>
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
+
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
         BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null);
 
         BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options);
+
+        /// <summary>
+        /// Finds the canonical header at <paramref name="blockNumber"/> if <paramref name="bloomMatches"/> accepts its
+        /// logs bloom, which is empty for a zero-length (EIP-7668) bloom.
+        /// </summary>
+        /// <param name="blockNumber">The number of the block.</param>
+        /// <param name="bloomMatches">Tells whether the bloom is a match.</param>
+        /// <param name="found">Whether a canonical header is stored at <paramref name="blockNumber"/>, whether or not its bloom is a match.</param>
+        /// <remarks>The bloom may be tested on the stored encoding, so a header it rejects need not be decoded.</remarks>
+        BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            BlockHeader? header = FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+            found = header is not null;
+            return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
+        }
 
         Hash256? FindBlockHash(ulong blockNumber);
 
@@ -57,7 +75,12 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindHeadBlock() => Head;
 
-        public Block? FindEarliestBlock() => FindGenesisBlock();
+        /// <summary>Finds the lowest block this node serves, which the <c>earliest</c> block tag resolves to.</summary>
+        public Block? FindEarliestBlock() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisBlock(),
+            var number => FindBlock(number, BlockTreeLookupOptions.RequireCanonical)
+        };
 
         public Block? FindLatestBlock() => FindHeadBlock();
 
@@ -73,7 +96,15 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader FindGenesisHeader() => FindHeader(GenesisHash, BlockTreeLookupOptions.RequireCanonical) ?? throw new Exception("Genesis header could not be found");
 
-        public BlockHeader FindEarliestHeader() => FindGenesisHeader();
+        /// <summary>Finds the header of <see cref="FindEarliestBlock"/>, or <c>null</c> while it is not stored yet.</summary>
+        public BlockHeader? FindEarliestHeader() => EarliestBlockNumber switch
+        {
+            0 => FindGenesisHeader(),
+            var number => FindHeader(number, BlockTreeLookupOptions.RequireCanonical)
+        };
+
+        /// <remarks>The served floor is clamped to at least 1 because genesis is never synced, so a floor of 1 means no history is pruned.</remarks>
+        private ulong EarliestBlockNumber => LowestServedBlock is > 1 and var lowest ? lowest : 0;
 
         public BlockHeader? FindLatestHeader() => Head?.Header;
 
@@ -105,8 +136,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
-                    ? FindLatestBlock()
+                // Head is read once, so a head change cannot answer for another block.
+                BlockParameterType.BlockHash => Head is { } head && head.Hash == blockParameter.BlockHash
+                    ? head
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),

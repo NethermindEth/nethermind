@@ -41,6 +41,25 @@ public class StorageGroupFrontierTests
     }
 
     [Test]
+    public void AddRange_FromAnUnbudgetedChildSink_ChargesTheTargetBudget()
+    {
+        MismatchBudget budget = new(3);
+        MismatchSink group = new(capacity: 10, budget);
+        MismatchSink sibling = new(capacity: 10, budget);
+        MismatchSink child = new(capacity: 10);
+        child.AddRange([Found(100), Found(101)]);
+
+        group.AddRange(child);
+        sibling.AddRange([Found(200), Found(201)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(group.Count, Is.EqualTo(2));
+            Assert.That(sibling.Count, Is.EqualTo(1), "split children keep their own sinks, so the merge is where the range budget sees their findings");
+        }
+    }
+
+    [Test]
     public void Group_sinks_waiting_behind_the_frontier_share_one_budget_so_their_aggregate_never_exceeds_the_item_cap()
     {
         MismatchBudget budget = new(3);
@@ -56,20 +75,6 @@ public class StorageGroupFrontierTests
             Assert.That(sinks[1].Count, Is.Zero, "a group issued after the budget is spent keeps nothing; the item cap would have dropped it anyway");
             Assert.That(sinks.Sum(static sink => sink.Count), Is.EqualTo(3));
         }
-    }
-
-    [Test]
-    public void Merging_child_sinks_into_their_parent_moves_the_records_without_charging_the_shared_budget_again()
-    {
-        MismatchBudget budget = new(4);
-        MismatchSink parent = new(capacity: 10, budget);
-        MismatchSink[] children = [new(capacity: 10, budget), new(capacity: 10, budget)];
-        children[0].AddRange([Found(1), Found(2)]);
-        children[1].AddRange([Found(3), Found(4)]);
-
-        foreach (MismatchSink child in children) parent.AddRange(child);
-
-        Assert.That(parent.Drain().Select(static m => m.Block), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }), "a merge is a transfer of records that already paid; charging the budget a second time per split level would drop findings the capacity keeps");
     }
 
     [Test]

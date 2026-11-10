@@ -39,8 +39,11 @@ public class FrameTxFloodGeneratorTests
     {
         using FrameTxFloodMeasurement.FloodGenerator generator = Generator();
 
-        Assert.That(generator.Run(static () => true), Is.True);
-        Assert.That(generator.IsRunning, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generator.Run(static () => true), Is.True);
+            Assert.That(generator.IsRunning, Is.False);
+        }
     }
 
     [Test]
@@ -48,8 +51,10 @@ public class FrameTxFloodGeneratorTests
     {
         using FrameTxFloodMeasurement.FloodGenerator generator = Generator();
 
+#pragma warning disable NUnit2045 // Run changes the running state checked by the following assertion.
         Assert.That(generator.Run(() => generator.Stop()), Is.True,
             "the counters are read after this join, so a stop the body asks for must be reported honestly");
+#pragma warning restore NUnit2045
         Assert.That(generator.IsRunning, Is.False);
     }
 

@@ -6,7 +6,9 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc;
 
@@ -16,7 +18,8 @@ internal enum JsonRpcIdKind : byte
     Null,
     Long,
     Decimal,
-    String
+    String,
+    Number
 }
 
 /// <summary>Represents a JSON-RPC request or response ID without boxing primitive ID values.</summary>
@@ -73,7 +76,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         ArgumentNullException.ThrowIfNull(value);
 
         _kind = JsonRpcIdKind.String;
-        _rawValue = JsonSerializer.SerializeToUtf8Bytes(value);
+        _rawValue = JsonSerializer.SerializeToUtf8Bytes(value, JsonRpcIdJsonContext.Default.String);
         _stringValue = value;
     }
 
@@ -114,6 +117,11 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             throw new JsonException("Expected JSON-RPC integer decimal ID token.");
     }
 
+    /// <summary>Creates an ID from a JSON number token that is neither a <see cref="long"/> nor an integral <see cref="decimal"/>.</summary>
+    /// <remarks>JSON-RPC 2.0 section 4 requires the response to echo the request ID, so the token is kept and written back verbatim.</remarks>
+    internal static JsonRpcId FromValidatedRawNumberToken(ReadOnlySpan<byte> rawToken) =>
+        new(JsonRpcIdKind.Number, rawToken.ToArray(), default);
+
     /// <summary>Converts the legacy boxed ID representation into a typed JSON-RPC ID.</summary>
     /// <param name="value">The legacy ID value.</param>
     /// <returns>The equivalent typed ID.</returns>
@@ -138,6 +146,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     }
 
     /// <summary>Converts this typed ID to the legacy boxed representation.</summary>
+    /// <remarks>Non-integer numeric IDs have no legacy primitive form, so they are returned as the boxed <see cref="JsonRpcId"/> to keep the raw token intact through <see cref="FromObject"/>.</remarks>
     /// <returns>The boxed ID value, or null for missing and explicit-null IDs.</returns>
     internal object? ToObject()
     {
@@ -147,6 +156,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Long => _longValue,
             JsonRpcIdKind.Decimal => _decimalValue,
             JsonRpcIdKind.String => GetStringValue(),
+            JsonRpcIdKind.Number => this,
             _ => ThrowInvalidKindObject()
         };
 
@@ -187,6 +197,9 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
                 }
 
                 writer.WriteRawValue(_rawValue, skipInputValidation: true);
+                break;
+            case JsonRpcIdKind.Number:
+                writer.WriteRawValue(_rawValue!, skipInputValidation: true);
                 break;
             default:
                 ThrowInvalidKind();
@@ -234,6 +247,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Decimal => _decimalValue == other._decimalValue,
             JsonRpcIdKind.String => _rawValue.AsSpan().SequenceEqual(other._rawValue) ||
                 string.Equals(GetStringValue(), other.GetStringValue(), StringComparison.Ordinal),
+            JsonRpcIdKind.Number => _rawValue.AsSpan().SequenceEqual(other._rawValue),
             _ => true
         };
 
@@ -257,6 +271,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Long => HashCode.Combine(_kind, _longValue),
             JsonRpcIdKind.Decimal => HashCode.Combine(_kind, _decimalValue),
             JsonRpcIdKind.String => HashCode.Combine(_kind, StringComparer.Ordinal.GetHashCode(GetStringValue())),
+            JsonRpcIdKind.Number => HashRawToken(_kind, _rawValue!),
             _ => _kind.GetHashCode()
         };
 
@@ -270,8 +285,17 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Long => _longValue.ToString(CultureInfo.InvariantCulture),
             JsonRpcIdKind.Decimal => _decimalValue.ToString(CultureInfo.InvariantCulture),
             JsonRpcIdKind.String => GetStringValue(),
+            JsonRpcIdKind.Number => Encoding.UTF8.GetString(_rawValue!),
             _ => string.Empty
         };
+
+    private static int HashRawToken(JsonRpcIdKind kind, byte[] rawToken)
+    {
+        HashCode hash = new();
+        hash.Add(kind);
+        hash.AddBytes(rawToken);
+        return hash.ToHashCode();
+    }
 
     /// <summary>Converts an integer to a JSON-RPC ID.</summary>
     /// <param name="value">The integer value.</param>
@@ -303,7 +327,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         _kind = JsonRpcIdKind.String;
         _rawValue = rawValue;
-        _stringValue = JsonSerializer.Deserialize<string>(rawValue);
+        _stringValue = JsonSerializer.Deserialize(rawValue, JsonRpcIdJsonContext.Default.String);
     }
 
     private JsonRpcId(JsonRpcIdKind kind, byte[] rawValue, decimal decimalValue)
@@ -313,3 +337,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         _decimalValue = decimalValue;
     }
 }
+
+[JsonSerializable(typeof(string))]
+internal partial class JsonRpcIdJsonContext : JsonSerializerContext;

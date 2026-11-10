@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.IO.Pipelines;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,10 +34,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -226,7 +233,7 @@ public partial class BlockProcessorTests
     [Test]
     public async Task AccessListSeed_ParallelBlockTrace_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool stream)
     {
-        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
         IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
@@ -241,7 +248,7 @@ public partial class BlockProcessorTests
         bool traced = stream
             ? parallel.TryStream(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
-                _ => new ParityLikeBlockTracer(types), batch => emitted.AddRange(batch), CancellationToken.None)
+                _ => new ParityLikeBlockTracer(types), new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
             : parallel.TryTrace(block, parent,
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
                 _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
@@ -256,6 +263,431 @@ public partial class BlockProcessorTests
                 "each transaction and the reward, traced on the seeded state, equal the replay");
             Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "the reward pass is seeded with the end of the block, so no transaction runs twice");
         }
+    }
+
+    [Test]
+    public async Task AccessListSeed_ParallelBlockTrace_WhenTheBlockIsNeverRewarded_SkipsTheRewardPass([Values] bool stream)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
+        ExecutionCounter executions = new();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
+
+        IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
+        int rewardTracers = 0;
+        List<ParityLikeTxTrace> emitted = [];
+        IReadOnlyList<ParityLikeTxTrace>? traces = null;
+        bool traced = stream
+            ? parallel.TryStream(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, new CollectingTraceStream<ParityLikeTxTrace>(emitted), CancellationToken.None)
+            : parallel.TryTrace(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, CancellationToken.None, out traces);
+        if (stream) traces = emitted;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True, "a block with a valid access list is traced in parallel");
+            Assert.That(sequential.Count, Is.EqualTo(block.Transactions.Length), "precondition: the replay traces no reward");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(traces!)),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(sequential))),
+                "skipping the reward pass leaves the traces equal to the replay");
+            Assert.That(rewardTracers, Is.Zero, "a block that is never rewarded is not replayed for its rewards");
+            Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "each transaction runs once");
+        }
+    }
+
+    /// <summary>The transaction after the first one waits until the last one is traced, so the workers finish the block
+    /// out of order, and the response must still read as it did when every transaction was serialized in its turn.</summary>
+    [Test]
+    public async Task AccessListSeed_ParallelStream_WhenTransactionsFinishOutOfOrder_SerializesOnTheWorkersAndWritesTheBytesOfTheInTurnStream(
+        [Values("trace_replayBlockTransactions", "trace_block", "trace_filter", "callTracer", "structLogs")] string rpc)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculator>(new ZeroRewardToTheBeneficiary()));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+
+        StreamedBlock inTurn = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: true);
+        StreamedBlock ahead = StreamInParallel(chain, parallel, parent, block, rpc, inTurn: false);
+        bool serializedAhead = rpc != "trace_filter";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inTurn.Overtaken && ahead.Overtaken, Is.True, "precondition: the last transaction finishes before the second one starts");
+            Assert.That(JsonDocument.Parse(ahead.Json).RootElement.GetArrayLength(), rpc == "trace_filter" ? Is.EqualTo(FilteredCount) : Is.GreaterThanOrEqualTo(block.Transactions.Length),
+                "precondition: every transaction is in the response, or as many as the filter lets through");
+            Assert.That(ahead.SerializedWrites, serializedAhead ? Is.Positive : Is.Zero,
+                "every shape but trace_filter, whose filter depends on the traces before it, is serialized on the workers");
+            Assert.That(ahead.InTurnWrites, serializedAhead ? Is.Zero : Is.Positive, "and only trace_filter is serialized in block order");
+            Assert.That(ahead.Json, Is.EqualTo(inTurn.Json), "traces serialized on the workers read byte for byte as traces serialized in block order");
+        }
+    }
+
+    [Test]
+    public async Task AccessListSeed_ParallelStream_WhenTheResponseFailsMidBlock_SurfacesTheFailureAndReleasesTheBudget([Values] bool cancel)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        using CancellationTokenSource cancellation = new();
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+        const int failingWrite = 3;
+
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        writer.WriteStartArray();
+        FailingStream<GethLikeTxTrace> stream = new(GethLikeTraceStream.Rent(writer, pipe.Writer, cancellation.Token), failingWrite, () =>
+        {
+            if (!cancel) throw new IOException("client went away");
+            cancellation.Cancel();
+            cancellation.Token.ThrowIfCancellationRequested();
+        });
+
+        Exception? escaped = Assert.Catch(() => parallel.TryStream(block, parent,
+            (state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider),
+            afterTransactions: null, stream, cancellation.Token));
+        writer.Flush();
+        string written = ReadAll(pipe);
+
+        IResolveConstraint failure = cancel ? Is.InstanceOf<OperationCanceledException>() : Is.InstanceOf<IOException>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(escaped, failure, "the failure of the response is the failure of the trace");
+            Assert.That(JsonDocument.Parse(written + "]").RootElement.GetArrayLength(), Is.EqualTo(failingWrite - 1), "the response holds the transactions written before the failure, in order, and nothing after it");
+            Assert.That(stream.WritesAfterFailure, Is.Zero, "nothing is written once a write failed");
+            Assert.That(StreamInParallel(chain, parallel, parent, block, "callTracer", inTurn: false).Json, Is.Not.Empty,
+                "the failed run gave back every permit and environment: the next block is traced in parallel");
+        }
+    }
+
+    /// <summary>A trace_filter that skips the first trace and keeps the next ones: a filter serialized out of order
+    /// would skip and keep other traces.</summary>
+    private const int FilteredCount = 3;
+
+    /// <summary>With one place per worker, the window is full while the second transaction is held: the workers stop
+    /// taking transactions until it is written, and a failed write wakes them rather than leaving them waiting.</summary>
+    [Test]
+    public async Task AccessListSeed_ParallelStream_WhenTheWindowIsFull_WaitsForTheOldestTransaction([Values] bool failTheWrite)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance) { StreamedPerWorker = 1 };
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+        using ManualResetEventSlim release = new(false);
+        using ManualResetEventSlim thirdTraced = new(false);
+        int highestStarted = 0;
+
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        writer.WriteStartArray();
+        IParallelTraceStream<GethLikeTxTrace> stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
+        if (failTheWrite) stream = new FailingStream<GethLikeTxTrace>(stream, failingWrite: 2, () => throw new IOException("client went away"));
+
+        Task<bool> run = Task.Run(() => parallel.TryStream(block, parent, (state, txHash) =>
+        {
+            int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+            InterlockedMax(ref highestStarted, index);
+            if (index == 1) release.Wait(TimeSpan.FromSeconds(10));
+            IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+            return index == 2 ? new CompletionTracer<GethLikeTxTrace>(tracer, thirdTraced.Set) : tracer;
+        }, afterTransactions: null, stream, CancellationToken.None));
+
+        int startedWhileHeld;
+        try
+        {
+            Assert.That(thirdTraced.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the transaction after the held one is traced");
+            Thread.Sleep(200);
+            startedWhileHeld = Volatile.Read(ref highestStarted);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        bool finished = Task.WaitAny([run], TimeSpan.FromSeconds(10)) == 0;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(startedWhileHeld, Is.EqualTo(2), "two workers with one place each: the held transaction and the one after it");
+            Assert.That(finished, Is.True, "the workers waiting for a place are woken by the write, or by its failure");
+            if (failTheWrite) Assert.That(run.Exception?.InnerException, Is.InstanceOf<IOException>());
+            else Assert.That(run.Result, Is.True);
+        }
+
+        static void InterlockedMax(ref int target, int value)
+        {
+            int current = Volatile.Read(ref target);
+            while (value > current)
+            {
+                int seen = Interlocked.CompareExchange(ref target, value, current);
+                if (seen == current) return;
+                current = seen;
+            }
+        }
+    }
+
+    /// <summary>One place per worker, with the oldest transaction not yet written held: once the last transaction is
+    /// taken, the workers with nothing left to take give their threads back rather than wait for a place they would
+    /// give straight back.</summary>
+    /// <param name="waiting">False: one worker per transaction after the first, so every worker loops back after the
+    /// last one is taken. True: one worker fewer, the third and the last transactions held too, so the workers that
+    /// finished wait for a place when the write of the second frees one and the last transaction takes it.</param>
+    [Test]
+    public async Task AccessListSeed_ParallelStream_WhenTheLastTransactionIsTakenWithTheWindowFull_GivesTheWorkerThreadsBack([Values] bool waiting)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        int last = block.Transactions.Length - 1;
+        int workers = waiting ? last - 1 : last;
+        int helperThreads = workers - 1;
+        int otherThreads = 2 * workers - helperThreads;
+        using ParallelTraceBudget budget = new(workers);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance) { StreamedPerWorker = 1 };
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+        using CountdownEvent occupied = new(otherThreads);
+        using CountdownEvent taken = new(workers);
+        using CountdownEvent finished = new(workers - 2);
+        using ManualResetEventSlim releaseWorkers = new(false);
+        using ManualResetEventSlim releaseOldest = new(false);
+        using ManualResetEventSlim release = new(false);
+        using ManualResetEventSlim lastTaken = new(false);
+        // Two helpers at most still hold a transaction; a race can free one more thread without the fix, never two.
+        using CountdownEvent probes = new(helperThreads - 2);
+        Task[] blockers = new Task[otherThreads];
+        Task[] probing = new Task[probes.InitialCount];
+
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        writer.WriteStartArray();
+        IParallelTraceStream<GethLikeTxTrace> stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
+
+        Task<bool> run = Task.FromResult(false);
+        bool threadsGivenBack;
+        bool traced;
+        try
+        {
+            for (int i = 0; i < blockers.Length; i++)
+                blockers[i] = parallel.QueueWorker(() => { occupied.Signal(); releaseWorkers.Wait(); });
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: every worker thread but one per helper is held");
+
+            run = Task.Run(() => parallel.TryStream(block, parent, (state, txHash) =>
+            {
+                int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+                IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+                if (index == 0) return tracer;
+
+                if (index > workers)
+                {
+                    lastTaken.Set();
+                    release.Wait();
+                    return tracer;
+                }
+
+                // No worker loops back before every worker holds a transaction, so each one takes exactly one.
+                taken.Signal();
+                if (index == 1) releaseOldest.Wait();
+                else if (waiting && index == 2) release.Wait();
+                else taken.Wait(TimeSpan.FromSeconds(10));
+                return waiting && index > 2 ? new CompletionTracer<GethLikeTxTrace>(tracer, () => finished.Signal()) : tracer;
+            }, afterTransactions: null, stream, CancellationToken.None));
+
+            Assert.That(taken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: one transaction is taken by each worker");
+            if (waiting)
+            {
+                Assert.That(finished.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the transactions behind the held ones are traced");
+                // Their workers find the window full and wait in Reserve; the write of the first one frees one place.
+                Thread.Sleep(200);
+                releaseOldest.Set();
+                Assert.That(lastTaken.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the place the write freed takes the last transaction");
+            }
+
+            for (int i = 0; i < probing.Length; i++)
+                probing[i] = parallel.QueueWorker(() => { probes.Signal(); probes.Wait(TimeSpan.FromSeconds(10)); });
+            threadsGivenBack = probes.Wait(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseOldest.Set();
+            release.Set();
+            releaseWorkers.Set();
+            foreach (Task? blocker in blockers)
+            {
+                if (blocker is not null) await blocker;
+            }
+
+            foreach (Task? probe in probing)
+            {
+                if (probe is not null) await probe;
+            }
+
+            // Awaited before the events the run waits on are disposed, whatever failed above.
+            traced = await run.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        writer.WriteEndArray();
+        writer.Flush();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(threadsGivenBack, Is.True, "every helper with nothing left to take gives its thread back while the oldest transaction is held");
+            Assert.That(traced, Is.True, "the block is traced in parallel once the held transactions are released");
+            Assert.That(JsonDocument.Parse(ReadAll(pipe)).RootElement.GetArrayLength(), Is.EqualTo(block.Transactions.Length), "every transaction is written once the held ones are");
+        }
+    }
+
+    private static readonly JsonWriterOptions ResponseWriterOptions = new()
+    {
+        SkipValidation = true,
+        Encoder = EthereumJsonSerializer.JsonOptions.Encoder,
+        MaxDepth = EthereumJsonSerializer.JsonOptions.MaxDepth,
+    };
+
+    /// <summary>The JSON array a block was streamed into, and how its traces reached it.</summary>
+    /// <param name="Json">The JSON array the block was streamed into.</param>
+    /// <param name="Overtaken">The last transaction finished before the second one started.</param>
+    /// <param name="SerializedWrites">Writes of traces serialized on the workers.</param>
+    /// <param name="InTurnWrites">Writes of traces serialized in block order.</param>
+    private readonly record struct StreamedBlock(string Json, bool Overtaken, int SerializedWrites, int InTurnWrites);
+
+    /// <summary>Streams the block in parallel the way the RPC module does, into a pipe.</summary>
+    private static StreamedBlock StreamInParallel(BasicTestBlockchain chain, ParallelBlockTracer parallel, BlockHeader parent, Block block, string rpc, bool inTurn)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        using ManualResetEventSlim lastFinished = new(false);
+        bool secondWaited = false;
+        WriteCounts writes = new();
+        writer.WriteStartArray();
+
+        bool traced = rpc switch
+        {
+            "trace_replayBlockTransactions" => StreamParity(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff, ParityTraceStreamMode.Replay, includeTxHash: true),
+            "trace_block" => StreamParity(ParityTraceTypes.Trace | ParityTraceTypes.Rewards, ParityTraceStreamMode.Store, includeTxHash: false),
+            "trace_filter" => StreamParity(ParityTraceTypes.Trace | ParityTraceTypes.Rewards, ParityTraceStreamMode.Store, includeTxHash: false,
+                new TxTraceFilter(null, null, after: 1, count: FilteredCount, TraceFilterMode.Intersection)),
+            _ => StreamGeth(new GethTraceOptions { Tracer = rpc == "structLogs" ? null! : rpc }),
+        };
+
+        writer.WriteEndArray();
+        writer.Flush();
+        Assert.That(traced, Is.True, "a block with a valid access list is streamed in parallel");
+        return new StreamedBlock(ReadAll(pipe), secondWaited, writes.Serialized, writes.InTurn);
+
+        bool StreamParity(ParityTraceTypes types, ParityTraceStreamMode mode, bool includeTxHash, TxTraceFilter? filter = null)
+        {
+            using StreamingParityLikeBlockTracer stream = new(types, mode, includeTxHash, writer, pipe.Writer, CancellationToken.None, filter, chain.SpecProvider);
+            Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? rewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards
+                ? _ => new ParityLikeBlockTracer(types, chain.SpecProvider)
+                : null;
+            return parallel.TryStream(block, parent,
+                LastFirst<ParityLikeTxTrace>((_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards, chain.SpecProvider)),
+                rewards, Counted<ParityLikeTxTrace>(stream), CancellationToken.None);
+        }
+
+        bool StreamGeth(GethTraceOptions options)
+        {
+            GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
+            return parallel.TryStream(block, parent,
+                LastFirst<GethLikeTxTrace>((state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider)),
+                afterTransactions: null, Counted<GethLikeTxTrace>(stream), CancellationToken.None);
+        }
+
+        IParallelTraceStream<TTrace> Counted<TTrace>(IParallelTraceStream<TTrace> stream) =>
+            new CountingStream<TTrace>(inTurn ? new InTurnStream<TTrace>(stream) : stream, writes);
+
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> LastFirst<TTrace>(Func<IWorldState, Hash256, IBlockTracer<TTrace>> inner) => (state, txHash) =>
+        {
+            int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+            if (index == 1) secondWaited = lastFinished.Wait(TimeSpan.FromSeconds(10));
+            IBlockTracer<TTrace> tracer = inner(state, txHash);
+            return index == block.Transactions.Length - 1 ? new CompletionTracer<TTrace>(tracer, lastFinished.Set) : tracer;
+        };
+    }
+
+    private static string ReadAll(Pipe pipe)
+    {
+        pipe.Writer.Complete();
+        Assert.That(pipe.Reader.TryRead(out ReadResult read), Is.True);
+        string json = Encoding.UTF8.GetString(read.Buffer.ToArray());
+        pipe.Reader.AdvanceTo(read.Buffer.End);
+        pipe.Reader.Complete();
+        return json;
+    }
+
+    /// <summary>Serializes every trace in block order, as the parallel tracer did before it serialized on the workers.</summary>
+    private sealed class InTurnStream<TTrace>(IParallelTraceStream<TTrace> inner) : IParallelTraceStream<TTrace>
+    {
+        public JsonWriterOptions? SerializeAheadOptions => null;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => throw new NotSupportedException();
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
+
+        public void Write(IReadOnlyCollection<TTrace> traces) => inner.Write(traces);
+    }
+
+    private sealed class WriteCounts
+    {
+        public int Serialized { get; set; }
+
+        public int InTurn { get; set; }
+    }
+
+    /// <summary>Counts how the traces of a block reach the response: serialized on the workers, or in block order.</summary>
+    private sealed class CountingStream<TTrace>(IParallelTraceStream<TTrace> inner, WriteCounts counts) : IParallelTraceStream<TTrace>
+    {
+        public JsonWriterOptions? SerializeAheadOptions => inner.SerializeAheadOptions;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => inner.Serialize(traces, writer);
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements)
+        {
+            counts.Serialized++;
+            inner.WriteSerialized(elements);
+        }
+
+        public void Write(IReadOnlyCollection<TTrace> traces)
+        {
+            counts.InTurn++;
+            inner.Write(traces);
+        }
+    }
+
+    /// <summary>Fails the given write of serialized traces, and counts any write after it.</summary>
+    private sealed class FailingStream<TTrace>(IParallelTraceStream<TTrace> inner, int failingWrite, Action fail) : IParallelTraceStream<TTrace>
+    {
+        private int _writes;
+
+        public int WritesAfterFailure { get; private set; }
+
+        public JsonWriterOptions? SerializeAheadOptions => inner.SerializeAheadOptions;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => inner.Serialize(traces, writer);
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements)
+        {
+            int write = ++_writes;
+            if (write > failingWrite) WritesAfterFailure++;
+            if (write == failingWrite) fail();
+            inner.WriteSerialized(elements);
+        }
+
+        public void Write(IReadOnlyCollection<TTrace> traces) => throw new NotSupportedException();
     }
 
     [TestCase(1, TestName = "AccessListSeed_WhenTheDelegationTheTargetRunsWasReplacedLaterInTheBlock_ServesItsCodeFromTheList")]
@@ -353,6 +785,8 @@ public partial class BlockProcessorTests
         using BasicTestBlockchain chain = await CreateAccessListSeedChain();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
+        // The block's own list is written in the background and served while pending, so drain it before corrupting the stored one.
+        chain.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         chain.Container.Resolve<IBlockAccessListStore>().Insert((ulong)block.Number, block.Hash!, new byte[] { 0xf8, 0xff, 0x01 });
         Hash256 target = block.Transactions[^1].Hash!;
         GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer", TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
@@ -370,33 +804,66 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ParallelBlockTracer_WhenBothBudgetsAreFullyHeld_StillRentsAnEnvironmentPerPermit()
+    public void ParallelBlockTracer_WhenTheSharedBudgetIsFullyHeld_StillRentsAnEnvironmentPerPermit()
     {
-        // Blocks with and without access lists draw on independent budgets, so traces of both kinds side by side hold
-        // every permit of both at once; each permit holder must still find an environment.
-        using ParallelTraceBudget changesets = new(2);
-        using ParallelTraceBudget accessLists = new(3);
+        using ParallelTraceBudget budget = new(3);
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
-        ParallelTraceBudgets budgets = new(specProvider, changesets, accessLists);
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
         using ParallelBlockTracer parallel = new(() => new StubEnvironment(), NullPrefixStateSeedSource.Instance, budgets, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        for (int i = 0; i < changesets.Degree; i++) changesets.Wait(CancellationToken.None);
-        for (int i = 0; i < accessLists.Degree; i++) accessLists.Wait(CancellationToken.None);
+        for (int i = 0; i < budget.Degree; i++) budget.Wait(CancellationToken.None);
         List<IDisposable> rented = [];
 
         try
         {
-            Assert.That(() =>
+            using (Assert.EnterMultipleScope())
             {
-                for (int i = 0; i < changesets.Degree + accessLists.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
-            }, Throws.Nothing, "the pool holds one environment for every permit of every budget");
-            Assert.That(budgets.TotalDegree, Is.EqualTo(changesets.Degree + accessLists.Degree), "the pool is sized by the sum, not the larger budget");
+                Assert.That(() =>
+                {
+                    for (int i = 0; i < budget.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
+                }, Throws.Nothing, "the pool holds one environment for every permit of the budget");
+                Assert.That(budgets.Degree, Is.EqualTo(budget.Degree), "the pool is sized by the one budget both kinds of block draw on");
+            }
         }
         finally
         {
             foreach (IDisposable scope in rented) scope.Dispose();
-            for (int i = 0; i < changesets.Degree; i++) changesets.Release();
-            for (int i = 0; i < accessLists.Degree; i++) accessLists.Release();
+            for (int i = 0; i < budget.Degree; i++) budget.Release();
+        }
+    }
+
+    [TestCase(true, 1UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceABlockBeforeAccessListsOnTheSharedBudget")]
+    [TestCase(true, 10UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    [TestCase(false, 1UL, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceABlockBeforeAccessListsSequentially")]
+    [TestCase(false, 10UL, true, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    public void ParallelTraceBudgets_ForEachKindOfBlock_DrawOnTheOneBudget(bool changesetSeeds, ulong number, bool expected)
+    {
+        using ParallelTraceBudget budget = new(2);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds);
+
+        bool parallel = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(number).TestObject, out ParallelTraceBudget? slots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EqualTo(expected));
+            Assert.That(slots, expected ? Is.SameAs(budget) : Is.Null);
+            Assert.That(budgets.AllowsParallelTracing, Is.True, "the chain carries access list blocks, so a parallel tracer is always useful");
+        }
+    }
+
+    [Test]
+    public void ParallelTraceBudgets_WithASingleWorker_TraceEveryBlockSequentially()
+    {
+        using ParallelTraceBudget budget = new(1);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(1).TestObject, out _), Is.False);
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(10).TestObject, out _), Is.False);
+            Assert.That(budgets.AllowsParallelTracing, Is.False);
         }
     }
 
@@ -427,6 +894,62 @@ public partial class BlockProcessorTests
                 .WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1)
                 .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyD, chainId, codeSource, authorityNonce))
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeyC).TestObject;
+    }
+
+    /// <remarks>EIP-8253 bumps the listed nonces at block access index 0, so every trace of the fork block, replayed or
+    /// seeded from its access list, starts from the bumped state.</remarks>
+    [Test]
+    public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
+    {
+        Address target = Eip8253TestData.MainnetAccounts[0];
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] };
+        TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider)
+            .WithGenesisPostProcessor((_, state) => state.CreateAccount(target, 1.Ether)));
+        await chain.AddBlock();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await chain.AddBlock(
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(2).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject));
+        Assert.That(block.Number, Is.EqualTo(specProvider.ForkOnBlockNumber), "precondition: the transactions landed in the fork block");
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
+
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Hash256 hash = block.Transactions[i].Hash!;
+            GethTraceOptions prestate = new() { Tracer = "prestateTracer", TxHash = hash };
+            GethTraceOptions diff = prestate with { TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+            string replayedPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds: null, new ExecutionCounter()));
+            string seededPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds, new ExecutionCounter()));
+            string replayedDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds: null, new ExecutionCounter()));
+            string seededDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds, new ExecutionCounter()));
+            string replayedParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds: null, new ExecutionCounter()), true));
+            string seededParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds, new ExecutionCounter()), true));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PrestateNonce(replayedPrestate, target), Is.EqualTo(1), $"transaction {i} starts after the bump");
+                Assert.That(seededPrestate, Is.EqualTo(replayedPrestate), $"seeded prestate of transaction {i}");
+                Assert.That(seededDiff, Is.EqualTo(replayedDiff), $"seeded prestate diff of transaction {i}");
+                Assert.That(seededParity, Is.EqualTo(replayedParity), $"seeded trace and state diff of transaction {i}");
+            }
+        }
+
+        static ulong? PrestateNonce(string json, Address address)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            foreach (JsonProperty account in document.RootElement[0].GetProperty("result").EnumerateObject())
+            {
+                if (new Address(account.Name) == address)
+                    return account.Value.TryGetProperty("nonce", out JsonElement nonce) ? nonce.GetUInt64() : 0;
+            }
+
+            return null;
+        }
     }
 
     private static Task<BasicTestBlockchain> CreateAccessListSeedChain(Action<ContainerBuilder>? configure = null) =>
@@ -470,8 +993,11 @@ public partial class BlockProcessorTests
         ];
 
         Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
-        Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
+            Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        }
         return block;
 
         static Transaction Call(PrivateKey sender, ulong nonce, Address to, int value) =>

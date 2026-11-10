@@ -19,6 +19,7 @@ using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -119,7 +120,8 @@ public class FlatStateActivationPolicyTests
 
         string[] expectedEvents = expectedOutcome switch
         {
-            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
+            // The wipe commits its marker, then drops the columns, then resets the state pointer.
+            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
             RepairOutcome.Acknowledged => [SpyFlatColumnsDb.AcknowledgeEvent],
             _ => []
         };
@@ -150,10 +152,10 @@ public class FlatStateActivationPolicyTests
 
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, true)]
     [TestCase(true, HistoryRetentionMode.SinceBlock, FlatDbOnRepair.Resync, true)]
-    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, false)]
+    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, true)]
     [TestCase(false, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, false)]
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Ignore, false)]
-    public void Wipe_warns_to_wipe_flat_history_only_when_windowed(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
+    public void Wipe_warns_to_wipe_flat_history_whenever_history_is_enabled(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
     {
         TestLogger testLogger = new();
         PolicySetup setup = CreateSetup(Flags.Enabled | Flags.Repaired | Flags.FlatHasData, FlatLayout.Flat, 32.GiB,
@@ -253,8 +255,11 @@ public class FlatStateActivationPolicyTests
             fastSync: true,
             snapSync: false);
 
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-        Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+            Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        }
     }
 
     private static FlatStateActivationPolicy CreatePolicy(
@@ -288,7 +293,7 @@ public class FlatStateActivationPolicyTests
 
         flatDb ??= new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
-            new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+            new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
         if (flags.HasFlag(Flags.WipedForSync))
             MarkWipedForSync(flatDb);
         if (flags.HasFlag(Flags.FlatDataKeys))

@@ -9,7 +9,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -17,7 +16,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
-using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Module = Autofac.Module;
 
@@ -41,6 +39,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
         base.Load(builder);
         builder
+            // Ahead of NethermindModule so it runs before FlatLayoutResolver, which would pick a layout from the test
+            // hardware info and record it under the default BaseDbPath.
+            .Intercept<IFlatDbConfig>(flatDbConfig =>
+            {
+                if (flatDbConfig.Layout == FlatLayout.Auto) flatDbConfig.Layout = FlatLayout.Flat;
+            })
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
@@ -53,7 +57,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
@@ -67,9 +70,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // would convert in-memory snapshots into the no-op loader and lose that state.
                 flatDbConfig.EnableLongFinality = false;
             })
-
-            // Rpc
-            .AddSingleton<IJsonRpcService, JsonRpcService>()
             ;
 
 

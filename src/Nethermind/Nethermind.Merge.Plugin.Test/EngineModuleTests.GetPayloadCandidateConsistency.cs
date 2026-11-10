@@ -100,7 +100,7 @@ public partial class EngineModuleTests
     {
         public AlternatingBlockImprovementContext? Created { get; private set; }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader,
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader,
             PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
             Created = new AlternatingBlockImprovementContext(candidates, startDateTime);
     }

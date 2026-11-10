@@ -16,8 +16,6 @@ public partial class SecP256r1Precompile : IPrecompile<SecP256r1Precompile>
 
     public static SecP256r1Precompile Instance { get; } = new();
 
-    public static Address Address { get; } = Address.FromNumber(0x100);
-
     public string Name => "P256VERIFY";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip7951Enabled ? 6900UL : 3450UL;

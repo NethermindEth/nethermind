@@ -20,7 +20,7 @@ public enum FrameMode : byte
     /// <remarks>
     /// Ordinarily the transaction's validation prefix, where <see cref="TxFrame.Flags"/> lets it approve execution or
     /// payment; the approval scope comes from the flags, not from this mode. Consensus does not confine a VERIFY
-    /// frame to that prefix — one may sit behind a body frame — though it may neither follow a POST_TX frame nor
+    /// frame to that prefix — one may sit behind a body frame — though it may neither follow an ASSERT frame nor
     /// directly follow an atomic-batch one. The public mempool additionally refuses a VERIFY frame behind the
     /// first frame flagged to approve payment (<see cref="FrameTxValidation.HasVerifyFrameAfterPrefix"/>): its
     /// revert would invalidate an already-announced transaction on state the pool never simulated.
@@ -34,7 +34,7 @@ public enum FrameMode : byte
 
     /// <summary>EIP-7906: a read-only trailing frame, called by <c>ENTRY_POINT</c>, that asserts the
     /// transaction's outcome.</summary>
-    PostTx = 3,
+    Assert = 3,
 }
 
 /// <summary>The approval scope an EIP-8141 frame may grant, plus its atomic-batch membership.</summary>

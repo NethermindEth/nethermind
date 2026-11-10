@@ -44,3 +44,6 @@ internal sealed record XdcProcessedRewards(BlockReward[] BlockRewards, XdcEpochR
 {
     public static XdcProcessedRewards Empty => new([], XdcEpochRewards.Empty);
 }
+
+[JsonSerializable(typeof(XdcEpochRewards))]
+internal partial class XdcEpochRewardsJsonContext : JsonSerializerContext;

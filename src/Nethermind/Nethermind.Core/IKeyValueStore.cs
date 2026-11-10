@@ -33,6 +33,32 @@ namespace Nethermind.Core
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         /// <summary>
+        /// Passes the value of <paramref name="key"/> to <paramref name="action"/>, borrowed for the duration of the call.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="GetSpan"/>, implementations honor <see cref="ReadFlags.HintReadAhead"/> as <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/> does.
+        /// </remarks>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <param name="action">Receives the value; it must not keep the span past the call.</param>
+        /// <param name="arg">Passed to <paramref name="action"/>.</param>
+        /// <returns>Whether the key exists, in which case its value, possibly empty, was passed to <paramref name="action"/>.</returns>
+        bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Span<byte> value = GetSpan(key, flags);
+            try
+            {
+                if (value.IsNull()) return false;
+                action(value, arg);
+                return true;
+            }
+            finally
+            {
+                DangerousReleaseMemory(value);
+            }
+        }
+
+        /// <summary>
         /// Get, C-style. Write the output to <paramref name="output" /> span and return the length of written data.
         /// Cannot differentiate if the data is missing or does not exist. Throws if <paramref name="output" /> is not large enough.
         /// </summary>
@@ -168,6 +194,17 @@ namespace Nethermind.Core
         }
     }
 
+    /// <summary>Provides ceiling reads whose key and value come from one point-in-time view.</summary>
+    public interface ISnapshotSortedKeyValueStore : ISortedKeyValueStore
+    {
+        /// <summary>Finds the first key in the range using a fresh view, or the store's pinned snapshot.</summary>
+        /// <remarks>Reports the stored lengths. A buffer too short for its part remains unchanged.
+        /// Neither buffer changes on a miss. The lower bound is inclusive; the upper bound is exclusive.</remarks>
+        bool TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
+    }
+
     /// <summary>
     /// Provides the capability to create read-only snapshots of a key-value store.
     /// </summary>
@@ -221,6 +258,32 @@ namespace Nethermind.Core
         public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
+    /// <summary>A sorted view that can traverse preceding keys within the same view.</summary>
+    public interface IReverseSortedView : ISortedView
+    {
+        /// <summary>Moves from a valid current key to the preceding key within the view's bounds.</summary>
+        /// <returns>False when no preceding key remains.</returns>
+        public bool MovePrevious();
+    }
+
+    /// <summary>A sorted view that can reposition within its bounds.</summary>
+    public interface ISeekableSortedView : ISortedView
+    {
+        /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
+        /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
+        /// remains below the view's upper bound.</summary>
+        public bool SeekTo(ReadOnlySpan<byte> key);
+    }
+
+    /// <summary>A sorted view whose bounds can change without replacing its snapshot.</summary>
+    public interface IRebindableSortedView : ISeekableSortedView
+    {
+        /// <summary>Attempts to set new bounds. On success, the next <see cref="ISortedView.MoveNext"/>
+        /// seeks to the new lower bound using the original snapshot. Returns false when the caller must create
+        /// a new view.</summary>
+        bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     [Flags]
     public enum ReadFlags
     {
@@ -243,6 +306,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        /// <summary>Requests a view that supports repeated bound changes when the store provides one.</summary>
+        HintRepeatedReads = 32,
     }
 
     [Flags]

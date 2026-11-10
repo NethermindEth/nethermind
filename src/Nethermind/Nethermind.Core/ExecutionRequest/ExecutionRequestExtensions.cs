@@ -8,14 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.ExecutionRequest;
 
-using SHA256 =
-#if ZK_EVM
-    ExecutionRequestExtensions.Sha256;
-#else
-    System.Security.Cryptography.SHA256;
-#endif
-
-public static class ExecutionRequestExtensions
+public static partial class ExecutionRequestExtensions
 {
     public const int PublicKeySize = 48;
     public const int WithdrawalCredentialsSize = Hash256.Size;
@@ -43,14 +36,17 @@ public static class ExecutionRequestExtensions
         ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        Span<byte> hash = stackalloc byte[Hash256.Size];
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(SHA256.HashData(requests));
+            Sha256(requests, hash);
+            concatenatedHashes.AddRange(hash);
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
+        Sha256(concatenatedHashes.AsSpan(), hash);
+        return new Hash256(hash);
     }
 
 
@@ -228,17 +224,5 @@ public static class ExecutionRequestExtensions
         }
     }
 
-#if ZK_EVM
-    internal static class Sha256
-    {
-        internal static byte[] HashData(ReadOnlySpan<byte> data)
-        {
-            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
-
-            Nethermind.Zkvm.Abstractions.Accelerators.Sha256(data, output);
-
-            return output;
-        }
-    }
-#endif
+    private static partial void Sha256(ReadOnlySpan<byte> data, Span<byte> output);
 }

@@ -52,8 +52,11 @@ public class IpcSocketMessageStreamTests
             byte[] buffer = new byte[1024];
             (int read, ReceiveResult result) = await ReceiveUntilEndOfMessageAsync(stream, buffer, pair.Token);
 
-            Assert.That(result.EndOfMessage, Is.True, $"message {i}");
-            Assert.That(Encoding.UTF8.GetString(buffer, 0, read), Is.EqualTo(expectedMessages[i]), $"message {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EndOfMessage, Is.True, $"message {i}");
+                Assert.That(Encoding.UTF8.GetString(buffer, 0, read), Is.EqualTo(expectedMessages[i]), $"message {i}");
+            }
         }
     }
 
@@ -102,13 +105,14 @@ public class IpcSocketMessageStreamTests
     }
 
     [Test]
-    public async Task WriteEndOfMessageAsync_writes_a_single_newline()
+    public async Task WriteEndOfMessageAsync_writes_a_single_newline([Values] bool dataWithEnd)
     {
         using SocketPair pair = await SocketPair.CreateAsync();
         await using IpcSocketMessageStream stream = new(pair.Server);
 
-        await stream.WriteAsync("""{"id":1}"""u8.ToArray(), pair.Token);
-        int written = await stream.WriteEndOfMessageAsync();
+        byte[] data = """{"id":1}"""u8.ToArray();
+        if (!dataWithEnd) await stream.WriteAsync(data, pair.Token);
+        int written = await stream.WriteEndOfMessageAsync(dataWithEnd ? data : ReadOnlyMemory<byte>.Empty, pair.Token);
 
         byte[] expected = "{\"id\":1}\n"u8.ToArray();
         byte[] received = new byte[expected.Length];
@@ -183,8 +187,11 @@ public class IpcSocketMessageStreamTests
         {
             ReceiveResult result = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, offset, buffer.Length - offset), token);
 
-            Assert.That(result.EndOfMessage, Is.False);
-            Assert.That(result.Closed, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EndOfMessage, Is.False);
+                Assert.That(result.Closed, Is.False);
+            }
 
             offset += result.Read;
         }

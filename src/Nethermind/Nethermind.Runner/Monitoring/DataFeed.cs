@@ -392,8 +392,9 @@ public class DataFeed
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
+        UInt256? feePerBlobGas = null;
         ReceiptForRpc[] receipts = _receiptFinder.Get(head)
-            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
+            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header, ref feePerBlobGas)))
             .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
@@ -452,14 +453,14 @@ public class DataFeed
         );
     }
 
-    private class ForkData
+    internal class ForkData
     {
         public BlockForWeb Head { get; set; }
         public ulong Safe { get; set; }
         public ulong Finalized { get; set; }
     }
 
-    private class BlockForWeb
+    internal class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
         public ulong GasLimit { get; set; }
@@ -476,7 +477,7 @@ public class DataFeed
         public ReceiptForWeb[] Receipts { get; set; }
         public ReceiptForWeb[] Withdrawals { get; set; }
     }
-    private class ReceiptForWeb
+    internal class ReceiptForWeb
     {
         public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
@@ -486,13 +487,13 @@ public class DataFeed
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }
-    private class LogEntryForWeb
+    internal class LogEntryForWeb
     {
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Hash256[] Topics { get; set; }
     }
-    private class TransactionForWeb
+    internal class TransactionForWeb
     {
         public Hash256 Hash { get; set; }
         public Address From { get; set; }
@@ -508,7 +509,7 @@ public class DataFeed
         public int Blobs { get; set; }
         public byte[] Method { get; set; }
     }
-    private class WithdrawalForWeb
+    internal class WithdrawalForWeb
     {
 
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Dns;
@@ -12,28 +13,35 @@ public class EnrTreeCrawler(ILogger logger)
 
     public IAsyncEnumerable<string> SearchTree(string domain, CancellationToken cancellationToken = default)
     {
+        byte[]? signerPublicKey = null;
         if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
         {
             domain = domain[10..];
-            // Note: we have no verification of a DNS list signer!
-            // Following EIP-1459 "public key must be known to the client in order to verify the list"
-            // Thus there shall be a list of public keys that a client allows and we shall check against it
             string[] pubkey_and_url = domain.Split("@");
             if (pubkey_and_url.Length > 1)
             {
+                signerPublicKey = new byte[CompressedPublicKey.LengthInBytes];
+                if (!EnrTreeHash.TryDecodeBase32(pubkey_and_url[0], signerPublicKey, out int keyLength) || keyLength != signerPublicKey.Length)
+                {
+                    if (_logger.IsError) _logger.Error($"Skipping DNS discovery: '{pubkey_and_url[0]}' is not a base32 compressed public key of the ENR tree signer.");
+                    return AsyncEnumerable.Empty<string>();
+                }
+
                 domain = pubkey_and_url[1];
             }
-            else
-            {
-                _logger.Warn("No 32bit encoded public key of enr tree signer");
-            }
         }
+
+        if (signerPublicKey is null && _logger.IsWarn)
+        {
+            _logger.Warn($"No ENR tree signer public key configured for '{domain}', the tree root signature will not be verified. Use enrtree://<public key>@<domain>.");
+        }
+
         DnsClient client = new(domain);
-        return SearchTree(client, cancellationToken);
+        return SearchTree(client, signerPublicKey, cancellationToken);
     }
 
-    internal IAsyncEnumerable<string> SearchTree(IDnsClient client, CancellationToken cancellationToken = default) =>
-        SearchTree(client, new SearchContext(string.Empty), cancellationToken);
+    internal IAsyncEnumerable<string> SearchTree(IDnsClient client, byte[]? signerPublicKey = null, CancellationToken cancellationToken = default) =>
+        SearchTree(client, new SearchContext(string.Empty, signerPublicKey), cancellationToken);
 
     private async IAsyncEnumerable<string> SearchTree(IDnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -74,6 +82,14 @@ public class EnrTreeCrawler(ILogger logger)
                     continue;
                 }
 
+                // EIP-1459: the root binds the whole tree through its subtree hashes, so it must carry the signer's signature.
+                if (query.Length == 0 && searchContext.SignerPublicKey is not null &&
+                    !(treeNode is EnrTreeRoot root && root.IsSignedBy(searchContext.SignerPublicKey)))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Rejecting ENR tree root '{node}': it is not an enrtree-root signed by the configured tree signer.");
+                    continue;
+                }
+
                 foreach (string link in treeNode.Links)
                 {
                     DnsClient linkedTreeLookup = new(link);
@@ -98,7 +114,13 @@ public class EnrTreeCrawler(ILogger logger)
 
     private class SearchContext
     {
-        public SearchContext(string startRef) => RefsToVisit.Enqueue(startRef);
+        public SearchContext(string startRef, byte[]? signerPublicKey)
+        {
+            RefsToVisit.Enqueue(startRef);
+            SignerPublicKey = signerPublicKey;
+        }
+
+        public byte[]? SignerPublicKey { get; }
 
         public HashSet<string> VisitedRefs { get; } = [];
 

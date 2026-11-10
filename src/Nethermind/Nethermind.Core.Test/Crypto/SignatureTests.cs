@@ -86,8 +86,11 @@ public class SignatureTests
         Signature signature = new EthereumEcdsa(0).Sign(key, Hash256.Zero);
         Signature flipped = FlipSignature(signature);
         Assert.That(signature, Is.Not.EqualTo(flipped));
-        Assert.That(signature.HasLowS(), Is.True);
-        Assert.That(flipped.HasLowS(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(signature.HasLowS(), Is.True);
+            Assert.That(flipped.HasLowS(), Is.False);
+        }
     }
 
     [Test]
@@ -101,6 +104,16 @@ public class SignatureTests
 
         Signature minS = new(in UInt256.Zero, UInt256.One, Signature.VOffset);
         Assert.That(minS.HasLowS(), Is.True);
+    }
+
+    [Test]
+    public void Curve_half_order_constants_derive_from_N()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SecP256k1Curve.HalfN, Is.EqualTo(SecP256k1Curve.N / 2));
+            Assert.That(SecP256k1Curve.HalfNPlusOne, Is.EqualTo(SecP256k1Curve.HalfN + 1));
+        }
     }
 
     private static Signature FlipSignature(Signature original)

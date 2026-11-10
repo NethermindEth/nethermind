@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -127,6 +128,9 @@ public class EraImporter(
             suggestFromBlock = ulong.MaxValue;
         }
 
+        await KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(blockTree, from, to,
+            async number => (await eraStore.FindBlockAndReceipts(number, cancellation: cancellation)).Item1, cancellation);
+
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
         // This makes the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
         // work on the same era file as other thread.
@@ -202,6 +206,8 @@ public class EraImporter(
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
+            KnownHeaders.EnsureMatch(blockTree, block);
+
             if (suggestFromBlock <= block.Number)
             {
                 await pacer.WaitForQueue(block.Number, cancellation);
@@ -225,14 +231,17 @@ public class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
-        // Confusingly it will get the header with `BlockTreeLookupOptions.TotalDifficultyNotNeeded` then
-        // proceed to validate the total difficulty if its not null with the code
-        // `parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty`
-        // when clearly, the `parent.TotalDifficulty` is going to be null or 0.
+        // The block tree recomputes TD from the local parent instead of trusting archive metadata.
         block.Header.TotalDifficulty = null;
 
-        // Should this be in suggest instead?
-        if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
+        const string unknownParentError = "Unknown parent for block in Era1 archive";
+
+        // Processing recomputes only the execution results, so the parent-relative header rules and the body
+        // roots are checked here, as they are for every other block handed to the processor.
+        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)
+            ?? throw new EraImportException(unknownParentError);
+
+        if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? error))
         {
             throw new EraVerificationException($"Block validation failed: {error}");
         }
@@ -245,7 +254,7 @@ public class EraImporter(
             case AddBlockResult.CannotAccept:
                 throw new EraImportException("Rejected block in Era1 archive");
             case AddBlockResult.UnknownParent:
-                throw new EraImportException("Unknown parent for block in Era1 archive");
+                throw new EraImportException(unknownParentError);
             case AddBlockResult.InvalidBlock:
                 throw new EraImportException("Invalid block in Era1 archive");
             case AddBlockResult.Added:

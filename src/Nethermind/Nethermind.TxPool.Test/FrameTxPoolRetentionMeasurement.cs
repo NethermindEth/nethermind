@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -85,7 +86,9 @@ public class FrameTxPoolRetentionMeasurement
     public async Task Control_included_frame_transaction_leaves_the_pool()
     {
         Transaction tx = BuildFrameTx(nonce: 0, deadline: null);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the sample never entered the pool");
 
         await AdvanceHead(tx);
@@ -204,15 +207,17 @@ public class FrameTxPoolRetentionMeasurement
             _blockTree,
             _stateProvider);
 
+        TxPoolConfig config = new() { GasLimit = 30_000_000 };
         return new TxPool(
             _ethereumEcdsa,
             new BlobTxStorage(),
             headInfo,
-            new TxPoolConfig { GasLimit = 30_000_000 },
+            config,
             new TxValidator(_specProvider.ChainId),
             new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(config),
             ShouldGossip.Instance,
             incomingTxFilters: null,
             thereIsPriorityContract: false);

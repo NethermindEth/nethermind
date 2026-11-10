@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -28,7 +29,7 @@ namespace Nethermind.Network.Test.Rlpx
             NetworkConfig networkConfig = new()
             {
                 ProcessingThreadCount = 1,
-                P2PPort = GegAvailableLocalPort(),
+                P2PPort = 0,
                 LocalIp = null,
                 ConnectTimeoutMs = 200,
                 SimulateSendLatencyMs = 0,
@@ -46,20 +47,9 @@ namespace Nethermind.Network.Test.Rlpx
                 new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
             await host.Init();
             await host.Shutdown();
-        }
 
-        private static int GegAvailableLocalPort()
-        {
-            TcpListener l = new(IPAddress.Loopback, 0);
-            l.Start();
-            try
-            {
-                return ((IPEndPoint)l.LocalEndpoint).Port;
-            }
-            finally
-            {
-                l.Stop();
-            }
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", networkConfig.P2PPort);
+            Assert.That(await host.ConnectAsync(node), Is.False, "a dial after shutdown must not reach the closed worker group");
         }
     }
 }

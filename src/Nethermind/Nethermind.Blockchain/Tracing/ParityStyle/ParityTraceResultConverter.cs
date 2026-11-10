@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
@@ -34,22 +35,22 @@ public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
             if (reader.ValueTextEquals("gasUsed"u8))
             {
                 reader.Read();
-                value.GasUsed = JsonSerializer.Deserialize<ulong>(ref reader, options);
+                value.GasUsed = TypeInfoJsonSerializer.Deserialize<ulong>(ref reader, options);
             }
             else if (reader.ValueTextEquals("output"u8))
             {
                 reader.Read();
-                value.Output = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Output = TypeInfoJsonSerializer.Deserialize<byte[]?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("address"u8))
             {
                 reader.Read();
-                value.Address = JsonSerializer.Deserialize<Address?>(ref reader, options);
+                value.Address = TypeInfoJsonSerializer.Deserialize<Address?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("code"u8))
             {
                 reader.Read();
-                value.Code = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                value.Code = TypeInfoJsonSerializer.Deserialize<byte[]?>(ref reader, options);
             }
 
             reader.Read();
@@ -68,18 +69,18 @@ public class ParityTraceResultConverter : JsonConverter<ParityTraceResult>
         if (value.Address is not null)
         {
             writer.WritePropertyName("address"u8);
-            JsonSerializer.Serialize(writer, value.Address, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Address, options);
             writer.WritePropertyName("code"u8);
-            JsonSerializer.Serialize(writer, value.Code, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Code, options);
         }
 
         writer.WritePropertyName("gasUsed"u8);
-        JsonSerializer.Serialize(writer, value.GasUsed, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.GasUsed, options);
 
         if (value.Address is null)
         {
             writer.WritePropertyName("output"u8);
-            JsonSerializer.Serialize(writer, value.Output, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
         }
 
         writer.WriteEndObject();

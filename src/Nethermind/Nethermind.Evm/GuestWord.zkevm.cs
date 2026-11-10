@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
-internal static class GuestWord
+internal static unsafe class GuestWord
 {
     /// <summary>Writes <paramref name="value"/>, zero-extended, into the slot whose low limb is <paramref name="word"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -18,20 +20,41 @@ internal static class GuestWord
         Unsafe.Add(ref word, 3) = 0;
     }
 
-    /// <summary>Whether the word at <paramref name="left"/> is below the word at <paramref name="right"/>, both in limb layout.</summary>
+    /// <summary>
+    /// Whether the word <paramref name="left"/> limbs from <paramref name="words"/> is below the word <paramref name="right"/>
+    /// limbs from it, both in limb layout.
+    /// </summary>
+    /// <remarks>Both are addressed off <paramref name="words"/> itself, so each access folds its constant into its own offset.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsBelow(ref ulong left, ref ulong right)
+    internal static bool IsBelow(ref ulong words, nint left, nint right)
     {
-        ulong leftLimb = Unsafe.Add(ref left, 3);
-        ulong rightLimb = Unsafe.Add(ref right, 3);
+        ulong leftLimb = Unsafe.Add(ref words, left + 3);
+        ulong rightLimb = Unsafe.Add(ref words, right + 3);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        leftLimb = Unsafe.Add(ref left, 2);
-        rightLimb = Unsafe.Add(ref right, 2);
+        leftLimb = Unsafe.Add(ref words, left + 2);
+        rightLimb = Unsafe.Add(ref words, right + 2);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        leftLimb = Unsafe.Add(ref left, 1);
-        rightLimb = Unsafe.Add(ref right, 1);
+        leftLimb = Unsafe.Add(ref words, left + 1);
+        rightLimb = Unsafe.Add(ref words, right + 1);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        return left < right;
+        return Unsafe.Add(ref words, left) < Unsafe.Add(ref words, right);
+    }
+
+    /// <summary>As <see cref="IsBelow"/>, with both words read as two's complement.</summary>
+    /// <remarks>Only the top limbs carry the sign, so they compare signed and the rest as <see cref="IsBelow"/> does.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsSignedBelow(ref ulong words, nint left, nint right)
+    {
+        long leftTop = (long)Unsafe.Add(ref words, left + 3);
+        long rightTop = (long)Unsafe.Add(ref words, right + 3);
+        if (leftTop != rightTop) return leftTop < rightTop;
+        ulong leftLimb = Unsafe.Add(ref words, left + 2);
+        ulong rightLimb = Unsafe.Add(ref words, right + 2);
+        if (leftLimb != rightLimb) return leftLimb < rightLimb;
+        leftLimb = Unsafe.Add(ref words, left + 1);
+        rightLimb = Unsafe.Add(ref words, right + 1);
+        if (leftLimb != rightLimb) return leftLimb < rightLimb;
+        return Unsafe.Add(ref words, left) < Unsafe.Add(ref words, right);
     }
 
     /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, left by <paramref name="shift"/> bits, below 256.</summary>
@@ -86,9 +109,15 @@ internal static class GuestWord
     }
 
     /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, right by <paramref name="shift"/> bits, below 256.</summary>
-    /// <remarks>The mirror of <see cref="ShiftLeft"/>, working from the bottom limb up.</remarks>
+    /// <param name="value">The low limb of the word.</param>
+    /// <param name="shift">The shift, below 256.</param>
+    /// <param name="arithmetic">Whether the bits shifted in copy the sign, rather than being zero.</param>
+    /// <remarks>
+    /// The mirror of <see cref="ShiftLeft"/>, working from the bottom limb up. The top limb takes its own shift, which
+    /// brings in the sign of an arithmetic one, so only the limbs above it need the sign spread out.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ShiftRight(ref ulong value, int shift)
+    internal static void ShiftRight(ref ulong value, int shift, bool arithmetic = false)
     {
         int bits = shift;
         int carry = 63 ^ shift;
@@ -102,7 +131,7 @@ internal static class GuestWord
             Unsafe.Add(ref value, 1) = (limb1 >> bits) | ((limb2 << 1) << carry);
             ulong limb3 = Unsafe.Add(ref value, 3);
             Unsafe.Add(ref value, 2) = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 3) = limb3 >> bits;
+            Unsafe.Add(ref value, 3) = ShiftTopLimb(limb3, bits, arithmetic);
         }
         else if (limbs == 1)
         {
@@ -111,38 +140,243 @@ internal static class GuestWord
             value = (limb1 >> bits) | ((limb2 << 1) << carry);
             ulong limb3 = Unsafe.Add(ref value, 3);
             Unsafe.Add(ref value, 1) = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 2) = limb3 >> bits;
-            Unsafe.Add(ref value, 3) = 0;
+            Unsafe.Add(ref value, 2) = ShiftTopLimb(limb3, bits, arithmetic);
+            Unsafe.Add(ref value, 3) = FillLimb(limb3, arithmetic);
         }
         else if (limbs == 2)
         {
             ulong limb2 = Unsafe.Add(ref value, 2);
             ulong limb3 = Unsafe.Add(ref value, 3);
             value = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 1) = limb3 >> bits;
-            Unsafe.Add(ref value, 2) = 0;
-            Unsafe.Add(ref value, 3) = 0;
+            Unsafe.Add(ref value, 1) = ShiftTopLimb(limb3, bits, arithmetic);
+            ulong fill = FillLimb(limb3, arithmetic);
+            Unsafe.Add(ref value, 2) = fill;
+            Unsafe.Add(ref value, 3) = fill;
         }
         else
         {
-            value = Unsafe.Add(ref value, 3) >> bits;
-            Unsafe.Add(ref value, 1) = 0;
-            Unsafe.Add(ref value, 2) = 0;
-            Unsafe.Add(ref value, 3) = 0;
+            ulong limb3 = Unsafe.Add(ref value, 3);
+            value = ShiftTopLimb(limb3, bits, arithmetic);
+            ulong fill = FillLimb(limb3, arithmetic);
+            Unsafe.Add(ref value, 1) = fill;
+            Unsafe.Add(ref value, 2) = fill;
+            Unsafe.Add(ref value, 3) = fill;
         }
     }
 
+    /// <summary>The top limb shifted right by <paramref name="bits"/>, modulo 64, copying its sign when <paramref name="arithmetic"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ShiftTopLimb(ulong limb, int bits, bool arithmetic) =>
+        arithmetic ? (ulong)((long)limb >> bits) : limb >> bits;
+
+    /// <summary>The limb a right shift fills in above the top one: its sign spread out when <paramref name="arithmetic"/>, or zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong FillLimb(ulong top, bool arithmetic) => arithmetic ? (ulong)((long)top >> 63) : 0;
+
+    /// <summary>Reports whether the word at <paramref name="word"/>, in limb layout, is a power of two, and which.</summary>
+    /// <param name="word">The low limb of the word.</param>
+    /// <param name="log2">The exponent, below 256, when the word is a power of two.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryGetLog2(ref ulong word, out int log2)
+    {
+        ulong limb0 = word;
+        ulong limb1 = Unsafe.Add(ref word, 1);
+        ulong limb2 = Unsafe.Add(ref word, 2);
+        ulong limb3 = Unsafe.Add(ref word, 3);
+        // The highest nonzero limb, its offset in bits, and the limbs below it, which a power of two leaves clear.
+        ulong bit;
+        int limbBits;
+        ulong below;
+        if (limb3 != 0)
+        {
+            bit = limb3;
+            limbBits = 192;
+            below = limb0 | limb1 | limb2;
+        }
+        else if (limb2 != 0)
+        {
+            bit = limb2;
+            limbBits = 128;
+            below = limb0 | limb1;
+        }
+        else if (limb1 != 0)
+        {
+            bit = limb1;
+            limbBits = 64;
+            below = limb0;
+        }
+        else
+        {
+            bit = limb0;
+            limbBits = 0;
+            below = 0;
+        }
+
+        log2 = limbBits + BitOperations.TrailingZeroCount(bit);
+        return (below | (bit & (bit - 1))) == 0 && bit != 0;
+    }
+
+    /// <summary>Copies the word at <paramref name="source"/> over the one at <paramref name="destination"/>, both in limb layout.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void CopyWord(ref ulong source, ref ulong destination)
+    {
+        destination = source;
+        Unsafe.Add(ref destination, 1) = Unsafe.Add(ref source, 1);
+        Unsafe.Add(ref destination, 2) = Unsafe.Add(ref source, 2);
+        Unsafe.Add(ref destination, 3) = Unsafe.Add(ref source, 3);
+    }
+
     /// <summary>Loads a big-endian word into a stack slot in limb layout.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on and <paramref name="source"/> is on a word or a half-word boundary,
+    /// the limbs are loaded in words or halves and byte-swapped: one alignment test for the word instead of a byte gather
+    /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        ulong limb3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8)));
-        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16)));
-        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24)));
-        slot = limb0;
-        Unsafe.Add(ref slot, 1) = limb1;
-        Unsafe.Add(ref slot, 2) = limb2;
-        Unsafe.Add(ref slot, 3) = limb3;
+        if (StrictAlignmentFlag.IsActive)
+        {
+            nuint misalignment = Misalignment(ref source);
+            if (misalignment == 0)
+            {
+                LoadAlignedBigEndian(ref slot, AlignedWords(ref source));
+                return;
+            }
+
+            if (misalignment == sizeof(uint))
+            {
+                LoadHalfAlignedBigEndian(ref slot, AlignedHalves(ref source));
+                return;
+            }
+        }
+
+        // Each limb is stored as it is read, so a byte gather holds one limb at a time.
+        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
+        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
+        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
+        slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
     }
+
+    /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, big-endian to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// The store counterpart of <see cref="LoadBigEndian"/>. Where <see cref="StrictAlignmentFlag"/> is on, each limb is
+    /// loaded, swapped and stored before the next, so the four limbs are not live at once. The word is addressed from the
+    /// slot above it, which the MSTORE handlers hold, so the JIT folds the limbs' offsets into the loads.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void StoreBigEndian(ref byte destination, ref ulong end)
+    {
+        if (StrictAlignmentFlag.IsActive)
+        {
+            nuint misalignment = Misalignment(ref destination);
+            if (misalignment == 0)
+            {
+                StoreAlignedBigEndian(AlignedWords(ref destination), ref end);
+                return;
+            }
+
+            if (misalignment == sizeof(uint))
+            {
+                StoreHalfAlignedBigEndian(AlignedHalves(ref destination), ref end);
+                return;
+            }
+        }
+
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref end, -1));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref end, -2));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref end, -3));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), Unsafe.Add(ref end, -4));
+    }
+
+    // Separate from their callers so the IL that SP1 alone runs does not count against their inlining elsewhere.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadAlignedBigEndian(ref ulong slot, ulong* words)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        slot = ZkEvmBitOperations.Swap(words[3], m8, m16);
+        Unsafe.Add(ref slot, 1) = SwapUpperLimb(words[2], m8, m16);
+        Unsafe.Add(ref slot, 2) = SwapUpperLimb(words[1], m8, m16);
+        Unsafe.Add(ref slot, 3) = SwapUpperLimb(words[0], m8, m16);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreAlignedBigEndian(ulong* words, ref ulong end)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        words[0] = SwapUpperLimb(Unsafe.Add(ref end, -1), m8, m16);
+        words[1] = SwapUpperLimb(Unsafe.Add(ref end, -2), m8, m16);
+        words[2] = SwapUpperLimb(Unsafe.Add(ref end, -3), m8, m16);
+        words[3] = ZkEvmBitOperations.Swap(Unsafe.Add(ref end, -4), m8, m16);
+    }
+
+    /// <summary><see cref="ZkEvmBitOperations.Swap"/> of one of a word's three upper limbs, which skips the swap when the limb is zero.</summary>
+    /// <remarks>Most words in memory are small, so their upper limbs are mostly zero; one branch costs less than the swap's thirteen instructions.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong SwapUpperLimb(ulong limb, ulong m8, ulong m16) => limb == 0 ? 0 : ZkEvmBitOperations.Swap(limb, m8, m16);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadHalfAlignedBigEndian(ref ulong slot, uint* halves)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        slot = ReverseHalves(JoinHalves(halves, 6), m8, m16);
+        Unsafe.Add(ref slot, 1) = ReverseUpperLimbHalves(JoinHalves(halves, 4), m8, m16);
+        Unsafe.Add(ref slot, 2) = ReverseUpperLimbHalves(JoinHalves(halves, 2), m8, m16);
+        Unsafe.Add(ref slot, 3) = ReverseUpperLimbHalves(JoinHalves(halves, 0), m8, m16);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreHalfAlignedBigEndian(uint* halves, ref ulong end)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        SplitHalves(halves, 0, ReverseUpperLimbHalves(Unsafe.Add(ref end, -1), m8, m16));
+        SplitHalves(halves, 2, ReverseUpperLimbHalves(Unsafe.Add(ref end, -2), m8, m16));
+        SplitHalves(halves, 4, ReverseUpperLimbHalves(Unsafe.Add(ref end, -3), m8, m16));
+        SplitHalves(halves, 6, ReverseHalves(Unsafe.Add(ref end, -4), m8, m16));
+    }
+
+    /// <summary><see cref="ReverseHalves"/> of one of a word's three upper limbs, which skips the reversal when the limb is zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReverseUpperLimbHalves(ulong limb, ulong m8, ulong m16) => limb == 0 ? 0 : ReverseHalves(limb, m8, m16);
+
+    /// <summary>Reverses the bytes within each 32-bit half of <paramref name="x"/>, but keeps the halves in place.</summary>
+    /// <remarks>
+    /// <see cref="ZkEvmBitOperations.Swap"/> without its exchange of the halves: a limb read or written as two halves
+    /// gets that exchange free from <see cref="JoinHalves"/> or <see cref="SplitHalves"/>.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReverseHalves(ulong x, ulong m8, ulong m16)
+    {
+        if (ZkEvmBitOperations.HasByteReverse) return BitOperations.RotateLeft(BinaryPrimitives.ReverseEndianness(x), 32);
+
+        x = ((x & m8) << 8) + ((x >> 8) & m8);
+        return ((x & m16) << 16) + ((x >> 16) & m16);
+    }
+
+    /// <summary>The 8 bytes at <paramref name="halves"/>[<paramref name="index"/>] with their halves exchanged: the first half in the upper bits.</summary>
+    /// <remarks>An index rather than an advanced pointer lets the JIT fold the offset into the loads.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong JoinHalves(uint* halves, int index) => ((ulong)halves[index] << 32) | halves[index + 1];
+
+    /// <summary>Writes <paramref name="value"/> to the 8 bytes at <paramref name="halves"/>[<paramref name="index"/>] with its halves exchanged: the upper bits first.</summary>
+    /// <remarks>An index rather than an advanced pointer lets the JIT fold the offset into the stores.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SplitHalves(uint* halves, int index, ulong value)
+    {
+        halves[index] = (uint)(value >> 32);
+        halves[index + 1] = (uint)value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nuint Misalignment(ref byte bytes) => (nuint)Unsafe.AsPointer(ref bytes) & (sizeof(ulong) - 1);
+
+    /// <summary><paramref name="bytes"/>, already on a half-word boundary, rounded down to it so the JIT proves the accesses through it aligned.</summary>
+    /// <remarks>The half-word counterpart of <see cref="AlignedWords"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint* AlignedHalves(ref byte bytes) => (uint*)((nuint)Unsafe.AsPointer(ref bytes) & ~(nuint)(sizeof(uint) - 1));
+
+    /// <summary><paramref name="bytes"/>, already on a word boundary, rounded down to it so the JIT proves the accesses through it aligned.</summary>
+    /// <remarks>The same no-op rounding <c>AlignedSlot</c> applies to stack slots; nothing between it and the accesses can move the buffer.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong* AlignedWords(ref byte bytes) => (ulong*)((nuint)Unsafe.AsPointer(ref bytes) & ~(nuint)(sizeof(ulong) - 1));
 }

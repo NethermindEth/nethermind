@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -20,6 +21,7 @@ namespace Nethermind.Evm.Test
         protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         private readonly ISpecProvider _specProvider = new TestSpecProvider(Istanbul.Instance) { ChainId = chainId };
         protected override ISpecProvider SpecProvider => _specProvider;
+        protected override bool SignWithEip155 => chainId <= EthereumEcdsaExtensions.MaxEip155ChainId;
 
         [Test]
         public void Chain_id_opcode_puts_expected_value_onto_the_stack([Values] bool traced)
