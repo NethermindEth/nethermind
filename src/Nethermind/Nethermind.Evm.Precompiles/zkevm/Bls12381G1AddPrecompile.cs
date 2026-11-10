@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -27,7 +28,7 @@ public partial class Bls12381G1AddPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG1Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381G1Add(
+        Accelerators.Status status = CurveAccelerators.Bls12381G1Add(
             decoded[..Eip2537.LenG1Trimmed], decoded[Eip2537.LenG1Trimmed..], output);
 
         if (status == Accelerators.Status.OK)
