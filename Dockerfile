@@ -25,7 +25,7 @@ RUN git clone https://github.com/NethermindEth/int256 /int256 && \
   dotnet build src/Nethermind.Int256/Nethermind.Int256.csproj -c Release -p:TreatWarningsAsErrors=false && \
   target=/root/.nuget/packages/nethermind.numerics.int256/1.12.0/impl/std/net10.0/Nethermind.Int256.dll && \
   test -f $target && \
-  cp artifacts/bin/Nethermind.Int256/release/Nethermind.Int256.dll $target && \
+  cp src/artifacts/bin/Nethermind.Int256/release/Nethermind.Int256.dll $target && \
   sha256sum $target
 
 COPY src/Nethermind src/Nethermind
