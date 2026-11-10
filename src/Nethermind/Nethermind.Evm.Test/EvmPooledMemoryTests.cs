@@ -46,7 +46,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         byte[] data = new byte[131080];
         SwizzledMemory.Move(ref data[destination], ref data[0], 65536);
-        // A one-off runtime allocation on the test thread, such as during tier-up, shows in one window only.
+        // A per-call allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
         long allocated = long.MaxValue;
         for (int window = 0; window < 5; window++)
         {

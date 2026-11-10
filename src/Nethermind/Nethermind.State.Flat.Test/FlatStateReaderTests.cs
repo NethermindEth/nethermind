@@ -180,13 +180,20 @@ public class FlatStateReaderTests
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
         walk.Accept(rootHash);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A per-walk allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        const int windows = 5;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            walk.Accept(rootHash);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(counter.Nodes, Is.EqualTo((1 + windows) * 17));
             Assert.That(allocated, Is.Zero);
         }
     }
