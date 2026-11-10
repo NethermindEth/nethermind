@@ -212,7 +212,7 @@ public class TraceRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)result?["output"], Is.EqualTo("0x"), response);
-            Assert.That(result?["trace"], Has.Count.EqualTo(1), response);
+            Assert.That((JArray?)result?["trace"], Has.Count.EqualTo(1), response);
             Assert.That((string?)result?["trace"]?[0]?["type"], Is.EqualTo("create"), response);
             Assert.That((string?)result?["trace"]?[0]?["result"]?["code"], Is.EqualTo("0x"), response);
             Assert.That((string?)result?["trace"]?[0]?["result"]?["gasUsed"], Is.EqualTo("0x0"), response);

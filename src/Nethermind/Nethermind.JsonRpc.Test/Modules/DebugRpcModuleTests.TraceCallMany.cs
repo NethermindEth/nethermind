@@ -130,8 +130,8 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["error"], Is.Null, response);
-            Assert.That(json["result"], Has.Count.EqualTo(1), response);
-            Assert.That(json["result"]?[0], Has.Count.EqualTo(1), response);
+            Assert.That((JArray?)json["result"], Has.Count.EqualTo(1), response);
+            Assert.That((JArray?)json["result"]?[0], Has.Count.EqualTo(1), response);
             Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.False, response);
             Assert.That((long?)json["result"]?[0]?[0]?["gas"], Is.EqualTo(53_000), response);
             Assert.That(json["result"]?[0]?[0]?["structLogs"], Is.Empty, response);
