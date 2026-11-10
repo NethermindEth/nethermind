@@ -116,6 +116,29 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_executes_empty_contract_creation([Values] bool streaming, [Values] bool blockOverride)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object bundle = new
+        {
+            transactions = new[] { new { from = TestItem.AddressD, gas = "0x186a0", input = "0x" } },
+            blockOverride = blockOverride ? new { number = "0x100" } : null
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray?)json["result"], Has.Count.EqualTo(1), response);
+            Assert.That((JArray?)json["result"]?[0], Has.Count.EqualTo(1), response);
+            Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?[0]?[0]?["gas"], Is.EqualTo(53_000), response);
+            Assert.That(json["result"]?[0]?[0]?["structLogs"], Is.Empty, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_iterator_uses_generated_interface_metadata()
     {
         using Context ctx = await CreateContext();
@@ -413,22 +436,40 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task Debug_trace_calls_reject_a_withdrawals_block_override([Values] bool many)
+    private static IEnumerable<TestCaseData> TraceCallManyBundleBlockOverrideCases()
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
-        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208" };
-        object withdrawals = new { withdrawals = new[] { new { index = "0x0", validatorIndex = "0x0", address = TestItem.AddressC.ToString(), amount = "0x1" } } };
+        static Withdrawal[] Withdrawals() => [new Withdrawal { Address = TestItem.AddressC, AmountInGwei = 1 }];
+        (string Name, BlockOverride Bundle, BlockOverride? Options, ulong? Block, string? Error, int Code)[] cases =
+        [
+            ("empty_withdrawals", new() { Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("withdrawals", new() { Withdrawals = Withdrawals() }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("bundle_beaconRoot_and_withdrawals", new() { BeaconRoot = Keccak.Zero, Withdrawals = [] }, null, null, BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("options_beaconRoot_comes_before_bundle_withdrawals", new() { Withdrawals = [] }, new() { BeaconRoot = Keccak.Zero }, null, BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("unknown_block_comes_before_bundle_withdrawals", new() { Withdrawals = Withdrawals() }, null, 1000, "header not found", ErrorCodes.ResourceNotFound),
+            ("no_withdrawals", new() { GasLimit = 50_000_000 }, null, null, null, 0),
+            ("bundle_beaconRoot", new() { BeaconRoot = Keccak.Zero }, null, null, null, 0),
+        ];
+        foreach ((string name, BlockOverride bundle, BlockOverride? options, ulong? block, string? error, int code) in cases)
+            yield return new TestCaseData(bundle, options, block, error, code).SetName($"{{m}}({name})");
+    }
 
-        string response = many
-            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, blockOverride = withdrawals } }, "latest")
-            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { blockOverrides = withdrawals });
+    // As in debug_traceCall, an unsupported override is an invalid input reported after the block and its state resolve.
+    [TestCaseSource(nameof(TraceCallManyBundleBlockOverrideCases))]
+    public async Task Debug_traceCallMany_validates_bundle_block_overrides(BlockOverride bundleOverride, BlockOverride? optionsOverride, ulong? block, string? expectedError, int expectedCode)
+    {
+        using Context ctx = await CreateContext();
+        TransactionBundle bundle = CreateBundle(CreateTransaction());
+        bundle.BlockOverride = bundleOverride;
 
-        JToken error = JToken.Parse(response)["error"]!;
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle],
+            block is null ? BlockParameter.Latest : new BlockParameter(block.Value),
+            new GethTraceOptions { BlockOverrides = optionsOverride });
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(many ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput));
-            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedCode));
+            Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.Data?.Select(static r => r.Count()).ToArray(), Is.EqualTo(expectedError is null ? new[] { 1 } : null));
         }
     }
 
