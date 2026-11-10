@@ -24,6 +24,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     public UInt256 InstructionMask { get; }
 
+    /// <inheritdoc/>
+    /// <remarks>The prestate reads operands from the stack snapshot of the instructions in <see cref="InstructionMask"/>.</remarks>
+    public override bool IsTracingStackPushes => false;
+
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
     private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 
@@ -435,10 +439,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
+            bool sameCodeHash = !_disableCode && prestateAccount.CodeHash is { } preCodeHash && preCodeHash == poststateAccountStruct.CodeHash;
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _disableCode ? default : _worldState.GetCode(addr));
+                _disableCode ? default : sameCodeHash ? prestateAccount.Code : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -458,7 +463,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
             }
-            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            if (!_disableCode && !sameCodeHash && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;

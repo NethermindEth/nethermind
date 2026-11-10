@@ -14,8 +14,10 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,12 +33,12 @@ public class HistoricalTraceReExecutionTests
 
     private ResourcePool _resourcePool = null!;
     private IProcessExitSource _processExitSource = null!;
-    private ITrieNodeCache _trieNodeCache = null!;
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _historyDb = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -47,9 +49,9 @@ public class HistoricalTraceReExecutionTests
     {
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _cts = new CancellationTokenSource();
+        _nodeRecordBuffer = FlatTestHelpers.NewTestBuffer();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
-        _trieNodeCache = Substitute.For<ITrieNodeCache>();
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
@@ -70,6 +72,7 @@ public class HistoricalTraceReExecutionTests
     {
         _cts.Cancel();
         _cts.Dispose();
+        _nodeRecordBuffer.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
     }
@@ -94,7 +97,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -111,8 +113,11 @@ public class HistoricalTraceReExecutionTests
         {
             using IDisposable scope = worldState.BeginScope(historicalHeader);
 
-            Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
-            Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
+                Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            }
 
             worldState.AddToBalance(ExistingAddr, 50, spec);
             worldState.IncrementNonce(ExistingAddr);
@@ -161,7 +166,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -200,7 +204,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -220,7 +223,7 @@ public class HistoricalTraceReExecutionTests
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _trieNodeCache,
+        _nodeRecordBuffer,
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

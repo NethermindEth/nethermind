@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -388,22 +389,67 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    [Test]
+    public async Task Received_line_is_written_once_while_a_known_invalid_payload_waits_for_its_ancestor()
+    {
+        Block block = PostMergeBlock();
+        ReceivedLineLogger logger = new();
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource ancestorRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.ParentHash!, false).Returns(_ => new ValueTask(ancestorRemoved.Task));
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.ParentHash!).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(ancestorRemoved.Task);
+        });
+        IInvalidChainTracker invalidChainTracker = Substitute.For<IInvalidChainTracker>();
+        invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Arg.Any<Hash256?>()).Returns(call =>
+        {
+            call[1] = block.ParentHash;
+            return true;
+        });
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: LongRequestBudgetMs,
+            logManager: new OneLoggerLogManager(new ILogger(logger)),
+            invalidChainTracker: invalidChainTracker);
+
+        await AssertReceivedWrittenWhileHeld(
+            handler.HandleAsync(ExecutionPayload.Create(block)), logger,
+            reachedWait: waitRequested.Task, waitsFor: "the last valid ancestor",
+            release: () =>
+            {
+                ancestorRemoved.SetResult();
+                return Task.CompletedTask;
+            },
+            expectedStatus: PayloadStatus.Invalid);
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
     /// <summary>
     /// Drives a request held at a wait before the hand-off: once it has reached the wait, its Received line must be
-    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end VALID with
-    /// that one line and no other.
+    /// written while it is still held there; <paramref name="release"/> then lets it go on, and it must end with
+    /// <paramref name="expectedStatus"/> and that one line and no other.
     /// </summary>
     private static async Task AssertReceivedWrittenWhileHeld(
         Task<ResultWrapper<PayloadStatusV1>> request,
         ReceivedLineLogger logger,
         Task reachedWait,
         string waitsFor,
-        Func<Task> release)
+        Func<Task> release,
+        string expectedStatus = PayloadStatus.Valid)
     {
         // Awaited first, so the checks below see the request on the wait rather than at an earlier step.
         await reachedWait.WaitAsync(AnswerWait);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Task.WhenAny(logger.FirstReceived, Task.Delay(AnswerWait)), Is.SameAs(logger.FirstReceived),
             $"no Received line while the request waits for {waitsFor}");
+#pragma warning restore NUnit2045
         Assert.That(request.IsCompleted, Is.False, $"the line is written while the request still waits for {waitsFor}");
 
         await release();
@@ -411,7 +457,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.Status, Is.EqualTo(expectedStatus));
             Assert.That(logger.ReceivedCount, Is.EqualTo(1), "exactly one Received line for the request");
         }
     }
@@ -473,8 +519,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+        }
     }
 
     [Test]
@@ -530,8 +579,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ResultWrapper<PayloadStatusV1>[] results = await Task.WhenAll(tasks);
 
         // All tasks should complete successfully without throwing exceptions
-        Assert.That(results.Length, Is.EqualTo(concurrentCalls));
-        Assert.That(Array.TrueForAll(results, static r => r is not null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results.Length, Is.EqualTo(concurrentCalls));
+            Assert.That(Array.TrueForAll(results, static r => r is not null), Is.True);
+        }
 
         // The results should be consistent (all should have the same status)
         ResultWrapper<PayloadStatusV1> firstResult = results[0];
@@ -557,9 +609,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
-            "the completion source must be removed even when SuggestBlockAsync rejects the block before enqueue");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
+                "the completion source must be removed even when SuggestBlockAsync rejects the block before enqueue");
+        }
     }
 
     [Test]
@@ -582,9 +637,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
-            "timed out requests must not leave stale entries behind when BlockRemoved never arrives");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
+                "timed out requests must not leave stale entries behind when BlockRemoved never arrives");
+        }
     }
 
     /// <summary>
@@ -911,8 +969,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         try
         {
             Task earlierCopyWait = WaitForEarlierCopies(handler, block.Hash!);
-            Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
-            Assert.That(WaitForEarlierCopies(handler, TestItem.KeccakD).IsCompleted, Is.True, "a held copy of one block must not hold back a request for another");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
+                Assert.That(WaitForEarlierCopies(handler, TestItem.KeccakD).IsCompleted, Is.True, "a held copy of one block must not hold back a request for another");
+            }
         }
         finally
         {
@@ -958,7 +1019,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         await request.WaitAsync(AnswerWait);
 
-        object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
+        object copy = ((IList)QueuedCopiesField!.GetValue(handler)!)[0]!;
         await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
         ValueHash256 sameList = (ValueHash256)copy.GetType().GetProperty("InclusionListDigest")!.GetValue(copy)!;
         processingQueue.ClearReceivedCalls();
@@ -1196,7 +1257,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         try
         {
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await resentWaitedForExecutedCopiesOnly.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.False, "the re-submission must still wait for the queued copy carrying another list");
+#pragma warning restore NUnit2045
             Assert.That(WaitForEarlierCopies(handler, block.Hash!).IsCompleted, Is.False, "a different-list wait must remain pending until the queued copy leaves");
         }
         finally
@@ -1512,6 +1575,43 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// Tracking a copy drops the copies that have left the queue and keeps the others in the order they were queued,
+    /// with the new copy last.
+    /// </summary>
+    [Test]
+    public void TrackQueuedCopy_drops_copies_that_left_and_keeps_order()
+    {
+        MethodInfo? trackMethod = typeof(NewPayloadHandler).GetMethod("TrackQueuedCopy", BindingFlags.Instance | BindingFlags.NonPublic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackMethod, Is.Not.Null, "TrackQueuedCopy method not found - was it renamed?");
+            Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
+        }
+
+        using NewPayloadHandler handler = CreateHandler(PostMergeBlock(), AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true);
+        Action<Hash256, ValueHash256?, Task> track = trackMethod!.CreateDelegate<Action<Hash256, ValueHash256?, Task>>(handler);
+        IList queuedCopies = (IList)QueuedCopiesField!.GetValue(handler)!;
+        PropertyInfo blockHashProperty = QueuedCopiesField.FieldType.GetGenericArguments()[0].GetProperty("BlockHash")!;
+
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        track(TestItem.KeccakA, null, first.Task);
+        track(TestItem.KeccakB, null, Task.CompletedTask);
+        track(TestItem.KeccakC, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        track(TestItem.KeccakD, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterD = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        first.SetResult();
+        track(TestItem.KeccakE, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterE = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterD, Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakC, TestItem.KeccakD }), "the completed copy is dropped, the rest keep their order");
+            Assert.That(afterE, Is.EqualTo(new[] { TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE }), "a copy that left since the last call is dropped");
+        }
+    }
+
     private static int GetPendingValidationTaskCount(NewPayloadHandler handler)
     {
         Assert.That(BlockValidationTasksField, Is.Not.Null, "_blockValidationTasks field not found - was it renamed?");
@@ -1525,7 +1625,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
 
-        return [.. ((Array)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
+        return [.. ((IList)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
             (Hash256)copy.GetType().GetProperty("BlockHash")!.GetValue(copy)! == blockHash
             && !((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).IsCompleted)];
     }
@@ -1563,7 +1663,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
         ISpecProvider? specProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        IInvalidChainTracker? invalidChainTracker = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1573,7 +1674,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
         IBlockCacheService blockCacheService = Substitute.For<IBlockCacheService>();
         IBlockProcessingQueue effectiveProcessingQueue = processingQueue ?? Substitute.For<IBlockProcessingQueue>();
-        IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
         IMergeSyncController mergeSyncController = Substitute.For<IMergeSyncController>();
         IStateReader stateReader = Substitute.For<IStateReader>();
         IMergeConfig mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = timeoutMs };
@@ -1634,7 +1734,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             beaconPivot,
             blockCacheService,
             effectiveProcessingQueue,
-            invalidChainTracker,
+            invalidChainTracker ?? new NoopInvalidChainTracker(),
             mergeSyncController,
             mergeConfig,
             receiptConfig,

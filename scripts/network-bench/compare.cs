@@ -23,8 +23,8 @@ if (args.Length != 2)
 }
 
 // A null result is a benchmark that failed.
-Dictionary<string, Result?> baseResults = Load(args[0]);
-Dictionary<string, Result?> headResults = Load(args[1]);
+var baseResults = Load(args[0]);
+var headResults = Load(args[1]);
 
 Console.WriteLine("## Network benchmarks");
 Console.WriteLine();
@@ -42,9 +42,9 @@ if (headResults.Count == 0)
 
 Console.WriteLine("| Benchmark | Base | Head | Δ | CV base | CV head | Alloc base | Alloc head | Δ alloc |");
 Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
-foreach ((string name, Result? head) in headResults)
+foreach (var (name, head) in headResults)
 {
-    Result? @base = baseResults.GetValueOrDefault(name);
+    var @base = baseResults.GetValueOrDefault(name);
     Console.WriteLine(
         $"| {name} | {FormatMedian(baseResults, name)} | {FormatMedian(headResults, name)} | {FormatDelta(head?.Median, @base?.Median)} " +
         $"| {FormatPercent(@base?.Cv)} | {FormatPercent(head?.Cv)} " +
@@ -64,30 +64,30 @@ return 0;
 static Dictionary<string, Result?> Load(string artifactsDirectory)
 {
     Dictionary<string, Result?> results = [];
-    string resultsDirectory = Path.Combine(artifactsDirectory, "results");
+    var resultsDirectory = Path.Combine(artifactsDirectory, "results");
     if (!Directory.Exists(resultsDirectory)) return results;
 
-    foreach (string path in Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json"))
+    foreach (var path in Directory.EnumerateFiles(resultsDirectory, "*-report-full-compressed.json"))
     {
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(path));
-        foreach (JsonElement benchmark in document.RootElement.GetProperty("Benchmarks").EnumerateArray())
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+        foreach (var benchmark in document.RootElement.GetProperty("Benchmarks").EnumerateArray())
         {
-            string name = $"{benchmark.GetProperty("Type").GetString()}.{benchmark.GetProperty("Method").GetString()}";
-            if (benchmark.TryGetProperty("Parameters", out JsonElement parameters) && parameters.GetString() is { Length: > 0 } parameterText)
+            var name = $"{benchmark.GetProperty("Type").GetString()}.{benchmark.GetProperty("Method").GetString()}";
+            if (benchmark.TryGetProperty("Parameters", out var parameters) && parameters.GetString() is { Length: > 0 } parameterText)
             {
                 name += $"({parameterText})";
             }
 
             // A benchmark that failed has no statistics.
-            if (!TryGetObject(benchmark, "Statistics", out JsonElement statistics))
+            if (!TryGetObject(benchmark, "Statistics", out var statistics))
             {
                 results[name] = null;
                 continue;
             }
 
-            double mean = statistics.GetProperty("Mean").GetDouble();
-            double? allocated = TryGetObject(benchmark, "Memory", out JsonElement memory)
-                && memory.TryGetProperty("BytesAllocatedPerOperation", out JsonElement bytes)
+            var mean = statistics.GetProperty("Mean").GetDouble();
+            double? allocated = TryGetObject(benchmark, "Memory", out var memory)
+                && memory.TryGetProperty("BytesAllocatedPerOperation", out var bytes)
                 ? bytes.GetDouble()
                 : null;
             results[name] = new Result(
@@ -108,7 +108,7 @@ static string Env(string name) => Environment.GetEnvironmentVariable(name) ?? ""
 static string Short(string sha) => sha.Length > 10 ? sha[..10] : sha;
 
 static string FormatMedian(Dictionary<string, Result?> results, string name) =>
-    !results.TryGetValue(name, out Result? result) ? "—" : result is null ? "failed" : FormatTime(result.Median);
+    !results.TryGetValue(name, out var result) ? "—" : result is null ? "failed" : FormatTime(result.Median);
 
 static string FormatTime(double nanoseconds) => nanoseconds switch
 {

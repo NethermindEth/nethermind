@@ -64,7 +64,9 @@ internal class XdcTestBlockchainTests
         for (ulong i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
         {
             Block? block = _blockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
+#pragma warning disable NUnit2045 // The block must exist before its header is validated.
             Assert.That(block, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(headerValidator.Validate(block!.Header, parent, false, out string? error), Is.True, "Header validation failed: " + error);
             parent = block.Header;
         }

@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Rlpx
             using GetBlockBodiesMessage message = new(hashes);
 
             GetBlockBodiesMessageSerializer serializer = new();
-            byte[] data = serializer.Serialize(message);
+            byte[] data = serializer.SerializeToArray(message);
 
             Packet packet = new("eth", 5, data);
             Run(packet, inbound, outbound, framingEnabled);
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
+            byte[] data = newBlockMessageSerializer.SerializeToArray(newBlockMessage);
             Packet packet = new("eth", 7, data);
             Run(packet, inbound, outbound, framingEnabled);
         }
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
+            byte[] data = newBlockMessageSerializer.SerializeToArray(newBlockMessage);
             Packet packet = new("eth", 7, data);
 
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test.Rlpx
             GetReceiptsMessage message = new(hashes.ToPooledList());
 
             GetReceiptsMessageSerializer serializer = new();
-            byte[] data = serializer.Serialize(message);
+            byte[] data = serializer.SerializeToArray(message);
             Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
@@ -124,7 +124,7 @@ namespace Nethermind.Network.Test.Rlpx
             message.NetworkId = 5;
 
             StatusMessageSerializer serializer = new();
-            byte[] data = serializer.Serialize(message);
+            byte[] data = serializer.SerializeToArray(message);
             Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 

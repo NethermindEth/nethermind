@@ -591,6 +591,7 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            long deletions = Volatile.Read(ref _deletions);
             bool shouldCache = ShouldCache(blockNumber);
             ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
             if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
@@ -604,7 +605,11 @@ namespace Nethermind.Blockchain
             {
                 header.Hash ??= blockInfo.BlockHash;
                 SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache) _headerStore.Cache(header);
+                if (shouldCache)
+                {
+                    _headerStore.Cache(header);
+                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return header;
@@ -770,7 +775,14 @@ namespace Nethermind.Blockchain
                     BlockHeader endHeader = FindHeader(startHeader.Number + (ulong)(numberOfBlocks - 1), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (endHeader is not null)
                     {
-                        return FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        ArrayPoolList<BlockHeader> headers = FindHeadersReversedFast(this, endHeader, numberOfBlocks);
+                        if (headers[0] is null || headers[0].Hash == startHeader.Hash)
+                        {
+                            return headers;
+                        }
+
+                        // The end level resolved to a branch the origin is not on, so fall back to the by-number walk below
+                        headers.Dispose();
                     }
                 }
             }
@@ -797,7 +809,18 @@ namespace Nethermind.Blockchain
                     nextNumber = startHeader.Number + offset;
                 }
 
+                BlockHeader previous = current;
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+                // Later headers are resolved by number, so check at every step that the next header still descends from the previous one,
+                // like geth: by parent hash when contiguous, otherwise by the previous header still being the block its number resolves to
+                // and the next header being on the main chain
+                if (!reverse && current is not null && (skip == 0
+                        ? current.ParentHash != previous.Hash
+                        : GetBlockHashOnMainOrBestDifficultyHash(previous.Number) != previous.Hash || !IsMainChain(current)))
+                {
+                    break;
+                }
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;
@@ -914,8 +937,8 @@ namespace Nethermind.Blockchain
             }
 
             ulong currentNumber = deleteHeader.Number;
-            Hash256 currentHash = deleteHeader.Hash;
-            Hash256? nextHash = null;
+            List<Hash256> currentHashes = [deleteHeader.Hash];
+            ulong highestRemainingLevel = currentNumber.SaturatingSub(1ul);
             ChainLevelInfo? nextLevel = null;
 
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
@@ -927,27 +950,25 @@ namespace Nethermind.Blockchain
                 bool shouldRemoveLevel = false;
                 if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
                 {
-                    if (currentLevel.BlockInfos.Length == 1)
+                    BlockInfo[] remainingBlockInfos = currentLevel.BlockInfos.Where(bi => !currentHashes.Contains(bi.BlockHash)).ToArray();
+                    if (remainingBlockInfos.Length == 0)
                     {
                         shouldRemoveLevel = true;
                     }
                     else
                     {
-                        currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                        currentLevel.BlockInfos = remainingBlockInfos;
+                        highestRemainingLevel = currentNumber;
                     }
                 }
 
-                // just finding what the next descendant will be
-                if (nextLevel is not null)
-                {
-                    nextHash = FindChild(nextLevel, currentHash);
-                }
+                // just finding what the next descendants will be
+                List<Hash256> nextHashes = nextLevel is null ? [] : FindChildren(nextLevel, currentHashes);
 
-                UpdateDeletePointer(nextHash);
+                UpdateDeletePointer(nextHashes.Count == 0 ? null : nextHashes[0]);
 
                 if (shouldRemoveLevel)
                 {
-                    BestKnownNumber = Math.Min(BestKnownNumber, currentNumber.SaturatingSub(1ul));
                     _chainLevelInfoRepository.Delete(currentNumber, batch);
                 }
                 else if (currentLevel is not null)
@@ -955,25 +976,32 @@ namespace Nethermind.Blockchain
                     _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
                 }
 
-                if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentNumber, currentHash);
-                _headerStore.Delete(currentHash);
-                _balStore.Delete(currentNumber, currentHash);
+                foreach (Hash256 currentHash in currentHashes)
+                {
+                    if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
+                    _blockStore.Delete(currentNumber, currentHash);
+                    _headerStore.Delete(currentHash);
+                    _balStore.Delete(currentNumber, currentHash);
+                }
 
-                if (nextHash is null)
+                if (nextHashes.Count == 0)
                 {
                     break;
                 }
 
                 currentNumber++;
-                currentHash = nextHash;
-                nextHash = null;
+                currentHashes = nextHashes;
+            }
+
+            if (BestKnownNumber <= currentNumber)
+            {
+                BestKnownNumber = Math.Min(BestKnownNumber, highestRemainingLevel);
             }
         }
 
-        private Hash256? FindChild(ChainLevelInfo level, Hash256 parentHash)
+        private List<Hash256> FindChildren(ChainLevelInfo level, List<Hash256> parentHashes)
         {
-            Hash256 childHash = null;
+            List<Hash256> childHashes = [];
             for (int i = 0; i < level.BlockInfos.Length; i++)
             {
                 Hash256 potentialChildHash = level.BlockInfos[i].BlockHash;
@@ -981,17 +1009,16 @@ namespace Nethermind.Blockchain
                 if (potentialChild is null)
                 {
                     if (Logger.IsWarn) Logger.Warn($"Block with hash {potentialChildHash} has been found on chain level but its header is missing from the DB.");
-                    return null;
+                    continue;
                 }
 
-                if (potentialChild.ParentHash == parentHash)
+                if (parentHashes.Contains(potentialChild.ParentHash))
                 {
-                    childHash = potentialChildHash;
-                    break;
+                    childHashes.Add(potentialChildHash);
                 }
             }
 
-            return childHash;
+            return childHashes;
         }
 
         public bool IsMainChain(BlockHeader blockHeader) =>
@@ -1149,6 +1176,8 @@ namespace Nethermind.Blockchain
 
             ulong lastNumber = headers[^1].Number;
             ulong previousHeadNumber = Head?.Number ?? 0UL;
+            Hash256? previousHeadHash = Head?.Hash;
+            bool previousHeadRemovedFromMain = false;
 
             using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);
             using ArrayPoolListRef<(ulong Number, Hash256 Hash)> removedFromMain = new(0);
@@ -1170,6 +1199,7 @@ namespace Nethermind.Blockchain
                                 removedFromMain.Add((levelNumber, removedHash));
                             }
 
+                            if (levelNumber == previousHeadNumber && level.HasBlockOnMainChain) previousHeadRemovedFromMain = true;
                             level.HasBlockOnMainChain = false;
                             _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                         }
@@ -1192,6 +1222,8 @@ namespace Nethermind.Blockchain
                     if (ShouldCache(header.Number)) _headerStore.Cache(header);
 
                     Hash256? previousMainHash = MoveHeaderToMain(header, batch, wereProcessed);
+                    if (header.Number == previousHeadNumber && previousHeadHash is not null && previousMainHash == previousHeadHash && header.Hash != previousHeadHash)
+                        previousHeadRemovedFromMain = true;
 
                     // we only force update head block for the last header in the branch
                     bool forceThisHead = forceUpdateHeadBlock && i == headers.Count - 1;
@@ -1213,6 +1245,8 @@ namespace Nethermind.Blockchain
                     pending.Add(new DeferredHeaderEvent(header, previousMainHash, isNewHead));
                 }
             }
+
+            if (previousHeadRemovedFromMain && Head?.Hash != previousHeadHash) Metrics.Reorganizations++;
 
             TryUpdateSyncPivot();
 
@@ -2049,6 +2083,9 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            if (BestKnownNumber <= endNumber)
+                BestKnownNumber = Math.Min(BestKnownNumber, startNumber - 1);
+
             // Suggestions above a deleted level lose their ancestry; reset bodies before using them as header fallbacks.
             if (newHeadBlock is not null || (deleted > 0 && BestSuggestedBody?.Number >= startNumber))
                 BestSuggestedBody = newHeadBlock ?? Head;
@@ -2098,12 +2135,17 @@ namespace Nethermind.Blockchain
         /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so calls
         /// take effect in the order they acquire it and the published pair is never ahead of disk. Events are raised
         /// outside the lock with this call's own hashes.
+        /// A <see cref="Keccak.Zero"/> hash means the caller does not know that block, so the previously known
+        /// <see cref="FinalizedHash"/>/<see cref="SafeHash"/> is kept rather than cleared, matching other execution clients.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             BlockHeader? finalizedHeader;
             using (_forkChoiceLock.EnterScope())
             {
+                if (finalizedBlockHash == Keccak.Zero) finalizedBlockHash = FinalizedHash ?? finalizedBlockHash;
+                if (safeBlockHash == Keccak.Zero) safeBlockHash = SafeHash ?? safeBlockHash;
+
                 bool finalizedAdvanced = finalizedBlockHash is not null
                     && finalizedBlockHash != Keccak.Zero
                     && finalizedBlockHash != FinalizedHash;

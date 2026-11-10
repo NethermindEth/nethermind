@@ -52,6 +52,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
+            // Resolves to Flat or FlatInTrie by the machine's memory.
+            if (layout == FlatLayout.Auto) continue;
+
             yield return new TestConfiguration(new FlatDbConfig()
             {
                 Enabled = true,
@@ -313,8 +316,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Verify account and storage exist
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         {
-            Assert.That(reader.GetAccount(address), Is.EqualTo(acc));
-            Assert.That(GetSlot(reader, address, 1), Is.EqualTo([0x01]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.GetAccount(address), Is.EqualTo(acc));
+                Assert.That(GetSlot(reader, address, 1), Is.EqualTo([0x01]));
+            }
         }
 
         // Remove account
@@ -1003,8 +1009,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         int count2 = 0;
         while (iterator2.MoveNext()) count2++;
 
-        Assert.That(count1, Is.EqualTo(2));
-        Assert.That(count2, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count1, Is.EqualTo(2));
+            Assert.That(count2, Is.EqualTo(3));
+        }
     }
 
     [Test]

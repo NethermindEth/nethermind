@@ -22,6 +22,7 @@ namespace Ethereum.Test.Base
         [JsonConverter(typeof(SaturatingULongConverter))]
         public ulong Nonce { get; set; }
         public Address? To { get; set; }
+        [JsonConverter(typeof(SaturatingUInt256ArrayConverter))]
         public UInt256[]? Value { get; set; }
         public byte[]? SecretKey { get; set; }
         public AccessListItemJson[]?[]? AccessLists { get; set; }

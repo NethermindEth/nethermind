@@ -28,8 +28,11 @@ public class MeteredTrieNodeResolverTests
         TreePath deeper = TreePath.FromNibble(stackalloc byte[] { 1, 2, 3, 4, 5 });
         resolver.FindCachedOrUnknown(deeper, TestItem.KeccakB);
 
-        Assert.That(diag.NodeLookups, Is.EqualTo(2));
-        Assert.That(diag.MaxDepth, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diag.NodeLookups, Is.EqualTo(2));
+            Assert.That(diag.MaxDepth, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -48,9 +51,12 @@ public class MeteredTrieNodeResolverTests
         resolver.FindCachedOrUnknown(path, TestItem.KeccakA);
         resolver.LoadRlp(path, TestItem.KeccakA);
 
-        Assert.That(diag.NodeLookups, Is.EqualTo(2));
-        Assert.That(diag.CacheMisses, Is.EqualTo(1));
-        Assert.That(diag.CacheHits, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diag.NodeLookups, Is.EqualTo(2));
+            Assert.That(diag.CacheMisses, Is.EqualTo(1));
+            Assert.That(diag.CacheHits, Is.EqualTo(1));
+        }
     }
 
     [Test]

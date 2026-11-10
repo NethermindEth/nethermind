@@ -127,6 +127,75 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
     }
 
+    [TestCaseSource(nameof(OutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_full_cost(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
+    /// <remarks>
+    /// Geth's struct logger only sees the execution dimension of an EIP-8037 cost, so the state charge a step could
+    /// not pay never shows up in its <c>gasCost</c>.
+    /// </remarks>
+    [TestCaseSource(nameof(AmsterdamOutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
+        (_, Transaction sizing) = PrepareTx(activation, 0, code);
+        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(sizing, SpecProvider.GetSpec(activation)).MinimalGas;
+        (Block block, Transaction transaction) = PrepareTx(activation, intrinsicGas + gasAfterIntrinsic, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
+    private static TestCaseData[] AmsterdamOutOfGasOperations()
+    {
+        byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
+        byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
+        byte[] create2 = Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Done;
+        return
+        [
+            new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
+            new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
+            new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),
+            new TestCaseData(create, 20000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE state"),
+            new TestCaseData(create2, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE2 execution"),
+            new TestCaseData(create2, 12013UL, Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("CREATE2 dynamic"),
+        ];
+    }
+
+    internal static TestCaseData[] OutOfGasOperations() =>
+    [
+        new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
+        new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 11UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP base"),
+        new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 30UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 20UL, GasCostOf.Sha3).SetArgDisplayNames("KECCAK256 base"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 40UL, GasCostOf.Sha3 + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("KECCAK256"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Op(Instruction.LOG3).Done, 100UL, GasCostOf.Log + 3 * GasCostOf.LogTopic).SetArgDisplayNames("LOG3"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, 3000UL, GasCostOf.SSet).SetArgDisplayNames("SSTORE"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 1000UL, GasCostOf.Create).SetArgDisplayNames("CREATE"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 32010UL, GasCostOf.Create + GasCostOf.Memory).SetArgDisplayNames("CREATE dynamic"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SIGNEXTEND).Done, 10UL, GasCostOf.Low).SetArgDisplayNames("SIGNEXTEND"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
+            GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150).SetArgDisplayNames("SELFDESTRUCT"),
+    ];
+
     [Test]
     public void AccessGasDiagnostics_WhenOperationRepeats_PreservesColdAndWarmCosts(
         [Values(Instruction.SLOAD, Instruction.BALANCE, Instruction.EXTCODESIZE, Instruction.EXTCODEHASH)] Instruction opcode,
@@ -235,6 +304,19 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         for (int i = 0; i < opCodes.Length; i++)
         {
             Assert.That(trace.Entries[i].Opcode, Is.EqualTo(opCodes[i]));
+        }
+    }
+
+    [Test]
+    public void Callee_out_of_gas_leaves_the_calling_step_without_error([Values] bool precompile)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(CalleeOutOfGasCode(precompile));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(trace.Entries.Where(static e => e.Error is not null).Select(static e => e.Depth).ToArray(),
+                Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
         }
     }
 
@@ -487,17 +569,20 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
+            Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+            Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
-        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
+            Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+            Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
-        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+        }
     }
 
     [Test]
@@ -519,20 +604,23 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
+            Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
+            Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
+            Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+            Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
 
-        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+            Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+            Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+        }
     }
 
     [Test]
@@ -758,6 +846,47 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertStreamingMatchesInMemory(code);
     }
 
+    /// <remarks>As in Geth, a step that halts with an error does not execute its opcode, so it records no storage.</remarks>
+    [TestCase(Instruction.CALL, 25112L, "out of gas", 2)]
+    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry", 2)]
+    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection", 1)]
+    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError, int expectedSStoreSteps)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", "0x1")
+            .PersistData("0x1", "0x1")
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        Prepare caller = Prepare.EvmCode;
+        byte[] code = (callOpcode == Instruction.CALL ? caller.Call(TestItem.AddressC, callGas) : caller.StaticCall(TestItem.AddressC, callGas))
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = MainnetSpecProvider.CancunActivation;
+
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracerName, JsonElement[] entries) in (ReadOnlySpan<(string, JsonElement[])>)[
+                ("in-memory", inMemory.RootElement.GetProperty("structLogs").EnumerateArray().ToArray()),
+                ("streaming", ExecuteStreamingTracerEntries(code, activation))])
+            {
+                JsonElement[] sstores = [.. entries.Where(static e => e.GetProperty("op").GetString() == "SSTORE")];
+                Assert.That(sstores, Has.Length.EqualTo(expectedSStoreSteps), $"{tracerName}: SSTORE steps");
+                Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
+                Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
+                Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
     [Test]
     public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
     {
@@ -796,9 +925,9 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
-    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code, ForkActivation? activation = null)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation ?? Activation, 100000, code);
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))

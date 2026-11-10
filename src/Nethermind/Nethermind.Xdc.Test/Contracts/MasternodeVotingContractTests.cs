@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -106,6 +105,24 @@ internal class MasternodeVotingContractTests
     }
 
     [Test]
+    public void Transaction_processor_reads_match_constant_calls()
+    {
+        (MasternodeVotingContract masterVoting, IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader genesis) = DeployVotingContract();
+        Address[] expected = masterVoting.GetCandidates(genesis);
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(genesis);
+        Address[] candidates = masterVoting.GetCandidates(scope.TransactionProcessor, genesis);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidates, Is.EqualTo(expected));
+            foreach (Address candidate in candidates)
+            {
+                Assert.That(masterVoting.GetCandidateStake(scope.TransactionProcessor, genesis, candidate), Is.EqualTo(10_000_000.Ether));
+            }
+        }
+    }
+
+    [Test]
     public void GetCandidateOwner_preserves_leading_zero_bytes()
     {
         (MasternodeVotingContract contract, IReadOnlyTxProcessingEnvFactory factory, BlockHeader genesis) = DeployVotingContract();
@@ -159,7 +176,7 @@ internal class MasternodeVotingContractTests
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
 
-        return (new MasternodeVotingContract(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory),
+        return (new MasternodeVotingContract(codeSource, readOnlyTxProcessingEnvFactory),
             readOnlyTxProcessingEnvFactory, genesis);
     }
 

@@ -235,8 +235,11 @@ public class ReadOnlyQueryModuleTests
             .WithNonce(nonce).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block deployment = await chain.AddBlock(deploy);
         Address deployed = ContractAddress.From(TestItem.AddressB, nonce);
-        Assert.That(deployment.Transactions, Has.Length.EqualTo(1), "precondition: the deployment is included");
-        Assert.That(probe.Offers, Is.Zero, "block production and processing must not run on a query module's runner");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deployment.Transactions, Has.Length.EqualTo(1), "precondition: the deployment is included");
+            Assert.That(probe.Offers, Is.Zero, "block production and processing must not run on a query module's runner");
+        }
 
         string call = await chain.TestEthRpc("eth_call", Query(chain, deployed), "latest");
         int afterCall = probe.Offers;

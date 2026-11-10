@@ -132,17 +132,135 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Unsafe.SkipInit(out ValueHash256 hash);
+            Accelerators.ZiskKeccak256(data, length, (byte*)&hash);
+            return hash;
+        }
+
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         Sponge(ref lane, data, length);
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
+    /// <inheritdoc cref="KeccakHash.CopyAndComputeHash256" />
+    /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, an unaligned source of at least one rate block, moved down
+    /// to an aligned destination, is copied and absorbed in one pass, as the witness codes the guest moves within its
+    /// input are: a copy hashed afterwards loads each word twice, and the copy itself merges each from two.</remarks>
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        destination = destination[..source.Length];
+        unsafe
+        {
+            fixed (byte* from = source)
+            fixed (byte* to = destination)
+            {
+                if (!FirstTouchMemoryFlag.IsActive || source.Length < HASH_DATA_AREA || ((nuint)from & 7) == 0
+                    || ((nuint)to & 7) != 0 || to > AlignedDown(from) || !CopyReadsOnlySource((nuint)from & 7, (nuint)(uint)source.Length))
+                {
+                    source.CopyTo(destination);
+                    return ComputeHash256(destination);
+                }
+
+                return CopyAndSponge(AlignedDown((ulong*)from), (ulong*)to, (int)(((nuint)from & 7) << 3), (nuint)(uint)source.Length);
+            }
+        }
+    }
+
+    /// <summary>Whether <see cref="CopyAndSponge"/> reads no byte past a source of <paramref name="length"/> bytes that
+    /// starts <paramref name="offset"/> bytes into a word.</summary>
+    /// <remarks>Its last load is the whole word past the last whole block, which ends past the source unless the tail reaches its end.</remarks>
+    internal static bool CopyReadsOnlySource(nuint offset, nuint length) => offset + length % HASH_DATA_AREA >= sizeof(ulong);
+
+    /// <summary>Copies the <paramref name="length"/> bytes that start <paramref name="shift"/> bits into the word at
+    /// <paramref name="source"/> to <paramref name="destination"/>, and computes their Keccak-256 digest.</summary>
+    /// <param name="shift">8 to 56.</param>
+    /// <param name="length">At least one rate block, for which <see cref="CopyReadsOnlySource"/> holds.</param>
+    /// <remarks><paramref name="destination"/> must not lie above <paramref name="source"/>: each word is stored only after
+    /// the source word past it is loaded. The tail past the last whole block is copied first and absorbed from the copy.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static unsafe ValueHash256 CopyAndSponge(ulong* source, ulong* destination, int shift, nuint length)
+    {
+        // Both are aligned already. The JIT proves no access through a parameter aligned, but does through a local rounded.
+        ulong* from = AlignedDown(source);
+        ulong* to = AlignedDown(destination);
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        nuint whole = length / HASH_DATA_AREA * HASH_DATA_AREA;
+        ulong* lastBlock = to + (whole - HASH_DATA_AREA) / sizeof(ulong);
+
+        ZeroCapacity(ref lane);
+        ulong low = CopyAndAbsorbBlock(ref lane, from, to, *from, shift, intoZeroState: true);
+        Accelerators.KeccakF(ref lane);
+        while (to < lastBlock)
+        {
+            from += RateLanes;
+            to += RateLanes;
+            low = CopyAndAbsorbBlock(ref lane, from, to, low, shift, intoZeroState: false);
+            Accelerators.KeccakF(ref lane);
+        }
+
+        from += RateLanes;
+        to += RateLanes;
+        nuint tail = length - whole;
+        Buffer.MemoryCopy((byte*)from + (shift >> 3), to, tail, tail);
+        AbsorbPaddedTail(ref lane, (byte*)to, tail);
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        Accelerators.KeccakF(ref lane);
+        return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Copies a whole rate block, as <see cref="CopyAndSponge"/> does, and absorbs it.</summary>
+    /// <param name="low">The source word at <paramref name="from"/>.</param>
+    /// <returns>The source word past the block.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static unsafe ulong CopyAndAbsorbBlock(ref ulong lane, ulong* from, ulong* to, ulong low, int shift, bool intoZeroState)
+    {
+        low = CopyAndAbsorbLane(ref lane, from, to, 0, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 1, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 2, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 3, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 4, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 5, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 6, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 7, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 8, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 9, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 10, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 11, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 12, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 13, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 14, low, shift, intoZeroState);
+        low = CopyAndAbsorbLane(ref lane, from, to, 15, low, shift, intoZeroState);
+        return CopyAndAbsorbLane(ref lane, from, to, 16, low, shift, intoZeroState);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe ulong CopyAndAbsorbLane(ref ulong lane, ulong* from, ulong* to, nuint index, ulong low, int shift, bool intoZeroState)
+    {
+        ulong high = from[index + 1];
+        ulong word = (low >> shift) | (high << (64 - shift));
+        to[index] = word;
+        Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
+        return high;
+    }
+
     /// <summary>Absorbs and pads the <paramref name="length"/> bytes at <paramref name="data"/> into a state of
     /// uninitialized lanes, leaving their digest in its first four lanes.</summary>
+    /// <remarks>On Airbender the whole sponge runs natively, absorbing straight into the 256-byte aligned state its
+    /// Keccak-f delegation works on: the copies of the state in and out around every permutation go away.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void Sponge(ref ulong lane, byte* data, nuint length)
     {
+        if (AirbenderFlag.IsActive)
+        {
+            airbender_keccak256(data, length, (byte*)Unsafe.AsPointer(ref lane));
+            return;
+        }
+
         if (length == Hash532InputLength)
         {
             // A full branch node, the most common input of both the witness load and the trie commit:
@@ -215,7 +333,11 @@ public sealed partial class KeccakHash
     /// <summary>The most leading rate blocks of a witness node whose sponge states <see cref="ComputeHash256OfWitnessNodes"/>
     /// keeps: all those of a full branch.</summary>
     private const int RetainedBlocks = Hash532InputLength / HASH_DATA_AREA;
-    private const int RetainedLanes = RetainedBlocks * STATE_LANES;
+    // The lanes from one kept state to the next. Airbender gives each a 256-byte aligned slot, which its Keccak-f
+    // delegation permutes in place, the lanes past the state serving as its scratch.
+    private const int AlignedStateLanes = 256 / sizeof(ulong);
+    private static int RetainedStride => AirbenderFlag.IsActive ? AlignedStateLanes : STATE_LANES;
+    private static int RetainedLanes => RetainedBlocks * RetainedStride;
     private const int FullBranchTailLength = Hash532InputLength - RetainedBlocks * HASH_DATA_AREA;
     private const int RateLanes = HASH_DATA_AREA / sizeof(ulong);
     private const int CapacityBytes = (STATE_LANES - RateLanes) * sizeof(ulong);
@@ -228,7 +350,7 @@ public sealed partial class KeccakHash
     /// this two-block floor: it compares the second block without a length check.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsResumable(int length) =>
-        length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
+        length == Hash532InputLength || ZiskFlag.IsActive && !FirstTouchMemoryFlag.IsActive && length >= 2 * HASH_DATA_AREA;
 
     /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
     /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
@@ -239,11 +361,13 @@ public sealed partial class KeccakHash
         /// <summary>How many of <see cref="Nodes"/> were keyed, those with an entry in <see cref="States"/>.</summary>
         public static nint Count;
         /// <summary>Per node, <see cref="RetainedLanes"/> lanes: the states its leading whole rate blocks leave, up to <see cref="RetainedBlocks"/>.</summary>
-        /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, at the index
-        /// <see cref="Slots"/> holds.</remarks>
+        /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, one state each, at the
+        /// index <see cref="Slots"/> holds.</remarks>
         public static unsafe ulong* States;
         /// <summary>Where the guest reuses its input, per node that keeps states, the index of its states in <see cref="States"/>.</summary>
         public static unsafe uint* Slots;
+        /// <summary>On Airbender, the 256-byte aligned state a keyed or resumed node is finished in.</summary>
+        public static unsafe ulong* Lane;
         /// <summary>The tag <see cref="NoteWitnessNodeLoaded"/> was given last.</summary>
         public static nint Loaded;
     }
@@ -292,8 +416,12 @@ public sealed partial class KeccakHash
             ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // the states of a node's whole leading blocks are written, and ComputeHash256OfEdited reads no other.
-            ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
+            ulong* states = AirbenderFlag.IsActive
+                ? (ulong*)NativeMemory.AlignedAlloc((nuint)count * (nuint)(RetainedLanes * sizeof(ulong)), AlignedStateLanes * sizeof(ulong))
+                : (ulong*)NativeMemory.Alloc((nuint)count, (nuint)(RetainedLanes * sizeof(ulong)));
             Debug.Assert(((nuint)states & 7) == 0);
+            if (AirbenderFlag.IsActive && WitnessNodes.Lane is null)
+                WitnessNodes.Lane = (ulong*)NativeMemory.AlignedAlloc(AlignedStateLanes * sizeof(ulong), AlignedStateLanes * sizeof(ulong));
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
             Unsafe.SkipInit(out KeccakState stateBuffer);
@@ -317,6 +445,13 @@ public sealed partial class KeccakHash
 
                 fixed (byte* data = node)
                 {
+                    if (ZiskFlag.IsActive)
+                    {
+                        // The slot is not pinned: no GC can run before the call returns, as it suppresses the GC transition.
+                        Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                        continue;
+                    }
+
                     Debug.Assert(((nuint)data & 7) == 0);
                     // An array's data is 8-byte aligned; the rounding lets the JIT prove it.
                     Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
@@ -329,13 +464,19 @@ public sealed partial class KeccakHash
             WitnessNodes.Nodes = nodes;
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
-            NativeMemory.Free(released);
+            if (AirbenderFlag.IsActive)
+                NativeMemory.AlignedFree(released);
+            else
+                NativeMemory.Free(released);
         }
     }
 
     /// <summary><see cref="ComputeHash256OfWitnessNodes"/> where the guest reuses its input.</summary>
     /// <remarks>Keeps states only for the nodes <see cref="IsResumable"/> accepts, packed, and records where each one's
     /// are: about half the nodes keep none, and the room in the input left to them is short of a slot for every node.
+    /// Each full branch keeps only the state its second rate block leaves. With the witness nodes in the input, the
+    /// states take fresh memory, and that state repays its memory best: it saves two permutations for an edit of any of
+    /// the last eight children, where each of the other two would save one more for a quarter of the edits.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static unsafe void ComputeHash256OfWitnessNodesPacked(byte[][] nodes, int count, Span<ValueHash256> hashes)
@@ -349,8 +490,8 @@ public sealed partial class KeccakHash
             if (IsResumable(Unsafe.Add(ref firstNode, i).Length)) resumable++;
         }
 
-        ulong* states = (ulong*)AllocateInInput(resumable * (RetainedLanes * sizeof(ulong)) + (nuint)count * sizeof(uint));
-        uint* slots = (uint*)(states + resumable * RetainedLanes);
+        ulong* states = (ulong*)AllocateInInput(resumable * (STATE_LANES * sizeof(ulong)) + (nuint)count * sizeof(uint));
+        uint* slots = (uint*)(states + resumable * STATE_LANES);
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         uint slot = 0;
@@ -360,15 +501,20 @@ public sealed partial class KeccakHash
             ref ValueHash256 hash = ref Unsafe.Add(ref firstHash, i);
             if (IsResumable(node.Length))
             {
-                ref ulong retained = ref states[slot * (nuint)RetainedLanes];
-                if (node.Length == Hash532InputLength) ComputeHash532Retaining(node, ref retained, ref hash);
-                else ComputeHashRetaining(node, ref retained, ref hash);
+                Debug.Assert(node.Length == Hash532InputLength, "Only full branches keep states where the guest reuses its input");
+                ComputeHash532RetainingSecond(node, ref states[slot * (nuint)STATE_LANES], ref hash);
                 slots[i] = slot++;
                 continue;
             }
 
             fixed (byte* data = node)
             {
+                if (ZiskFlag.IsActive)
+                {
+                    Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                    continue;
+                }
+
                 Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
             }
 
@@ -425,9 +571,15 @@ public sealed partial class KeccakHash
 
         nuint length = (nuint)input.Length;
         Unsafe.SkipInit(out KeccakState stateBuffer);
-        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong lane = ref AirbenderFlag.IsActive ? ref *WitnessNodes.Lane : ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         fixed (byte* data = input, original = previous)
         {
+            // Airbender reads lanes as two plain words (ReadLane), so the input must be word aligned, as an array's data is.
+            if (AirbenderFlag.IsActive && ((nuint)data & 3) != 0)
+            {
+                return ValueKeccak.Compute(input);
+            }
+
             bool absorbed = StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0
                 ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index, length)
                 : TryAbsorbEdited(ref lane, data, original, index, length);
@@ -438,7 +590,7 @@ public sealed partial class KeccakHash
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
-        Accelerators.KeccakF(ref lane);
+        PermuteKept(ref lane);
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
@@ -457,21 +609,37 @@ public sealed partial class KeccakHash
             return false;
         }
 
+        // There a full branch keeps only the state its second block leaves; see ComputeHash256OfWitnessNodesPacked.
+        if (FirstTouchMemoryFlag.IsActive)
+        {
+            if (!BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
+            {
+                return false;
+            }
+
+            ulong* kept = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
+            ref ulong second = ref kept[WitnessNodes.Slots[index] * STATE_LANES];
+            AbsorbBlockFrom(ref lane, ref second, data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref lane);
+            AbsorbPaddedTail(ref lane, data + RetainedBlocks * HASH_DATA_AREA, FullBranchTailLength);
+            return true;
+        }
+
         nuint offset = HASH_DATA_AREA;
         nuint last = 0;
         if (BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
         {
             offset = 2 * HASH_DATA_AREA;
-            last = STATE_LANES;
+            last = (nuint)RetainedStride;
             if (length >= RetainedBlocks * HASH_DATA_AREA && BlockEquals(data + 2 * HASH_DATA_AREA, original + 2 * HASH_DATA_AREA))
             {
                 offset = RetainedBlocks * HASH_DATA_AREA;
-                last = 2 * STATE_LANES;
+                last = 2 * (nuint)RetainedStride;
             }
         }
 
         ulong* states = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
-        ref ulong retained = ref states[(FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes + last];
+        ref ulong retained = ref states[index * (nuint)RetainedLanes + last];
         if (length != Hash532InputLength)
         {
             AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
@@ -483,11 +651,11 @@ public sealed partial class KeccakHash
         else
         {
             AbsorbBlockFrom(ref lane, ref retained, data + offset);
-            Accelerators.KeccakF(ref lane);
+            PermuteKept(ref lane);
             for (offset += HASH_DATA_AREA; offset < RetainedBlocks * HASH_DATA_AREA; offset += HASH_DATA_AREA)
             {
                 AbsorbBlock(ref lane, data + offset, intoZeroState: false);
-                Accelerators.KeccakF(ref lane);
+                PermuteKept(ref lane);
             }
 
             AbsorbPaddedTail(ref lane, data + offset, FullBranchTailLength);
@@ -505,20 +673,49 @@ public sealed partial class KeccakHash
     private static unsafe void ComputeHash532Retaining(byte[] node, ref ulong retained, ref ValueHash256 hash)
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
-        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong lane = ref AirbenderFlag.IsActive ? ref *WitnessNodes.Lane : ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         ref ulong first = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
 
-        fixed (byte* data = node)
+        fixed (byte* pinned = node)
         {
+            // An array's elements start on a word boundary; rounding says so to the JIT.
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             // The later states are addressed off the first rather than held: the keying loop has no registers to keep them in.
             ZeroCapacity(ref first);
             AbsorbBlock(ref first, data, intoZeroState: true);
-            Accelerators.KeccakF(ref first);
-            AbsorbBlockFrom(ref Unsafe.Add(ref first, STATE_LANES), ref first, data + HASH_DATA_AREA);
-            Accelerators.KeccakF(ref Unsafe.Add(ref first, STATE_LANES));
-            AbsorbBlockFrom(ref Unsafe.Add(ref first, 2 * STATE_LANES), ref Unsafe.Add(ref first, STATE_LANES), data + 2 * HASH_DATA_AREA);
-            Accelerators.KeccakF(ref Unsafe.Add(ref first, 2 * STATE_LANES));
-            AbsorbFullBranchTailFrom(ref lane, ref Unsafe.Add(ref first, 2 * STATE_LANES), data + RetainedBlocks * HASH_DATA_AREA);
+            PermuteKept(ref first);
+            AbsorbBlockFrom(ref Unsafe.Add(ref first, RetainedStride), ref first, data + HASH_DATA_AREA);
+            PermuteKept(ref Unsafe.Add(ref first, RetainedStride));
+            AbsorbBlockFrom(ref Unsafe.Add(ref first, 2 * RetainedStride), ref Unsafe.Add(ref first, RetainedStride), data + 2 * HASH_DATA_AREA);
+            PermuteKept(ref Unsafe.Add(ref first, 2 * RetainedStride));
+            AbsorbFullBranchTailFrom(ref lane, ref Unsafe.Add(ref first, 2 * RetainedStride), data + RetainedBlocks * HASH_DATA_AREA);
+        }
+
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        PermuteKept(ref lane);
+        hash = Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Hashes a full branch into <paramref name="hash"/>, leaving the state after its second rate block in <paramref name="retained"/>.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void ComputeHash532RetainingSecond(byte[] node, ref ulong retained, ref ValueHash256 hash)
+    {
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong second = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
+
+        fixed (byte* pinned = node)
+        {
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
+            ZeroCapacity(ref lane);
+            AbsorbBlock(ref lane, data, intoZeroState: true);
+            Accelerators.KeccakF(ref lane);
+            AbsorbBlockFrom(ref second, ref lane, data + HASH_DATA_AREA);
+            Accelerators.KeccakF(ref second);
+            AbsorbBlockFrom(ref lane, ref second, data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref lane);
+            AbsorbPaddedTail(ref lane, data + RetainedBlocks * HASH_DATA_AREA, FullBranchTailLength);
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
@@ -534,21 +731,21 @@ public sealed partial class KeccakHash
     private static unsafe void ComputeHashRetaining(byte[] node, ref ulong retained, ref ValueHash256 hash)
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
-        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong lane = ref AirbenderFlag.IsActive ? ref *WitnessNodes.Lane : ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         nuint length = (nuint)node.Length;
 
         fixed (byte* data = node)
         {
             ZeroCapacity(ref retained);
             AbsorbBlock(ref retained, data, intoZeroState: true);
-            Accelerators.KeccakF(ref retained);
+            PermuteKept(ref retained);
             ref ulong state = ref retained;
             nuint offset = HASH_DATA_AREA;
             for (nuint kept = 1; kept < RetainedBlocks && length - offset >= HASH_DATA_AREA; kept++)
             {
-                ref ulong next = ref Unsafe.Add(ref state, STATE_LANES);
+                ref ulong next = ref Unsafe.Add(ref state, RetainedStride);
                 AbsorbBlockFrom(ref next, ref state, data + offset);
-                Accelerators.KeccakF(ref next);
+                PermuteKept(ref next);
                 state = ref next;
                 offset += HASH_DATA_AREA;
             }
@@ -557,7 +754,7 @@ public sealed partial class KeccakHash
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
-        Accelerators.KeccakF(ref lane);
+        PermuteKept(ref lane);
         hash = Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
@@ -574,11 +771,11 @@ public sealed partial class KeccakHash
         else
         {
             AbsorbBlockFrom(ref lane, ref source, data);
-            Accelerators.KeccakF(ref lane);
+            PermuteKept(ref lane);
             for (data += HASH_DATA_AREA, length -= HASH_DATA_AREA; length >= HASH_DATA_AREA; data += HASH_DATA_AREA, length -= HASH_DATA_AREA)
             {
                 AbsorbBlock(ref lane, data, intoZeroState: false);
-                Accelerators.KeccakF(ref lane);
+                PermuteKept(ref lane);
             }
         }
 
@@ -808,20 +1005,25 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Absorbs a whole rate block of <paramref name="data"/>.</summary>
-    /// <param name="intoZeroState">Whether the state's rate lanes are still zero, so the block is written rather than XORed.</param>
+    /// <param name="intoZeroState">Whether the state's rate lanes are uninitialized, so the block is written rather than XORed.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
-        if (intoZeroState)
+        // SP1 and OpenVM have no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes.
+        if (intoZeroState && !Sp1Flag.IsActive && !OpenVmFlag.IsActive)
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
-            // seventeen explicit lane writes cost a load and a store each.
-            Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
+            // seventeen explicit lane writes cost a load and a store each. Airbender's libc copies a
+            // misaligned block by words.
+            if (AirbenderFlag.IsActive)
+                Bytes.Memmove(Unsafe.AsPointer(ref lane), data, HASH_DATA_AREA);
+            else
+                Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
             return;
         }
 
-        if (CanXorin(data))
+        if (!intoZeroState && CanXorin(data))
         {
             Xorin(ref lane, data, HASH_DATA_AREA);
             return;
@@ -902,13 +1104,39 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
     }
 
-    /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned.</summary>
-    /// <remarks>A plain load rather than an unaligned read: every guest target executes either as one wide load, but where
-    /// the JIT tests alignment (<see cref="StrictAlignmentFlag"/>) it drops the test for a plain load whose address it can
-    /// prove aligned, and keeps it for an unaligned read always.</remarks>
+    // Named as its entry point in libairbender; only code behind AirbenderFlag reaches it.
+    [DllImport("*")]
+    private static extern unsafe void airbender_keccak256(byte* data, nuint length, byte* output);
+
+    /// <summary>Keccak-f on a state of the witness keying or of a resumed node.</summary>
+    /// <remarks>On Airbender every such state is a 256-byte aligned slot (<see cref="RetainedStride"/>,
+    /// <see cref="WitnessNodes.Lane"/>), which its delegation permutes in place rather than through copies of the state
+    /// in and out.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void PermuteKept(ref ulong state)
+    {
+        if (AirbenderFlag.IsActive)
+            airbender_keccak_f1600_in_place((ulong*)Unsafe.AsPointer(ref state));
+        else
+            Accelerators.KeccakF(ref state);
+    }
+
+    // Named as its entry point in libairbender; only code behind AirbenderFlag reaches it.
+    [DllImport("*")]
+    private static extern unsafe void airbender_keccak_f1600_in_place(ulong* state);
+
+    /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned, except on Airbender, where it
+    /// must be word aligned.</summary>
+    /// <remarks>Where the JIT tests alignment (<see cref="StrictAlignmentFlag"/>), a plain load: the JIT drops the test for a
+    /// plain load whose address it can prove aligned, but keeps it for an unaligned read. On Airbender a plain load too, two
+    /// word loads where an unaligned read tests alignment per word: there every caller reads an array's data or the input
+    /// <see cref="ComputeHash256OfEdited"/> checks. Elsewhere an unaligned read: one wide load on targets that tolerate
+    /// misalignment, and expanded byte-wise on targets that reject it.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong ReadLane(byte* data, nuint index) =>
-        *(ulong*)(data + index * sizeof(ulong));
+        StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive
+            ? *(ulong*)(data + index * sizeof(ulong))
+            : Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
 
     /// <summary><paramref name="pointer"/> rounded down to an 8-byte boundary: itself, for a pointer already on one.</summary>
     /// <remarks>The JIT sees through the rounding (dotnet-riscv perf-67) and proves every lane access off the result aligned.</remarks>
@@ -921,12 +1149,32 @@ public sealed partial class KeccakHash
     /// <remarks>Reads the whole word ending the message rather than the partial bytes one width at a time:
     /// on little-endian riscv64 those bytes are the word's top ones, so dropping its low byte, setting the
     /// pad byte above the rest and shifting the lot down by <c>7 - partial</c> bytes leaves exactly the
-    /// lane to absorb.</remarks>
+    /// lane to absorb. Where <see cref="StrictAlignmentFlag"/> is on and the partial bytes start on a word boundary, that
+    /// word is not: its read is a byte-by-byte gather, so the bytes are read in aligned pieces instead.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong PaddedLastWord(byte* end, nuint partial)
     {
+        if (StrictAlignmentFlag.IsActive && ((nuint)(end - partial) & (nuint)(sizeof(nuint) - 1)) == 0)
+        {
+            return PartialLane(ref *AlignedDown(end - partial), partial) | (0x01UL << (int)(partial << 3));
+        }
+
         ulong word = Unsafe.ReadUnaligned<ulong>(end - sizeof(ulong));
         return ((word >> 8) | (0x01UL << 56)) >> (int)((partial ^ 7) << 3);
+    }
+
+    /// <summary>The <paramref name="partial"/> bytes at <paramref name="lane"/>, zero-extended to a lane.</summary>
+    /// <param name="lane">Best on a word boundary: any address reads correctly, but where the JIT cannot prove it aligned, each piece gets an alignment test.</param>
+    /// <param name="partial">0 to 7; a constant folds the aligned pieces to at most three loads.</param>
+    /// <remarks>Reads no byte past the <paramref name="partial"/> ones.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong PartialLane(ref byte lane, nuint partial)
+    {
+        ulong word = 0;
+        if ((partial & 4) != 0) word = Unsafe.As<byte, uint>(ref lane);
+        if ((partial & 2) != 0) word |= (ulong)Unsafe.As<byte, ushort>(ref Unsafe.Add(ref lane, partial & 4)) << (int)((partial & 4) << 3);
+        if ((partial & 1) != 0) word |= (ulong)Unsafe.Add(ref lane, partial & 6) << (int)((partial & 6) << 3);
+        return word;
     }
 
     /// <summary>A message shorter than a lane followed by the 0x01 pad byte, as a lane.</summary>
@@ -952,11 +1200,21 @@ public sealed partial class KeccakHash
     /// <see cref="XorVectors"/> is compiled for the host as well; this file is not, and riscv64 has no
     /// vector width, so on the only target that reaches here the gate would be a constant.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
+    private static unsafe void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
     {
         if (block.Length != HASH_DATA_AREA)
         {
             XorVectors(state, block);
+            return;
+        }
+
+        if (Sp1Flag.IsActive || OpenVmFlag.IsActive)
+        {
+            fixed (byte* data = block)
+            {
+                AbsorbBlock(ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(state)), data, intoZeroState: true);
+            }
+
             return;
         }
 

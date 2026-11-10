@@ -380,7 +380,9 @@ public class CommitmentEmitterTests
     [Test]
     public void Coverage_grows_by_union_and_refuses_a_disjoint_range()
     {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(_metadata.TryPublishVerifiedCoverage(0, 50, out _, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_metadata.TryPublishVerifiedCoverage(100, 200, out ulong keptFrom, out ulong keptTo), Is.False,
             "coverage is one contiguous range; a disjoint build cannot silently replace what was already servable");
         Assert.That((keptFrom, keptTo), Is.EqualTo((0UL, 50UL)));

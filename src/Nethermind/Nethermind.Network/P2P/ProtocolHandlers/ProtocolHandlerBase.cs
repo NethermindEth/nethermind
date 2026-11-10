@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,20 +88,18 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRlpException(string messageType, RlpException exception) =>
-            Logger.Trace($"Failed to deserialize message {messageType} on session {Session}, with exception {exception}");
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide}, with exception {exception:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
-            Logger.Trace($"Failed to deserialize message {messageType} on session {Session} due to rlp limits, with exception {exception}");
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide} due to rlp limits, with exception {exception:hide}");
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
             int size = data.ReadableBytes;
             try
             {
-                int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
-                if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
 
                 return result;
@@ -118,9 +115,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw;
             }
         }
-
-        [DoesNotReturn]
-        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
 
         protected internal void Send<T>(T message) where T : P2PMessage
         {
@@ -148,7 +142,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     if (Logger.IsTrace)
                     {
-                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
+                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId:hide}");
                     }
 
                     _initCompletionSource.TrySetCanceled();
@@ -321,6 +315,4 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             remove => _subprotocolRequested -= value;
         }
     }
-
-    public class IncompleteDeserializationException(string msg) : Exception(msg);
 }

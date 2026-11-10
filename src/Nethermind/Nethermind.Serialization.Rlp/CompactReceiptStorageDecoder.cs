@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Decoder(RlpDecoderKey.Storage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
-    public sealed class CompactReceiptStorageDecoder() : RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class CompactReceiptStorageDecoder() : RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
@@ -149,6 +149,10 @@ namespace Nethermind.Serialization.Rlp
             out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
         public Hash256[] DecodeTopics(RlpReader reader) => CompactLogEntryDecoder.DecodeTopics(reader);
+
+        public int StartDecodingTopics(ref RlpReader reader) => CompactLogEntryDecoder.StartDecodingTopics(ref reader);
+
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => CompactLogEntryDecoder.DecodeTopic(ref reader, topic);
 
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;

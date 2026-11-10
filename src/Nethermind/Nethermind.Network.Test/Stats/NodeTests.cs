@@ -38,8 +38,11 @@ namespace Nethermind.Network.Test.Stats
         public void Can_parse_native_ipv6_ip()
         {
             Node node = new(TestItem.PublicKeyA, "2001:4860:4860::8888", 65535);
-            Assert.That(node.Port, Is.EqualTo(65535));
-            Assert.That(node.Host, Is.EqualTo("2001:4860:4860::8888"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Port, Is.EqualTo(65535));
+                Assert.That(node.Host, Is.EqualTo("2001:4860:4860::8888"));
+            }
         }
 
         [Test]
@@ -57,8 +60,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
@@ -77,8 +83,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = Node.TryFromEnr(enr, out Node? node);
 
-            Assert.That(result, Is.False);
-            Assert.That(node, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.False);
+                Assert.That(node, Is.Null);
+            }
         }
 
         [Test]
@@ -88,8 +97,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = Node.TryFromDiscoveryEnr(enr, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Port, Is.Zero);
@@ -105,8 +117,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = Node.TryFromEnr(enr, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Port, Is.EqualTo(30303));
@@ -122,8 +137,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Host, Is.EqualTo("2001:db8::1"));
@@ -140,8 +158,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
@@ -158,8 +179,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, AddressFamily.InterNetworkV6, out Node? node);
 
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Address.AddressFamily, Is.EqualTo(AddressFamily.InterNetworkV6));
@@ -184,8 +208,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool started = node.TryRequestEnrSequence(advertisedSequence);
 
-            Assert.That(started, Is.EqualTo(expectedStarted));
-            Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedSequence));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(started, Is.EqualTo(expectedStarted));
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedSequence));
+            }
         }
 
         [TestCaseSource(nameof(TryClearEnrRequestCases))]
@@ -205,8 +232,11 @@ namespace Nethermind.Network.Test.Stats
 
             bool cleared = node.TryClearEnrRequest(completedSequence);
 
-            Assert.That(cleared, Is.EqualTo(expectedCleared));
-            Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedSequence));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cleared, Is.EqualTo(expectedCleared));
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedSequence));
+            }
         }
 
         [TestCase(5UL, 5UL, true, 0UL)]
@@ -399,8 +429,11 @@ namespace Nethermind.Network.Test.Stats
                         candidateAlias.SetVerifiedEnr(record);
                     });
 
-                Assert.That(existing.Enr, Is.SameAs(record));
-                Assert.That(existing.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(existing.Enr, Is.SameAs(record));
+                    Assert.That(existing.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
+                }
             }
         }
 
@@ -581,8 +614,11 @@ namespace Nethermind.Network.Test.Stats
 
             string enode = node.ToString(Node.Format.ENode);
 
-            Assert.That(enode, Does.Contain(expectedTail));
-            Assert.That(Enode.IsEnode(enode, out _), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode, Does.Contain(expectedTail));
+                Assert.That(Enode.IsEnode(enode, out _), Is.True);
+            }
             Enode reparsed = new(enode);
             using (Assert.EnterMultipleScope())
             {

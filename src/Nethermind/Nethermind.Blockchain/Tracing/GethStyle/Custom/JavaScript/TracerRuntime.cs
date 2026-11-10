@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 /// absorb the allocation burst between two heap samples and keep the sampler ahead of V8's own hard limit.
 /// A runtime serves the single thread that runs its trace and is not thread-safe.
 /// </remarks>
-internal sealed class TracerRuntime : IDisposable
+internal sealed partial class TracerRuntime : IDisposable
 {
     private const int MaxOldSpaceMb = 256;
     private const double HeapExpansionMultiplier = 2;
@@ -38,7 +39,7 @@ internal sealed class TracerRuntime : IDisposable
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);
 
     private readonly V8Runtime _runtime;
-    private readonly Dictionary<string, V8Script> _scripts = [];
+    private readonly Dictionary<(string Key, bool Pack), V8Script> _scripts = [];
 
     public TracerRuntime()
     {
@@ -71,35 +72,22 @@ internal sealed class TracerRuntime : IDisposable
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="tracer"/> is not a known tracer, see <see cref="IsKnownTracer"/>.</exception>
-    public V8Script GetTracerScript(string tracer)
-    {
-        tracer = tracer.Trim();
-        if (IsInline(tracer))
-        {
-            return GetScript(tracer, tracer, pack: true);
-        }
-
-        string fileName = ToTracerFileName(tracer);
-        return IsBuiltIn(fileName)
+    public V8Script GetTracerScript(string tracer) =>
+        TryGetBuiltInName(tracer, out string fileName)
             ? GetScript(fileName, _builtInSources.Value[fileName], pack: true)
-            : throw new ArgumentException($"Tracer '{tracer}' not found");
-    }
+            : GetScript(tracer, tracer, pack: true);
 
-    /// <summary>
-    /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
-    /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before a runtime is created.
-    /// </summary>
-    private static bool IsKnownTracer(string? tracer)
+    private static bool TryGetBuiltInName(string tracer, out string fileName)
     {
-        if (tracer is null)
-        {
-            return false;
-        }
-
         tracer = tracer.Trim();
-        return IsInline(tracer) || IsBuiltIn(ToTracerFileName(tracer));
+        fileName = string.Empty;
+        if (!BuiltInNameRegex().IsMatch(tracer)) return false;
+        fileName = ToTracerFileName(tracer);
+        return IsBuiltIn(fileName);
     }
+
+    [GeneratedRegex(@"\A[A-Za-z0-9$][A-Za-z0-9_$]*(?:\.[jJ][sS])?\z")]
+    private static partial Regex BuiltInNameRegex();
 
     /// <summary>
     /// Refuses a tracer no engine could load, returning the runtime inline code was compiled in so the tracer can
@@ -108,12 +96,12 @@ internal sealed class TracerRuntime : IDisposable
     /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
     public static TracerRuntime? CreateValidated(string? tracer)
     {
-        if (!IsKnownTracer(tracer))
+        if (tracer is null)
         {
             throw new ArgumentException($"Tracer '{tracer}' not found");
         }
 
-        if (!IsInline(tracer!.Trim()))
+        if (TryGetBuiltInName(tracer, out _))
         {
             return null;
         }
@@ -149,16 +137,14 @@ internal sealed class TracerRuntime : IDisposable
 
     private V8Script GetScript(string key, string code, bool pack = false)
     {
-        if (!_scripts.TryGetValue(key, out V8Script? script))
+        if (!_scripts.TryGetValue((key, pack), out V8Script? script))
         {
             script = _runtime.Compile(pack ? Pack(code) : code);
-            _scripts[key] = script;
+            _scripts[(key, pack)] = script;
         }
 
         return script;
     }
-
-    private static bool IsInline(string tracer) => tracer.StartsWith('{') && tracer.EndsWith('}');
 
     // Names starting with '_' are the engine's own scripts, not tracers.
     private static bool IsBuiltIn(string fileName) => !fileName.StartsWith('_') && _builtInSources.Value.ContainsKey(fileName);

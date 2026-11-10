@@ -144,7 +144,7 @@ public class OptimismEngineRpcModuleTest
         OptimismReleaseSpec spec = new() { IsOpIsthmusEnabled = true };
         OptimismEngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(spec));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(
                 provider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)].IsEnabled(),
@@ -152,7 +152,7 @@ public class OptimismEngineRpcModuleTest
             Assert.That(
                 provider.GetSszRestPaths()[SszRestPaths.PostPayloadsWitness].IsEnabled(),
                 Is.False);
-        });
+        }
     }
 
     private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()

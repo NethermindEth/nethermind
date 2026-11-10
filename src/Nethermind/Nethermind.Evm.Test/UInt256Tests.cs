@@ -14,11 +14,14 @@ public class UInt256Tests
     [Test]
     public void IsOne()
     {
-        Assert.That(UInt256.One.IsOne, Is.True, "1");
-        Assert.That(UInt256.Zero.IsOne, Is.False, "0");
-        Assert.That(((UInt256)BigInteger.Pow(2, 64)).IsOne, Is.False, "2^64");
-        Assert.That(((UInt256)BigInteger.Pow(2, 128)).IsOne, Is.False, "2^128");
-        Assert.That(((UInt256)BigInteger.Pow(2, 196)).IsOne, Is.False, "2^196");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(UInt256.One.IsOne, Is.True, "1");
+            Assert.That(UInt256.Zero.IsOne, Is.False, "0");
+            Assert.That(((UInt256)BigInteger.Pow(2, 64)).IsOne, Is.False, "2^64");
+            Assert.That(((UInt256)BigInteger.Pow(2, 128)).IsOne, Is.False, "2^128");
+            Assert.That(((UInt256)BigInteger.Pow(2, 196)).IsOne, Is.False, "2^196");
+        }
     }
 
     [Test]

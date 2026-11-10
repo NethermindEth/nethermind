@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly bool _isBlockHashFilter;
+        private readonly Func<ReceiptsEventArgs, long, Task> _send;
         private readonly ReceiptsEventPayloadCache<Filter>.Membership _payloads;
 
         public LogsSubscription(
@@ -66,8 +67,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
 
-            _isBlockHashFilter = _filter.FromBlock.Equals(_filter.ToBlock);
+            _isBlockHashFilter = _filter.IsBlockHashFilter;
             _payloads = payloads.Join(GetFilterKey(filter));
+            _send = PublishLogs;
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
@@ -87,9 +89,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 return;
             }
 
-            if (HasMatchingLog(blockHeader, e.TxReceipts))
+            int receiptIndex = 0;
+            int logIndex = 0;
+            if (_filter.Matches(blockHeader.Bloom!) && TryFindAcceptedLog(e.TxReceipts, ref receiptIndex, ref logIndex))
             {
-                ScheduleAction(() => PublishLogs(e));
+                ScheduleAction(_send, e, PackLogLocation(receiptIndex, logIndex));
             }
         }
 
@@ -172,14 +176,31 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        private async Task PublishLogs(ReceiptsEventArgs e)
+        /// <param name="e">The event, queued because the filter accepts at least one of its logs.</param>
+        /// <param name="firstLog">The location of the first accepted log, from <see cref="PackLogLocation"/>.</param>
+        /// <remarks>
+        /// A log's position is its index in the block, which payloads are shared by; <c>logIndex</c> is that position,
+        /// or the index in its receipt when <see cref="ReceiptsEventArgs.LogIndexPerReceipt"/>.
+        /// </remarks>
+        private async Task PublishLogs(ReceiptsEventArgs e, long firstLog)
         {
-            foreach (JsonRpcResult message in GetLogMessages(e))
+            TxReceipt[] receipts = e.TxReceipts;
+            EventPayloads payloads = _payloads.ForEvent(e);
+            (int receiptIndex, int logIndex) = UnpackLogLocation(firstLog);
+            int receiptStart = 0;
+            int counted = 0;
+            do
             {
-                using JsonRpcResult result = message;
+                for (; counted < receiptIndex; counted++) receiptStart += receipts[counted].Logs!.Length;
+
+                TxReceipt receipt = receipts[receiptIndex];
+                int position = receiptStart + logIndex;
+                using JsonRpcResult result = CreateLogMessage(payloads, position, e, e.LogIndexPerReceipt ? logIndex : position, receipt, receipt.Logs![logIndex]);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
-            }
+
+                logIndex++;
+            } while (TryFindAcceptedLog(receipts, ref receiptIndex, ref logIndex));
         }
 
         private JsonRpcResult CreateLogMessage(EventPayloads payloads, int position, ReceiptsEventArgs e, long logIndex, TxReceipt receipt, LogEntry log)
@@ -209,55 +230,39 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private static bool IsOnSide(ulong number, ulong? bound, bool lowerBound) => lowerBound ? number >= bound : number <= bound;
 
-        private bool HasMatchingLog(BlockHeader blockHeader, TxReceipt[] receipts)
+        /// <summary>Packs a log's receipt index into the high and its index in that receipt into the low 32 bits.</summary>
+        private static long PackLogLocation(int receiptIndex, int logIndex) => ((long)receiptIndex << 32) | (uint)logIndex;
+
+        private static (int ReceiptIndex, int LogIndex) UnpackLogLocation(long location) => ((int)(location >> 32), (int)location);
+
+        /// <summary>
+        /// Finds the first log the filter accepts at or after log <paramref name="logIndex"/> of receipt <paramref name="receiptIndex"/>.
+        /// </summary>
+        /// <remarks>
+        /// A receipt's bloom is checked when the search enters it at its first log, and a receipt it rules out is skipped
+        /// without reading its logs; a search resuming inside a receipt already passed its bloom.
+        /// </remarks>
+        /// <returns>Whether one was found; if so, the indexes are set to its location.</returns>
+        private bool TryFindAcceptedLog(TxReceipt[] receipts, ref int receiptIndex, ref int logIndex)
         {
-            if (!_filter.Matches(blockHeader.Bloom!)) return false;
-
-            foreach (TxReceipt receipt in receipts)
+            for (int r = receiptIndex, l = logIndex; r < receipts.Length; r++, l = 0)
             {
-                if (!_filter.Matches(receipt.Bloom!)) continue;
+                TxReceipt receipt = receipts[r];
+                if (l == 0 && !_filter.Matches(receipt.Bloom!)) continue;
 
-                foreach (LogEntry log in receipt.Logs!)
+                LogEntry[] logs = receipt.Logs!;
+                for (; l < logs.Length; l++)
                 {
-                    if (_filter.Accepts(log)) return true;
+                    if (_filter.Accepts(logs[l]))
+                    {
+                        receiptIndex = r;
+                        logIndex = l;
+                        return true;
+                    }
                 }
             }
 
             return false;
-        }
-
-        private IEnumerable<JsonRpcResult> GetLogMessages(ReceiptsEventArgs e)
-        {
-            if (_filter.Matches(e.BlockHeader.Bloom!))
-            {
-                EventPayloads payloads = _payloads.ForEvent(e);
-                int position = 0;
-                int logIndex = 0;
-                for (int i = 0; i < e.TxReceipts.Length; i++)
-                {
-                    TxReceipt receipt = e.TxReceipts[i];
-                    if (e.LogIndexPerReceipt) logIndex = 0;
-                    if (_filter.Matches(receipt.Bloom!))
-                    {
-                        for (int j = 0; j < receipt.Logs!.Length; j++)
-                        {
-                            LogEntry receiptLog = receipt.Logs[j];
-                            if (_filter.Accepts(receiptLog))
-                            {
-                                yield return CreateLogMessage(payloads, position + j, e, logIndex, receipt, receiptLog);
-                            }
-
-                            logIndex++;
-                        }
-                    }
-                    else
-                    {
-                        logIndex += receipt.Logs.Length;
-                    }
-
-                    position += receipt.Logs.Length;
-                }
-            }
         }
 
         public override string Type => SubscriptionType.EthSubscription.Logs;

@@ -72,6 +72,8 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
     public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for the bogota-devnet-2 EIP set, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? BogotaDevnet2Time { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
