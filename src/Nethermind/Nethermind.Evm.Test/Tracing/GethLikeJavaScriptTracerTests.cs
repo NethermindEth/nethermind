@@ -107,7 +107,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = GetTracer(tracerCode);
         Action trace = () => ExecuteBlock(tracer, MStore());
-        Assert.That(trace, Throws.TypeOf<ArgumentException>());
+        Assert.That(trace, Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCase("fe", "INVALID")]
@@ -506,16 +506,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("flatCallTracer")]
-    [TestCase("noSuchTracer.js")]
-    [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase("callTracer_legacy.tracer")]
     [TestCase(null)]
     [TestCase("{ ) }")]
     public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
         Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("callTracer_legacy.tracer")]
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
@@ -2526,7 +2526,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                  });
                                                  return this.trace;
                                              },
-                                             fault: this.step
+                                             fault: function(log, db) { this.step(log, db); }
                                          }
                                          """;
 }

@@ -131,6 +131,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         catch (NativeTracerConfigException exception)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -268,7 +272,7 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Reason.ErrorDescription), ErrorCodes.InvalidInput);
         }
-        catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
@@ -343,6 +347,9 @@ public class DebugRpcModule(
         }
         return block;
     }
+
+    private static bool IsJavaScriptOrMuxTracer(GethTraceOptions? options) =>
+        options?.Tracer is { Length: > 0 } tracer && (tracer == "muxTracer" || !GethLikeNativeTracerFactory.IsNativeTracer(tracer));
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
     {
@@ -485,7 +492,15 @@ public class DebugRpcModule(
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockHash}", ErrorCodes.ResourceNotFound);
@@ -512,7 +527,15 @@ public class DebugRpcModule(
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -544,7 +567,15 @@ public class DebugRpcModule(
 
         // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
 
         if (transactionTrace is null)
         {
