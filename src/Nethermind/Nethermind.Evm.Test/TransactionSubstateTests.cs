@@ -126,18 +126,16 @@ namespace Nethermind.Evm.Test
             Assert.That(TransactionSubstate.GetErrorMessage(output), Is.EqualTo($"unknown panic code: 0x1{new string('0', (30 - byteIndex) * 2)}22"));
         }
 
-        [TestCase("99", "unknown panic code: 0x99")]
-        [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000")]
-        [TestCase("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "unknown panic code: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-        public void Unknown_panic_code_has_geth_diagnostic(string code, string expected)
-        {
-            byte[] output = Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0'));
-
-            Assert.That(TransactionSubstate.GetErrorMessage(output), Is.EqualTo(expected));
-        }
-
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
         {
+            foreach ((string code, string expected) in new[]
+            {
+                ("99", "unknown panic code: 0x99"),
+                ("10000000000000000", "unknown panic code: 0x10000000000000000"),
+                ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "unknown panic code: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            })
+                yield return (Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0')), expected);
+
             yield return (
                 new byte[]
                 {
