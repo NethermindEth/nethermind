@@ -35,6 +35,34 @@ public record AccessListItem([RlpFixedLength(CoreAddress.Size)] CoreAddress Addr
 [RlpSerializable(RlpRepresentation.Newtype)]
 public record AccessList(List<AccessListItem> Items);
 
+[RlpSerializable]
+public record NestedValues(List<List<int>> Values);
+
+[MemoryDiagnoser]
+public class NestedCollectionsBenchmark
+{
+    private NestedValues _value = null!;
+
+    [Params(10, 100)]
+    public int Count { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        List<List<int>> values = new(Count);
+        for (int i = 0; i < Count; i++)
+        {
+            List<int> items = new(Count);
+            for (int j = 0; j < Count; j++) items.Add(j);
+            values.Add(items);
+        }
+        _value = new NestedValues(values);
+    }
+
+    [Benchmark]
+    public byte[] Encode() => RlpCodec.Write<NestedValuesRlpConverter, NestedValues>(_value);
+}
+
 /// <summary>Compares FluentRlp with the current decoder on the same EIP-2930 access list and the same bytes.</summary>
 [MemoryDiagnoser]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory, BenchmarkLogicalGroupRule.ByParams)]

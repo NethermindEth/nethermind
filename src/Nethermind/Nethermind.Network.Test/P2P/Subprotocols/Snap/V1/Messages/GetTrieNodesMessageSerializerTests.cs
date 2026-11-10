@@ -161,7 +161,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
         /// <summary>
         /// RlpItemList has a ReadOnlySpan indexer that structural assertions cannot reflect over,
-        /// so we verify roundtrip via byte equality instead of SerializerTester.TestZero.
+        /// so we verify roundtrip via byte equality.
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg, string? expectedData = null)
         {

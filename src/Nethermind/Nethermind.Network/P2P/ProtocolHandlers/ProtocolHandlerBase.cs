@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -100,9 +99,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             int size = data.ReadableBytes;
             try
             {
-                int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
-                if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
                 if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
 
                 return result;
@@ -118,9 +115,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw;
             }
         }
-
-        [DoesNotReturn]
-        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
 
         protected internal void Send<T>(T message) where T : P2PMessage
         {
@@ -321,6 +315,4 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             remove => _subprotocolRequested -= value;
         }
     }
-
-    public class IncompleteDeserializationException(string msg) : Exception(msg);
 }

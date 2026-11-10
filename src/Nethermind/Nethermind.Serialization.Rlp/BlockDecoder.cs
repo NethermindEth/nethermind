@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Rlp
             (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
             byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
             RlpWriter writer = RlpWriter.ContentWriter(bytes);
-            EncodeContent(ref writer, item, lengths);
+            EncodeContent(ref writer, item, lengths, rlpBehaviors);
             Rlp.CheckLength(in writer, bytes.Length);
             return new(bytes);
         }
@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             try
             {
                 RlpWriter writer = RlpWriter.ContentWriter(buffer);
-                EncodeContent(ref writer, block, lengths);
+                EncodeContent(ref writer, block, lengths, rlpBehaviors);
                 Rlp.CheckLength(in writer, buffer.Length);
                 return buffer;
             }
@@ -117,14 +117,15 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors));
+            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors), rlpBehaviors);
         }
 
-        private void EncodeContent(ref RlpWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths)
+        private void EncodeContent(ref RlpWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths, RlpBehaviors rlpBehaviors)
         {
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = lengths;
             RlpSequence sequence = writer.StartSequence(contentLength);
-            _headerDecoder.Encode(ref writer, item.Header);
+            // The header length came from the same behaviors, so the header is written with them too.
+            _headerDecoder.Encode(ref writer, item.Header, rlpBehaviors);
             RlpSequence txs = writer.StartSequence(txsLength);
 
             byte[][]? encodedTxs = item.EncodedTransactions;

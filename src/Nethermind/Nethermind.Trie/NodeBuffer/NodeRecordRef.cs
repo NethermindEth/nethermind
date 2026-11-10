@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Serialization.FluentRlp;
@@ -14,14 +15,20 @@ namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>Reads a node record in place; see <see cref="NodeRecordCodec"/> for the layout.</summary>
 /// <remarks>The record's RLP is trusted to be well formed, as <see cref="NodeRecordCodec.TryDecode"/> or the encoder left it.</remarks>
-internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
+public readonly ref struct NodeRecordRef
 {
-    private readonly ReadOnlySpan<byte> _record = record;
+    private readonly ReadOnlySpan<byte> _record;
 
-    public NodeRecordKind Kind => (NodeRecordKind)_record[0];
+    internal NodeRecordRef(ReadOnlySpan<byte> record) => _record = record;
 
-    public ushort HashMask => BinaryPrimitives.ReadUInt16LittleEndian(_record[NodeRecordCodec.HashMaskOffset..]);
+    internal NodeRecordKind Kind => (NodeRecordKind)_record[0];
 
+    internal ushort HashMask => BinaryPrimitives.ReadUInt16LittleEndian(_record[NodeRecordCodec.HashMaskOffset..]);
+
+    /// <summary>Keccak of the node's RLP; zero for a node embedded in its parent, which has no hash of its own.</summary>
+    public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_record.Slice(NodeRecordCodec.HashOffset, ValueHash256.MemorySize));
+
+    /// <summary>The node's standard RLP, exactly the bytes that are hashed and persisted.</summary>
     public ReadOnlySpan<byte> Rlp => _record.Slice(
         NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * BitOperations.PopCount(HashMask),
         (int)BinaryPrimitives.ReadUInt32LittleEndian(_record[NodeRecordCodec.RlpLengthOffset..]));
@@ -51,7 +58,7 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     private ReadOnlySpan<byte> KeyHexPrefix => new RlpReader(Payload).ReadBytes<OffFlag>();
 
     /// <summary>Child <paramref name="index"/> of a branch, or the child of an extension, with its buffer pointer.</summary>
-    public ChildRef Child(int index)
+    internal ChildRef Child(int index)
     {
         ushort hashMask = HashMask;
         int position = BitOperations.PopCount(hashMask & ((1u << index) - 1));
@@ -82,7 +89,7 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     }
 
     /// <summary>Writes every child of a branch into <paramref name="children"/>, as <see cref="Child"/> would one at a time, in one pass over the RLP.</summary>
-    public void CopyChildren(Span<ChildRef> children)
+    internal void CopyChildren(Span<ChildRef> children)
     {
         Debug.Assert(Kind is NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch);
         int position = 0;
@@ -128,6 +135,21 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     public void CopyKey(int skip, Span<byte> nibbles)
     {
         if (Kind is NodeRecordKind.Leaf or NodeRecordKind.Extension) NodeRlp.ReadHexPrefix(KeyHexPrefix, skip, nibbles);
+    }
+
+    /// <summary>Gets the hash of child <paramref name="index"/> of a branch, or of an extension's child at index 0.</summary>
+    /// <returns>False when there is no such child, or it is embedded rather than referenced by hash.</returns>
+    public bool TryGetChildHash(int index, out ValueHash256 hash)
+    {
+        ChildRef child = Kind switch
+        {
+            NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch when (uint)index < TrieNode.BranchesCount => Child(index),
+            NodeRecordKind.Extension when index == 0 => Child(0),
+            _ => default,
+        };
+        bool isHash = child.Kind == ChildRefKind.Hash;
+        hash = isHash ? child.Data : default;
+        return isHash;
     }
 
     private ulong Pointer(int position) =>

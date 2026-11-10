@@ -15,6 +15,48 @@ namespace Nethermind.Serialization.FluentRlp.Test;
 public class RlpWriterTest
 {
     [Test]
+    public void FixedLengthConverterWritesOnce([Values(2, 55, 56, 256)] int length, [Values(0, 1, 2)] int mode)
+    {
+        byte[] value = new byte[length];
+        byte[] expected = RlpCodec.Write(value, static (ref RlpWriter w, byte[] value) => w.Write(value));
+        int calls = 0;
+        void Write(ref RlpWriter w, byte[] bytes)
+        {
+            calls++;
+            w.Write(bytes);
+        }
+
+        byte[] actual = new byte[expected.Length];
+        if (mode == 0)
+            actual = RlpCodec.Write(value, (ref RlpWriter w, byte[] bytes) => w.WriteFixedLength(bytes, length, Write));
+        else
+        {
+            RlpWriter writer = mode == 1 ? RlpWriter.ContentWriter(actual) : RlpWriter.LengthWriter();
+            writer.WriteFixedLength(value, length, Write);
+            Assert.That(writer.Length, Is.EqualTo(expected.Length));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(1));
+            if (mode != 2) Assert.That(actual, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void FixedLengthConverterRejectsWrongShape([Values(1, 2)] int shape, [Values(0, 1, 2)] int mode)
+        => Assert.That(() =>
+        {
+            if (mode == 0)
+                RlpCodec.Write(shape, static (ref RlpWriter w, int shape) => w.WriteFixedLength(new FixedShape(shape), 2, FixedShapeConverter.Write));
+            else
+            {
+                RlpWriter writer = mode == 1 ? RlpWriter.ContentWriter(new byte[3]) : RlpWriter.LengthWriter();
+                writer.WriteFixedLength(new FixedShape(shape), 2, FixedShapeConverter.Write);
+            }
+        }, Throws.InvalidOperationException);
+
+    [Test]
     public void PrefixedLengthRejectsOverflow([Values(int.MaxValue - 4, int.MaxValue)] int length)
     {
         using (Assert.EnterMultipleScope())

@@ -6,7 +6,7 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 RLP0001 | RLP | Error | Newtype representation requires exactly one primary constructor parameter.
-RLP0002 | RLP | Error | Record member is not a primary constructor parameter, so it is not serialized.
+RLP0002 | RLP | Error | Stored instance state outside the primary constructor cannot be reconstructed reliably.
 RLP0003 | RLP | Error | Record shape is not supported (generic, nested, or no primary constructor).
 RLP0004 | RLP | Error | Parameter type is not supported.
 RLP0005 | RLP | Error | Fixed length requires a Newtype record over a byte array.

@@ -5,8 +5,6 @@ using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -103,21 +101,12 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
         ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
         while (true)
         {
-            switch (child.Kind)
-            {
-                case ChildRefKind.Empty:
-                    return null;
-                case ChildRefKind.Inline:
-                    // A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.
-                    RlpReader reader = new RlpReader(child.InlineRlp).EnterSequence<OffFlag>(out _);
-                    ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
-                    ReadOnlySpan<byte> value = reader.ReadBytes<OffFlag>();
-                    int inlineKeyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix);
-                    NodeRlp.ReadHexPrefix(hexPrefix, 0, nodeKey);
-                    return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.ToArray() : null;
-            }
+            if (child.Kind == ChildRefKind.Empty) return null;
 
-            if (!TryLocate(child.Pointer, out NodeRecord record) && !loaded.TryLoad(this, path, child.Data, out record))
+            NodeRecord record;
+            // An embedded node may be a branch or an extension, though only theoretically (see NodeRecordCodec.IsInlineLeaf), so it is decoded like any other.
+            if (child.Kind == ChildRefKind.Inline) record = loaded.AddEmbedded(child.InlineRlp);
+            else if (!TryLocate(child.Pointer, out record) && !loaded.TryLoad(this, path, child.Data, out record))
             {
                 throw NodeRecordBulkSet.MissingNode(addressHash, path, child.Data);
             }

@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            int optionalFields = GetOptionalFieldCount(header);
+            int optionalFields = GetOptionalFieldCount(header, rlpBehaviors);
             RlpSequence sequence = writer.StartSequence(GetContentLength(header, notForSealing, optionalFields));
             writer.Encode(header.ParentHash ?? Keccak.Zero);
             writer.Encode(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
@@ -207,19 +207,19 @@ namespace Nethermind.Serialization.Rlp
         /// The fields are positional, so a field is encoded when it or a later field is set, and an unset field before
         /// a set one takes its default value. EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.
         /// </remarks>
-        private static int GetOptionalFieldCount(BlockHeader header) =>
+        private static int GetOptionalFieldCount(BlockHeader header, RlpBehaviors rlpBehaviors) =>
             header.SlotNumber is not null ? 8
             : header.BlockAccessListHash is not null ? 7
             : header.RequestsHash is not null ? 6
             : header.ParentBeaconBlockRoot is not null ? 5
             : header.BlobGasUsed is not null || header.ExcessBlobGas is not null ? 4
             : header.WithdrawalsRoot is not null ? 2
-            : !header.BaseFeePerGas.IsZero ? 1
+            : !header.BaseFeePerGas.IsZero || (rlpBehaviors & RlpBehaviors.Eip1559Header) == RlpBehaviors.Eip1559Header ? 1
             : 0;
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => item is null
                 ? Rlp.OfEmptyList.Length
-                : Rlp.LengthOfSequence(GetContentLength(item, (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing, GetOptionalFieldCount(item)));
+                : Rlp.LengthOfSequence(GetContentLength(item, (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing, GetOptionalFieldCount(item, rlpBehaviors)));
     }
 }

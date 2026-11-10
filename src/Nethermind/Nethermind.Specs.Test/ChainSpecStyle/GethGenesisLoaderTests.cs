@@ -289,6 +289,17 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("", 4_712_388UL)]
+    [TestCase("\"gasLimit\": null,", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x0\",", 4_712_388UL)]
+    [TestCase("\"gasLimit\": \"0x1000\",", 0x1000UL)]
+    public void Defaults_zero_or_missing_gas_limit_to_geth_genesis_gas_limit(string genesisExtra, ulong expectedGasLimit)
+    {
+        string json = $$"""{ "config": { "chainId": 1 }, {{genesisExtra}} "difficulty": "0x1", "alloc": {} }""";
+
+        Assert.That(LoadFromString(json).Genesis!.Header.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
     [TestCase("", null)]
     [TestCase("\"daoForkBlock\": null", null)]
     [TestCase("\"daoForkBlock\": 0", 0UL)]
@@ -354,6 +365,22 @@ public class GethGenesisLoaderTests
             Assert.That(spec.ValidateChainId, Is.True);
             Assert.That(spec.ValidateReceipts, Is.True);
             Assert.That(spec.IsEip3607Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Spurious_dragon_eips_follow_geth_fork_blocks([Values(0UL, 9UL, 10UL)] ulong blockNumber)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: "\"eip158Block\": 10"));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+        bool eip158Active = blockNumber >= 10;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip155Enabled, Is.True);
+            Assert.That(spec.IsEip158Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip160Enabled, Is.EqualTo(eip158Active));
+            Assert.That(spec.IsEip170Enabled, Is.EqualTo(eip158Active));
         }
     }
 

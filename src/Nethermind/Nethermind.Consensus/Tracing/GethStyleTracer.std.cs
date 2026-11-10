@@ -140,7 +140,7 @@ public class GethStyleTracer(
         GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
         Utf8JsonWriter? writer, PipeWriter? pipeWriter, bool tracePreceding)
     {
-        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash };
+        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash, ExecutionCancellationToken = cancellationToken };
         BlockLogIndex logIndex = new();
         return writer is null
             ? CreateOptionsTracer(header, filtered, state, specProvider, tracePreceding ? (_, _) => logIndex : null)
@@ -262,7 +262,7 @@ public class GethStyleTracer(
 
         block = new Block(block.Header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash, ExecutionCancellationToken = cancellationToken }, scope.Component.WorldState, specProvider);
         try
         {
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);
@@ -412,6 +412,7 @@ public class GethStyleTracer(
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
         }
 
+        options = options with { ExecutionCancellationToken = cancellationToken };
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         long destroyRefund = (long)spec.GasCosts.DestroyRefund;
@@ -449,6 +450,11 @@ public class GethStyleTracer(
             tracer.TryDispose();
         }
     }
+
+    /// <summary>Creates the block tracer for <paramref name="options"/>; a JavaScript tracer stops when <paramref name="cancellationToken"/> is cancelled, including while it is being created.</summary>
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider,
+        Func<Block, Transaction, BlockLogIndex>? logIndex, CancellationToken cancellationToken) =>
+        CreateOptionsTracer(block, options with { ExecutionCancellationToken = cancellationToken }, worldState, specProvider, logIndex);
 
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, BlockLogIndex>? logIndex = null) =>
         options switch

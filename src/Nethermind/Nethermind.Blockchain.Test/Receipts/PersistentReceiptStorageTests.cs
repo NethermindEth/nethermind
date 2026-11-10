@@ -4,11 +4,16 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -17,9 +22,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -28,6 +36,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
@@ -388,6 +397,247 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
 
         Assert.That(_storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
+    }
+
+    [Test]
+    public void FindBlockHash_span_read_resolves_the_current_canonical_number([Values(0UL, 1UL, ulong.MaxValue)] ulong number)
+    {
+        IndexReadDb index = new();
+        index.Set(TestItem.KeccakA, Rlp.Encode(number).Bytes);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        _blockTree.FindBlockHash(number).Returns(TestItem.KeccakB);
+        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
+        _blockTree.FindBlockHash(number).Returns(TestItem.KeccakC);
+        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakC));
+        _blockTree.FindBlockHash(number).Returns((Hash256?)null);
+        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.SpanReads, Is.EqualTo(3));
+            Assert.That(index.Releases, Is.EqualTo(3));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_span_read_preserves_a_legacy_hash()
+    {
+        IndexReadDb index = new();
+        index.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_missing_index_preserves_the_obsolete_receipt_fallback([Values] bool legacyReceipt)
+    {
+        IndexReadDb index = new();
+        if (legacyReceipt)
+        {
+            TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
+                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+        }
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(legacyReceipt ? TestItem.KeccakB : null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_empty_rocksdb_index_falls_back_to_the_obsolete_receipt([Values] bool legacyReceipt)
+    {
+        using TempPath path = TempPath.GetTempDirectory();
+        using IContainer container = CreateRocksDbContainer(path.Path);
+        using IColumnsDb<ReceiptsColumns> columns = container.Resolve<IDbFactory>().CreateColumnsDb<ReceiptsColumns>(new DbSettings("Receipts", "receipts"));
+        IDb index = columns.GetColumnDb(ReceiptsColumns.Transactions);
+        index.Set(TestItem.KeccakA.Bytes, Array.Empty<byte>());
+        if (legacyReceipt)
+        {
+            TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
+                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+        }
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.Get(TestItem.KeccakA), Is.EqualTo(Array.Empty<byte>()));
+            Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(legacyReceipt ? TestItem.KeccakB : null));
+        }
+    }
+
+    private static IEnumerable<byte[]> MalformedIndexValues() =>
+    [
+        [0x89, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        Enumerable.Repeat((byte)0xc0, Hash256.Size + 1).ToArray()
+    ];
+
+    [Test]
+    public void FindBlockHash_preserves_malformed_index_exceptions([ValueSource(nameof(MalformedIndexValues))] byte[] value)
+    {
+        IndexReadDb index = new();
+        index.Set(TestItem.KeccakA, value);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        Exception? original = Assert.Catch(() =>
+        {
+            RlpReader reader = new(value);
+            reader.DecodeULong<OffFlag>();
+        });
+        Assert.That(original, Is.Not.Null);
+        Assert.That(() => storage.FindBlockHash(TestItem.KeccakA), Throws.TypeOf(original!.GetType()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_preserves_oversized_values_with_a_valid_rlp_prefix([Values] bool rocksDb)
+    {
+        using TempPath path = TempPath.GetTempDirectory();
+        using IContainer? container = rocksDb ? CreateRocksDbContainer(path.Path) : null;
+        using IColumnsDb<ReceiptsColumns>? columns = container?.Resolve<IDbFactory>().CreateColumnsDb<ReceiptsColumns>(new DbSettings("Receipts", "receipts"));
+        IndexReadDb trackedIndex = new();
+        IDb index = columns?.GetColumnDb(ReceiptsColumns.Transactions) ?? trackedIndex;
+        byte[] value = new byte[Hash256.Size + 1];
+        value[0] = 1;
+        index.Set(TestItem.KeccakA, value);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        _blockTree.FindBlockHash(1UL).Returns(TestItem.KeccakB);
+        Hash256? result = storage.FindBlockHash(TestItem.KeccakA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(trackedIndex.SpanReads, Is.EqualTo(rocksDb ? 0 : 1));
+            Assert.That(trackedIndex.Releases, Is.EqualTo(rocksDb ? 0 : 1));
+            Assert.That(trackedIndex.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_releases_the_index_when_canonical_resolution_throws()
+    {
+        IndexReadDb index = new();
+        index.Set(TestItem.KeccakA, Rlp.Encode(1UL).Bytes);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        IOException failure = new("canonical lookup failure");
+        _blockTree.FindBlockHash(1UL).Returns(_ => throw failure);
+        Exception? thrown = Assert.Catch(() => storage.FindBlockHash(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.EqualTo(1));
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void FindBlockHash_propagates_io_errors_without_retrying()
+    {
+        IOException failure = new("index read failure");
+        IndexReadDb index = new()
+        {
+            SpanFailure = failure
+        };
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index);
+        Exception? thrown = Assert.Catch(() => storage.FindBlockHash(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(failure));
+            Assert.That(index.SpanReads, Is.EqualTo(1));
+            Assert.That(index.Releases, Is.Zero);
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task FindBlockHash_pending_index_precedes_the_db_read([Values] bool compactIndex)
+    {
+        _receiptConfig.CompactTxIndex = compactIndex;
+        IndexReadDb index = new() { SpanFailure = new IOException("must not read the index") };
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        PersistentReceiptStorage storage = CreateStorageWithIndex(index, writer, barrier);
+        (Block block, TxReceipt[] _) = PrepareBlock();
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+        Hash256 hash = block.Transactions[0].Hash!;
+        Assert.That(storage.FindBlockHash(hash), Is.EqualTo(block.Hash));
+        _blockTree.FindBlockHash(block.Number).Returns(TestItem.KeccakC);
+        Assert.That(storage.FindBlockHash(hash), Is.EqualTo(compactIndex ? TestItem.KeccakC : block.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index.SpanReads, Is.Zero);
+            Assert.That(index.Releases, Is.Zero);
+            Assert.That(index.ArrayReads, Is.Zero);
+        }
+    }
+
+    private static IContainer CreateRocksDbContainer(string path)
+    {
+        InitConfig initConfig = new() { BaseDbPath = path };
+        return new ContainerBuilder()
+            .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<IPruningConfig>(new PruningConfig())
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+            .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+    }
+
+    private PersistentReceiptStorage CreateStorageWithIndex(IDb index, IDeferredBlockDataWriter? writer = null, IStatePersistenceBarrier? barrier = null)
+    {
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call =>
+            call.Arg<ReceiptsColumns>() == ReceiptsColumns.Transactions ? index : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        return new PersistentReceiptStorage(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, writer, barrier, _logManager);
+    }
+
+    private sealed class IndexReadDb : TestMemDb, IReadOnlyKeyValueStore
+    {
+        private byte[]? _borrowed;
+        public int SpanReads { get; private set; }
+        public int Releases { get; private set; }
+        public int ArrayReads { get; private set; }
+        public Exception? SpanFailure { get; init; }
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            ArrayReads++;
+            return base.Get(key, flags);
+        }
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            SpanReads++;
+            if (SpanFailure is not null) throw SpanFailure;
+            _borrowed = base.Get(key, flags)?.ToArray();
+            return _borrowed.AsSpan();
+        }
+
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            Assert.That(span.IsNull(), Is.EqualTo(_borrowed is null));
+            Releases++;
+            if (_borrowed is not null) _borrowed.AsSpan().Fill(0xff);
+            _borrowed = null;
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

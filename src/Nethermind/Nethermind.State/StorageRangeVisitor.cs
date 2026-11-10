@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State;
 
@@ -18,7 +19,7 @@ namespace Nethermind.State;
 /// Only the trie path to the account and the storage subtrees at or after the start key are read. When more slots follow
 /// the collected ones, <see cref="NextKey"/> is the hashed key of the first of them, as in geth's <c>debug_storageRangeAt</c>.
 /// </remarks>
-public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKey, int limit) : ITreeVisitor<TreePathContextWithStorage>
+public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKey, int limit) : INodeRecordVisitor<TreePathContextWithStorage>
 {
     private readonly TreePath _accountPath = new(ValueKeccak.Compute(address.Bytes), 64);
     private readonly TreePath _startKey = new(startKey, 64);
@@ -48,19 +49,24 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
     public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
         throw new MissingTrieNodeException($"Missing trie node {nodeHash} at {nodeContext.Path}", nodeContext.Storage, nodeContext.Path, new Hash256(nodeHash));
 
-    public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node)
+    /// <inheritdoc/>
+    public void VisitBranch(in TreePathContextWithStorage nodeContext, NodeRecordRef node)
     {
     }
 
-    public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node)
+    /// <inheritdoc/>
+    public void VisitExtension(in TreePathContextWithStorage nodeContext, NodeRecordRef node)
     {
     }
 
-    public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node)
+    /// <inheritdoc/>
+    public void VisitLeaf(in TreePathContextWithStorage nodeContext, NodeRecordRef node)
     {
         if (nodeContext.Storage is null) return;
 
-        ValueHash256 key = nodeContext.Path.Append(node.Key).Path;
+        Span<byte> leafKey = stackalloc byte[node.KeyLength(0)];
+        node.CopyKey(0, leafKey);
+        ValueHash256 key = nodeContext.Path.Append(leafKey).Path;
         if (key.CompareTo(_startKey.Path) < 0) return;
 
         if (_slots.Count >= limit)
@@ -70,14 +76,15 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
             return;
         }
 
-        RlpReader reader = new(node.Value.AsSpan());
+        RlpReader reader = new(node.LeafValue);
         ReadOnlySpan<byte> content = reader.DecodeByteArraySpan<OffFlag>(RlpLimit.L32);
         ValueHash256 value = default;
         content.CopyTo(value.BytesAsSpan[(ValueHash256.MemorySize - content.Length)..]);
         _slots.Add((key, value));
     }
 
-    public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
+    /// <inheritdoc/>
+    public void VisitAccount(in TreePathContextWithStorage nodeContext, NodeRecordRef node, in AccountStruct account)
     {
         if (nodeContext.Path.Path == _accountPath.Path) HasStorage = account.HasStorage;
     }

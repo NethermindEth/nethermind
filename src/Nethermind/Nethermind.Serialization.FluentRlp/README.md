@@ -49,17 +49,21 @@ cannot encode without data loss:
 | Rule    | Shape                                                                     |
 |---------|---------------------------------------------------------------------------|
 | RLP0001 | `Newtype` representation with other than one parameter                   |
-| RLP0002 | Settable or uninitialized auto-property, or instance field, that is not a constructor parameter |
+| RLP0002 | Stored instance property or field outside the primary constructor, including initialized and readonly state |
 | RLP0003 | Generic, nested or derived record, or a record without primary constructor|
 | RLP0004 | Unsupported parameter type, for example a tuple of three                  |
 | RLP0005 | `length` on a record that is not a `Newtype` over a byte array            |
 | RLP0006 | `Newtype` record that contains itself without a sequence around it      |
 | RLP0007 | `RlpFixedLength` outside 2..2147483642, or on a type that is not written as a byte string |
 
+Computed properties without backing storage are supported. Cached properties and mutable collections in the record
+body must instead be primary constructor parameters so their values survive a round trip.
+
 A parameter of another type `T` uses the `ReadT()` and `Write(T)` extension methods that are in scope of the record.
 
 `[RlpFixedLength(n)]` on such a type, or on a parameter, declares that its value is always a byte string of `n`
 bytes. A record or list made only of values with a known length then writes its exact prefix at once, without a pass
 over the values, and the generated converter implements `IRlpLengthConverter<T>` when every field has a computable
-length. A read or write that does not match the declared length throws. On a `UInt256` parameter, `[RlpFixedLength(32)]`
+length. A read or write that is not a single byte string of the declared length throws, even if a list or several items
+have the same total encoded length. On a `UInt256` parameter, `[RlpFixedLength(32)]`
 reads and writes the value as 32 big-endian bytes, as for EIP-2930 storage keys.

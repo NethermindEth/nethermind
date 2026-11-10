@@ -62,6 +62,11 @@ public class MessageSerializationServiceTests
         Assert.That(use, Throws.InvalidOperationException.With.Message.EqualTo($"No serializer registered for {nameof(SpanMessage)}."));
     }
 
+    [Test]
+    public void Rejects_a_serializer_of_another_message_type() =>
+        Assert.That(() => new MessageSerializationService(new SerializerInfo(typeof(PingMessage), new SpanSerializer())),
+            Throws.ArgumentException.With.Message.EqualTo($"Serializer of type {nameof(SpanSerializer)} must implement IMessageSerializer<{nameof(PingMessage)}>."));
+
     [TestCaseSource(nameof(P2PMessages))]
     public void ZeroSerialize_writes_the_packet_type_then_the_message(Func<IMessageSerializationService, IByteBuffer> zeroSerialize, string expected)
     {
@@ -96,23 +101,16 @@ public class MessageSerializationServiceTests
     }
 
     [Test]
-    public void AddMessageSerializer_registers_the_interface_the_serializer_implements()
+    public void AddMessageSerializer_registers_the_serializer_as_its_interface()
     {
         using IContainer container = new ContainerBuilder()
             .AddMessageSerializer<SpanMessage, SpanSerializer>()
-            .AddMessageSerializer<ZeroMessage, ZeroSerializer>()
             .Build();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<IMessageSerializer<SpanMessage>>(), Is.InstanceOf<SpanSerializer>());
-            Assert.That(container.Resolve<IZeroMessageSerializer<ZeroMessage>>(), Is.InstanceOf<ZeroSerializer>());
-        }
+        Assert.That(container.Resolve<IMessageSerializer<SpanMessage>>(), Is.InstanceOf<SpanSerializer>());
     }
 
     private sealed class SpanMessage : MessageBase;
-
-    private sealed class ZeroMessage : MessageBase;
 
     private sealed class SpanSerializer : IMessageSerializer<SpanMessage>
     {
@@ -125,12 +123,5 @@ public class MessageSerializationServiceTests
         public int Serialize(Span<byte> destination, SpanMessage message) => Length + LengthError;
 
         public SpanMessage Deserialize(ReadOnlySpan<byte> data) => new();
-    }
-
-    private sealed class ZeroSerializer : IZeroMessageSerializer<ZeroMessage>
-    {
-        public void Serialize(IByteBuffer byteBuffer, ZeroMessage message) { }
-
-        public ZeroMessage Deserialize(IByteBuffer byteBuffer) => new();
     }
 }

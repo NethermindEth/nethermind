@@ -342,14 +342,20 @@ namespace Nethermind.Blockchain.Receipts
                 return pendingHash;
             }
 
-            byte[] blockHashData = _transactionDb.Get(txHash);
-            if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
+            Span<byte> blockHashData = _transactionDb.GetSpan(txHash);
+            try
+            {
+                if (blockHashData.IsNull()) return FindReceiptObsolete(txHash)?.BlockHash;
+                if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
-
-            RlpReader blockNumReader = new(blockHashData);
-            ulong blockNum = blockNumReader.DecodeULong<OffFlag>();
-            return _blockTree.FindBlockHash(blockNum);
+                RlpReader blockNumReader = new(blockHashData);
+                ulong blockNum = blockNumReader.DecodeULong<OffFlag>();
+                return _blockTree.FindBlockHash(blockNum);
+            }
+            finally
+            {
+                _transactionDb.DangerousReleaseMemory(blockHashData);
+            }
         }
 
         /// <summary>

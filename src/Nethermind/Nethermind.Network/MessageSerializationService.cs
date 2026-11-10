@@ -18,33 +18,30 @@ namespace Nethermind.Network;
 
 public class MessageSerializationService : IMessageSerializationService
 {
-    private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new();
+    private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _serializers = new();
 
     public MessageSerializationService(params IReadOnlyList<SerializerInfo> serializers)
     {
         foreach ((Type MessageType, object Serializer) in serializers)
         {
-            Type zeroInterface = typeof(IZeroMessageSerializer<>).MakeGenericType(MessageType);
-            Type spanInterface = typeof(IMessageSerializer<>).MakeGenericType(MessageType);
+            Type serializerInterface = typeof(IMessageSerializer<>).MakeGenericType(MessageType);
 
-            if (!zeroInterface.IsAssignableFrom(Serializer.GetType()) && !spanInterface.IsAssignableFrom(Serializer.GetType()))
+            if (!serializerInterface.IsAssignableFrom(Serializer.GetType()))
             {
-                ThrowInvalidSerializer(Serializer, zeroInterface, spanInterface);
+                ThrowInvalidSerializer(Serializer, MessageType);
             }
 
-            _zeroSerializers[MessageType.TypeHandle] = Serializer;
+            _serializers[MessageType.TypeHandle] = Serializer;
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidSerializer(object serializer, Type zeroInterface, Type spanInterface)
-            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {zeroInterface.Name} or {spanInterface.Name}.");
+        static void ThrowInvalidSerializer(object serializer, Type messageType)
+            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {nameof(IMessageSerializer<>)}<{messageType.Name}>.");
     }
 
     public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase
     {
-        if (!TryGetSerializer(out IMessageSerializer<T> serializer))
-            ThrowNoSerializerRegistered<T>(nameof(IMessageSerializer<>));
-
+        IMessageSerializer<T> serializer = GetSerializer<T>();
         ArrayPoolSpan<byte> buffer = new(serializer.GetLength(message));
         try
         {
@@ -58,55 +55,17 @@ public class MessageSerializationService : IMessageSerializationService
         }
     }
 
-    public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
-    {
-        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
-            ThrowNoSerializerRegistered<T>("serializer");
-
-        if (serializerObject is IMessageSerializer<T> serializer)
-            return serializer.Deserialize(bytes);
-
-        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
-        {
-            ThrowInvalidSerializerType<T>(serializerObject);
-            return null!;
-        }
-
-        IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
-        byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
-        try
-        {
-            return zeroMessageSerializer.Deserialize(byteBuffer);
-        }
-        finally
-        {
-            byteBuffer.SafeRelease();
-        }
-
-    }
+    public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase => GetSerializer<T>().Deserialize(bytes);
 
     public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
     {
-        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
-            ThrowNoSerializerRegistered<T>("serializer");
-
-        if (serializerObject is IMessageSerializer<T> serializer)
-        {
-            T message = serializer is IOwningMessageSerializer<T> owningSerializer
-                ? DeserializeOwned(owningSerializer, buffer)
-                : serializer.Deserialize(buffer.AsSpan());
-            // The serializer does not report how much it read, so the whole message counts as read.
-            buffer.SetReaderIndex(buffer.WriterIndex);
-            return message;
-        }
-
-        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
-        {
-            ThrowInvalidSerializerType<T>(serializerObject);
-            return null!;
-        }
-
-        return zeroMessageSerializer.Deserialize(buffer);
+        IMessageSerializer<T> serializer = GetSerializer<T>();
+        T message = serializer is IOwningMessageSerializer<T> owningSerializer
+            ? DeserializeOwned(owningSerializer, buffer)
+            : serializer.Deserialize(buffer.AsSpan());
+        // The serializer does not report how much it read, so the whole message counts as read.
+        buffer.SetReaderIndex(buffer.WriterIndex);
+        return message;
     }
 
     private static T DeserializeOwned<T>(IOwningMessageSerializer<T> serializer, IByteBuffer buffer) where T : MessageBase
@@ -117,47 +76,7 @@ public class MessageSerializationService : IMessageSerializationService
     }
 
     public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-    {
-        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
-            ThrowNoSerializerRegistered<T>("serializer");
-
-        if (serializerObject is IMessageSerializer<T> serializer)
-            return ZeroSerialize(serializer, message, allocator ?? NethermindBuffers.Default);
-
-        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
-        {
-            ThrowInvalidSerializerType<T>(serializerObject);
-            return null!;
-        }
-
-        void WriteAdaptivePacketType(in IByteBuffer buffer)
-        {
-            if (message is P2PMessage p2PMessage)
-            {
-                buffer.WriteBytes(Rlp.Encode(p2PMessage.AdaptivePacketType, stackalloc byte[sizeof(long) + 1]));
-            }
-        }
-
-        int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
-        int length = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-            ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
-            : 64;
-
-        allocator ??= NethermindBuffers.Default;
-        IByteBuffer byteBuffer = allocator.Buffer(length);
-
-        try
-        {
-            WriteAdaptivePacketType(byteBuffer);
-            zeroMessageSerializer.Serialize(byteBuffer, message);
-            return byteBuffer;
-        }
-        catch (Exception)
-        {
-            byteBuffer.SafeRelease();
-            throw;
-        }
-    }
+        => ZeroSerialize(GetSerializer<T>(), message, allocator ?? NethermindBuffers.Default);
 
     private static IByteBuffer ZeroSerialize<T>(IMessageSerializer<T> serializer, T message, IByteBufferAllocator allocator) where T : MessageBase
     {
@@ -198,31 +117,21 @@ public class MessageSerializationService : IMessageSerializationService
             => throw new InvalidOperationException($"{serializer.GetType().Name} wrote {written} bytes instead of the {length} it reported.");
     }
 
-    private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
+    // The constructor admits only a serializer of the message type it is registered for, so the cast cannot fail.
+    private IMessageSerializer<T> GetSerializer<T>() where T : MessageBase
     {
-        if (_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject) && serializerObject is IMessageSerializer<T> messageSerializer)
-        {
-            serializer = messageSerializer;
-            return true;
-        }
+        if (!_serializers.TryGetValue(typeof(T).TypeHandle, out object serializer))
+            ThrowNoSerializerRegistered<T>();
 
-        serializer = null!;
-        return false;
+        return (IMessageSerializer<T>)serializer;
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowNoSerializerRegistered<T>(string serializerInterface) where T : MessageBase
-        => throw new InvalidOperationException($"No {serializerInterface} registered for {typeof(T).Name}.");
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidSerializerType<T>(object? serializerObject)
-        => throw new InvalidOperationException($"Zero serializer for {typeof(T).Name} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
-
+    private static void ThrowNoSerializerRegistered<T>() where T : MessageBase
+        => throw new InvalidOperationException($"No serializer registered for {typeof(T).Name}.");
 }
 
 public record SerializerInfo(Type MessageType, object Serializer)
 {
-    public static SerializerInfo Create<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase => new(typeof(T), messageSerializer);
-
     public static SerializerInfo Create<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase => new(typeof(T), messageSerializer);
 }

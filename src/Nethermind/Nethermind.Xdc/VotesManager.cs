@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -44,6 +45,18 @@ internal class VotesManager : IVotesManager, IDisposable
     private static readonly VoteDecoder _voteDecoder = new();
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly ConcurrentDictionary<ulong, byte> _qcBuildStartedByRound = new();
+
+    // Every peer relays each vote once, so the same vote arrives about once per peer. The same bytes give the same
+    // verification result, so only the first copy recovers the signer. Only accepted votes are kept: a vote rejected
+    // for a missing snapshot can still be accepted later. Sized for the masternodes of the rounds kept around the
+    // current one, with room for competing blocks.
+    private const int VerifiedVoteCapacity = 4096;
+    private readonly ClockCache<ValueHash256, Address> _verifiedVoteSigners = new(VerifiedVoteCapacity);
+
+    // An honest masternode votes once per round, so one cached vote per signer and round covers every honest copy.
+    // A masternode that votes for many blocks in a round gets its other votes verified on every copy, as before this
+    // cache, and cannot push the votes of the other masternodes out of it.
+    private readonly ClockCache<(Address Signer, ulong Round), ValueHash256> _cachedVoteBySignerRound = new(VerifiedVoteCapacity);
     private const int _maxBlockDistance = 7; // Maximum allowed distance from the chain head
     private const int _maxRoundDistance = 7; // Maximum allowed distance from the current round
 
@@ -284,11 +297,39 @@ internal class VotesManager : IVotesManager, IDisposable
             return Task.CompletedTask;
         }
 
-        if (!VerifyVote(vote))
+        if (!IsVerified(vote))
             return Task.CompletedTask;
 
         BroadcastVote(vote);
         return HandleVote(vote);
+    }
+
+    private bool IsVerified(Vote vote)
+    {
+        // The hash encodes the signature, so a vote without one is rejected before it is hashed.
+        if (vote.Signature is null)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejected vote for round {vote.ProposedBlockInfo.Round}: missing or malleable signature.");
+            return false;
+        }
+
+        ValueHash256 hash = vote.Hash.ValueHash256;
+        if (_verifiedVoteSigners.TryGet(hash, out Address? signer))
+        {
+            vote.Signer ??= signer;
+            return true;
+        }
+
+        if (!VerifyVote(vote))
+            return false;
+
+        (Address Signer, ulong Round) signerRound = (vote.Signer!, vote.ProposedBlockInfo.Round);
+        if (_cachedVoteBySignerRound.TryGet(signerRound, out ValueHash256 cachedHash) && cachedHash != hash)
+            return true;
+
+        _cachedVoteBySignerRound.Set(signerRound, hash);
+        _verifiedVoteSigners.Set(hash, vote.Signer!);
+        return true;
     }
 
     private bool VerifyVote(Vote vote)

@@ -77,45 +77,6 @@ namespace Nethermind.Serialization.Rlp
             buffer.SetWriterIndex(buffer.WriterIndex + length);
         }
 
-        /// <summary>Writes <paramref name="item"/> at the writer index of <paramref name="buffer"/>, and moves the writer index past it.</summary>
-        public static void WriteRlp<T>(this IByteBuffer buffer, IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int length = decoder.GetLength(item, rlpBehaviors);
-            RlpWriter writer = buffer.StartRlpWrite(length);
-            decoder.Encode(ref writer, item, rlpBehaviors);
-            buffer.CompleteRlpWrite(in writer, length);
-        }
-
-        /// <summary>Reads RLP at the reader index of <paramref name="buffer"/>, and moves the reader index past the bytes that were read.</summary>
-        [return: MaybeNull]
-        public static T DeserializeRlp<T>(this IByteBuffer buffer, RefRlpReaderFunc<T> deserialize)
-        {
-            RlpReader reader = new(buffer.AsSpan());
-            try
-            {
-                return deserialize(ref reader);
-            }
-            finally
-            {
-                buffer.SetReaderIndex(buffer.ReaderIndex + reader.BytesRead);
-            }
-        }
-
-        /// <inheritdoc cref="DeserializeRlp{T}(IByteBuffer, RefRlpReaderFunc{T})"/>
-        [return: MaybeNull]
-        public static T DeserializeRlp<T>(this IByteBuffer buffer, IRlpDecoder<T> decoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            RlpReader reader = new(buffer.AsSpan());
-            try
-            {
-                return decoder.Decode(ref reader, rlpBehaviors);
-            }
-            finally
-            {
-                buffer.SetReaderIndex(buffer.ReaderIndex + reader.BytesRead);
-            }
-        }
-
         public static void MarkIndex(this IByteBuffer buffer)
         {
             buffer.MarkReaderIndex();

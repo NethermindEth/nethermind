@@ -90,12 +90,17 @@ public class OptimismEthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
+            return GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult);
         }
 
         Block? block = searchResult.Object!;
         Transaction[] transactions = block.Transactions;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
+        TxReceipt[] receipts = _receiptFinder.Get(block);
+        if (receipts.Length != transactions.Length)
+        {
+            return GetMissingReceiptsResult(_blockFinder, block);
+        }
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);

@@ -53,6 +53,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
+            // Resolves to Flat or FlatInTrie by the machine's memory.
+            if (layout == FlatLayout.Auto) continue;
+
             yield return new TestConfiguration(new FlatDbConfig()
             {
                 Enabled = true,

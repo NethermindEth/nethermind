@@ -51,10 +51,16 @@ public enum RlpBehaviors
     Eip7668Receipts = 1024,
 
     /// <summary>
+    /// EIP-1559: encodes the header base fee even when it is zero, as required from London. Without it a zero base fee
+    /// is encoded only when a later field follows, which gives a London header before Shanghai the pre-London shape.
+    /// </summary>
+    Eip1559Header = 2048,
+
+    /// <summary>
     /// The input is canonical RLP that this node encoded and stored, or that was checked against a consensus hash
     /// before it was stored. The decode skips the checks of the canonical form, but keeps every bounds check, so that
     /// corrupted input still throws.
     /// </summary>
     /// <remarks>Never set it for input from the network, from RPC or from the Engine API.</remarks>
-    TrustedInput = 2048
+    TrustedInput = 4096
 }
