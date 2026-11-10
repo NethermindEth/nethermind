@@ -203,7 +203,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 LoadFixedGas(out TGasPolicy fixedGas, gas);
                 if (!TOpcode.TryConsumeGas(ref fixedGas))
+                {
+                    KeepHaltGas(ref state.Gas, ref fixedGas);
                     return ExitChain(ref state, GetExecutionGas(ref fixedGas), pc, head, EvmExceptionType.OutOfGas);
+                }
                 gas = ChainGas(GetExecutionGas(ref fixedGas));
 
                 if (TOpcode.StackInputs != 0 && TOpcode.StackGrowth > 0)
@@ -260,6 +263,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 exceptionType = TOpcode.Execute(ref stack, ref fixedGas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
                 head = stack.Head;
                 gas = ChainGas(GetExecutionGas(ref fixedGas));
+                if (exceptionType != EvmExceptionType.None)
+                    KeepHaltGas(ref state.Gas, ref fixedGas);
             }
             else
             {
@@ -389,7 +394,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             sp = ref SlotAt(ref stack.Bottom, head);
 
             if (result.Exception != EvmExceptionType.None)
+            {
+                KeepHaltGas(ref state.Gas, ref fixedGas);
                 return ExitChain(ref state, gas, pc, head, result.Exception);
+            }
 
             Debug.Assert(vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");

@@ -281,6 +281,26 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag;
 
+    /// <summary>Returns the refund for clearing a non-zero storage value.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetStorageClearRefund(IReleaseSpec spec) => (long)spec.GasCosts.SClearRefund;
+
+    /// <summary>Returns the refund for restoring a storage slot to its original value.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual long GetStorageReversalRefund(IReleaseSpec spec, bool originalIsZero) =>
+        (long)spec.GasCosts.RefundFromReversal(originalIsZero);
+
+    /// <summary>Applies policy-specific accounting for a changed persistent storage value.</summary>
+    /// <remarks>The policy may journal separate bookkeeping cells through <paramref name="vm"/>;
+    /// it must not mutate the primary storage cell or perform the primary write.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual EvmExceptionType ApplyStorageTransitionAccounting(
+        ref TSelf gas,
+        VirtualMachine<TSelf> vm,
+        in StorageCell cell,
+        in UInt256 currentValue,
+        in UInt256 newValue) => EvmExceptionType.None;
+
     /// <summary>Charges a storage write using the selected EIP-8038 mode.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryConsumeStorageWrite<Eip8037, TIsSlotCreation, Eip8038>(ref TSelf gas, IReleaseSpec spec)

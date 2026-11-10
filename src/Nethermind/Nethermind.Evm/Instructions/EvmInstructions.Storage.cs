@@ -429,7 +429,7 @@ public static partial class EvmInstructions
                 if (traceCurrent.IsZero && !traceValue.IsZero)
                     attemptedCost += GasCostOf.SSet - GasCostOf.SReset;
                 if (!traceCurrent.IsZero && traceValue.IsZero)
-                    vm.TraceStorageRefund((long)spec.GasCosts.SClearRefund);
+                    vm.TraceStorageRefund(TGasPolicy.GetStorageClearRefund(spec));
                 vm.TraceOperationReady(attemptedCost, "out of gas");
             }
             goto OutOfGas;
@@ -457,8 +457,20 @@ public static partial class EvmInstructions
         // Determine whether the new value is identical to the current stored value.
         bool newSameAsCurrent = currentValue == newValue;
 
+        if (!newSameAsCurrent)
+        {
+            EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
+                ref gas, vm, in storageCell, in currentValue, in newValue);
+            if (accountingResult != EvmExceptionType.None)
+            {
+                if (TTracingInst.IsActive)
+                    vm.TraceOperationReady(traceStorageAccessCost + spec.GasCosts.SStoreResetCost, accountingResult.GetEvmExceptionDescription());
+                return accountingResult;
+            }
+        }
+
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = (long)spec.GasCosts.SClearRefund;
+        long sClearRefunds = TGasPolicy.GetStorageClearRefund(spec);
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -597,7 +609,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = currentValue == newValue;
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = (long)gasCosts.SClearRefund;
+        long sClearRefunds = TGasPolicy.GetStorageClearRefund(spec);
 
         ulong traceExecutionCost = traceStorageAccessCost + (Eip8038.IsActive ? 0 : gasCosts.NetMeteredSStoreCost);
 
@@ -613,6 +625,15 @@ public static partial class EvmInstructions
         {
             // Retrieve the original storage value to determine if this is a reversal.
             vm.WorldState.GetOriginal(in storageCell, out UInt256 originalValue);
+            EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
+                ref gas, vm, in storageCell, in currentValue, in newValue);
+            if (accountingResult != EvmExceptionType.None)
+            {
+                if (TTracingInst.IsActive)
+                    vm.TraceOperationReady(traceExecutionCost, accountingResult.GetEvmExceptionDescription());
+                return accountingResult;
+            }
+
             bool originalIsZero = originalValue.IsZero;
             bool currentSameAsOriginal = originalValue == currentValue;
 
@@ -681,7 +702,7 @@ public static partial class EvmInstructions
                         if (originalValue == newValue)
                             attemptedRefund += Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite
                                 : TEip8037.IsActive && originalIsZero ? (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead)
-                                : (long)gasCosts.RefundFromReversal(originalIsZero);
+                                : TGasPolicy.GetStorageReversalRefund(spec, originalIsZero);
                         vm.TraceStorageRefund(attemptedRefund);
                         vm.TraceOperationReady(traceExecutionCost, "out of gas");
                     }
@@ -714,7 +735,7 @@ public static partial class EvmInstructions
                     // a freshly-created slot (original 0) additionally refunds its state gas in-frame.
                     long refundFromReversal = Eip8038.IsActive
                         ? (long)Eip8038Constants.StorageWrite
-                        : (long)gasCosts.RefundFromReversal(originalIsZero);
+                        : TGasPolicy.GetStorageReversalRefund(spec, originalIsZero);
 
                     if (TEip8037.IsActive && originalIsZero)
                     {

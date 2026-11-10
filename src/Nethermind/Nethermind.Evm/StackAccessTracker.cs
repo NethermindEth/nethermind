@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -34,6 +35,29 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => _trackingState.IsCold(in storageCell);
+
+    /// <summary>Returns whether <paramref name="address"/> is a precompile that counts as accessed without being in the set.</summary>
+    /// <remarks>
+    /// EIP-2929 adds the precompiles to the accessed addresses at transaction start. They are checked through the spec
+    /// instead of being inserted, until <see cref="ClearAccessList"/> empties the access list.
+    /// </remarks>
+    public readonly bool IsPrewarmedPrecompile(Address address, IReleaseSpec spec) =>
+        !_trackingState.PrecompilesCleared && spec.IsPrecompile(address);
+
+    /// <summary>Empties the accessed addresses and storage keys, the pre-warmed precompiles included.</summary>
+    /// <remarks>
+    /// Lets an engine start a call with an empty EIP-2929 access list rather than the transaction's pre-warmed one.
+    /// Call it only on entry to the top-level frame of a transaction that is not an EIP-8141 frame transaction: that
+    /// frame never restores its access snapshot. A frame transaction snapshots the access list before each frame and
+    /// restores it when the frame or its atomic batch fails, and a clear in between invalidates that snapshot.
+    /// </remarks>
+    public readonly void ClearAccessList()
+    {
+        _trackingState.AccessedAddresses.Clear();
+        _trackingState.AccessedStorageCells.Clear();
+        _trackingState.ForgetWarm();
+        _trackingState.PrecompilesCleared = true;
+    }
 
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);
@@ -142,6 +166,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
         public Dictionary<AddressAsKey, UInt256>? TransientCreates;
+        public bool PrecompilesCleared;
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
@@ -193,6 +218,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
             DestroyList.Clear();
             CreateList.Clear();
             TransientCreates = null;
+            PrecompilesCleared = false;
         }
     }
 }

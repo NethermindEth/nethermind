@@ -316,6 +316,14 @@ public partial class VmState<TGasPolicy> : IDisposable
     public ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
+    /// <summary>Moves this frame's access-journal rollback boundary past synthetic call preloads.</summary>
+    /// <remarks>
+    /// Call only before child execution and before adding logs or destruction entries. A rejected synthetic
+    /// call then retains its preloaded accounts, while an enclosing frame's rollback still drops them.
+    /// Does not move the world-state snapshot.
+    /// </remarks>
+    public void TakeAccessSnapshot() => _accessTracker.TakeSnapshot();
+
     public void Dispose()
     {
         if (_isDisposed)

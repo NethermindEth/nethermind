@@ -20,7 +20,10 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
+            The max number of concurrent requests waiting in the exclusive (non-sharable) module queue or,
+            when `MaxConcurrentExecutionRequests` is set, for an execution permit. Execution-heavy calls are
+            `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`.
+            Exclusive calls include:
 
             - `eth_getLogs`
             - `eth_newFilter`
@@ -36,14 +39,27 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(
         Description = """
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
-            Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
-            `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
-            Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
-            effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
-            as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
+            Applies to every sharable method, including lightweight head reads and CPU-heavy execution.
+            `MaxConcurrentExecutionRequests`, when set, separately limits heavy execution before shared
+            rental, leaving shared headroom for lightweight methods. `eth_sendRawTransactionSync` holds a
+            shared slot while waiting for inclusion; see `RpcTxSyncMaxConcurrentRequests`.
+            `0` to lift the shared limit.
             """,
         DefaultValue = "10000")]
     int MaxConcurrentSharedRequests { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max number of concurrent execution-heavy RPCs: `eth_call`, `eth_estimateGas`,
+            `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`. Excess calls wait
+            asynchronously before parameter decoding or module rental, using `RequestQueueLimit` and `Timeout`.
+            Unset by default, which disables this limit. A set value is bounded by `EthModuleConcurrentInstances`
+            (which defaults to logical processor count) and half `MaxConcurrentSharedRequests`
+            when that limit is positive, with at least one execution slot. A non-positive value
+            applies only those module/shared bounds.
+            """,
+        DefaultValue = "null")]
+    int? MaxConcurrentExecutionRequests { get; set; }
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",

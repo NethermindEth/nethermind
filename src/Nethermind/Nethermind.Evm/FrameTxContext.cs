@@ -83,7 +83,7 @@ public sealed class FrameTxContext(
     /// base fees plus the largest tip the <c>max_fee</c> budget allows.</summary>
     public UInt256 MaxCost { get; } = maxCost;
 
-    /// <summary>Whether a restored gas-search probe defers escrow without changing fee introspection.</summary>
+    /// <summary>Whether a restored gas-search probe or a fee-free call skips escrow without changing fee introspection.</summary>
     internal bool SkipFeeReservation { get; init; }
 
     /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>

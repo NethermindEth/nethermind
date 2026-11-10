@@ -66,10 +66,12 @@ namespace Nethermind.Facade
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        RpcCallExecutionPolicy? rpcCallExecutionPolicy = null)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
+        private readonly ExecutionOptions _callExecutionOptions = rpcCallExecutionPolicy?.Options ?? ExecutionOptions.CommitAndRestore;
 
         public Block? HeadBlock
         {
@@ -273,11 +275,13 @@ namespace Nethermind.Facade
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
                 ? tipAboveFeeCap
-                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+                : _callExecutionOptions != ExecutionOptions.CommitAndRestore && tx.Supports1559 && tx.MaxFeePerGas < header.BaseFeePerGas
+                    ? TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail("max fee per gas less than block base fee")
+                    : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken), _callExecutionOptions);
 
             string? error = result.GetErrorMessage(tracer.Error);
             if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
-                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText, _callExecutionOptions))
             {
                 error = failureText;
             }
@@ -706,11 +710,12 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer, ExecutionOptions options)
         {
             try
             {
-                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+                txProcessor.SetBlockExecutionContext(in blockContext);
+                return txProcessor.Process(transaction, tracer, options);
             }
             catch (InsufficientBalanceException)
             {
