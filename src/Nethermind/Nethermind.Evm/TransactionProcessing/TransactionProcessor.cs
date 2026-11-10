@@ -695,11 +695,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.AccessList); // eip-2930
 
             if (spec.AddCoinbaseToTxAccessList)
-                accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
+                accessTracker.WarmUpForTransaction(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
 
             if (warmUpRecipient)
-                accessTracker.WarmUp(recipient);
-            accessTracker.WarmUp(tx.SenderAddress!);
+                accessTracker.WarmUpForTransaction(recipient);
+            accessTracker.WarmUpForTransaction(tx.SenderAddress!);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

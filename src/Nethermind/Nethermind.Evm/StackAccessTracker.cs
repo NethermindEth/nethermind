@@ -31,12 +31,25 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private nint _destroyListSnapshots;
     private nint _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address) =>
+        address is null || (!_trackingState.IsTransactionWarm(address) && !_trackingState.AccessedAddresses.Contains(address));
 
     public readonly bool IsCold(in StorageCell storageCell) => _trackingState.IsCold(in storageCell);
 
     public readonly bool WarmUp(Address address)
-        => _trackingState.AccessedAddresses.Add(address);
+        => !_trackingState.IsTransactionWarm(address) && _trackingState.AccessedAddresses.Add(address);
+
+    /// <summary>Warms an address for the whole transaction: the sender, the recipient or the coinbase.</summary>
+    /// <remarks>
+    /// Called before the first call frame takes a snapshot, so no restore can take the address back out, and the
+    /// first few are kept in fields compared without hashing rather than in the journaled set. When tracing access
+    /// they go to the set, which is what the generated access list is read from.
+    /// </remarks>
+    public readonly void WarmUpForTransaction(Address address)
+    {
+        if (_isTracingAccess || !_trackingState.TryKeepTransactionWarm(address))
+            _trackingState.AccessedAddresses.Add(address);
+    }
 
     /// <returns><see langword="true"/> when the cell was cold.</returns>
     public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
@@ -146,6 +159,29 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
 
+        private AddressAsKey _transactionWarm0;
+        private AddressAsKey _transactionWarm1;
+        private AddressAsKey _transactionWarm2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsTransactionWarm(Address address)
+        {
+            AddressAsKey key = address;
+            return _transactionWarm0.Equals(in key) || _transactionWarm1.Equals(in key) || _transactionWarm2.Equals(in key);
+        }
+
+        public bool TryKeepTransactionWarm(Address address)
+        {
+            if (IsTransactionWarm(address)) return true;
+
+            if (_transactionWarm0.Value is null) _transactionWarm0 = address;
+            else if (_transactionWarm1.Value is null) _transactionWarm1 = address;
+            else if (_transactionWarm2.Value is null) _transactionWarm2 = address;
+            else return false;
+
+            return true;
+        }
+
         /// <remarks>
         /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
         /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
@@ -187,6 +223,9 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
         private void Clear()
         {
             ForgetWarm();
+            _transactionWarm0 = default;
+            _transactionWarm1 = default;
+            _transactionWarm2 = default;
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
             Logs.Clear();
