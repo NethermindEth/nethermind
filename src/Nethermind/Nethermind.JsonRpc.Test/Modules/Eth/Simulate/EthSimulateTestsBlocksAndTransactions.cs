@@ -27,6 +27,7 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -481,6 +482,66 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    private static IEnumerable<TestCaseData> CanonicalHeaderEncodingCases()
+    {
+        foreach (IReleaseSpec spec in new IReleaseSpec[] { Berlin.Instance, London.Instance, Paris.Instance })
+            yield return new TestCaseData(spec).SetName($"Simulated_header_matches_the_canonical_encoding_{spec.Name}");
+    }
+
+    /// <summary>
+    /// Without validation a simulated block has a zero base fee. EIP-1559 puts the base fee in every header from London,
+    /// so <c>hash</c> and <c>size</c> must count it before Shanghai too, where no later field follows it. Later simulated
+    /// blocks must see the same hash: the next block as its parent hash, the one after it through BLOCKHASH, which reads
+    /// the simulated chain.
+    /// </summary>
+    [TestCaseSource(nameof(CanonicalHeaderEncodingCases))]
+    public async Task Simulated_header_matches_the_canonical_encoding(IReleaseSpec spec)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
+        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns the hash of the block two back.
+        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000f3\"}}," + Calls + "}";
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]},{\"calls\":[]}," + GrandparentHashReader), "latest");
+        Assert.That(ErrorCode(response), Is.Null, response);
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement block = document.RootElement.GetProperty("result")[0];
+        JsonElement child = document.RootElement.GetProperty("result")[1];
+        JsonElement grandchild = document.RootElement.GetProperty("result")[2];
+
+        List<Rlp> fields =
+        [
+            Rlp.Encode(new Hash256(block.GetProperty("parentHash").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("sha3Uncles").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("miner").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("stateRoot").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("transactionsRoot").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("receiptsRoot").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("logsBloom").GetString()!)),
+            Rlp.Encode(Quantity("difficulty")),
+            Rlp.Encode(Quantity("number")),
+            Rlp.Encode(Quantity("gasLimit")),
+            Rlp.Encode(Quantity("gasUsed")),
+            Rlp.Encode(Quantity("timestamp")),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("extraData").GetString()!)),
+            Rlp.Encode(new Hash256(block.GetProperty("mixHash").GetString()!)),
+            Rlp.Encode(Bytes.FromHexString(block.GetProperty("nonce").GetString()!)),
+        ];
+        if (spec.IsEip1559Enabled) fields.Add(Rlp.Encode(Quantity("baseFeePerGas")));
+        Rlp header = Rlp.Encode([.. fields]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.TryGetProperty("baseFeePerGas", out JsonElement baseFee) ? baseFee.GetString() : null,
+                Is.EqualTo(spec.IsEip1559Enabled ? "0x0" : null));
+            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header.Bytes).ToString()));
+            // The block is [header, transactions, uncles], both lists empty.
+            Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
+            Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
+            Assert.That(grandchild.GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
+        }
+
+        ulong Quantity(string name) => Convert.ToUInt64(block.GetProperty(name).GetString(), 16);
+    }
+
     [Test]
     public async Task Simulate_rejects_invalid_beacon_root_overrides(
         [Values("{\"beaconRoot\":\"0x01\"}", "{\"beaconRoot\":true}", "{\"beaconRoot\":null,\"BEACONROOT\":null}")] string overrideJson)
@@ -641,6 +702,54 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
             Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+        }
+    }
+
+    /// <summary>
+    /// A simulation based on a side-chain block hash builds on that block, not on the canonical block at its height.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_a_side_chain_base_block()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Prague.Instance);
+        Block canonical = chain.BlockTree.FindBlock(1)!;
+        // Reuses the canonical block's state root so the side-chain block has state at its height.
+        Block side = Build.A.Block.WithParent(chain.BlockTree.FindBlock(0)!).WithStateRoot(canonical.StateRoot!).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(side, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(side.Number)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride> { { contract, new AccountOverride { Code = code } } },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000, GasPrice = UInt256.Zero }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(side.Hash!));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateBlockResult<SimulateCallResult> simulated = result.Data[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Number, Is.GreaterThan(side.Number + 1));
+            Assert.That(simulated.Number, Is.EqualTo(side.Number + 1));
+            Assert.That(simulated.ParentHash, Is.EqualTo(side.Hash));
+            Assert.That(new Hash256(simulated.Calls.Single().ReturnData!), Is.EqualTo(side.Hash));
         }
     }
 
@@ -1559,6 +1668,19 @@ public class EthSimulateTestsBlocksAndTransactions
 
     private static IEnumerable<TestCaseData> SpecErrorCases()
     {
+        foreach (bool validation in new[] { false, true })
+        {
+            yield return new TestCaseData(
+                (Func<SimulatePayload<TransactionForRpc>>)(() => new()
+                {
+                    BlockStateCalls = [new() { Calls = [new SetCodeTransactionForRpc { From = TestItem.AddressA, Input = [0], AuthorizationList = [] }] }],
+                    Validation = validation
+                }),
+                ErrorCodes.InvalidInput,
+                Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)
+                .SetName($"AuthorizationCreation_validation_{validation}_32000");
+        }
+
         yield return new TestCaseData(
             (Func<SimulatePayload<TransactionForRpc>>)BlockNumberNotIncreasingPayload,
             ErrorCodes.InvalidInputBlocksOutOfOrder,

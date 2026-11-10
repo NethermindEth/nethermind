@@ -662,11 +662,15 @@ jobs:
           if [ "$FLATDB" != "1" ]; then
             SETUP_ARGS="$SETUP_ARGS --triedb"
           fi
-          if [ -n "$PARALLEL" ]; then
-            SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
+          if [ "$PARALLEL" = "false" ]; then
+            SETUP_ARGS="$SETUP_ARGS --bal-sequential"
           fi
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
+          fi
+          # These lanes read only .pass, so they keep nethtest's check of the reason a payload was rejected for.
+          if [ "$RUNNER_FLAG" = "--engineTest" ]; then
+            SETUP_ARGS="$SETUP_ARGS --match-exceptions"
           fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
@@ -690,6 +694,8 @@ jobs:
               TOTAL=$(jq 'length' "$RESULTS_FILE")
               PASSED=$(jq '[.[] | select(.pass == true)] | length' "$RESULTS_FILE")
               FAILED=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
+              # A fixture file that cannot be loaded is left out of the results and named only on stderr.
+              UNLOADED=$(grep -cE '^EXCEPTION (\[[0-9]+\] )?.*\.json - ' "$CLEAN_FILE" 2>/dev/null || true)
             else
               FAILED=$(awk '/^(FAIL|EXCEPTION) / { count++ } END { print count + 0 }' "$CLEAN_FILE" 2>/dev/null)
               PROGRESS_STATS=$(grep -E "^(PROGRESS|FAIL|EXCEPTION) \\[[0-9]+/[0-9]+\\]" "$CLEAN_FILE" 2>/dev/null \
@@ -730,6 +736,9 @@ jobs:
               echo "| Total | $TOTAL |"
               echo "| Passed | **$PASSED** |"
               echo "| Failed | **$FAILED** |"
+              if [ "${UNLOADED:-0}" -gt 0 ]; then
+                echo "| Files not loaded | **$UNLOADED** |"
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
 
             if [ "$FAILED" -gt 0 ]; then

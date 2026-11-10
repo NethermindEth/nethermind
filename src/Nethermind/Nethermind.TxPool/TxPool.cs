@@ -26,7 +26,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -35,6 +34,7 @@ using System.Threading.Tasks;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
@@ -1837,7 +1837,7 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
-                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
                         _hashCache.SetInvalidBlobProofs(tx.Hash);
                     }
@@ -2501,12 +2501,19 @@ namespace Nethermind.TxPool
                 if (revalidation is not null)
                 {
                     UpdateGroupDelegate updateBucket = revalidation.UpdateBucket;
-                    _transactions.UpdatePool(_accounts, updateBucket);
-                    _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+                    try
+                    {
+                        _transactions.UpdatePool(_accounts, updateBucket);
+                        _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+                        SurfaceBucketUpdateDrops();
+                    }
+                    finally
+                    {
+                        _bucketUpdateDrops.Clear();
+                    }
 
                     if (revalidation.RemovedCount != 0)
                     {
-                        Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
                         if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
                     }
                 }
@@ -2851,7 +2858,7 @@ namespace Nethermind.TxPool
                     bool invalidTransactionForm = validation.Error == TxErrorMessages.InvalidTransactionForm;
                     _invalidTransactions[transaction.Hash!] = new ForkValidationResult(
                         validation,
-                        validation.Error == TxErrorMessages.InvalidProofVersion,
+                        TxErrorMessages.IsBlobSidecarError(validation.Error),
                         !invalidTransactionForm);
                 }
             }
@@ -2884,7 +2891,6 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            List<Transaction>? drops = revalidation is null ? _bucketUpdateDrops : null;
             UInt256 balance = account.Balance;
             ulong currentNonce = account.Nonce;
             Transaction? tx = null;
@@ -2925,14 +2931,14 @@ namespace Nethermind.TxPool
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
                     }
 
-                    drops?.Add(transaction);
+                    _bucketUpdateDrops.Add(transaction);
                     updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                 }
 
                 return invalidatedByFork;
             }
 
-            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, drops);
+            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, _bucketUpdateDrops);
         }
 
         public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, out _);
@@ -3185,7 +3191,7 @@ namespace Nethermind.TxPool
 
         private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
 
-        private sealed class AccountCache : IAccountStateProvider
+        internal sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
             private readonly ClockCache<AddressAsKey, AccountStruct>[] _caches;
@@ -3221,16 +3227,15 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address) => Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
-                    n =>
-                    {
-                        ClockCache<AddressAsKey, AccountStruct> cache = _caches[n.Key];
-                        foreach (AddressAsKey a in n)
-                        {
-                            cache.Delete(a);
-                        }
-                    }
-                );
+            // Runs under the new-head write lock, which every submission waits on. Each delete is a short lock and a
+            // dictionary remove, so a plain loop is cheaper than grouping the addresses and fanning out to the thread pool.
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> addresses)
+            {
+                foreach (AddressAsKey address in addresses.AsSpan())
+                {
+                    _caches[GetCacheIndex(address.Value)].Delete(address);
+                }
+            }
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 

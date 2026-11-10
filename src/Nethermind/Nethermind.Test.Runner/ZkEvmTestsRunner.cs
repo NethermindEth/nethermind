@@ -22,6 +22,9 @@ public static class ZkEvmTestsRunner
 {
     public static List<EthereumTestResult> RunTest(BlockchainTest test)
     {
+        if (test.LoadFailure is not null)
+            return [new EthereumTestResult(test.Name, test.ForkName, test.LoadFailure)];
+
         List<EthereumTestResult> results = [];
         if (test.Blocks is not { Length: > 0 } blocks)
             return results;
@@ -41,6 +44,9 @@ public static class ZkEvmTestsRunner
 
     public static int CountCases(BlockchainTest test)
     {
+        if (test.LoadFailure is not null)
+            return 1;
+
         if (test.Blocks is not { Length: > 0 } blocks)
             return 0;
 

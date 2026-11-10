@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -55,7 +56,7 @@ public class ReceiptFinderExtensionsTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns(receipts);
 
-        using ResultWrapper<IEnumerable<ReceiptForRpc>?> result = receiptFinder.GetBlockReceipts(block, new TestSpecProvider(spec));
+        using ResultWrapper<IEnumerable<ReceiptForRpc>?> result = receiptFinder.GetBlockReceipts(block, Substitute.For<IBlockFinder>(), new TestSpecProvider(spec));
 
         ReceiptForRpc[] expected = receipts.Select((r, i) => new ReceiptForRpc(transactions[i].Hash!, r, block.Timestamp,
             transactions[i].GetGasInfo(spec, block.Header), eip8116 ? 0 : receipts.GetBlockLogFirstIndex(r.Index))).ToArray();
@@ -141,7 +142,7 @@ public class ReceiptFinderExtensionsTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns(receipts);
 
-        return receiptFinder.GetBlockReceipts(block, MainnetSpecProvider.Instance);
+        return receiptFinder.GetBlockReceipts(block, Substitute.For<IBlockFinder>(), MainnetSpecProvider.Instance);
     }
 
     private static TxReceipt Receipt(int index, int logCount) =>
