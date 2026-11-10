@@ -193,7 +193,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     /// </remarks>
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (error != EvmExceptionType.BadInstruction || _actionGas is null || CurrentTraceEntry?.OpcodeRaw != Instruction.INVALID)
+        if (error != EvmExceptionType.BadInstruction || CurrentTraceEntry?.OpcodeRaw != Instruction.INVALID)
         {
             base.ReportOperationError(error);
             return;
@@ -243,7 +243,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     /// </summary>
     private void WriteFault(string error)
     {
-        if (_actionGas is null || CurrentTraceEntry is not { } entry)
+        if (CurrentTraceEntry is not { } entry)
             return;
 
         CurrentTraceEntry = null;
