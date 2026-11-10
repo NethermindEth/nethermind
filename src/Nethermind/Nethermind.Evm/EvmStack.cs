@@ -603,9 +603,40 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
     {
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // One load as wide as the store that usually wrote the slot, so it can forward from it.
+            Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+            ulong highLimbsSet = (word & Vector256.Create(0UL, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue)) == Vector256<ulong>.Zero ? 0UL : 1UL;
+            position = new UInt256(word.ToScalar(), 0, 0, highLimbsSet);
+            return;
+        }
+
         ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
         ulong unreachable = Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3);
         position = new UInt256(limbs, 0, 0, unreachable);
+    }
+
+    /// <summary>Whether a stack slot holds a value below 2^32, and its lowest limb.</summary>
+    /// <remarks>
+    /// Stack words are written with one 32-byte store. A load of the same width can take its data from that store
+    /// while it is still pending; separate 8-byte loads of the upper limbs may have to wait for it to reach the cache.
+    /// </remarks>
+    /// <param name="slot">The stack slot, in limb layout.</param>
+    /// <param name="low">The lowest limb, whatever the result.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsUInt32Slot(ref byte slot, out ulong low)
+    {
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+            low = word.ToScalar();
+            return (word & Vector256.Create(0xFFFF_FFFF_0000_0000UL, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue)) == Vector256<ulong>.Zero;
+        }
+
+        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
+        low = parts;
+        return (Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3) | (low >> 32)) == 0;
     }
 
     /// <summary>

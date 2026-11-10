@@ -516,9 +516,7 @@ public static partial class EvmInstructions
     private static nint JumpDestination(ref byte slot, ref EvmStack stack)
     {
         // Limb layout: the destination is limb 0, and anything above a uint is out of range.
-        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
-        ulong low = parts;
-        if ((Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3) | (low >> 32)) != 0)
+        if (!EvmStack.IsUInt32Slot(ref slot, out ulong low))
             return -1;
         return JumpDestination((int)(uint)low, ref stack);
     }

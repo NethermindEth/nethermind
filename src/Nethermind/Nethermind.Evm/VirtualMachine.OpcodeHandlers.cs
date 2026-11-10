@@ -1524,8 +1524,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return false;
 
             ref byte slot = ref stack.PeekBytesByRefUnchecked();
-            ref ulong offset = ref Unsafe.As<byte, ulong>(ref slot);
-            if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) != 0)
+            if (!EvmStack.IsUInt32Slot(ref slot, out ulong offset))
                 return false;
 
             ref byte source = ref state.Vm.VmState.Memory.GetActiveInitializedWord(offset);
@@ -1569,8 +1568,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (stack.Head < 2 || gasLeft < GasPolicy.VeryLowGasCost.GasCost)
                 return false;
 
-            ref ulong offset = ref Unsafe.As<byte, ulong>(ref stack.PeekBytesByRefUnchecked());
-            if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) != 0)
+            if (!EvmStack.IsUInt32Slot(ref stack.PeekBytesByRefUnchecked(), out ulong offset))
                 return false;
 
             ulong expansionCost = state.Vm.VmState.Memory.GetWordOverwriteCost(offset);
