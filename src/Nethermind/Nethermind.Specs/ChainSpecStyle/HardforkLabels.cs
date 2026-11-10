@@ -64,7 +64,8 @@ public static partial class HardforkLabels
                 ExitCodes.ConflictingChainspecEipConfiguration);
         // The EIP-8288 header field follows EIP-7843's slot number. EIP-8288 does not schedule slot numbers itself: a chain
         // without EIP-7843 has no slot in its Prague payloads and attributes, and encodes it as a zero placeholder. A later
-        // EIP-7843 is refused.
+        // EIP-7843 is refused because switching from the placeholder to real slots, and from the Prague Engine API to
+        // Amsterdam's with proofs, on an EIP-8288 chain is untested.
         if (target.Eip7843TransitionTimestamp > target.Eip8288TransitionTimestamp)
             throw new InvalidConfigurationException(
                 $"EIP-8288 at 0x{target.Eip8288TransitionTimestamp:x} cannot activate before the EIP-7843 slot numbers it extends at 0x{target.Eip7843TransitionTimestamp:x}.",
