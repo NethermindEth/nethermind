@@ -38,6 +38,7 @@
     <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
+    <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
