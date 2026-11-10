@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "MemoryGrowthLoad", "MemoryGrowthByte", "MemoryGrowthCopy", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -248,6 +248,11 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP,
                     (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 64, (byte)Instruction.MSTORE8,
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP], 12),
+                // Each body touches the word at MSIZE, so every iteration expands memory by one word.
+                "MemoryGrowthLoad" => ([(byte)Instruction.MSIZE, (byte)Instruction.MLOAD, (byte)Instruction.POP], 3),
+                "MemoryGrowthByte" => ([(byte)Instruction.DUP1, (byte)Instruction.MSIZE, (byte)Instruction.MSTORE8], 3),
+                "MemoryGrowthCopy" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH0,
+                    (byte)Instruction.MSIZE, (byte)Instruction.CALLDATACOPY], 4),
                 "StaticIdentity" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
                     (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
                     (byte)Instruction.PUSH1, 4, (byte)Instruction.PUSH2, 0xff, 0xff,
