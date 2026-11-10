@@ -956,7 +956,9 @@ public sealed class KademliaAdapter(
     /// </summary>
     /// <remarks>
     /// A signed record proves the node identity, not the endpoint. A record from a handshake or an ENR refresh must
-    /// advertise the endpoint that sent it, so that the peer cannot bind its identity to another address.
+    /// advertise the endpoint that sent it, so that the peer cannot bind its identity to another address. The node is
+    /// created only at that endpoint: when the source address itself is not acceptable, such as a special-use address,
+    /// the record's endpoint in the other address family was never verified and is not used.
     /// </remarks>
     internal static bool TryGetAcceptableNode(
         NodeRecord record,
@@ -965,13 +967,15 @@ public sealed class KademliaAdapter(
         IPEndPoint sourceEndpoint,
         [NotNullWhen(true)] out Node? node)
     {
-        if (!HasDiscoveryEndpoint(record, sourceEndpoint))
+        if (!HasDiscoveryEndpoint(record, sourceEndpoint) ||
+            !TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, sourceEndpoint, out node) ||
+            DiscoveryAddressSupport.GetFamily(node.DiscoveryAddress.Address) != DiscoveryAddressSupport.GetFamily(sourceEndpoint.Address))
         {
             node = null;
             return false;
         }
 
-        return TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, sourceEndpoint, out node);
+        return true;
     }
 
     private static bool TryGetAcceptableNodeCore(

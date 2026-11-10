@@ -939,6 +939,42 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             }
         }
 
+        [TestCase("192.168.1.9", 30303)]
+        [TestCase("192.168.1.2", 30399)]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_keeps_the_bonded_endpoint(string enrAddress, int enrUdpPort, CancellationToken token)
+        {
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: IPAddress.Parse(enrAddress),
+                configureExtras: record => record.SetEntry(new UdpEntry(enrUdpPort)));
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            await _msgSender.Received(1).SendMsg(Arg.Any<EnrRequestMsg>());
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.IsVerifiedEnr(n.Enr!) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(_receiver.Address)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_for_the_bonded_endpoint_sets_its_tcp_port(CancellationToken token)
+        {
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(2, 2, tcpPort: 30304);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Port == 30304));
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task Timed_out_response_handler_should_not_consume_later_unsolicited_message(CancellationToken token)

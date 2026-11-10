@@ -361,6 +361,26 @@ public class KademliaAdapter(
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
         => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
 
+    /// <remarks>
+    /// A signed record proves the node identity, not its endpoint, and every refresh follows a bond with the node's
+    /// current endpoint. The record is kept, but the node stays at that endpoint unless the record advertises it, so
+    /// that the routing entry never moves to an endpoint that did not answer a ping.
+    /// </remarks>
+    protected override bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+    {
+        if (!base.TryCreateNodeFromEnr(currentNode, record, out refreshedNode))
+        {
+            return false;
+        }
+
+        if (!refreshedNode.DiscoveryAddress.Equals(currentNode.DiscoveryAddress))
+        {
+            refreshedNode = new Node(currentNode.Id, currentNode.Address, currentNode.DiscoveryPort);
+        }
+
+        return true;
+    }
+
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 

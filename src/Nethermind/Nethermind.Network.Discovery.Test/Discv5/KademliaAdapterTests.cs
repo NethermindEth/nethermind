@@ -340,14 +340,24 @@ public class KademliaAdapterTests
     [TestCase("[::ffff:8.8.8.8]:30304", "8.8.8.8")]
     [TestCase("[fe80::1]:40404", null)]
     [TestCase("1.1.1.1:30304", null)]
-    public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(string source, string? expectedHost)
+    // A special-use source is not an acceptable endpoint, and the record's endpoint in the other family was never verified.
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1")]
+    [TestCase("[2001:0:4136:e378:8000:63bf:3fff:fdd2]:30304", null, "8.8.8.8", "2001:0:4136:e378:8000:63bf:3fff:fdd2")]
+    [TestCase("[64:ff9b::808:808]:30304", null, "8.8.8.8", "64:ff9b::808:808")]
+    [TestCase("198.18.0.1:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[::ffff:198.18.0.1]:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(
+        string source,
+        string? expectedHost,
+        string recordIp = "8.8.8.8",
+        string recordIp6 = "fe80::1")
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyB,
-            IPAddress.Parse("8.8.8.8"),
+            IPAddress.Parse(recordIp),
             tcpPort: 30303,
             udpPort: 30304,
-            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse("fe80::1"))));
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(IPAddress.Parse(recordIp6))));
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
