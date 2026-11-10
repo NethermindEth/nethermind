@@ -57,6 +57,7 @@ public class WitnessTrieValidationTests
         HashReferenceToShortNode,
         NonCanonicalListHeader,
         NonCanonicalLeafValue,
+        DeeplyNestedItem,
     }
 
     /// <remarks>The malformed node sits in the root's slot that the account's path leaves through, so the read reaches it.</remarks>
@@ -84,6 +85,8 @@ public class WitnessTrieValidationTests
             // A leaf short enough for a one-byte list header, given a long one.
             Malformation.NonCanonicalListHeader => Hashed([0xf8, (byte)(smallLeaf.Length - 1), .. smallLeaf.AsSpan(1)]),
             Malformation.NonCanonicalLeafValue => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), new Rlp([0x81, 0x01])).Bytes),
+            // Deep enough to overflow the stack were it measured before its prefix is checked.
+            Malformation.DeeplyNestedItem => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), new Rlp(NestedLists(20_000))).Bytes),
             _ => Hashed(Branch((0, tinyLeaf), (1, tinyLeaf))),
         };
         byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[0], slotReference), (AccountKey[0] ^ 1, Reference(sibling)));
@@ -218,6 +221,27 @@ public class WitnessTrieValidationTests
         byte[] storageRoot = Extension(slotKey[..ExtensionNibbles], extensionChild);
         Assert.That(() => AccessStorage(storageRoot, onSlotPath ? [] : [extensionChild], access == SlotAccess.Read ? StorageAccess.Read : StorageAccess.Write, access == SlotAccess.Delete ? UInt256.Zero : 2),
             onSlotPath || access == SlotAccess.Delete ? Throws.TypeOf<TrieException>() : Throws.Nothing);
+    }
+
+    /// <summary>An RLP list nested <paramref name="depth"/> deep, each holding the next, around an empty one.</summary>
+    private static byte[] NestedLists(int depth)
+    {
+        int[] contentLengths = new int[depth + 1];
+        for (int i = 1; i <= depth; i++) contentLengths[i] = contentLengths[i - 1] + HeaderLength(contentLengths[i - 1]);
+
+        byte[] lists = new byte[contentLengths[depth] + HeaderLength(contentLengths[depth])];
+        int position = 0;
+        for (int i = depth; i >= 0; i--)
+        {
+            int length = contentLengths[i];
+            byte[] header = length < 56 ? [(byte)(0xc0 + length)] : length < 256 ? [0xf8, (byte)length] : [0xf9, (byte)(length >> 8), (byte)length];
+            header.CopyTo(lists, position);
+            position += header.Length;
+        }
+
+        return lists;
+
+        static int HeaderLength(int length) => length < 56 ? 1 : length < 256 ? 2 : 3;
     }
 
     private static void ReadBalance(byte[] root, params byte[][] nodes)

@@ -64,6 +64,7 @@ public class GuestSecuredPathTests
         HashReferenceToShortNode,
         NonCanonicalListHeader,
         NonCanonicalLeafValue,
+        DeeplyNestedItem,
     }
 
     /// <remarks>The malformed node sits in the root's slot that the key leads through, so every read and write reaches it.</remarks>
@@ -90,6 +91,8 @@ public class GuestSecuredPathTests
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, new Rlp([0xc1, 0x81]))),
             Malformation.NonCanonicalListHeader => LongListHeader(witness.Leaf(LeafPath(0))),
             Malformation.NonCanonicalLeafValue => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), new Rlp([0x81, 0x01])).Bytes,
+            // Deep enough to overflow the stack were it measured before its prefix is checked.
+            Malformation.DeeplyNestedItem => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(KeyPath[1..2], isLeaf: false)), new Rlp(NestedLists(20_000))).Bytes,
             _ => witness.Hashed(witness.Branch((0, witness.Leaf([1])), (1, witness.Leaf([1])))),
         };
         PatriciaTree tree = witness.Tree(witness.Branch((KeyPath[0], slotChild), (KeyPath[0] ^ 1, witness.Leaf(new byte[KeyNibbles - 1]))));
@@ -204,6 +207,27 @@ public class GuestSecuredPathTests
         byte[] path = new byte[KeyNibbles - 1 + extraNibbles];
         KeyPath.AsSpan(1, Math.Min(path.Length, KeyNibbles - 1)).CopyTo(path);
         return path;
+    }
+
+    /// <summary>An RLP list nested <paramref name="depth"/> deep, each holding the next, around an empty one.</summary>
+    private static byte[] NestedLists(int depth)
+    {
+        int[] contentLengths = new int[depth + 1];
+        for (int i = 1; i <= depth; i++) contentLengths[i] = contentLengths[i - 1] + HeaderLength(contentLengths[i - 1]);
+
+        byte[] lists = new byte[contentLengths[depth] + HeaderLength(contentLengths[depth])];
+        int position = 0;
+        for (int i = depth; i >= 0; i--)
+        {
+            int length = contentLengths[i];
+            byte[] header = length < 56 ? [(byte)(0xc0 + length)] : length < 256 ? [0xf8, (byte)length] : [0xf9, (byte)(length >> 8), (byte)length];
+            header.CopyTo(lists, position);
+            position += header.Length;
+        }
+
+        return lists;
+
+        static int HeaderLength(int length) => length < 56 ? 1 : length < 256 ? 2 : 3;
     }
 
     /// <summary>The same node with its short list header in the long form, which RLP does not allow for under 56 bytes.</summary>

@@ -137,8 +137,19 @@ internal static class SecuredTrieNodeValidator
             return;
         }
 
+        // Each item's prefix is checked before the item is measured, as measuring a list recurses into its items: the path
+        // must be a short string, a path of 56 bytes or more being far longer than a key, and the other item a string or a
+        // node embedded because it is shorter than a hash.
+        int pathPrefix = Unsafe.Add(ref node, itemsStart);
+        if (pathPrefix == EmptyString || pathPrefix > 0xb7) ThrowInvalidNode();
+
         int secondItem = ItemEnd(ref node, itemsStart, length);
-        if (secondItem < 0 || secondItem >= length || ItemEnd(ref node, secondItem, length) != length) ThrowInvalidNode();
+        if (secondItem < 0 || secondItem >= length || Unsafe.Add(ref node, secondItem) >= 0xc0 + Hash256.Size - 1
+            || ItemEnd(ref node, secondItem, length) != length)
+        {
+            ThrowInvalidNode();
+        }
+
         ValidateLeafOrExtension(ref node, itemsStart, secondItem, length, remaining);
     }
 
@@ -169,12 +180,10 @@ internal static class SecuredTrieNodeValidator
     private static uint NotHash(ref byte fullBranch, int index) => (uint)(Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString);
 
     /// <summary>Checks a node of two items, the first of which ends at <paramref name="secondItem"/>.</summary>
+    /// <param name="path">The path item, a non-empty short string.</param>
     private static void ValidateLeafOrExtension(ref byte node, int path, int secondItem, int length, int remaining)
     {
-        // A path of 56 bytes or more, long enough for a long string, is far longer than a key.
         int prefix = Unsafe.Add(ref node, path);
-        if (prefix == EmptyString || prefix > 0xb7) ThrowInvalidNode();
-
         int pathBytes = secondItem - path - (prefix < 0x80 ? 0 : 1);
         // Hex-prefix encoding: the first nibble flags a leaf (0x2) and an odd nibble count (0x1), whose first nibble then
         // shares the byte.
@@ -192,8 +201,8 @@ internal static class SecuredTrieNodeValidator
     /// a canonical one there.</summary>
     /// <remarks>
     /// As strict as the spec's <c>rlp.decode</c>: a single byte below 0x80 must be encoded as itself, a long form's length must
-    /// need it and have no leading zero byte, and each item of a list must be canonical too. Only embedded nodes, shorter than a
-    /// hash, are lists here, so the recursion through <see cref="AreItems"/> stays shallow.
+    /// need it and have no leading zero byte, and each item of a list must be canonical too. A caller passes a list only when it
+    /// is shorter than a hash, an embedded node, which bounds the recursion through <see cref="AreItems"/>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ItemEnd(ref byte node, int position, int end)
