@@ -863,11 +863,12 @@ public partial class EthRpcModule(
     {
         Transaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
+        TransactionForRpcContext extraData = TransactionForRpcContext.ForPending(_specProvider, _blockFinder.Head?.Header, _secondsPerSlot);
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, new(_specProvider.ChainId));
+            transactionsModels[i] = TransactionForRpc.FromTransaction(transaction, extraData);
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 

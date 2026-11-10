@@ -24,10 +24,12 @@ public readonly record struct TransactionForRpcContext
     public UInt256? BaseFee { get; }
     public TxReceipt? Receipt { get; }
 
-    /// <summary>The release spec of the including block, which prices the gas a frame transaction reports.</summary>
+    /// <summary>The release spec of the including block, or of the next block for a pending transaction, which prices the gas a frame transaction reports.</summary>
     public IReleaseSpec? Spec { get; }
 
-    public TransactionForRpcContext(ulong chainId)
+    public TransactionForRpcContext(ulong chainId) : this(chainId, null) { }
+
+    private TransactionForRpcContext(ulong chainId, IReleaseSpec? spec)
     {
         ChainId = chainId;
         BlockHash = null;
@@ -36,8 +38,13 @@ public readonly record struct TransactionForRpcContext
         TxIndex = null;
         BaseFee = null;
         Receipt = null;
-        Spec = null;
+        Spec = spec;
     }
+
+    /// <summary>A context for a transaction not yet included, priced under the spec of the block after <paramref name="head"/>.</summary>
+    /// <remarks>A frame transaction then reports the same <c>gas</c> before and after it is included in that block.</remarks>
+    public static TransactionForRpcContext ForPending(ISpecProvider specProvider, BlockHeader? head, ulong secondsPerSlot) =>
+        new(specProvider.ChainId, head is null ? null : specProvider.GetSpec(head.Number + 1, head.Timestamp + secondsPerSlot));
 
     public TransactionForRpcContext(
         ulong chainId,

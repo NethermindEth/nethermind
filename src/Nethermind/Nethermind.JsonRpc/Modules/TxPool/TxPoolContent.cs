@@ -15,10 +15,10 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 {
     /// <summary>Response model for <c>txpool_content</c>, written straight from the pool snapshot as each transaction is reached.</summary>
     [JsonConverter(typeof(TxPoolContentConverter))]
-    public class TxPoolContent(TxPoolInfo info, ulong chainId)
+    public class TxPoolContent(TxPoolInfo info, TransactionForRpcContext extraData)
     {
         internal TxPoolInfo Info { get; } = info;
-        internal ulong ChainId { get; } = chainId;
+        internal TransactionForRpcContext ExtraData { get; } = extraData;
     }
 
     internal sealed class TxPoolContentConverter : JsonConverter<TxPoolContent>
@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         public override void Write(Utf8JsonWriter writer, TxPoolContent value, JsonSerializerOptions options)
         {
-            TransactionForRpcContext extraData = new(value.ChainId);
+            TransactionForRpcContext extraData = value.ExtraData;
             writer.WriteStartObject();
             writer.WritePropertyName("pending"u8);
             WriteByAddress(writer, value.Info.Pending, extraData, options);

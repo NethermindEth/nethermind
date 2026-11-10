@@ -4,6 +4,8 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -57,7 +59,7 @@ public class TxPoolRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
 
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_content");
 
@@ -80,7 +82,7 @@ public class TxPoolRpcModuleTests
         txPoolInfoProvider.GetCounts().Returns(new TxPoolCounts(Pending: 2, Queued: 1));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         TxPoolStatus status = txPoolRpcModule.txpool_status().Data;
 
@@ -106,7 +108,7 @@ public class TxPoolRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
 
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
@@ -128,7 +130,7 @@ public class TxPoolRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
 
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
@@ -146,7 +148,7 @@ public class TxPoolRpcModuleTests
         txPoolInfoProvider.GetCounts().Returns(new TxPoolCounts(Pending: 2, Queued: 1));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_status");
 
@@ -179,7 +181,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_content");
 
@@ -211,7 +213,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_content");
 
@@ -277,7 +279,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, method);
 
@@ -320,7 +322,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_inspect");
 
@@ -345,7 +347,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_contentFrom", TestItem.AddressA);
 
@@ -361,7 +363,7 @@ public class TxPoolRpcModuleTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);
-        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, Substitute.For<IBlockFinder>(), new BlocksConfig());
 
         string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_contentFrom", TestItem.AddressA);
 

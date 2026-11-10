@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -10,6 +11,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -21,7 +23,7 @@ public class PendingTransactionPayloadCacheTests
     [TestCase(false, TestName = "WithoutHash")]
     public void Get_ForTheSameTransaction_SerializesItOnceWhenItHasAHash(bool withHash)
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         payloads.AddSubscriber();
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         if (!withHash) transaction.Hash = null;
@@ -41,7 +43,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void Get_ForAnotherTransaction_SerializesItsOwnPayload()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         payloads.AddSubscriber();
         Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
         Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
@@ -54,7 +56,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void RemoveSubscriber_ForTheLastSubscriber_DropsTheKeptTransactions()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         payloads.AddSubscriber();
         payloads.AddSubscriber();
@@ -71,7 +73,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void RemoveSubscriber_ForTheLastSubscriber_DropsAStoreThatReadTheTableBefore()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         payloads.AddSubscriber();
         AssociativeCache<ValueHash256, byte[]> readBeforeUnsubscribe = payloads.Generation;
@@ -87,7 +89,7 @@ public class PendingTransactionPayloadCacheTests
     [Test]
     public void Get_WithoutSubscribers_DoesNotKeepThePayload()
     {
-        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
 
         SerializedJson first = payloads.Get(transaction);

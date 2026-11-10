@@ -16,6 +16,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -90,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory());
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory(), new BlocksConfig().SecondsPerSlot);
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -174,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, TransactionsOption? option = null, bool shouldReceiveResult = true)
         {
-            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _specProvider, _logManager, option);
+            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _specProvider, _blockTree, new BlocksConfig().SecondsPerSlot, _logManager, option);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -1185,6 +1186,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 jsonRpcDuplexClient: client,
                 txPool: txPool,
                 specProvider: _specProvider,
+                blockFinder: _blockTree,
+                secondsPerSlot: new BlocksConfig().SecondsPerSlot,
                 logManager: LimboLogs.Instance);
 
             for (int i = 0; i < messages; i++)
@@ -1223,6 +1226,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         jsonRpcDuplexClient: client,
                         txPool: txPool,
                         specProvider: _specProvider,
+                        blockFinder: _blockTree,
+                        secondsPerSlot: new BlocksConfig().SecondsPerSlot,
                         logManager: LimboLogs.Instance
                     );
 
@@ -1329,7 +1334,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
             using Subscription subscription = dropped
                 ? new DroppedPendingTransactionsSubscription(client, _txPool, _logManager)
-                : new NewPendingTransactionsSubscription(client, _txPool, _specProvider, _logManager);
+                : new NewPendingTransactionsSubscription(client, _txPool, _specProvider, _blockTree, new BlocksConfig().SecondsPerSlot, _logManager);
 
             WeakReference transaction = RaiseTransactionEvent(dropped);
             GC.Collect();

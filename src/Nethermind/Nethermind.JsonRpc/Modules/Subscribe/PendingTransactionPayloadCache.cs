@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 
@@ -22,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// a subscriber that reads it exists, and is replaced by an empty one when the last one leaves, so a send loop that
 /// read the old one before that and stores into it after does not keep its entry.
 /// </remarks>
-internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
+internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider, IBlockFinder blockFinder, ulong secondsPerSlot)
 {
     private const int Size = 256;
     private AssociativeCache<ValueHash256, byte[]> _payloads = new(Size);
@@ -53,5 +55,5 @@ internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
     }
 
     private SerializedJson Serialize(Transaction transaction) =>
-        new(JsonRpcResponseWriter.SerializePayload(TransactionForRpc.FromTransaction(transaction, new(specProvider.ChainId)), EthereumJsonSerializer.JsonOptions));
+        new(JsonRpcResponseWriter.SerializePayload(TransactionForRpc.FromTransaction(transaction, TransactionForRpcContext.ForPending(specProvider, blockFinder.Head?.Header, secondsPerSlot)), EthereumJsonSerializer.JsonOptions));
 }

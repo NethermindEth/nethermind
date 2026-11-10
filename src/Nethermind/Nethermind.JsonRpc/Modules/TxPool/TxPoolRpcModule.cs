@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool;
 
-public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider)
+public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IBlockFinder blockFinder, IBlocksConfig blocksConfig)
     : ITxPoolRpcModule
 {
     public ResultWrapper<TxPoolStatus> txpool_status()
@@ -22,16 +25,14 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
     public ResultWrapper<TxPoolContent> txpool_content()
     {
         TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
-        ulong chainId = specProvider.ChainId;
-        return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, chainId));
+        return ResultWrapper<TxPoolContent>.Success(new TxPoolContent(poolInfo, PendingContext()));
     }
 
     public ResultWrapper<TxPoolContentFrom> txpool_contentFrom(Address address)
     {
         ArgumentNullException.ThrowIfNull(address);
         TxPoolSenderInfo senderInfo = txPoolInfoProvider.GetSenderInfo(address);
-        ulong chainId = specProvider.ChainId;
-        return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(senderInfo, chainId));
+        return ResultWrapper<TxPoolContentFrom>.Success(new TxPoolContentFrom(senderInfo, PendingContext()));
     }
 
     public ResultWrapper<TxPoolInspection> txpool_inspect()
@@ -39,4 +40,7 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
         TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
         return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
     }
+
+    private TransactionForRpcContext PendingContext() =>
+        TransactionForRpcContext.ForPending(specProvider, blockFinder.Head?.Header, blocksConfig.SecondsPerSlot);
 }

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,6 +37,7 @@ public class RegisterRpcModules(
     IPeerPool peerPool,
     IRlpxHost rlpxHost,
     IBlockForRpcFactory blockForRpcFactory,
+    IBlocksConfig blocksConfig,
     ILogManager logManager
 ) : IStep
 {
@@ -63,7 +65,8 @@ public class RegisterRpcModules(
             ethSyncingInfo,
             peerPool,
             rlpxHost,
-            blockForRpcFactory);
+            blockForRpcFactory,
+            blocksConfig.SecondsPerSlot);
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
         ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
