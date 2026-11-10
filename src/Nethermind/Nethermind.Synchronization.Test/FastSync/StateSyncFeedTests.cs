@@ -290,9 +290,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             StorageTree remoteStorageTree = new(remote.TrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, LimboLogs.Instance);
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb0000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb111"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1111111111111"), new byte[] { 1 });
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb000000000000000000000000000000000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(
@@ -407,7 +407,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
             Assert.That(request, Is.Not.Null);
+#pragma warning restore NUnit2045
 
             Assert.That(ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         }
@@ -425,7 +427,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
             Assert.That(request, Is.Not.Null);
+#pragma warning restore NUnit2045
 
             Assert.That(ctx.Feed.HandleResponse(request, peer: null), Is.EqualTo(SyncResponseHandlingResult.NotAssigned));
         }

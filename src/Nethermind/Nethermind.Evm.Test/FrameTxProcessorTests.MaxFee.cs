@@ -85,7 +85,9 @@ public partial class FrameTxProcessorTests
         CallOutputTracer output = new();
         TransactionResult result = Process(tx, baseFeePerGas: BudgetBaseFee, tracer: output);
 
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo((UInt256)output.GasSpent * 5));
     }
 

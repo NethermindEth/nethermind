@@ -25,7 +25,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests@v21.0.1
+        default: tests@v21.0.2
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -40,7 +40,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.1
+        default: tests-bogota-devnet@v2.0.0
         type: string
       filter:
         description: Regex filter for test names
@@ -81,7 +81,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests@v21.0.1
+        default: tests@v21.0.2
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -96,7 +96,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.1
+        default: tests-bogota-devnet@v2.0.0
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -122,7 +122,7 @@ env:
   # Fixture source: the mainnet tests releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam). Pass an exact tag (e.g. tests@v21.0.1) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'tests@v21.0.1' }}
+  EEST_VERSION: ${{ inputs.eest_version || 'tests@v21.0.2' }}
   EEST_ARCHIVE: fixtures.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
@@ -132,15 +132,15 @@ env:
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
   FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
-  # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
-  # EIP-7906, where the FOCIL archive means Amsterdam plus EIP-7805; nothing inside a fixture
+  # This archive labels its fork "Bogota" meaning the bogota-devnet-2 fork, where the FOCIL archive
+  # means Amsterdam plus EIP-7805; nothing inside a fixture
   # separates the two, so the lane names the fork it means through the runner's --forkAlias.
-  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.1' }}
+  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v2.0.0' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
-  FRAME_MIN_CASES: '750'
+  FRAME_MIN_CASES: '1391'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
-  FRAME_TX_MIN_CASES: '99'
+  FRAME_TX_MIN_CASES: '94'
   # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
   # than half of each blockTest chunk in GC pauses. Most of the garbage was a production-sized trie node cache
   # per test, which Ethereum.Test.Base now sizes for EF-test chains.
@@ -173,7 +173,7 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
@@ -425,7 +425,7 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
       - name: Download runner artifact
         uses: actions/download-artifact@v8
@@ -466,47 +466,8 @@ jobs:
             exit 1
           fi
 
-          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
-          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
-          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
-          echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
-
-      - name: Cache EEST fixtures
-        uses: actions/cache@v5
-        with:
-          path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
-
-      - name: Download EEST fixtures
-        env:
-          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
-          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
-        run: |
-          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
-          if command -v cygpath >/dev/null 2>&1; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
-          if [ ! -d "$EEST_DIR" ]; then
-            mkdir -p "$EEST_DIR"
-            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
-            echo "Downloading EEST fixtures from $ARCHIVE_URL"
-            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
-          else
-            echo "EEST fixtures already cached at $EEST_DIR"
-          fi
-
-      - name: Resolve fixture path
-        id: fixtures
-        env:
-          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
-        run: |
-          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
-          if command -v cygpath >/dev/null 2>&1; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
-
+          # Each job reads one fixture directory of the archive, so only that directory is
+          # extracted and cached: the full v21 archive unpacks to about 15 GB.
           case "$TEST_TYPE" in
             engineTest) FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
             blockTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--blockTest ;;
@@ -527,6 +488,55 @@ jobs:
             *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
           esac
 
+          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
+          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "fixture_name=$FIXTURE_NAME" >> "$GITHUB_OUTPUT"
+          echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
+          echo "Using $FIXTURE_NAME from $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
+
+      - name: Cache EEST fixtures
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/eest-fixtures
+          # Without an exact hit, actions/cache restores the newest key that starts with this one,
+          # so a fixture name that prefixes another (blockchain_tests, blockchain_tests_sync) must
+          # not end the key.
+          key: eest-${{ steps.eest_release.outputs.fixture_name }}-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
+
+      - name: Download EEST fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
+          FIXTURE_NAME: ${{ steps.eest_release.outputs.fixture_name }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
+          # Looks for this job's directory, not just the release's: a restored cache must not skip
+          # the download unless it holds the fixtures this job reads.
+          if [ -z "$(find "$EEST_DIR" -type d -name "$FIXTURE_NAME" -print -quit 2>/dev/null)" ]; then
+            mkdir -p "$EEST_DIR"
+            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
+            echo "Downloading EEST fixtures from $ARCHIVE_URL"
+            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR" --wildcards "*/$FIXTURE_NAME/*"
+          else
+            echo "EEST fixtures already cached at $EEST_DIR"
+          fi
+
+      - name: Resolve fixture path
+        id: fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          FIXTURE_NAME: ${{ steps.eest_release.outputs.fixture_name }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
           FIXTURE_DIR="$(find "$EEST_DIR" -type d -name "$FIXTURE_NAME" | head -1)"
           if [ -z "$FIXTURE_DIR" ] || [ ! -d "$FIXTURE_DIR" ]; then
             echo "::error::Could not find fixture directory for $TEST_TYPE in $EEST_DIR"
@@ -543,12 +553,13 @@ jobs:
               exit 1
             fi
             # The transitions into Amsterdam (e.g. for_bpo2toamsterdamattime15k) also cross the
-            # EIP-7928 boundary, so they are linked in beside it as one runner input.
+            # EIP-7928 boundary, so they are linked in beside it as one runner input. The BPO scenarios of
+            # Amsterdam (e.g. for_amsterdambpoincrease, for_amsterdamtobpodecreaseattime15k) keep its rules.
             AMSTERDAM_DIR="$RUNNER_TMP/nethtest-amsterdam-scope"
             rm -rf "$AMSTERDAM_DIR"
             mkdir -p "$AMSTERDAM_DIR"
             ln -s "$SCOPED_DIR" "$AMSTERDAM_DIR/"
-            find "$FIXTURE_DIR" -maxdepth 1 -type d -name '*toamsterdam*' -exec ln -s {} "$AMSTERDAM_DIR/" \;
+            find "$FIXTURE_DIR" -maxdepth 1 -type d \( -name '*toamsterdam*' -o -name 'for_amsterdambpo*' -o -name 'for_amsterdamtobpo*' \) -exec ln -s {} "$AMSTERDAM_DIR/" \;
             if [ "$(find "$AMSTERDAM_DIR" -mindepth 1 -maxdepth 1 | wc -l)" -lt 2 ]; then
               echo "::warning::No Amsterdam transition fixtures found in $FIXTURE_DIR"
             fi
@@ -572,10 +583,9 @@ jobs:
               exit 1
             fi
             FIXTURE_DIR="$SCOPED_DIR"
-            # This archive's fixtures declare fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250,
-            # EIP-8272 and EIP-7906, which is FramesDevnet1 here; the FOCIL archive gives the same name a
-            # different meaning.
-            echo "fork_alias=Bogota=FramesDevnet1" >> "$GITHUB_OUTPUT"
+            # This archive's fixtures declare fork "Bogota" meaning the bogota-devnet-2 fork, which is
+            # BogotaDevnet2 here; the FOCIL archive gives the same name a different meaning.
+            echo "fork_alias=Bogota=BogotaDevnet2" >> "$GITHUB_OUTPUT"
           fi
 
           # Fixtures whose expectations are knowingly not met, excluded so the lane still gates on the
@@ -614,19 +624,6 @@ jobs:
                 'test_tx_total_gas_limit_cap\[fork_Bogota-tx_type_3-blockchain_test_engine_inclusion_list_from_state_test-at_cap\]$'
               )
             fi
-          elif [ "$SCOPE" = "frames" ]; then
-            KNOWN_FAILURES+=(
-              # The v1.1.0 release also carries the APPROVE changes of ethereum/execution-specs#3801,
-              # implemented in NethermindEth/nethermind#14639; drop these once it lands.
-              'test_refused_approval_charges_memory_expansion'
-              'test_approve_creates_sender.*sender_emptied_by_earlier_frame'
-              'test_approve_sender_creation_unaffordable.*sender_emptied_by_earlier_frame'
-              # The release encodes frame fees as [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas],
-              # where EIP-8141 now takes [max_fee, max_priority_fee_per_gas] (ethereum/EIPs#12414). Every fixture
-              # carrying a frame transaction therefore awaits a refill; only the legacy-transaction ones still run.
-              # Drop this once a release is filled with the max_fee shape.
-              '(?!test_diff_instructions_in_legacy_transaction\[)test_'
-            )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
@@ -634,7 +631,6 @@ jobs:
           fi
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
-          echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
           echo "Found fixture directory: $FIXTURE_DIR"
           echo "Fixture count: $(find -L "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
 
@@ -645,7 +641,7 @@ jobs:
           RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
           EEST_VERSION: ${{ steps.eest_release.outputs.version_input }}
           EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
-          RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
+          RUNNER_FLAG: ${{ steps.eest_release.outputs.runner_flag }}
           EXTRA_FILTER: ${{ steps.fixtures.outputs.extra_filter }}
           FORK_ALIAS: ${{ steps.fixtures.outputs.fork_alias }}
         run: |
@@ -666,11 +662,15 @@ jobs:
           if [ "$FLATDB" != "1" ]; then
             SETUP_ARGS="$SETUP_ARGS --triedb"
           fi
-          if [ -n "$PARALLEL" ]; then
-            SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
+          if [ "$PARALLEL" = "false" ]; then
+            SETUP_ARGS="$SETUP_ARGS --bal-sequential"
           fi
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
+          fi
+          # These lanes read only .pass, so they keep nethtest's check of the reason a payload was rejected for.
+          if [ "$RUNNER_FLAG" = "--engineTest" ]; then
+            SETUP_ARGS="$SETUP_ARGS --match-exceptions"
           fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
@@ -694,6 +694,8 @@ jobs:
               TOTAL=$(jq 'length' "$RESULTS_FILE")
               PASSED=$(jq '[.[] | select(.pass == true)] | length' "$RESULTS_FILE")
               FAILED=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
+              # A fixture file that cannot be loaded is left out of the results and named only on stderr.
+              UNLOADED=$(grep -cE '^EXCEPTION (\[[0-9]+\] )?.*\.json - ' "$CLEAN_FILE" 2>/dev/null || true)
             else
               FAILED=$(awk '/^(FAIL|EXCEPTION) / { count++ } END { print count + 0 }' "$CLEAN_FILE" 2>/dev/null)
               PROGRESS_STATS=$(grep -E "^(PROGRESS|FAIL|EXCEPTION) \\[[0-9]+/[0-9]+\\]" "$CLEAN_FILE" 2>/dev/null \
@@ -734,6 +736,9 @@ jobs:
               echo "| Total | $TOTAL |"
               echo "| Passed | **$PASSED** |"
               echo "| Failed | **$FAILED** |"
+              if [ "${UNLOADED:-0}" -gt 0 ]; then
+                echo "| Files not loaded | **$UNLOADED** |"
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
 
             if [ "$FAILED" -gt 0 ]; then

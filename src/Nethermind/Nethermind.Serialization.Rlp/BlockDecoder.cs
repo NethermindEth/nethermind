@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
             byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
             RlpWriter writer = new(bytes);
-            EncodeContent(ref writer, item, lengths);
+            EncodeContent(ref writer, item, lengths, rlpBehaviors);
             return new(bytes);
         }
 
@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
             try
             {
                 RlpWriter writer = new(buffer);
-                EncodeContent(ref writer, block, lengths);
+                EncodeContent(ref writer, block, lengths, rlpBehaviors);
                 return buffer;
             }
             catch
@@ -114,15 +114,16 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors));
+            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors), rlpBehaviors);
         }
 
-        private void EncodeContent<TWriter>(ref TWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths)
+        private void EncodeContent<TWriter>(ref TWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths, RlpBehaviors rlpBehaviors)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = lengths;
             writer.StartSequence(contentLength);
-            _headerDecoder.Encode(ref writer, item.Header);
+            // The header length came from the same behaviors, so the header is written with them too.
+            _headerDecoder.Encode(ref writer, item.Header, rlpBehaviors);
             writer.StartSequence(txsLength);
 
             byte[][]? encodedTxs = item.EncodedTransactions;

@@ -60,7 +60,8 @@ public class OptimismEthRpcModule(
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    ForwardedNonceTracker nonceTracker)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -82,17 +83,24 @@ public class OptimismEthRpcModule(
         capabilitiesProvider,
         blockForRpcFactory), IOptimismEthRpcModule
 {
+    internal ForwardedNonceTracker NonceTracker => nonceTracker;
+
     public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
+            return GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult);
         }
 
         Block? block = searchResult.Object!;
         Transaction[] transactions = block.Transactions;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
+        TxReceipt[] receipts = _receiptFinder.Get(block);
+        if (receipts.Length != transactions.Length)
+        {
+            return GetMissingReceiptsResult(_blockFinder, block);
+        }
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
@@ -119,10 +127,47 @@ public class OptimismEthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
+        if (rpcTx is not LegacyTransactionForRpc { From: { } from } legacy)
+            return (await SignAndSend(rpcTx)).Result;
+
+        // Sends from one account run one at a time: the next fills its nonce after this one is in the pool or with the sequencer.
+        using IDisposable senderLock = await nonceTracker.LockSenderAsync(from);
+
+        // A node that forwards to the sequencer has no pool (NullTxPool), so the tracker stands in for it.
+        ulong? nextNonce = sequencerRpcClient is null ? null : GetNextForwardedNonce(from, legacy.Nonce is not null);
+        ulong nonce = legacy.Nonce ??= nextNonce ?? _txPool.GetLatestPendingNonce(from);
+
+        (ResultWrapper<Hash256> result, bool signedByNode) = await SignAndSend(rpcTx);
+        // Only a transaction this node signed is counted: a request that brings its own signature keeps it, so its from need
+        // not be the account that signed it. Nor is a nonce other than the one the tracker gave: a replacement below it, or a
+        // nonce past a gap, which waits at the sequencer.
+        if (signedByNode && nonce == nextNonce && result.Result.ResultType == ResultType.Success)
+            nonceTracker.OnForwarded(from, nonce);
+
+        return result;
+    }
+
+    private ulong? GetNextForwardedNonce(Address from, bool hasNonce)
+    {
+        try
+        {
+            return nonceTracker.GetNextNonce(from);
+        }
+        // The next nonce is read only to count the forward. A request that has its nonce does not need it, so it is forwarded
+        // uncounted whatever stops the read: missing or corrupt state, a flat snapshot that cannot be gathered, a closing store.
+        catch (Exception e) when (hasNonce)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Forwarding a transaction of {from} uncounted, as its next nonce cannot be read: {e.Message}");
+            return null;
+        }
+    }
+
+    private async Task<(ResultWrapper<Hash256> Result, bool SignedByNode)> SignAndSend(SignableTransactionForRpc rpcTx)
+    {
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -130,16 +175,19 @@ public class OptimismEthRpcModule(
         {
             if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
             {
-                return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+                return (ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected), false);
             }
 
             tx.SenderAddress = senderAddress;
         }
 
+        // The sealer keeps a signature the request brought; it signs with the wallet only a transaction without one.
+        bool unsigned = tx.Signature is null;
         if (!sealer.TrySeal(tx, TxHandlingOptions.None))
-            return ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked);
+            return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
-        return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        bool signedByNode = unsigned && tx.Signature is not null;
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -170,6 +218,31 @@ public class OptimismEthRpcModule(
         }
 
         return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A node that forwards to the sequencer has no pool (<c>NullTxPool</c>), whose pending nonce is always 0. On such
+    /// a node the pending nonce is the head nonce raised past the forwards of <c>eth_sendTransaction</c> that the
+    /// sequencer accepted and the head does not include yet; a send still at the sequencer counts once answered.
+    /// </remarks>
+    public override ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter) =>
+        sequencerRpcClient is not null && blockParameter == BlockParameter.Pending
+            ? ResultWrapper<UInt256>.Success(nonceTracker.GetPendingNonce(address))
+            : base.eth_getTransactionCount(address, blockParameter);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base fill keeps an explicit nonce and takes a missing one from the pool, which a node that forwards to the
+    /// sequencer does not have. Such a node fills a missing nonce with the pending nonce of <c>from</c>, reading a
+    /// missing <c>from</c> as the zero address, as the base fill does.
+    /// </remarks>
+    public override async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (sequencerRpcClient is not null && rpcTx is LegacyTransactionForRpc { Nonce: null } legacy)
+            legacy.Nonce = nonceTracker.GetPendingNonce(legacy.From ?? Address.Zero);
+
+        return await base.eth_fillTransaction(rpcTx);
     }
 
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)

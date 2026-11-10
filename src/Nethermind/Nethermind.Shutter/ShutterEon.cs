@@ -5,7 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
@@ -15,7 +15,6 @@ namespace Nethermind.Shutter;
 public class ShutterEon(
     IReadOnlyBlockTree blockTree,
     IShareableTxProcessorSource txSource,
-    IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ILogManager logManager) : IShutterEon
 {
@@ -40,20 +39,20 @@ public class ShutterEon(
 
         try
         {
-            KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
+            KeyperSetManagerContract keyperSetManagerContract = new(processor, _keyperSetManagerContractAddress);
             ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, header.Number + 1);
 
             if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {
                 Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
-                KeyperSetContract keyperSetContract = new(processor, abiEncoder, keyperSetContractAddress);
+                KeyperSetContract keyperSetContract = new(processor, keyperSetContractAddress);
 
                 if (keyperSetContract.IsFinalized(header))
                 {
                     ulong threshold = keyperSetContract.GetThreshold(header);
                     Address[] addresses = keyperSetContract.GetMembers(header);
 
-                    KeyBroadcastContract keyBroadcastContract = new(processor, abiEncoder, _keyBroadcastContractAddress);
+                    KeyBroadcastContract keyBroadcastContract = new(processor, _keyBroadcastContractAddress);
                     byte[] eonKey = keyBroadcastContract.GetEonKey(blockTree.Head!.Header, eon);
 
                     // update atomically
@@ -77,7 +76,7 @@ public class ShutterEon(
                 }
             }
         }
-        catch (AbiException e)
+        catch (ContractException e)
         {
             if (_logger.IsError) _logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }

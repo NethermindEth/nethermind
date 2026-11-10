@@ -35,27 +35,8 @@ public class FrameExceptionFragmentsTests
         return false;
     }
 
-    /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
-    private static byte[] EncodePayload(Rlp frames, Rlp maxFee, Rlp[] nonceKeys = null)
-    {
-        Rlp payloadSequence = Rlp.Encode([
-            Rlp.Encode(1L),                      // chain_id
-            .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
-            Rlp.Encode(0L),                      // nonce
-            Rlp.Encode(TestItem.AddressA.Bytes), // sender
-            frames,
-            Rlp.Encode(Array.Empty<Rlp>()),      // signatures
-            Rlp.Encode(maxFee, Rlp.Encode(0L)),  // fees: max_fee, max_priority_fee_per_gas
-            Rlp.Encode(Array.Empty<Rlp>())]);    // blob_versioned_hashes
-
-        byte[] payload = new byte[1 + payloadSequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        payloadSequence.Bytes.CopyTo(payload, 1);
-        return payload;
-    }
-
     private static string DecodeFailureMessage(Rlp frames, Rlp maxFee) =>
-        DecodeFailureMessage(EncodePayload(frames, maxFee));
+        DecodeFailureMessage(FrameTxPayload.Encode(frames, maxFee));
 
     private static string DecodeFailureMessage(byte[] payload)
     {
@@ -77,8 +58,11 @@ public class FrameExceptionFragmentsTests
             frames: Rlp.Encode(new byte[19]),               // a string where a list belongs
             maxFee: Rlp.Encode(0L));
 
-        Assert.That(message, Does.Contain("Expected a sequence prefix"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -86,7 +70,7 @@ public class FrameExceptionFragmentsTests
     {
         // A frame transaction has no envelope signature, so an overlong declared length leaves the end-of-payload
         // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
-        byte[] payload = EncodePayload(
+        byte[] payload = FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L));
         Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
@@ -95,8 +79,11 @@ public class FrameExceptionFragmentsTests
 
         string message = DecodeFailureMessage(payload);
 
-        Assert.That(message, Does.Contain("RLP data is truncated"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -134,12 +121,45 @@ public class FrameExceptionFragmentsTests
             nonceKeys[i] = Rlp.Encode(i + 1L);
         }
 
-        string message = DecodeFailureMessage(EncodePayload(
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
             maxFee: Rlp.Encode(0L),
             nonceKeys));
 
         Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
+
+    // EIP-8250's seq_beyond_width: nonce_seq = 2^64, nine bytes, behind a nonce key. The fixtures label it
+    // TYPE_6_INVALID_FRAME_FORMAT only, so Decode has to cover the NonceTooWide wording, not just NONCE_OVERFLOW.
+    [Test]
+    public void Decode_CoversANonceSeqWiderThan64Bits()
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            nonceKeys: [Rlp.Encode(1L)],
+            nonce: new Rlp([0x89, 0x01, 0, 0, 0, 0, 0, 0, 0, 0])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("NonceTooWide"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void Decode_CoversAFeeListMissingAnElement()
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            fees: Rlp.Encode(new[] { Rlp.Encode(0L) })));    // the list [max_fee]
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("fees must hold two items"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -150,6 +170,48 @@ public class FrameExceptionFragmentsTests
         foreach (string fragment in FrameExceptionFragments.FeeOverflow)
         {
             Assert.That(FrameExceptionFragments.Decode, Does.Contain(fragment));
+        }
+    }
+
+    /// <summary>One frame, <c>[mode, flags, target, limits, value, data]</c>, with the encoded items the caller supplies.</summary>
+    private static Rlp OneFrame(Rlp mode = null, Rlp limits = null, Rlp data = null) =>
+        Rlp.Encode(new Rlp[]
+        {
+            Rlp.Encode(
+                mode ?? Rlp.Encode(1L),
+                Rlp.Encode(0L),                                     // flags
+                Rlp.Encode(TestItem.AddressB.Bytes),                // target
+                limits ?? Rlp.Encode(Rlp.Encode(21_000L), Rlp.Encode(0L)),
+                Rlp.Encode(0L),                                     // value
+                data ?? Rlp.Encode(Array.Empty<byte>())),
+        });
+
+    private static IEnumerable<TestCaseData> MalformedFrameCases()
+    {
+        // 0x81 0x01 is the byte 0x01 under a one-byte string header; RLP encodes a byte below 0x80 as itself.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers a frame mode under a needless string header");
+        yield return new TestCaseData(OneFrame(data: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers one byte of frame data under a needless string header");
+        // The mode 1 with a leading zero is the two-byte string 0x82 0x00 0x01, a prefix a one-byte field rejects.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "Unexpected byte value")
+            .SetName("Decode covers a frame mode with a leading zero");
+        // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
+        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
+            .SetName("Decode covers short frame data under a long-form header");
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "Data checkpoint failed")
+            .SetName("Decode covers frame limits missing an element");
+    }
+
+    [TestCaseSource(nameof(MalformedFrameCases))]
+    public void Decode_CoversAMalformedFrame(Rlp frames, string wording)
+    {
+        string message = DecodeFailureMessage(FrameTxPayload.Encode(frames, Rlp.Encode(0L)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain(wording));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
 

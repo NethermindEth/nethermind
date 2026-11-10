@@ -41,11 +41,29 @@ public interface ISyncServeRequestHandler<THandler, TReq, TRes>
 /// <param name="backgroundTaskScheduler"></param>
 public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
 {
+    /// <summary>The maximum number of sync-serve requests of one protocol handler that can be queued or running.</summary>
+    /// <remarks>
+    /// The scheduler queue is shared by all peers, so without a limit one peer can fill it and delay the requests of all other peers.
+    /// A peer cannot have more requests in flight on this side than it has outstanding. go-ethereum has one request for each
+    /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap.
+    /// The transaction requests (<see cref="ITxServeRequest"/>) have their own
+    /// counter with the same limit: the requester sends one for each announcement, and they wait in the scheduler queue during
+    /// block processing, so they must not use up the slots of the sync requests.
+    /// The extra requests are dropped, the same as when the scheduler queue is full.
+    /// </remarks>
+    internal const int MaxSyncServeRequestsInFlight = 32;
+
+    private int _syncServeRequestsInFlight;
+    private int _txServeRequestsInFlight;
+
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
     {
-        SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
+        if (!TryReserveSyncServe(request)) return false;
+
+        SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run))
         {
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -58,9 +76,12 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         where TRes : P2PMessage
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
     {
-        HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(requestHandler, request);
+        if (!TryReserveSyncServe(request)) return false;
+
+        HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(this, requestHandler, request);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run))
         {
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -70,9 +91,12 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
     {
-        SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
+        if (!TryReserveSyncServe(request)) return false;
+
+        SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
         if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run))
         {
+            ReleaseSyncServe<TReq>();
             request.TryDispose();
             return false;
         }
@@ -94,6 +118,42 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         return false;
     }
 
+    private bool TryReserveSyncServe<TReq>(TReq request)
+    {
+        if (Interlocked.Increment(ref InFlightCounter<TReq>()) <= MaxSyncServeRequestsInFlight)
+        {
+            return true;
+        }
+
+        ReleaseSyncServe<TReq>();
+        request.TryDispose();
+        Interlocked.Increment(ref Metrics.SyncServeRequestsDroppedOverPeerLimit);
+        if (handler.Logger.IsDebug) handler.Logger.Debug($"Dropping {typeof(TReq).Name} on session {handler.Session}, too many sync-serve requests in flight");
+        return false;
+    }
+
+    private void ReleaseSyncServe<TReq>() => Interlocked.Decrement(ref InFlightCounter<TReq>());
+
+    private ref int InFlightCounter<TReq>() =>
+        ref typeof(TReq).IsAssignableTo(typeof(ITxServeRequest))
+            ? ref _txServeRequestsInFlight
+            : ref _syncServeRequestsInFlight;
+
+    /// <summary>Disposes the request when the transport channel of the peer cannot take new messages.</summary>
+    /// <remarks>
+    /// The session drops a message when the outbound buffer is full or the channel is closed, so making the response would only waste work.
+    /// The fulfill function does not run, so its request validation (and a disconnect for an invalid request) is skipped too.
+    /// </remarks>
+    /// <returns><see langword="true"/> when the request was disposed and must not be served.</returns>
+    private static bool SkipIfResponseCannotBeSent<TReq>(ProtocolHandlerBase handler, TReq request)
+    {
+        if (!handler.Session.IsOutboundBufferFull) return false;
+
+        request.TryDispose();
+        if (handler.Logger.IsTrace) handler.Logger.Trace($"Skipping {typeof(TReq).Name} on session {handler.Session}, outbound buffer is full or channel is closed");
+        return true;
+    }
+
     private static void HandleBackgroundTaskFailure(ProtocolHandlerBase handler, Exception e)
     {
         DisconnectReason disconnectReason = e switch
@@ -105,10 +165,11 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         };
 
         handler.Session.InitiateDisconnect(disconnectReason, e.Message);
-        if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
+        if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session:hide}, {e:hide}");
     }
 
     private readonly struct SyncServeTaskRequest<TReq, TRes>(
+        BackgroundTaskSchedulerWrapper owner,
         ProtocolHandlerBase handler,
         TReq request,
         Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeTaskRequest<TReq, TRes>>
@@ -120,6 +181,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }
@@ -132,10 +195,15 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             {
                 HandleBackgroundTaskFailure(handler, e);
             }
+            finally
+            {
+                owner.ReleaseSyncServe<TReq>();
+            }
         }
     }
 
     private readonly struct HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>(
+        BackgroundTaskSchedulerWrapper owner,
         THandler handler,
         TReq request) : IBackgroundTaskRequest<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>
         where THandler : ProtocolHandlerBase
@@ -148,6 +216,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await TRequestHandler.Execute(handler, request, cancellationToken);
                 handler.Send(response);
             }
@@ -160,10 +230,15 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             {
                 HandleBackgroundTaskFailure(handler, e);
             }
+            finally
+            {
+                owner.ReleaseSyncServe<TReq>();
+            }
         }
     }
 
     private readonly struct SyncServeValueTaskRequest<TReq, TRes>(
+        BackgroundTaskSchedulerWrapper owner,
         ProtocolHandlerBase handler,
         TReq request,
         Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeValueTaskRequest<TReq, TRes>>
@@ -175,6 +250,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         {
             try
             {
+                if (SkipIfResponseCannotBeSent(handler, request)) return;
+
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }
@@ -186,6 +263,10 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
             catch (Exception e)
             {
                 HandleBackgroundTaskFailure(handler, e);
+            }
+            finally
+            {
+                owner.ReleaseSyncServe<TReq>();
             }
         }
     }

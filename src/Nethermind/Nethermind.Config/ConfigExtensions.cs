@@ -54,7 +54,7 @@ public static class ConfigExtensions
     /// Defaults come from a freshly constructed instance of the implementing
     /// type, so initializers and constructors are honoured exactly as production
     /// wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
-    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> are skipped.
+    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> or <see cref="ObsoleteAttribute"/> are skipped.
     /// </remarks>
     /// <param name="configProvider">The provider to query.</param>
     /// <param name="onConfigError">
@@ -89,7 +89,9 @@ public static class ConfigExtensions
             foreach (PropertyInfo property in configInterface.GetProperties())
             {
                 if (!property.CanRead) continue;
-                if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
+                ConfigItemAttribute? item = property.GetCustomAttribute<ConfigItemAttribute>();
+                if (item?.IsSensitive == true) continue;
+                if (property.IsDefined(typeof(ObsoleteAttribute))) continue;
 
                 object? actual;
                 object? defaultValue;
@@ -106,11 +108,21 @@ public static class ConfigExtensions
 
                 if (!StructuralComparisons.StructuralEqualityComparer.Equals(actual, defaultValue))
                 {
-                    yield return new NonDefaultConfigValue(category, property.Name, actual, defaultValue);
+                    yield return new NonDefaultConfigValue(category, property.Name, actual, defaultValue)
+                    {
+                        IsSensitiveWhenMasked = item?.IsSensitiveWhenMasked == true
+                    };
                 }
             }
         }
     }
 }
 
-public readonly record struct NonDefaultConfigValue(string? Category, string Name, object? CurrentValue, object? DefaultValue);
+public readonly record struct NonDefaultConfigValue(string? Category, string Name, object? CurrentValue, object? DefaultValue)
+{
+    /// <summary>Whether startup diagnostics hide the current value when masking is enabled.</summary>
+    public bool IsSensitiveWhenMasked { get; init; }
+
+    /// <summary>Gets the value to include in a startup configuration diagnostic.</summary>
+    public object? ValueForLog(bool maskSensitiveData) => maskSensitiveData && IsSensitiveWhenMasked ? "[redacted]" : CurrentValue;
+}

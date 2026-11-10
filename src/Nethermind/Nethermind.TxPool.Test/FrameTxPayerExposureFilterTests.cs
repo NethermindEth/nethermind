@@ -389,7 +389,10 @@ public class FrameTxPayerExposureFilterTests
     {
         // AcceptTxResult.Invalid is the one result TxFloodController maps to an immediate disconnect, and
         // an unpriceable max_cost is unincludable rather than malformed.
+        // Two frames of 2^64 - 1 gas each sum past 2^64 - 1, so the gas budget, and with it max_cost, cannot be
+        // priced. One such frame is not enough: its sum is in bounds, and the budget saturates instead of failing.
         Transaction tx = FrameTx(ulong.MaxValue);
+        tx.Frames = [tx.Frames![0], tx.Frames[0]];
 
         AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
 
@@ -439,8 +442,11 @@ public class FrameTxPayerExposureFilterTests
         tx.Hash = TestItem.KeccakA;
         if (payerless) tx.PayerAddress = null;
 
-        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-        Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+            Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        }
 
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);

@@ -7,20 +7,29 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.History;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -29,6 +38,8 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.State;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Messages;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Config;
 using Nethermind.TxPool;
@@ -45,17 +56,22 @@ public class DebugRpcModule(
     IDebugBridge debugBridge,
     IJsonRpcConfig jsonRpcConfig,
     ISpecProvider specProvider,
+    IForkInfo forkInfo,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
     IBlockForRpcFactory blockForRpcFactory,
-    ICodeInfoRepository codeInfoRepository)
+    ICodeInfoRepository codeInfoRepository,
+    IReceiptConfig receiptConfig,
+    ISyncPointers syncPointers,
+    ISyncProgressResolver syncProgressResolver,
+    ISyncConfig syncConfig,
+    IHistoryPruner historyPruner)
     : IDebugRpcModule
 {
-    internal sealed class TransactionTraceNotFoundException() : Exception("transaction not found");
-
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+    private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -82,7 +98,10 @@ public class DebugRpcModule(
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
+            const string indexingMessage = "transaction indexing is in progress";
+            return IsTransactionIndexingInProgress()
+                ? ResultWrapper<GethLikeTxTrace, string>.Fail(indexingMessage, ErrorCodes.ResourceNotFound, indexingMessage)
+                : ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -96,12 +115,13 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
         if (CanStreamStructLogs(options))
         {
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(blockHash, transactionHash, token, options, writer, pipeWriter)
-                    ?? throw new TransactionTraceNotFoundException()));
+                    ?? throw new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
@@ -110,6 +130,10 @@ public class DebugRpcModule(
         try
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
         catch (NativeTracerConfigException exception)
         {
@@ -139,11 +163,30 @@ public class DebugRpcModule(
         return result;
     }
 
+    private bool IsTransactionIndexingInProgress()
+    {
+        if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
+
+        ulong pivotNumber = syncProgressResolver.SyncPivot.BlockNumber;
+        // The feed's cached barrier is unset until activation, unlike persisted receipt progress.
+        ulong barrier = Math.Max(1UL, Math.Min(pivotNumber, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier)));
+        barrier = Math.Max(barrier, historyPruner.CutoffBlockNumber ?? 0);
+        ulong highestPendingBlock = pivotNumber;
+        if (syncPointers.LowestInsertedReceiptBlockNumber is { } lowestInserted)
+        {
+            if (lowestInserted <= barrier) return false;
+            // The cursor can still name the block in an outstanding receipt request.
+            highestPendingBlock = Math.Min(highestPendingBlock, lowestInserted);
+        }
+        if (highestPendingBlock < barrier) return false;
+
+        ulong lastBlock = blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+        return receiptConfig.TxLookupLimit is not > 0 || lastBlock < receiptConfig.TxLookupLimit.Value
+            || highestPendingBlock > lastBlock - receiptConfig.TxLookupLimit.Value;
+    }
+
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
-        if (options?.BlockOverrides?.Withdrawals is not null)
-            return ResultWrapper<GethLikeTxTrace>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
-
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -158,8 +201,8 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
-        if (options?.BlockOverrides?.BeaconRoot is not null)
-            return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
         IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
@@ -178,8 +221,8 @@ public class DebugRpcModule(
                     if (moveError is not null)
                         return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
                 }
-                if (accountOverride is { State: not null, StateDiff: not null })
-                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+                if (StateOverrideValidation.GetStorageConflictError(address, accountOverride) is { } storageError)
+                    return ResultWrapper<GethLikeTxTrace>.Fail(storageError, ErrorCodes.InvalidInput);
             }
         }
 
@@ -197,7 +240,9 @@ public class DebugRpcModule(
             NoBaseFee = !call.ShouldSetBaseFee()
         };
 
-        if (CanStreamStructLogs(options))
+        UInt256? rejectedBlobBaseFee = GetRejectedTraceCallBlobBaseFee(tx, header!, effective);
+
+        if (CanStreamStructLogs(options) && rejectedBlobBaseFee is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
@@ -216,7 +261,18 @@ public class DebugRpcModule(
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
         }
-        catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
+        catch (InvalidTransactionException ex) when (rejectedBlobBaseFee is { } fee
+            && ex.Reason.Error == TransactionResult.ErrorType.InsufficientSenderBalance
+            && ex.Reason.ErrorDescription == BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, fee))
+        {
+            return TraceCallBlobFeeFailure(tx, fee);
+        }
+        catch (InvalidTransactionException ex) when (rejectedBlobBaseFee is not null
+            && ex.Reason.Error == TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Reason.ErrorDescription), ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
@@ -233,6 +289,29 @@ public class DebugRpcModule(
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
+
+    private UInt256? GetRejectedTraceCallBlobBaseFee(Transaction tx, BlockHeader header, GethTraceOptions options)
+    {
+        if (!tx.SupportsBlobs || tx.BlobVersionedHashes is not { Length: > 0 }
+            || tx.MaxFeePerBlobGas is not { IsZero: false } cap)
+            return null;
+
+        BlockHeader callHeader = header.Clone();
+        options.BlockOverrides?.ApplyOverrides(callHeader);
+        IReleaseSpec spec = specProvider.GetSpec(callHeader);
+        if (!spec.IsEip4844Enabled) return null;
+
+        UInt256 fee;
+        if (options.BlockOverrides?.BlobBaseFee is { } overrideFee)
+            fee = overrideFee;
+        else if (!BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, spec.BlobBaseFeeUpdateFraction, out fee))
+            return null;
+        return cap < fee ? fee : null;
+    }
+
+    private static ResultWrapper<GethLikeTxTrace> TraceCallBlobFeeFailure(Transaction tx, UInt256 fee) =>
+        ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(
+            $"max fee per blob gas less than block blob gas fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} blobGasFeeCap: {tx.MaxFeePerBlobGas}, blobBaseFee: {fee}"), ErrorCodes.InvalidInput);
 
     private BlockHeader? TryGetTraceCallHeader(BlockParameter parameter, ulong? txIndex, out ResultWrapper<GethLikeTxTrace>? error)
     {
@@ -269,6 +348,9 @@ public class DebugRpcModule(
         return block;
     }
 
+    private static bool IsJavaScriptOrMuxTracer(GethTraceOptions? options) =>
+        options?.Tracer is { Length: > 0 } tracer && (tracer == "muxTracer" || !GethLikeNativeTracerFactory.IsNativeTracer(tracer));
+
     private bool CanStreamStructLogs(GethTraceOptions? options)
     {
         if (!string.IsNullOrEmpty(options?.Tracer)) return false;
@@ -295,6 +377,9 @@ public class DebugRpcModule(
             return false;
         }
     }
+
+    private static GethTraceOptions? WithOpcodeStepLimit(GethTraceOptions? options) =>
+        options is { Limit: > 0 } ? options with { OpcodeStepLimit = options.Limit, Limit = 0 } : options;
 
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
@@ -325,14 +410,15 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false, Hash256? missingBodyHash = null)
     {
-        Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
+        Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number);
         if (resolvedBlock is null)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
-                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
-                ErrorCodes.ResourceNotFound);
+            return MissingTraceBlock(
+                missingBodyHash is not null ? $"block {missingBodyHash} not found"
+                    : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
+                header.Number, missingBodyHash is not null && debugBridge.HaveNotSyncedHeadersYet());
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -350,6 +436,11 @@ public class DebugRpcModule(
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
             (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter)));
     }
+
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> MissingTraceBlock(string message, ulong? number, bool isTemporary = false) =>
+        number < blockFinder.LowestServedBlock
+            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, isTemporary);
 
     private GethLikeTxTraceStreamingBlockResult BuildStreamingBlockResult(
         Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runBlockTrace)
@@ -401,7 +492,15 @@ public class DebugRpcModule(
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockHash}", ErrorCodes.ResourceNotFound);
@@ -428,7 +527,15 @@ public class DebugRpcModule(
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -460,7 +567,15 @@ public class DebugRpcModule(
 
         // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
+        }
+        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
 
         if (transactionTrace is null)
         {
@@ -516,6 +631,12 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (block.IsGenesis)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+        }
+
+        options = WithOpcodeStepLimit(options);
         if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
@@ -527,19 +648,25 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(block, cancellationToken,
+                WithBufferedLimit(options) with { EnforceExecutionDeadline = true });
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (TraceDurationFormatException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
+        }
+        catch (GethTraceDeadlineException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (RlpException)
         {
@@ -553,27 +680,42 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
+        // The block tree's pending hash aliases the head, not a next-block candidate.
+        if (blockNumber.Type == BlockParameterType.Pending)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("pending block is not available", ErrorCodes.InvalidInput);
+
         BlockHeader? header = TryGetHeader(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
-                && blockNumber.Type == BlockParameterType.BlockNumber)
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+            {
+                string? message = blockNumber.Type switch
+                {
+                    BlockParameterType.BlockNumber => $"block #{blockNumber.BlockNumber} not found",
+                    BlockParameterType.Safe => "safe block not found",
+                    BlockParameterType.Finalized => "finalized block not found",
+                    _ => null
+                };
+                if (message is not null)
+                    return blockNumber.Type == BlockParameterType.BlockNumber
+                        ? MissingTraceBlock(message, blockNumber.BlockNumber, headerError.IsTemporary)
+                        : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+            }
             return headerError;
+        }
+
+        // HasBlock excludes cache-only bodies that FindBlock can still serve.
+        if ((blockNumber.Type == BlockParameterType.BlockNumber || header.Number == 0)
+            && !blockFinder.HasBlock(header.Number, header.Hash!)
+            && blockFinder.FindBlock(header.Hash!, header.Number) is null)
+        {
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber ?? header.Number} not found", header.Number);
         }
 
         if (header.Number == 0)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
-        }
-
-        // HasBlock excludes cache-only bodies that FindBlock can still serve.
-        if (blockNumber.Type == BlockParameterType.BlockNumber
-            && !blockFinder.HasBlock(header.Number, header.Hash!)
-            && blockFinder.FindBlock(header.Hash!, header.Number) is null)
-        {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
         }
 
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
@@ -582,12 +724,14 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
+
         // A malformed native duration must reach the real constructor before it can fail.
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", header.Number);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -599,9 +743,10 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = !string.IsNullOrEmpty(options?.Tracer) });
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
@@ -621,11 +766,16 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
-        if (headerError is not null)
+        BlockHeader? header = blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (header is null)
         {
-            return headerError;
+            return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(
+                new SearchResult<BlockHeader>($"block {blockHash} not found", ErrorCodes.ResourceNotFound),
+                debugBridge.HaveNotSyncedHeadersYet());
         }
+
+        if (blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, header.Number) is null)
+            return MissingTraceBlock($"block {blockHash} not found", header.Number, debugBridge.HaveNotSyncedHeadersYet());
 
         if (header.Number == 0)
         {
@@ -638,27 +788,34 @@ public class DebugRpcModule(
             return stateError;
         }
 
+        options = WithOpcodeStepLimit(options);
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
-            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
+            return StreamBlockTrace(header, options, validateStructLogTimeout: true, missingBodyHash: blockHash);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace> blockTrace = debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken,
+                WithBufferedLimit(options) with { EnforceExecutionDeadline = true });
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace) { IncludeErrorResult = !string.IsNullOrEmpty(options?.Tracer) });
         }
-        catch (NativeTracerConfigException exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.InvalidInput);
+        }
+        catch (GethTraceDeadlineException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (TraceDurationFormatException exception)
         {
@@ -783,6 +940,27 @@ public class DebugRpcModule(
     {
         object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
+    }
+
+    public ResultWrapper<JsonNode> debug_config()
+    {
+        Fork current = forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header).Current;
+        ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
+        ForkConfig[] forks = new ForkConfig[forkSchedule.Length];
+        for (int index = 0; index < forkSchedule.Length; index++)
+        {
+            // The summary reports an active genesis fork by timestamp, so the active entry reuses it to match eth_config.
+            forks[index] = forkSchedule[index].Id.Equals(current.Id)
+                ? ForkConfigFactory.Create(current, specProvider, active: true)
+                : ForkConfigFactory.Create(forkSchedule[index], specProvider);
+        }
+
+        DebugConfigSummary config = new()
+        {
+            Forks = forks,
+        };
+
+        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(config, TypeInfoJsonSerializer.GetTypeInfo<DebugConfigSummary>(UnchangedDictionaryKeyOptions))!);
     }
 
     public ResultWrapper<bool> debug_resetHead(Hash256 blockHash) =>
@@ -913,6 +1091,8 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
+        if (headerError is null && header!.IsGenesis)
+            return GetGenesisFileTraceFailure(header, options);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -932,6 +1112,8 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, badBlocksOnly: true);
+        if (headerError is null && header!.IsGenesis)
+            return GetGenesisFileTraceFailure(header, options, badBlocksOnly: true);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -946,6 +1128,34 @@ public class DebugRpcModule(
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
+    }
+
+    private ResultWrapper<IEnumerable<string>> GetGenesisFileTraceFailure(BlockHeader header, GethTraceOptions? options, bool badBlocksOnly = false)
+    {
+        // Geth checks a nonzero transaction filter before rejecting genesis.
+        if (options?.TxHash is { } txHash && txHash != Hash256.Zero)
+        {
+            if (badBlocksOnly)
+            {
+                foreach (Block block in debugBridge.GetBadBlocks())
+                    if (ContainsTransaction(block, header.Hash!, txHash))
+                        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+            }
+            else if (ContainsTransaction(blockFinder.FindBlock(header.Hash!, header.Number), header.Hash!, txHash))
+            {
+                return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+            }
+            return ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput);
+        }
+        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+
+        static bool ContainsTransaction(Block? block, Hash256 blockHash, Hash256 txHash)
+        {
+            if (block is null || block.Hash != blockHash) return false;
+            foreach (Transaction transaction in block.Transactions)
+                if (transaction.Hash == txHash) return true;
+            return false;
+        }
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
@@ -1031,8 +1241,6 @@ public class DebugRpcModule(
         {
             if (bundles[i]?.Transactions is null)
                 return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
-            if (bundles[i].BlockOverride?.Withdrawals is not null)
-                return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
         }
 
         blockParameter ??= BlockParameter.Latest;
@@ -1042,6 +1250,15 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(overrideError, ErrorCodes.InvalidInput);
+
+        if (bundles.Any(static b => b.BlockOverride?.Withdrawals is not null))
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput);
+
+        if (StateOverrideValidation.GetStorageConflictError(options?.StateOverrides) is { } storageError)
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         if (options?.TxIndex is not null) options = options with { TxIndex = null };
 
@@ -1127,6 +1344,19 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
+        // Bundle overrides run the bundles as one cumulative simulation, which has no place for options applied
+        // afresh to every call, so reject the mix rather than silently drop the options.
+        if (options?.StateOverrides is { Count: > 0 } || options?.BlockOverrides is { } blockOverrides && BlockchainBridge.HasBlockOverrides(blockOverrides))
+        {
+            foreach (TransactionBundle bundle in bundles)
+            {
+                if (StateOverrideValidation.GetStorageConflictError(bundle.StateOverrides) is { } storageError)
+                    return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("options.stateOverrides and options.blockOverrides cannot be combined with bundle blockOverride or stateOverrides", ErrorCodes.InvalidInput);
+        }
+
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -1178,7 +1408,7 @@ public class DebugRpcModule(
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
             .Where(blockResult => blockResult.Number is ulong n && bundleBlockNumbers.Contains(n))
-            .Select(blockResult => blockResult.Traces);
+            .Select(blockResult => (IEnumerable<GethLikeTxTrace>)blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }

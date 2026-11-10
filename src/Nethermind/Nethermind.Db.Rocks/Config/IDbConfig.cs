@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 
@@ -12,6 +13,10 @@ public interface IDbConfig : IConfig
 {
     [ConfigItem(Description = "The size of the block cache shared by the databases that have no block cache of their own, in bytes. The flat state account and storage columns use `FlatDb.BlockCacheSizeBudget` instead.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
+
+    [Obsolete("Has no effect.")]
+    [ConfigItem(Description = "Deprecated. Has no effect.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
@@ -122,6 +127,35 @@ public interface IDbConfig : IConfig
     string LogIndexStorageTopics2DbAdditionalRocksDbOptions { get; set; }
     string LogIndexStorageTopics3DbRocksDbOptions { get; set; }
     string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>RocksDB options for the trace address index. Empty by default.</summary>
+    string TraceAddressIndexDbRocksDbOptions { get; set; }
+    /// <summary>Options appended after the trace address index options. Empty by default.</summary>
+    string TraceAddressIndexDbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index metadata column. Empty by default.</summary>
+    string TraceAddressIndexMetaDbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index metadata column. Empty by default.</summary>
+    string TraceAddressIndexMetaDbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index addresses column. Empty by default.</summary>
+    string TraceAddressIndexAddressesDbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index addresses column. Empty by default.</summary>
+    string TraceAddressIndexAddressesDbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index first topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics0DbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index first topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics0DbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index second topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics1DbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index second topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics1DbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index third topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics2DbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index third topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics2DbAdditionalRocksDbOptions { get; set; }
+    /// <summary>RocksDB options for the trace address index fourth topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics3DbRocksDbOptions { get; set; }
+    /// <summary>Additional RocksDB options for the trace address index fourth topic column. Empty by default.</summary>
+    string TraceAddressIndexTopics3DbAdditionalRocksDbOptions { get; set; }
 
     bool? FlatDbVerifyChecksum { get; set; }
     string FlatDbRocksDbOptions { get; set; }

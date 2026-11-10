@@ -40,6 +40,7 @@
         pkgs:
         let
           nethermind = self.packages.${pkgs.stdenv.hostPlatform.system}.nethermind;
+          nodeCheck = pkgs.callPackage ./nix/node-check.nix { inherit nethermind; };
         in
         {
           build = nethermind;
@@ -47,7 +48,8 @@
             package = nethermind;
             command = "nethermind --version";
           };
-          smoke = pkgs.callPackage ./nix/smoke.nix { inherit nethermind; };
+          smoke = pkgs.callPackage ./nix/smoke.nix { inherit nodeCheck; };
+          precompile-smoke = pkgs.callPackage ./nix/precompile-smoke.nix { inherit nethermind nodeCheck; };
         }
       );
 

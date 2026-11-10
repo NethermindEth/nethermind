@@ -26,6 +26,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -55,7 +56,9 @@ public class HistoryRowScannerTests
             Assert.That(session.IsReady, Is.True);
         }
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+#pragma warning disable NUnit2045 // The reopened store must be ready before creating its reader.
         Assert.That(reopened.IsReady, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.EqualTo(account));
         Assert.That(reopened.CurrentState.BlockNumber, Is.Zero);
     }
@@ -111,8 +114,11 @@ public class HistoryRowScannerTests
         using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
 
         Assert.Throws<OperationCanceledException>(() => session.ImportGenesis(Allocations(), cancellation.Token));
-        Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
-        Assert.That(session.IsReady, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
+            Assert.That(session.IsReady, Is.False);
+        }
 
         IEnumerable<KeyValuePair<Address, Account>> Allocations()
         {
@@ -318,20 +324,31 @@ public class HistoryRowScannerTests
     }
 
     [Test]
-    public void BulkReplay_WhenReleased_CanBootstrapAgainWithoutOldRows([Values] bool rocks)
+    public void BulkReplay_WhenReleased_CanBootstrapAgainWithoutOldRows([Values] bool rocks, [Values] bool reopenBeforeRelease)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
         using MemDb code = new();
         IDbFactory factory = new ScratchDbFactory(directory.Path, memory, rocks);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
-        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false);
+        try
         {
             ImportEmptyState(session);
             BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
             CommitScratch(session, next, writer => writer.Set(TestItem.AddressA, new Account(1, 100)));
+            if (reopenBeforeRelease)
+            {
+                // Closing flushes the rows to SST files, so the release has to cover them with range tombstones.
+                session.Dispose();
+                session = new(factory, code, TestItem.KeccakA, anchor, false);
+            }
             session.ReleaseState(CancellationToken.None);
             Assert.That(session.IsReady, Is.False);
+        }
+        finally
+        {
+            session.Dispose();
         }
 
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
@@ -949,9 +966,13 @@ public class HistoryRowScannerTests
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
             if (rocks)
-                return new ColumnsDb<T>(directory, new DbSettings("TransactionIndexScratch", directory), new DbConfig(),
-                    new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-                    LimboLogs.Instance, Enum.GetValues<T>());
+            {
+                DbConfig dbConfig = new();
+                return new RocksDbFactory(
+                        new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                        dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory)
+                    .CreateColumnsDb<T>(new DbSettings("TransactionIndexScratch", directory));
+            }
             return (IColumnsDb<T>)(object)memory;
         }
     }

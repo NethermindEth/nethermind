@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -43,8 +44,11 @@ public class GethStyleTracerTests
             {
                 using ITxTracer txTracer = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
                 clock.Advance(TimeSpan.FromMilliseconds(600));
-                Assert.That(txTracer.IsCancelled, Is.False);
-                Assert.That(txTracer.IsTracingInstructions, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(txTracer.IsCancelled, Is.False);
+                    Assert.That(txTracer.IsTracingInstructions, Is.False);
+                }
                 tracer.EndTxTrace();
             }
             Assert.That(tracer.BuildResult(), Is.EquivalentTo(new[] { trace }));
@@ -56,6 +60,163 @@ public class GethStyleTracerTests
             resource.DidNotReceive().Dispose();
             transactionTracer.Received(2).Dispose();
         }
+    }
+
+    [Test]
+    public void Buffered_deadline_replacement_releases_abandoned_deadline(
+        [Values] bool expireFirst, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        DisposalCountingTracer firstInner = new();
+        DisposalCountingTracer secondInner = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(firstInner, secondInner);
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using (GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token, new()))
+        {
+            ITxTracer first = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            using (first)
+            {
+                clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(600));
+            }
+            if (expireFirst)
+            {
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(Build.A.Transaction.TestObject));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                    Assert.That(first.IsCancelled, Is.True);
+                }
+                Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.BuildResult());
+                if (cancelExternal)
+                {
+                    external.Cancel();
+                    Assert.That(tracer.Expired, Is.False);
+                    Assert.Throws<OperationCanceledException>(() => tracer.BuildResult());
+                }
+            }
+            else
+            {
+                using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+                Assert.That(clock.Timers, Has.Count.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+                    Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
+                }
+                Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+                clock.Advance(TimeSpan.FromMilliseconds(400));
+                Assert.That(second.IsCancelled, Is.False);
+                if (cancelExternal) external.Cancel();
+                clock.Advance(TimeSpan.FromMilliseconds(600));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
+                    Assert.That(second.IsCancelled, Is.True);
+                    Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+                }
+                if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
+                else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers.TrueForAll(timer => timer.DisposeCount == 1), Is.True);
+            Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
+            Assert.That(secondInner.DisposeCount, Is.EqualTo(expireFirst ? 0 : 1));
+            inner.DidNotReceive().EndTxTrace();
+        }
+    }
+
+    [Test]
+    public void Buffered_deadline_releases_abandoned_owner_before_selection_or_setup(
+        [Values("unmatched", "null", "setup-failure", "external-cancellation")] string next,
+        [Values] bool expireFirst)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        Transaction selected = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Transaction following = next == "null" ? null : Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+        DisposalCountingTracer firstInner = new();
+        DisposalCountingTracer secondInner = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(selected).Returns(firstInner);
+        inner.StartNewTxTrace(following).Returns(secondInner);
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { TxHash = selected.Hash, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token);
+        using (ITxTracer first = tracer.StartNewTxTrace(selected))
+            clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(400));
+        if (next == "setup-failure")
+        {
+            InvalidOperationException failure = new("next setup failed");
+            inner.StartNewTxTrace(following).Returns(_ => throw failure);
+            if (expireFirst)
+            {
+                Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(following));
+                inner.DidNotReceive().StartNewTxTrace(following);
+            }
+            else Assert.That(Assert.Throws<InvalidOperationException>(() => tracer.StartNewTxTrace(following)), Is.SameAs(failure));
+        }
+        else if (next == "external-cancellation")
+        {
+            external.Cancel();
+            Assert.Throws<OperationCanceledException>(() => tracer.StartNewTxTrace(following));
+            inner.DidNotReceive().StartNewTxTrace(following);
+        }
+        else if (expireFirst)
+        {
+            Assert.Throws<GethTraceDeadlineException>(() => tracer.StartNewTxTrace(following));
+            inner.DidNotReceive().StartNewTxTrace(following);
+        }
+        else
+        {
+            using ITxTracer second = tracer.StartNewTxTrace(following);
+            Assert.That(second.IsCancelled, Is.False);
+            Assert.That(tracer.EndTxTrace, Throws.Nothing);
+        }
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+            Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+            Assert.That(tracer.Expired, Is.EqualTo(expireFirst && next != "external-cancellation"));
+            Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Buffered_deadline_abandoned_expiration_survives_replacement_until_result(
+        [Values("selected", "unmatched", "null")] string next,
+        [Values] bool expireFirst, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        Transaction selected = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Transaction following = next == "null" ? null : Build.A.Transaction
+            .WithHash(next == "selected" ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => new DisposalCountingTracer());
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { TxHash = selected.Hash, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token);
+        using (ITxTracer first = tracer.StartNewTxTrace(selected))
+            clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(400));
+        if (cancelExternal) external.Cancel();
+
+        // Expiry may fail fast at replacement; neither boundary may return partial success.
+        void ReplaceAndBuildResult()
+        {
+            using ITxTracer second = tracer.StartNewTxTrace(following);
+            tracer.BuildResult();
+        }
+
+        if (cancelExternal) Assert.Throws<OperationCanceledException>(ReplaceAndBuildResult);
+        else if (expireFirst) Assert.Throws<GethTraceDeadlineException>(ReplaceAndBuildResult);
+        else Assert.That(ReplaceAndBuildResult, Throws.Nothing);
     }
 
     [Test]
@@ -78,8 +239,11 @@ public class GethStyleTracerTests
         using ITxTracer target = tracer.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject);
         if (externalCancellation) external.Cancel();
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.That(target.IsCancelled, Is.True);
-        Assert.That(tracer.Expired, Is.EqualTo(!externalCancellation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target.IsCancelled, Is.True);
+            Assert.That(tracer.Expired, Is.EqualTo(!externalCancellation));
+        }
         if (externalCancellation) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
         else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
         Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
@@ -265,8 +429,11 @@ public class GethStyleTracerTests
             new() { Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock }, CancellationToken.None);
         using (ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject))
         {
-            Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
-            Assert.That(owned.IsCancelled, Is.False, "arming an expired deadline does not deliver its watcher");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+                Assert.That(owned.IsCancelled, Is.False, "arming an expired deadline does not deliver its watcher");
+            }
             if (deliver) clock.Advance(TimeSpan.Zero);
             Assert.That(owned.IsCancelled, Is.EqualTo(deliver));
             if (deliver) Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
@@ -370,12 +537,19 @@ public class GethStyleTracerTests
     }
 
     /// <remarks>
-    /// A tracer that is neither native nor loadable as JavaScript, an unknown name or inline code that does not
-    /// compile, used to reach the JavaScript block tracer, which built a V8 engine per traced transaction only to
-    /// fail loading the script.
+    /// Selectors outside native registrations and shipped JavaScript tracers are compiled as JavaScript
+    /// expressions. Evaluation and callback validation are deferred until a transaction is traced.
     /// </remarks>
-    [TestCase("flatCallTracer", "not found")]
-    [TestCase("_bigInteger", "not found")]
+    [TestCase("flatCallTracer", true)]
+    [TestCase("_bigInteger", true)]
+    public async Task Create_options_tracer_defers_valid_javascript_expression_evaluation(string tracer, bool javascript)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        using IDisposable result = (IDisposable)GethStyleTracer.CreateOptionsTracer(chain.BlockTree.Head!.Header,
+            GethTraceOptions.Default with { Tracer = tracer }, chain.MainWorldState, chain.SpecProvider);
+        Assert.That(result is Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.GethLikeBlockJavaScriptTracer, Is.EqualTo(javascript));
+    }
+
     [TestCase("{ ) }", "could not be compiled")]
     public void Create_options_tracer_rejects_an_unusable_tracer(string tracer, string expectedMessage)
     {

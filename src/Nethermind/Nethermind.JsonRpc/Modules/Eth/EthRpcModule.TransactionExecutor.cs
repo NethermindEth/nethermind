@@ -116,6 +116,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
                 }
 
+                // As in Geth, overrides are validated before the call's fee fields.
+                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
+                    return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
+
                 CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
                 try
                 {
@@ -134,8 +138,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
                 BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
-                if (blockOverride?.Withdrawals is not null)
-                    return ResultWrapper<TResult>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
@@ -154,12 +156,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     {
                         string revertMessage = TransactionSubstate.BuildRevertMessage(executionRevertedReason, errorMessage);
 
-                        if (executionRevertedReason is not null)
-                        {
-                            return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
-                        }
-
-                        return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, null);
+                        return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, (executionRevertedReason ?? []).ToHexString(true));
                     }
 
                     return bodyData is null

@@ -22,7 +22,9 @@ public class PooledTransactionRequestsTests
         Assert.That(requests.TryClaim(1, out _), Is.False);
         requests.Dispose();
         requests.Add(1, [TestItem.KeccakA.ValueHash256]);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(requests.TryClaim(1, out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(pool.Count, Is.Zero);
     }
 
@@ -40,14 +42,19 @@ public class PooledTransactionRequestsTests
         using (request)
         {
             requests.Dispose();
-            Assert.That(pool.Count, Is.EqualTo(1));
-            Assert.That(request.Hashes.Length, Is.EqualTo(count));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool.Count, Is.EqualTo(1));
+                Assert.That(request.Hashes.Length, Is.EqualTo(count));
+            }
             foreach (ValueHash256 hash in request.Hashes) Assert.That(hash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
             Assert.That(requests.TryClaim(1, out _), Is.False);
         }
         Assert.That(pool.Count, Is.Zero);
         requests.Add(2, hashes);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(requests.TryClaim(2, out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(pool.Count, Is.Zero);
     }
 
@@ -60,7 +67,9 @@ public class PooledTransactionRequestsTests
         requests.Add(2, [TestItem.KeccakA.ValueHash256]);
         requests.Add(1, [TestItem.KeccakB.ValueHash256]);
         requests.Add(3, [TestItem.KeccakC.ValueHash256]);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(pool.Count, Is.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(requests.TryClaim(2, out _), Is.False);
         Assert.That(requests.TryClaim(1, out PooledTransactionRequests.Request request), Is.True);
         using (request) Assert.That(request.Hashes[0], Is.EqualTo(TestItem.KeccakB.ValueHash256));

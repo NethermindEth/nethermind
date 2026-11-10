@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.TxPool.Test;
 
@@ -373,7 +374,9 @@ public class BlobTxStorageTests
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
                 : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
             Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
+#pragma warning restore NUnit2045
             Assert.That(read.Result, Is.True);
         }
         finally
@@ -547,8 +550,9 @@ public class BlobTxStorageTests
         Transaction[] expected = new Transaction[count + 1];
         expected[^1] = stored[0];
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
-            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+        using (IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
+                   new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory.Path)
+               .CreateColumnsDb<BlobTxsColumns>(new DbSettings(DbNames.BlobTransactions, "blobs")))
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
@@ -665,10 +669,13 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        Assert.That(found, Is.EqualTo(2));
-        Assert.That(results[0], Is.Not.Null);
-        Assert.That(results[1], Is.Not.Null);
-        Assert.That(results[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(2));
+            Assert.That(results[0], Is.Not.Null);
+            Assert.That(results[1], Is.Not.Null);
+            Assert.That(results[2], Is.Null);
+        }
     }
 
     [Test]
@@ -702,8 +709,11 @@ public class BlobTxStorageTests
     {
         BlobTxStorage blobTxStorage = new();
 
-        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
-        Assert.That(tx, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+            Assert.That(tx, Is.Null);
+        }
     }
 
     [Test]
@@ -959,9 +969,12 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
-        Assert.That(found, Is.EqualTo(0));
-        Assert.That(results[0], Is.Null);
-        Assert.That(results[1], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(0));
+            Assert.That(results[0], Is.Null);
+            Assert.That(results[1], Is.Null);
+        }
     }
 
     /// <remarks>

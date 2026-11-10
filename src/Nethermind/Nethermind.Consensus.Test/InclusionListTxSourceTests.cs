@@ -79,8 +79,11 @@ public class InclusionListTxSourceTests
         source.Set(ilA, Bogota.Instance);
         source.Set(ilB, Bogota.Instance);
 
-        Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
-        Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
+            Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        }
     }
 
     [Test]
@@ -105,9 +108,12 @@ public class InclusionListTxSourceTests
         byte[][] il = [Encode(tx)];
 
         source.Set(il, Bogota.Instance);
-        Assert.That(ecdsa.Recoveries, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ecdsa.Recoveries, Is.Zero);
 
-        Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+            Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+        }
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
     }
 

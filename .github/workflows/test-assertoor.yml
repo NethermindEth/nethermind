@@ -90,7 +90,7 @@ jobs:
             }'
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./main-repo/.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.x
 

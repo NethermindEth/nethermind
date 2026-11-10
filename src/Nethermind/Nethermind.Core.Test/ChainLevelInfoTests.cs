@@ -163,7 +163,10 @@ public class ChainLevelInfoTests
 
         level.InsertBlockInfo(TestItem.KeccakB, new BlockInfo(TestItem.KeccakB, 0, BlockMetadata.BeaconHeader), setAsMain: false, keepExistingMetadata: true);
 
-        Assert.That(level.BlockInfos, Has.Length.EqualTo(2));
-        Assert.That(level.FindBlockInfo(TestItem.KeccakB)!.Metadata, Is.EqualTo(BlockMetadata.BeaconHeader));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(level.BlockInfos, Has.Length.EqualTo(2));
+            Assert.That(level.FindBlockInfo(TestItem.KeccakB)!.Metadata, Is.EqualTo(BlockMetadata.BeaconHeader));
+        }
     }
 }

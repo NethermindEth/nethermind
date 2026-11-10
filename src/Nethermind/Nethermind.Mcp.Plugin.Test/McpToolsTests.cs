@@ -89,8 +89,11 @@ public class McpToolsTests
     {
         CallToolResult result = await Call("chain_info");
 
-        Assert.That(result.IsError, Is.Not.True);
-        Assert.That(result.StructuredContent, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.Not.True);
+            Assert.That(result.StructuredContent, Is.Not.Null);
+        }
         TextContentBlock text = result.Content.OfType<TextContentBlock>().Single();
         using JsonDocument parsed = JsonDocument.Parse(text.Text);
         Assert.That(JsonElement.DeepEquals(parsed.RootElement, result.StructuredContent!.Value), Is.True);

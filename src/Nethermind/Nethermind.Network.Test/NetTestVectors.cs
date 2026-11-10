@@ -53,8 +53,11 @@ namespace Nethermind.Network.Test
             HandshakeService.SetSecrets(handshakeA, HandshakeRole.Initiator);
             HandshakeService.SetSecrets(handshakeB, HandshakeRole.Recipient);
 
-            Assert.That(handshakeB.Secrets.AesSecret, Is.EqualTo(handshakeA.Secrets.AesSecret), "aes");
-            Assert.That(handshakeB.Secrets.MacSecret, Is.EqualTo(handshakeA.Secrets.MacSecret), "mac");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(handshakeB.Secrets.AesSecret, Is.EqualTo(handshakeA.Secrets.AesSecret), "aes");
+                Assert.That(handshakeB.Secrets.MacSecret, Is.EqualTo(handshakeA.Secrets.MacSecret), "mac");
+            }
 
             KeccakHash aIngress = handshakeA.Secrets.IngressMac.Copy();
             KeccakHash bIngress = handshakeB.Secrets.IngressMac.Copy();
@@ -66,8 +69,11 @@ namespace Nethermind.Network.Test
             byte[] aEgressFinal = aEgress.Hash;
             byte[] bEgressFinal = bEgress.Hash;
 
-            Assert.That(bEgressFinal.ToHexString(), Is.EqualTo(aIngressFinal.ToHexString()));
-            Assert.That(bIngressFinal.ToHexString(), Is.EqualTo(aEgressFinal.ToHexString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bEgressFinal.ToHexString(), Is.EqualTo(aIngressFinal.ToHexString()));
+                Assert.That(bIngressFinal.ToHexString(), Is.EqualTo(aEgressFinal.ToHexString()));
+            }
 
             return (handshakeA.Secrets, handshakeB.Secrets);
         }

@@ -31,8 +31,11 @@ public class FrameTxSignatureValidatorTests
     {
         Transaction tx = CreateFrameTx();
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -41,8 +44,11 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -52,8 +58,11 @@ public class FrameTxSignatureValidatorTests
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01), BlobVersionedHash(0x02)];
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -66,8 +75,11 @@ public class FrameTxSignatureValidatorTests
 
         tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        }
     }
 
     [Test]
@@ -77,8 +89,11 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx(sender: TestItem.PrivateKeyA.Address);
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyA, signer: null)];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -87,8 +102,11 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        }
     }
 
     [Test]
@@ -97,8 +115,11 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, new byte[64])];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignatureLength));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignatureLength));
+        }
     }
 
     [Test]
@@ -111,8 +132,11 @@ public class FrameTxSignatureValidatorTests
         legacyIdBytes[0] += 27;
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, legacyIdBytes)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
+        }
     }
 
     [Test]
@@ -128,8 +152,11 @@ public class FrameTxSignatureValidatorTests
         highS.ToBigEndian(highSBytes.AsSpan(33, 32));
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, highSBytes)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
+        }
     }
 
     [Test]
@@ -143,8 +170,11 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, digest.ToByteArray(), ToVrs(signature)),
         ];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -159,8 +189,11 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, claimedDigest.ToByteArray(), ToVrs(signature)),
         ];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        }
     }
 
     [Test]
@@ -174,8 +207,11 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, new byte[5], new byte[TxFrameSignature.Secp256k1SignatureLength]),
         ];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidMsgLength));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidMsgLength));
+        }
     }
 
     [Test]
@@ -185,8 +221,11 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad })];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -206,7 +245,9 @@ public class FrameTxSignatureValidatorTests
         raw[64] = 1; // s = 1
         unverifiable.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw)];
 
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(Validate(mismatched, out string? mismatchError), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(Validate(unverifiable, out string? verifyError), Is.False);
         using (Assert.EnterMultipleScope())
         {
@@ -225,8 +266,11 @@ public class FrameTxSignatureValidatorTests
         raw[63] = 1; // s = 1
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, raw)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidP256Signer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidP256Signer));
+        }
     }
 
     [Test]
@@ -240,8 +284,11 @@ public class FrameTxSignatureValidatorTests
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        }
     }
 
     [Test]
@@ -281,8 +328,7 @@ public class FrameTxSignatureValidatorTests
         byte[] qy = Pad32(pub.Q.Y!);
         Address signer = new(Keccak.Compute([.. qx, .. qy]).Bytes[12..]);
 
-        // Install the placeholder (scheme/signer/msg) so the sig hash is fixed before signing.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, new byte[TxFrameSignature.P256SignatureLength])];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
 
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
@@ -346,7 +392,7 @@ public class FrameTxSignatureValidatorTests
         TxFrameSignature invalid = new(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[65]);
         tx.FrameSignatures =
         [
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, default),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
             invalid,
         ];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
@@ -357,8 +403,11 @@ public class FrameTxSignatureValidatorTests
             invalid,
         ];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -370,9 +419,12 @@ public class FrameTxSignatureValidatorTests
 
         FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
 
-        Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.True);
-        Assert.That(FrameTxSignatureValidator.Validate(tx, Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.True);
+            Assert.That(FrameTxSignatureValidator.Validate(tx, Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
+            Assert.That(error, Is.Null);
+        }
     }
 
     [Test]
@@ -385,8 +437,11 @@ public class FrameTxSignatureValidatorTests
 
         tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
 
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+        }
     }
 
     [Test]
@@ -482,9 +537,7 @@ public class FrameTxSignatureValidatorTests
 
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {
-        // compute_sig_hash covers scheme/signer/msg and elides only the raw bytes, so the entry must be
-        // installed before hashing.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));

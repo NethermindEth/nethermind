@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
@@ -155,7 +156,7 @@ public partial class DebugRpcModuleTests
         ArrayBufferWriter<byte> buffer = new();
         using Utf8JsonWriter writer = new(buffer);
         StructLogEnvelopeWriter.EmitTraceObject(writer, null, CancellationToken.None,
-            (_, _, _) => throw (missingTrace ? new DebugRpcModule.TransactionTraceNotFoundException() : new TraceDurationFormatException("bad duration")),
+            (_, _, _) => throw (missingTrace ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found") : new TraceDurationFormatException("bad duration")),
             LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>(), fallbackGas: 21_000);
         writer.Flush();
         JToken parsed = JToken.Parse(Encoding.UTF8.GetString(buffer.WrittenSpan));
@@ -192,9 +193,12 @@ public partial class DebugRpcModuleTests
         writer.Flush();
 
         JToken parsed = JToken.Parse(Encoding.UTF8.GetString(bufferWriter.WrittenSpan));
-        Assert.That(parsed["failed"]!.Value<bool>(), Is.True);
-        Assert.That(parsed["error"]!.Value<string>(), Does.Contain("simulated mid-trace failure"));
-        Assert.That(parsed["errorCode"]!.Value<int>(), Is.EqualTo(ErrorCodes.InternalError), "generic exceptions map to InternalError; InsufficientBalanceException maps to InvalidInput");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["failed"]!.Value<bool>(), Is.True);
+            Assert.That(parsed["error"]!.Value<string>(), Does.Contain("simulated mid-trace failure"));
+            Assert.That(parsed["errorCode"]!.Value<int>(), Is.EqualTo(ErrorCodes.InternalError), "generic exceptions map to InternalError; InsufficientBalanceException maps to InvalidInput");
+        }
     }
 
     [Test]
@@ -220,8 +224,11 @@ public partial class DebugRpcModuleTests
         Assert.That(result, Has.Count.EqualTo(1), "Dispose must seal the in-flight per-tx envelope");
 
         JToken entry = result[0]!;
-        Assert.That((bool)entry["result"]!["failed"]!, Is.True);
-        Assert.That((string)entry["txHash"]!, Is.EqualTo(tx.Hash!.ToString()).IgnoreCase, "txHash must be present on every entry, including those closed by Dispose");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)entry["result"]!["failed"]!, Is.True);
+            Assert.That((string)entry["txHash"]!, Is.EqualTo(tx.Hash!.ToString()).IgnoreCase, "txHash must be present on every entry, including those closed by Dispose");
+        }
     }
 
     [Test]
@@ -315,8 +322,11 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed, Has.Count.EqualTo(2), "the array must contain the one good entry plus a sentinel error entry so clients can detect the mid-block failure");
 
         JToken sentinel = parsed[1]!;
-        Assert.That((string)sentinel["error"]!, Does.Contain("simulated mid-block failure"), "the sentinel must carry the human-readable failure reason");
-        Assert.That((int)sentinel["errorCode"]!, Is.EqualTo(ErrorCodes.InternalError), "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string)sentinel["error"]!, Does.Contain("simulated mid-block failure"), "the sentinel must carry the human-readable failure reason");
+            Assert.That((int)sentinel["errorCode"]!, Is.EqualTo(ErrorCodes.InternalError), "the sentinel must carry the Geth-equivalent errorCode (generic exceptions map to InternalError)");
+        }
     }
 
     [Test]

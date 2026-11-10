@@ -34,9 +34,12 @@ public class PendingKeyFileTests
     {
         using PendingKeyFile pending = PendingKeyFile.Open(_targetPath);
 
-        Assert.That(File.Exists(_pendingPath), Is.True);
-        Assert.That(File.Exists(_targetPath), Is.False);
-        Assert.That(pending.TempPath, Is.EqualTo(_pendingPath));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(_pendingPath), Is.True);
+            Assert.That(File.Exists(_targetPath), Is.False);
+            Assert.That(pending.TempPath, Is.EqualTo(_pendingPath));
+        }
     }
 
     [Test]
@@ -45,8 +48,11 @@ public class PendingKeyFileTests
         File.WriteAllText(_pendingPath, "stale-key-from-prior-run");
 
         IOException? thrown = Assert.Throws<IOException>(() => PendingKeyFile.Open(_targetPath));
-        Assert.That(thrown!.Message, Does.Contain("already exists"));
-        Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("stale-key-from-prior-run"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown!.Message, Does.Contain("already exists"));
+            Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("stale-key-from-prior-run"));
+        }
     }
 
     [Test]
@@ -78,8 +84,11 @@ public class PendingKeyFileTests
             pending.CommitAtomic();
         }
 
-        Assert.That(File.Exists(_pendingPath), Is.False);
-        Assert.That(File.ReadAllText(_targetPath), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(_pendingPath), Is.False);
+            Assert.That(File.ReadAllText(_targetPath), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -94,8 +103,11 @@ public class PendingKeyFileTests
         try { pending.AppendDurable(key); }
         finally { pending.Dispose(); }
 
-        Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo(key.ToString() + "\n"));
-        Assert.That(File.ReadAllText(_targetPath), Is.EqualTo(original));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo(key.ToString() + "\n"));
+            Assert.That(File.ReadAllText(_targetPath), Is.EqualTo(original));
+        }
     }
 
     [TestCase(PostCommitOp.AppendAgain)]

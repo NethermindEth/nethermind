@@ -65,8 +65,11 @@ public class TimeoutCertificateManagerTests
             NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
-        Assert.That(ok, Is.False);
-        Assert.That(err, Does.Contain("Failed to get snapshot"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(err, Does.Contain("Failed to get snapshot"));
+        }
     }
 
     [Test]
@@ -96,8 +99,11 @@ public class TimeoutCertificateManagerTests
             NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
-        Assert.That(ok, Is.False);
-        Assert.That(err, Does.Contain("Empty master node"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(err, Does.Contain("Empty master node"));
+        }
     }
 
     public static IEnumerable<TestCaseData> TcCases()

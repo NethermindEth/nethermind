@@ -133,7 +133,9 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(list.Remove(item), Is.EqualTo(removed));
+#pragma warning restore NUnit2045
         Assert.That(list, Is.EqualTo(expected));
     }
 
@@ -242,18 +244,24 @@ public class ArrayPoolListTests
 
         list.Insert(1, 2);
         Assert.That(list[1], Is.EqualTo(2));
-        Assert.That(list[1], Is.EqualTo(listT[1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list[1], Is.EqualTo(listT[1]));
 
-        Assert.That(list.Count, Is.EqualTo(2));
+            Assert.That(list.Count, Is.EqualTo(2));
+        }
         Assert.That(list.Count, Is.EqualTo(listT.Count));
 
         int[] a = new int[3];
 
         list.CopyTo(a, 1);
-        Assert.That(a[2], Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a[2], Is.EqualTo(2));
 
-        Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
-        Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+            Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
+            Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+        }
 
         list.Remove(2);
         Assert.That(list.Count, Is.EqualTo(1));
@@ -407,8 +415,11 @@ public class ArrayPoolListTests
 
         Action act = () => list.RemoveAt(2);
 
-        Assert.That(act, Throws.Nothing);
-        Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.Nothing);
+            Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        }
     }
 
     private sealed class ExactSizeArrayPool<T> : ArrayPool<T>
@@ -426,9 +437,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
 
         Assert.That(list.Count, Is.EqualTo(10));
-        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
-        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
-        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+            Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+            Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        }
     }
 
     [Test]

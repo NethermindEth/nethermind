@@ -24,7 +24,8 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
-        // trigger EIP-2780 sender recovery; expensive blob proof validation remains after the gas gate.
+        // trigger EIP-2780 sender recovery. Blob sidecar checks are the exception: they run after the gas gate
+        // (see the blob list), so a bad proof version can cost one sender recovery.
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
@@ -67,10 +68,11 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance,
+            // Sidecar checks run last: the pool forgets a sidecar-only rejection, so hash-covered defects must be reported first.
+            MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
@@ -190,17 +192,15 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
             : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError((options & TxValidationOptions.SkipErrorDetails) != 0
+            return (options & TxValidationOptions.SkipErrorDetails) != 0
                 ? TxErrorMessages.IntrinsicGasTooLow
-                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
+                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
-            ? IntrinsicGasError(TxErrorMessages.IntrinsicGasTooLow)
+            ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
-
-    private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
 /// <summary>Applies <paramref name="inner"/> to every transaction except frame transactions, which carry no
@@ -329,7 +329,8 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
             return ValidationResult.Success;
         }
 
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        // Not saturated at 2^64 - 1, so the error reports the real intrinsic plus execution gas.
+        if (!FrameTxValidation.TryCalculateExecutionReservation(transaction, releaseSpec, out UInt128 executionReservation))
         {
             return FrameTxValidation.FrameGasOverflow;
         }
@@ -375,7 +376,7 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             return FrameTxValidation.KeyedNoncesNotEnabled;
         }
 
-        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && (nonceKeys.Length != 0 || transaction.Nonce < Eip8250Constants.MaxNonceSeq)
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
@@ -687,5 +688,5 @@ public sealed class NonceCapTxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
 }

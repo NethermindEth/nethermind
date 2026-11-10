@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -139,8 +140,11 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         // Execute and verify the error message includes block number
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("No state available for block"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("No state available for block"));
+        }
         // Verify the error message includes both block number and hash (format: "{number} ({hash})")
         Assert.That(result.Result.Error, Does.Match(@"No state available for block \d+ \(0x[a-fA-F0-9]{64}\)"));
     }
@@ -156,7 +160,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         }
 
         ISimulateBlockTracerFactory<GethLikeTxTrace> tracerFactory = Substitute.For<ISimulateBlockTracerFactory<GethLikeTxTrace>>();
-        tracerFactory.CreateSimulateBlockTracer(Arg.Any<bool>(), Arg.Any<IWorldState>(), Arg.Any<ISpecProvider>(), Arg.Any<BlockHeader>()).Returns(tracer);
+        tracerFactory.CreateSimulateBlockTracer(Arg.Any<bool>(), Arg.Any<IWorldState>(), Arg.Any<ISpecProvider>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>()).Returns(tracer);
         SimulatePayload<TransactionWithSourceDetails> payload = new() { BlockStateCalls = [new BlockStateCall<TransactionWithSourceDetails>()] };
 
         SimulateOutput<GethLikeTxTrace> result = chain.Bridge.Simulate(chain.BlockFinder.Head!.Header, payload, tracerFactory, 10_000_000, default);

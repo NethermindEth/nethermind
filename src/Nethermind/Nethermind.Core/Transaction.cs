@@ -70,6 +70,8 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        /// <summary>Whether <see cref="BlockGasUsed"/> was set by an execution rather than falling back to <see cref="GasLimit"/>.</summary>
+        internal bool HasBlockGasUsed => _blockGasUsed > 0;
         public Address? To { get; set; }
         private UInt256 _gasPrice;
         private UInt256 _value;
@@ -280,7 +282,7 @@ namespace Nethermind.Core
         /// https://eips.ethereum.org/EIPS/eip-8250
         /// </summary>
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
-        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        /// linear account nonce — the domain EIP-8250 selects with the empty key set.</remarks>
         public UInt256[]? NonceKeys { get; set; }
 
         /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and

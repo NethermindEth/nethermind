@@ -22,8 +22,11 @@ public class FrameTxValidationTests
 
         bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled: true, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     [TestCase(true, null)]
@@ -35,8 +38,11 @@ public class FrameTxValidationTests
 
         bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<TestCaseData> ConstraintCases()
@@ -507,7 +513,7 @@ public class FrameTxValidationTests
             static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
             prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
         yield return Admission("OneAccessCostPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * Eip8250Constants.KeyedNonceAccessCost);
-        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
+        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [], prefixAndIntrinsic);
         yield return Admission("RecentRootFrameAtItsDeclaredLimit",
             static t => t.Frames = [RecentRootFrame(), SelfVerifyFrame()],
             prefixAndIntrinsic + (ulong)Eip8141Constants.PerFrameGasCost + 20_000 + Eip8272Constants.RecentRootTupleLength * GasCostOf.TxDataZero);
@@ -537,8 +543,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.True);
-        Assert.That(deadline, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(deadline, Is.EqualTo(expected));
+        }
     }
 
     // The deadline is read from the leading frame alone, so a frame the placement rule bars carries none.
@@ -554,8 +563,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [TestCase(0, false, TestName = "a leading expiry frame is correctly placed")]
@@ -582,8 +594,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -593,8 +608,11 @@ public class FrameTxValidationTests
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
 
-        Assert.That(found, Is.False);
-        Assert.That(deadline, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(deadline, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -609,13 +627,17 @@ public class FrameTxValidationTests
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasuredIntrinsic, out _, out _), Is.True);
 
         tx.FrameCalldataStats = (ZeroBytes: 8, NonZeroBytes: 24);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
 
-        Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
-            "the measured calldata must be priced, not served from the memo taken before it was set");
+            Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
+                "the measured calldata must be priced, not served from the memo taken before it was set");
+        }
     }
 
-    [TestCase(new ulong[] { 0 }, 0ul)]
+    [TestCase(new ulong[] { }, 0ul)]
+    [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
     [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
     public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)
@@ -626,7 +648,9 @@ public class FrameTxValidationTests
         Transaction keyless = CreateValidFrameTx(static _ => { });
         Transaction keyed = CreateValidFrameTx(t => t.NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key));
 
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(keyless, spec, out ulong keylessIntrinsic, out ulong keylessFloor, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(keyed, spec, out ulong intrinsic, out ulong floor, out _), Is.True);
 
         using (Assert.EnterMultipleScope())
@@ -642,7 +666,9 @@ public class FrameTxValidationTests
     {
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         Transaction tx = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, default)]);
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong original, out _, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong estimated, out ulong estimatedFloor, out ulong estimatedMax, estimateSignatureBytes: true), Is.True);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unchanged, out _, out _), Is.True);
         byte[] bytes = new byte[length];
@@ -658,4 +684,87 @@ public class FrameTxValidationTests
             Assert.That(estimated, Is.GreaterThan(original));
         }
     }
+
+    [TestCase(0, true)]
+    [TestCase(32, false)]
+    public void TryCalculateGasBudget_CanonicalHashSignatureBytesPricedByLengthOnly(int msgLength, bool samePrice)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip7976Enabled.Returns(true);
+        byte[] msg = new byte[msgLength];
+        byte[] ones = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        Array.Fill(ones, (byte)0xff);
+        Transaction zeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, new byte[TxFrameSignature.Secp256k1SignatureLength])]);
+        Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
+
+        bool zerosBudgeted = FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _);
+        bool nonZerosBudgeted = FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zerosBudgeted, Is.True);
+            Assert.That(nonZerosBudgeted, Is.True);
+            Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
+            Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
+        }
+    }
+
+    // EIP-8141 bounds the frame gas sum by 2^64 - 1, not the intrinsic gas added to it, so these budgets pass
+    // ulong.MaxValue. They saturate there; failing would mark a well-formed transaction unpriceable.
+    private static IEnumerable<TestCaseData> SaturatedBudgetCases()
+    {
+        // The shape of EELS test_frame_gas_sum_bound_transaction[sum_2_pow_64_minus_one].
+        yield return new TestCaseData(new[] { BudgetFrame(10_000, 0), BudgetFrame(10_000, ulong.MaxValue - 20_000) }, false)
+            .SetName("TryCalculateGasBudget_FrameGasSumAtItsMaximum_SaturatesTheBudget");
+        // The intrinsic gas plus the frame gas saturates here too, so this case passes whether the floor reservation
+        // wraps or saturates.
+        yield return new TestCaseData(new[] { BudgetFrame(0, ulong.MaxValue) }, false)
+            .SetName("TryCalculateGasBudget_StateGasAtTheMaximum_SaturatesTheBudget");
+        // Calldata lifts the floor above the intrinsic gas, so the calldata floor plus the state gas passes
+        // ulong.MaxValue while the intrinsic gas plus the frame gas stays 1000 below it.
+        byte[] calldata = new byte[100];
+        Array.Fill(calldata, (byte)0xff);
+        FrameTxValidation.TryCalculateGasBudget(
+            CreateValidFrameTx(t => t.Frames = [BudgetFrame(0, 0, calldata)]), FloorPricedSpec(), out ulong intrinsicGas, out _, out _);
+        yield return new TestCaseData(new[] { BudgetFrame(0, ulong.MaxValue - intrinsicGas - 1000, calldata) }, false)
+            .SetName("TryCalculateGasBudget_CalldataFloorPlusStateGasPastTheMaximum_SaturatesTheFloorReservation");
+        yield return new TestCaseData(new[] { BudgetFrame(ulong.MaxValue, 0) }, true)
+            .SetName("TryCalculateGasBudget_ExecutionGasAtTheMaximum_SaturatesTheExecutionReservation");
+    }
+
+    [TestCaseSource(nameof(SaturatedBudgetCases))]
+    public void TryCalculateGasBudget_PastUlongMaxValue_SaturatesRatherThanFailing(TxFrame[] frames, bool executionSaturates)
+    {
+        IReleaseSpec spec = FloorPricedSpec();
+        Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
+        ulong executionSum = 0;
+        ulong stateSum = 0;
+        foreach (TxFrame frame in frames)
+        {
+            executionSum += frame.ExecutionGasLimit;
+            stateSum += frame.StateGasLimit;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas), Is.True);
+            Assert.That(maxGas, Is.EqualTo(ulong.MaxValue));
+            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong execution, out ulong state), Is.True);
+            Assert.That(state, Is.EqualTo(stateSum));
+            Assert.That(execution, Is.EqualTo(executionSaturates ? ulong.MaxValue : Math.Max(intrinsicGas + executionSum, floorGas)));
+        }
+    }
+
+    private static IReleaseSpec FloorPricedSpec()
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        return spec;
+    }
+
+    private static TxFrame BudgetFrame(ulong executionGasLimit, ulong stateGasLimit, byte[]? data = null) =>
+        new(FrameMode.Default, FrameFlags.None, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, data);
 }

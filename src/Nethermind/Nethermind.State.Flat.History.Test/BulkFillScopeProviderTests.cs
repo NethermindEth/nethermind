@@ -9,7 +9,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Changesets;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -73,7 +72,7 @@ public class BulkFillScopeProviderTests
             Anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
             _session = new BulkFillSession(new MemDbFactory(), _code, TestItem.KeccakA, Anchor, false);
             _session.ImportGenesis([], CancellationToken.None);
-            Provider = new BulkFillScopeProvider(_session, Substitute.For<ITrieNodeCache>(), _resourcePool, Config, LimboLogs.Instance);
+            Provider = new BulkFillScopeProvider(_session, _resourcePool, Config, LimboLogs.Instance);
         }
 
         public void Dispose()

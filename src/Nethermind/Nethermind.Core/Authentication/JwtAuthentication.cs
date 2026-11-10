@@ -104,19 +104,22 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"Cannot write authentication secret to '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+                    if (SensitiveLogMasking.Enabled)
+                        logger.Error($"Cannot write authentication secret to '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter. Exception: {ex.GetType().Name}");
+                    else
+                        logger.Error($"Cannot write authentication secret to '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
                 throw;
             }
 
-            if (logger.IsWarn) logger.Warn($"The authentication secret file '{fileInfo.FullName}' was not found or was empty, so it has been automatically created.");
+            if (logger.IsWarn) logger.Warn($"The authentication secret file '{fileInfo.FullName:hide}' was not found or was empty, so it has been automatically created.");
 
             return new(secret, timestamper, logger);
         }
         else
         {
             // Secret exists read from file
-            if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName}'");
+            if (logger.IsInfo) logger.Info($"Reading authentication secret from '{fileInfo.FullName:hide}'");
             string hexSecret;
             try
             {
@@ -127,7 +130,10 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"Cannot read authentication secret from '{fileInfo.FullName}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
+                    if (SensitiveLogMasking.Enabled)
+                        logger.Error($"Cannot read authentication secret from '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter. Exception: {ex.GetType().Name}");
+                    else
+                        logger.Error($"Cannot read authentication secret from '{fileInfo.FullName:hide}'. To change file location, set the 'JsonRpc.JwtSecretFile' parameter.", ex);
                 }
                 throw;
             }
@@ -137,7 +143,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             {
                 if (logger.IsError)
                 {
-                    logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
+                    logger.Error($"The specified authentication secret is not a 64-digit hex number. Delete the '{fileInfo.FullName:hide}' to generate a new secret or set the 'JsonRpc.JwtSecretFile' parameter.");
                 }
                 throw new FormatException("The specified authentication secret must be a 64-digit hex number.");
             }
@@ -403,7 +409,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.GetType().Name}");
     }
 
     private bool ValidateLibraryResult(TokenValidationResult result, string token, JsonWebToken jwtToken, long nowUnixSeconds)
@@ -427,7 +433,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             ? long.MaxValue
             : jwtToken.ValidTo.ToUnixTimeSeconds();
         CacheLastToken(token, issuedAtUnix, expiresUnix);
-        if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds, token);
+        if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds);
         return true;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -436,7 +442,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
             SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
             SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
-            _ => $"Message authentication error: {ex?.Message}"
+            _ => $"Message authentication error: {ex?.GetType().Name}"
         });
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -444,8 +450,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             => _logger.Warn($"Token expired. iat: {iat}, now: {now}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAuth(JsonWebToken jwt, long now, string tok)
-            => _logger.Trace($"Message authenticated. Token: {tok.AsMemory(JwtMessagePrefix.Length)}, iat: {jwt.IssuedAt}, time: {now}");
+        void TraceAuth(JsonWebToken jwt, long now)
+            => _logger.Trace($"Message authenticated. iat: {jwt.IssuedAt}, time: {now}");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -462,7 +468,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.Message}");
+        void WarnAuthError(Exception? ex) => _logger.Warn($"Message authentication error: {ex?.GetType().Name}");
     }
 
     private bool LifetimeValidator(
