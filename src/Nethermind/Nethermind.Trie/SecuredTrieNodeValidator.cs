@@ -24,6 +24,8 @@ internal static class SecuredTrieNodeValidator
     private const int HashString = 0x80 + Hash256.Size;
     private const int BranchChildren = 16;
     private const int FullBranchLength = 3 + BranchChildren * (1 + Hash256.Size) + 1;
+    // The list header of a full branch, 0xf9 then its payload length in two bytes, and its first child's prefix, read little endian.
+    private const uint FullBranchStart = 0xf9 | (FullBranchLength - 3) >> 8 << 8 | ((FullBranchLength - 3) & 0xff) << 16 | (uint)HashString << 24;
 
     /// <summary>Rejects a witness node that is malformed or cannot sit <paramref name="depth"/> nibbles below its trie's root.</summary>
     /// <param name="rlp">The node's encoding.</param>
@@ -48,10 +50,10 @@ internal static class SecuredTrieNodeValidator
         ref byte node = ref MemoryMarshal.GetReference(rlp);
         if (length == FullBranchLength)
         {
-            // Unrolled: a loop costs the guest more than twice the three instructions per prefix.
-            int mismatch = (node ^ 0xf9) | (Unsafe.Add(ref node, 1) ^ (FullBranchLength - 3) >> 8) | (Unsafe.Add(ref node, 2) ^ (FullBranchLength - 3) & 0xff)
-                | (Unsafe.Add(ref node, FullBranchLength - 1) ^ EmptyString)
-                | NotHash(ref node, 0) | NotHash(ref node, 1) | NotHash(ref node, 2) | NotHash(ref node, 3)
+            // Unrolled: a loop costs the guest more than twice the three instructions per prefix. The list header and the first
+            // child's prefix are read as one word: an array's data is word aligned.
+            uint mismatch = (Unsafe.ReadUnaligned<uint>(ref node) ^ FullBranchStart) | (uint)(Unsafe.Add(ref node, FullBranchLength - 1) ^ EmptyString)
+                | NotHash(ref node, 1) | NotHash(ref node, 2) | NotHash(ref node, 3)
                 | NotHash(ref node, 4) | NotHash(ref node, 5) | NotHash(ref node, 6) | NotHash(ref node, 7)
                 | NotHash(ref node, 8) | NotHash(ref node, 9) | NotHash(ref node, 10) | NotHash(ref node, 11)
                 | NotHash(ref node, 12) | NotHash(ref node, 13) | NotHash(ref node, 14) | NotHash(ref node, 15);
@@ -78,41 +80,60 @@ internal static class SecuredTrieNodeValidator
         };
         if (listEnd != length || itemsStart >= length) ThrowInvalidNode();
 
-        int secondItem = ItemEnd(ref node, itemsStart, length);
-        if (secondItem < 0) ThrowInvalidNode();
-        if (secondItem < length && ItemEnd(ref node, secondItem, length) == length)
+        // Most of the other nodes are branches, so a branch is tried first; a leaf or an extension fails it within its first
+        // three items. Unrolled: the loop's counter costs the guest a quarter of each slot.
+        int position = itemsStart;
+        int children = 0;
+        if (SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            && SkipChild(ref node, ref position, length, ref children) && SkipChild(ref node, ref position, length, ref children)
+            // A secured key never ends at a branch, so a branch holds no value.
+            && position + 1 == length && Unsafe.Add(ref node, position) == EmptyString)
         {
-            ValidateLeafOrExtension(ref node, itemsStart, secondItem, length, remaining);
+            if (remaining <= 0 || children < 2) ThrowInvalidNode();
             return;
         }
 
-        if (remaining <= 0) ThrowInvalidNode();
-        int position = itemsStart;
-        int children = 0;
-        for (int i = 0; i < BranchChildren; i++)
-        {
-            if (position >= length) ThrowInvalidNode();
-            int prefix = Unsafe.Add(ref node, position);
-            if (prefix == EmptyString)
-            {
-                position++;
-                continue;
-            }
+        int secondItem = ItemEnd(ref node, itemsStart, length);
+        if (secondItem < 0 || secondItem >= length || ItemEnd(ref node, secondItem, length) != length) ThrowInvalidNode();
+        ValidateLeafOrExtension(ref node, itemsStart, secondItem, length, remaining);
+    }
 
-            children++;
-            if (prefix == HashString) position += 1 + Hash256.Size;
-            // An embedded node, whose list encoding is shorter than a hash.
-            else if ((uint)(prefix - 0xc1) < Hash256.Size - 2) position += 1 + prefix - 0xc0;
-            else ThrowInvalidNode();
+    /// <summary>Moves <paramref name="position"/>, below <paramref name="length"/>, past a branch's child reference: empty, a
+    /// hash, or an embedded node shorter than a hash.</summary>
+    /// <returns>Whether the item there is one; <paramref name="position"/> is then past it, though maybe past the node.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SkipChild(ref byte node, ref int position, int length, ref int children)
+    {
+        if (position >= length) return false;
+
+        int prefix = Unsafe.Add(ref node, position);
+        if (prefix == EmptyString)
+        {
+            position++;
+            return true;
         }
 
-        // A secured key never ends at a branch, so a branch holds no value.
-        if (position + 1 != length || Unsafe.Add(ref node, position) != EmptyString || children < 2) ThrowInvalidNode();
+        children++;
+        if (prefix == HashString)
+        {
+            position += 1 + Hash256.Size;
+            return true;
+        }
+
+        // An embedded node, whose list encoding is shorter than a hash.
+        position += 1 + prefix - 0xc0;
+        return (uint)(prefix - 0xc1) < Hash256.Size - 2;
     }
 
     /// <summary>Nonzero unless child <paramref name="index"/> of a full branch is a hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int NotHash(ref byte fullBranch, int index) => Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString;
+    private static uint NotHash(ref byte fullBranch, int index) => (uint)(Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString);
 
     /// <summary>Checks a node of two items, the first of which ends at <paramref name="secondItem"/>.</summary>
     private static void ValidateLeafOrExtension(ref byte node, int path, int secondItem, int length, int remaining)
