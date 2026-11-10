@@ -2,19 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
