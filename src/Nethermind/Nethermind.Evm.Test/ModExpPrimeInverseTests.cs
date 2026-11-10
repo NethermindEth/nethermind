@@ -63,23 +63,37 @@ public class ModExpPrimeInverseTests
     }
 
     [TestCaseSource(nameof(PrimeCases))]
-    public void Inverse_times_base_is_one(string primeHex)
+    public void Power_of_two_bases_match_exponentiation(string primeHex)
+    {
+        BigInteger p = Parse(primeHex);
+
+        // 2^k and 2^k - 1 give long runs of zero and one bits, the extremes of the divstep batches
+        for (int k = 0; k <= 256; k++)
+        {
+            BigInteger power = BigInteger.One << k;
+            if (k < 256)
+                AssertMatches(p, power, ToBytes(power, 32));
+            AssertMatches(p, power - 1, ToBytes(power - 1, 32));
+        }
+    }
+
+    [Explicit("Long differential run against BigInteger.ModPow")]
+    [TestCaseSource(nameof(PrimeCases))]
+    public void Many_random_bases_match_exponentiation(string primeHex)
     {
         BigInteger p = Parse(primeHex);
         byte[] modulus = Convert.FromHexString(primeHex);
         byte[] exponent = ToBytes(p - 2, 32);
-        Random random = new(7);
+        Random random = new(11);
         byte[] baseBytes = new byte[32];
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 1_000_000; i++)
         {
             random.NextBytes(baseBytes);
-            BigInteger value = ParseBytes(baseBytes);
-            if (value % p == 0)
-                continue;
-
             bool inverted = PrimeFieldInverse.TryInvert(baseBytes, exponent, modulus, out byte[]? inverse);
-            Assert.That(inverted && ParseBytes(inverse!) * value % p == BigInteger.One, Is.True);
+            BigInteger value = ParseBytes(baseBytes);
+            if (!inverted || ParseBytes(inverse!) != BigInteger.ModPow(value, p - 2, p))
+                Assert.Fail($"Mismatch for base {Convert.ToHexString(baseBytes)}");
         }
     }
 
