@@ -708,6 +708,39 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Blob_compaction_waits_for_expired_slice_cleanup([Values(20UL, 100_002UL)] ulong expiredUpperBound)
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        const ulong reclaimedThrough = 200_000;
+        chain.BlockTree.SyncPivot = (reclaimedThrough, Hash256.Zero);
+        IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(reclaimedThrough).Bytes);
+        metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimedThrough).Bytes);
+        MutableRetention retention = new() { ExpiredUpperBound = expiredUpperBound };
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb, retention);
+        blocksDb.CompactReclaimingBlobFiles().Returns(_ =>
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chain.BlockTree.FindBlock(10UL, BlockTreeLookupOptions.None), Is.Null);
+                Assert.That(new RlpReader(metadata.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor)).DecodeULong(), Is.EqualTo(expiredUpperBound));
+            }
+            return true;
+        });
+
+        pruner.TryPruneHistory(CancellationToken.None);
+        if (expiredUpperBound > 100_001)
+        {
+            blocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+            Assert.That(metadata.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone), Is.False);
+            pruner.TryPruneHistory(CancellationToken.None);
+        }
+
+        blocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
     public async Task Blob_compaction_failure_leaves_completion_unset_for_retry()
     {
         HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };

@@ -1355,15 +1355,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
-    // Age cutoff 1.0 makes every blob file a GC candidate and force threshold 0.0 relocates their live values into
-    // fresh blob files, so the forced-bottommost rewrite can drop every stale blob file - a surviving key pinning the
-    // oldest one otherwise keeps all newer unreferenced files alive.
+    // Age cutoff 1.0 lets the forced-bottommost rewrite relocate every live blob. Keep the force threshold at
+    // 1.0 to avoid scheduling redundant background GC compactions alongside the explicit rewrite.
     private static readonly Dictionary<string, string> BlobGarbageCollectionOptions = new()
     {
         { "enable_blob_files", "true" },
         { "enable_blob_garbage_collection", "true" },
         { "blob_garbage_collection_age_cutoff", "1.0" },
-        { "blob_garbage_collection_force_threshold", "0.0" },
+        { "blob_garbage_collection_force_threshold", "1.0" },
         { "blob_compression_type", "kSnappyCompression" },
     };
 

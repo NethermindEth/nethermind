@@ -1405,7 +1405,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void CompactReclaimingBlobFiles_RestoresTheTuneThatLandedDuringCompaction_NotThePreCompactionOptions()
+        public void CompactReclaimingBlobFiles_RestoresTheTuneThatLandedDuringCompaction_NotThePreCompactionOptions([Values] bool disableAutoCompactions)
         {
             // The concurrency case: the sync tuner's Tune(Default) (bodies feed Finished) lands while the forced
             // compaction is running - the window the lock is deliberately not held. The live database must not have
@@ -1413,7 +1413,7 @@ namespace Nethermind.Db.Test
             // still re-derive from the effective options that Tune left, turning blob files off afterwards, rather
             // than blindly re-applying the pre-compaction snapshot that still had them on. Blob files start on via a
             // runtime tune, exactly as the tuner turns them on while bodies sync.
-            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            DbConfig config = new() { AdditionalRocksDbOptions = $"disable_auto_compactions={disableAutoCompactions.ToString().ToLowerInvariant()};" };
             using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
             using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.Default);
 
@@ -1427,6 +1427,8 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(compacted, Is.True);
                 Assert.That(db.TuneInjected, Is.True, "the test must have injected the mid-compaction Tune for the assertion to mean anything");
+                Assert.That(db.LiveForceThresholdWhenTuneInjected, Is.EqualTo("1.0"),
+                    "the explicit rewrite must not schedule competing background blob GC compactions");
                 Assert.That(db.LiveBlobFilesWhenTuneInjected, Is.EqualTo("true"),
                     "the mid-compaction Tune(Default) must be deferred: the live database must still have blob files on while the reclaim pass runs, not flipped off under it");
                 Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
@@ -1477,7 +1479,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot()
+        public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot([Values] bool disableAutoCompactions)
         {
             // The sliced-history shape a realistic retention prune leaves behind: scattered survivors across the
             // whole range, so (nearly) every blob file still holds a live key and none is fully unreferenced. A
@@ -1488,7 +1490,7 @@ namespace Nethermind.Db.Test
             // fully unreferenced, so a plain compaction reclaims them too.
             DbConfig config = new()
             {
-                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+                AdditionalRocksDbOptions = $"enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions={disableAutoCompactions.ToString().ToLowerInvariant()};"
             };
             RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
@@ -2774,6 +2776,8 @@ namespace Nethermind.Db.Test
         // withheld from the live database for the duration of the reclaim pass.
         public string? LiveBlobFilesWhenTuneInjected { get; private set; }
 
+        public string? LiveForceThresholdWhenTuneInjected { get; private set; }
+
         internal override void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost)
         {
             if (!TuneInjected)
@@ -2782,6 +2786,7 @@ namespace Nethermind.Db.Test
                 Tune(tuneToInject);
                 TuneInjected = true;
                 LiveBlobFilesWhenTuneInjected = LatestLiveBlobFiles();
+                LiveForceThresholdWhenTuneInjected = LatestLiveOption("blob_garbage_collection_force_threshold");
             }
 
             base.CompactOpenRange(cf, forceBottommost);

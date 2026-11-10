@@ -414,6 +414,7 @@ public class HistoryPruner : IHistoryPruner
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
                 CleanupExpiredSliceRetention(cancellationToken);
+                TryCompactBlocksReclaimingBlobFiles();
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
                 // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
@@ -697,15 +698,7 @@ public class HistoryPruner : IHistoryPruner
         // Chases the published boundary, not the cutoff: they part company the moment a pass is interrupted.
         ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
-        if (start >= limit)
-        {
-            // The reclaim cursor has already caught up to the boundary, so the loop below never runs. The one-shot
-            // blob compaction still owes a run if a reclaim has happened but it never completed - e.g. a process exit
-            // aborted it after the cursor had reached here - so it is evaluated on this path too, not only after a
-            // pass that reclaimed. This is where a restart-triggered retry lands, once ShouldPruneHistory re-enters.
-            TryCompactBlocksReclaimingBlobFiles();
-            return;
-        }
+        if (start >= limit) return;
 
         ulong reclaimed = 0;
         try
@@ -758,11 +751,6 @@ public class HistoryPruner : IHistoryPruner
                 _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
         }
-
-        // Success path only - an interrupted reclaim returns from inside the loop above and never reaches here, so
-        // the hours-long rewrite is not launched over a half-pruned database, nor from a finally that would mask a
-        // mid-reclaim exception. The cursor has reached the boundary, so the stale blob files can be retired.
-        TryCompactBlocksReclaimingBlobFiles();
     }
 
     /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
@@ -784,6 +772,9 @@ public class HistoryPruner : IHistoryPruner
     private void TryCompactBlocksReclaimingBlobFiles()
     {
         if (!IsBlobCompactionOwed() || _processExitSource.Token.IsCancellationRequested) return;
+        // Finish pending deletions before rewriting bodies that would immediately become garbage again.
+        if (_blocksReclaimCursor < _blocksDeletePointer
+            || ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber) < SliceCleanupTarget()) return;
         CompactBlocksReclaimingBlobFiles();
     }
 
