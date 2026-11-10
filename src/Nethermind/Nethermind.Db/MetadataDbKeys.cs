@@ -30,5 +30,6 @@ namespace Nethermind.Db
         public const int RetiredHistorySliceLogsSliceSet = 23;
         public const int AncientBodiesDownloadComplete = 24;
         public const int HistoryPruningBlobCompactionDone = 25;
+        public const int HistoryPruningBlobCompactionOwed = 26;
     }
 }

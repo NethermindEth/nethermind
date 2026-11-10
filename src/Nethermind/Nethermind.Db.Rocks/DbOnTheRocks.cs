@@ -82,6 +82,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // compaction window withholds the blob-GC keys from the live database and cannot weaken the running reclaim
     // pass - it still records its intended values for the epilogue restore. Read and written only under _tuneLock.
     private bool _blobCompactionInProgress;
+    private int _compactionsInterrupted;
 
     public bool WasRepairedOnOpen => _instance.WasRepairedOnOpen;
 
@@ -110,11 +111,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _columnFamily = columnFamily;
         Name = name;
         _perTableDbConfig = config;
-        _effectiveBlobGcOptions = BuildEffectiveBlobGcOptions(config);
         VerifyChecksum = config.VerifyChecksum ?? true;
         ReadAheadSize = config.ReadAheadSize ?? 256UL.KiB;
 
         IDictionary<string, string> optionsAsDict = ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
+        _effectiveBlobGcOptions = BuildEffectiveBlobGcOptions(optionsAsDict);
         _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
         _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
         _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
@@ -1384,7 +1385,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // standalone database such as the blocks DB. A column family shares one underlying database with its
         // siblings, so a per-column rewrite would touch data it does not own; a column-bound store declines it,
         // which keeps it a no-op for every column family.
-        if (_columnFamily is not null) return false;
+        if (_columnFamily is not null || Volatile.Read(ref _compactionsInterrupted) != 0) return false;
 
         // A store with no blob files has nothing for the rewrite to reclaim, so skip hours of pointless I/O - but
         // still report it ran, so the one-shot caller marks it done rather than re-attempting it every start. When
@@ -1394,6 +1395,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             if (_logger.IsInfo) _logger.Info($"Skipping blob-file compaction of {Name}: it holds no blob files to reclaim.");
             return true;
         }
+
+        if (!CanConfirmBlobCompaction()) return false;
 
         if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
 
@@ -1443,7 +1446,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        return true;
+        return CanConfirmBlobCompaction();
+    }
+
+    private bool CanConfirmBlobCompaction()
+    {
+        if (Volatile.Read(ref _compactionsInterrupted) != 0) return false;
+
+        // CompactRange's C API discards its status. Fail closed if RocksDB reports a background error,
+        // including one predating this attempt, rather than permanently consuming the one-shot.
+        if (_db.TryGetIntProperty("rocksdb.background-errors", out ulong errors) && errors == 0) return true;
+
+        if (_logger.IsError) _logger.Error($"Cannot confirm blob-file compaction of {Name}: RocksDB background errors are present or unavailable. Completion will not be recorded.");
+        return false;
     }
 
     private bool HasBlobFiles()
@@ -1455,9 +1470,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <summary>Seeds the tracked effective values of the blob-GC options from the database's own configuration,
     /// falling back to the RocksDB defaults in <see cref="BlobGarbageCollectionDefaults"/> for any key the
     /// configuration leaves unset, so the map starts out matching the options the database opens with.</summary>
-    private static Dictionary<string, string> BuildEffectiveBlobGcOptions(IRocksDbConfig config)
+    private static Dictionary<string, string> BuildEffectiveBlobGcOptions(IDictionary<string, string> configured)
     {
-        IDictionary<string, string> configured = ExtractOptions(config.RocksDbOptions + config.AdditionalRocksDbOptions);
         Dictionary<string, string> effective = new(BlobGarbageCollectionDefaults.Count);
         foreach ((string key, string defaultValue) in BlobGarbageCollectionDefaults)
         {
@@ -1491,7 +1505,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     /// <inheritdoc/>
-    public virtual void InterruptCompactions() => _db.DisableManualCompaction();
+    public virtual void InterruptCompactions()
+    {
+        Interlocked.Exchange(ref _compactionsInterrupted, 1);
+        _db.DisableManualCompaction();
+    }
 
     internal string? GatherProperty(string name) => _columnFamily is null ? _db.GetProperty(name) : _db.GetProperty(name, _columnFamily);
 

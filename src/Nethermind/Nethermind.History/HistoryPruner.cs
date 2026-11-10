@@ -97,6 +97,7 @@ public class HistoryPruner : IHistoryPruner
     private bool _hasLoadedBalsDeletePointer;
     // One-shot: once a blob-reclaiming compaction completes it is persisted and never repeated for the DB's life.
     private bool _blobCompactionDone;
+    private bool _blobCompactionOwed;
     private volatile bool _stampsValidated;
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
@@ -718,6 +719,11 @@ public class HistoryPruner : IHistoryPruner
 
                 DeleteBlockAccessListsRange(from, to);
 
+                if (to > from && !_blobCompactionOwed)
+                {
+                    _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
+                    _blobCompactionOwed = true;
+                }
                 _blocksReclaimCursor = to;
                 if (_balsDeletePointer < to)
                 {
@@ -762,9 +768,8 @@ public class HistoryPruner : IHistoryPruner
     /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
     /// fixed barriers), a reclaim has removed history from the blocks database and reached the configured ancient
     /// barrier, and the completion marker is unset.</summary>
-    /// <remarks>The reclaim signal is the persisted reclaim cursor having advanced past the first deletable block, not
-    /// an in-memory flag, so a run a process exit aborted mid-way is still owed after a restart - the marker stays
-    /// unset and the cursor is reloaded from disk - even on a quiescent, fully-reclaimed node. It is deferred until the
+    /// <remarks>Actual reclaim work is persisted separately from the cursor: a freshly synced database can start
+    /// with its cursor at the barrier without ever having stored the older bodies. It is deferred until the
     /// cursor reaches the barrier because the marker is permanent: under fast sync the live pivot clamps
     /// <see cref="AncientBodiesBarrier"/> and the reclaim, so a rewrite fired on a partial reclaim would leave the
     /// later reclaim re-pinning blob files with no second rewrite possible. The target is therefore the configured
@@ -772,6 +777,7 @@ public class HistoryPruner : IHistoryPruner
     private bool IsBlobCompactionOwed() =>
         _compactBlocksOnPrune
         && !_blobCompactionDone
+        && _blobCompactionOwed
         && _blocksReclaimCursor > _minDeletableBlockNumber
         && _blocksReclaimCursor >= (_fastSync ? _syncConfig.AncientBodiesBarrier : _syncConfig.AncientBodiesBarrierCalc);
 
@@ -809,8 +815,8 @@ public class HistoryPruner : IHistoryPruner
         // it done then would skip the reclaim forever.
         if (_processExitSource.Token.IsCancellationRequested) return;
 
-        _blobCompactionDone = true;
         _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, [1]);
+        _blobCompactionDone = true;
 
         if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
     }
@@ -1259,6 +1265,14 @@ public class HistoryPruner : IHistoryPruner
         LoadTxIndexSweepCursor();
 
         _blobCompactionDone = _metadataDb.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone);
+        byte[]? compactionOwed = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionOwed);
+        // Preserve the recovery path for older pruners, including those that persisted only a delete pointer.
+        // Persist false too, so saving an inferred cursor on a freshly synced database cannot arm it on restart.
+        _blobCompactionOwed = compactionOwed is null
+            ? persistedPointer > _minDeletableBlockNumber
+            : compactionOwed is [1];
+        if (compactionOwed is null && !_frontierFrozen)
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [_blobCompactionOwed ? (byte)1 : (byte)0]);
 
         _hasLoadedDeletePointers = true;
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_blocksDeletePointer}, oldest BAL stored #{_balsDeletePointer}.");

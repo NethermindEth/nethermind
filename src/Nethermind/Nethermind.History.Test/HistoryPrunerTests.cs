@@ -669,7 +669,65 @@ public class HistoryPrunerTests
         restartedBlocksDb.Received(1).CompactReclaimingBlobFiles();
     }
 
-    private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb, IPrunedReceiptRetention retention = null, IProcessExitSource processExitSource = null)
+    [Test]
+    public async Task Blob_compaction_waits_for_actual_reclaim_on_a_barrier_synced_database()
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        chain.BlockTree.DeleteOldBlockRange(1, BeaconGenesisBlockNumber);
+        SyncConfig syncConfig = new() { AncientBodiesBarrier = BeaconGenesisBlockNumber, AncientReceiptsBarrier = BeaconGenesisBlockNumber, PivotNumber = 100, SnapSync = true };
+
+        HistoryPruner first = CreatePrunerWithSpyBlocksDb(chain, config, out IDb firstBlocksDb, syncConfig: syncConfig);
+        first.TryPruneHistory(CancellationToken.None);
+        firstBlocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+
+        HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(chain, config, out IDb restartedBlocksDb, syncConfig: syncConfig);
+        restartedBlocksDb.CompactReclaimingBlobFiles().Returns(true);
+        restarted.TryPruneHistory(CancellationToken.None);
+        restartedBlocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+
+        syncConfig.AncientBodiesBarrier = BeaconGenesisBlockNumber + 10;
+        restarted.TryPruneHistory(CancellationToken.None);
+        restartedBlocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Blob_compaction_recovers_legacy_pruning_metadata([Values] bool hasReclaimCursor)
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
+        if (hasReclaimCursor) metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb);
+        blocksDb.CompactReclaimingBlobFiles().Returns(true);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        blocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Blob_compaction_failure_leaves_completion_unset_for_retry()
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb);
+        blocksDb.CompactReclaimingBlobFiles().Returns(false, true);
+        pruner.TryPruneHistory(CancellationToken.None);
+        IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
+        Assert.That(metadata.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone), Is.False);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            blocksDb.Received(2).CompactReclaimingBlobFiles();
+            Assert.That(metadata.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone), Is.True);
+        }
+    }
+
+    private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb, IPrunedReceiptRetention retention = null, IProcessExitSource processExitSource = null, ISyncConfig syncConfig = null)
     {
         // Reuses the blockchain's real stores so a pass actually reclaims, but swaps the pruner's blocks DB for a
         // substitute. The pruner deletes blocks through the block tree, not this handle, so the reclaim is unaffected
@@ -692,6 +750,7 @@ public class HistoryPrunerTests
                 .AddSingleton<IHistoryPruner, HistoryPruner>();
             if (retention is not null) builder.AddSingleton<IPrunedReceiptRetention>(retention);
             if (processExitSource is not null) builder.AddSingleton<IProcessExitSource>(processExitSource);
+            if (syncConfig is not null) builder.AddSingleton<ISyncConfig>(syncConfig);
         });
 
         // Ends with the blockchain's container at the end of the test, not here, which would dispose the pruner's own dependencies.

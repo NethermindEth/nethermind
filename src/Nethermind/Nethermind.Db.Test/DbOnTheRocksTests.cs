@@ -1302,8 +1302,7 @@ namespace Nethermind.Db.Test
         public void CompactReclaimingBlobFiles_RestoresConfiguredBlobAndCompactionOptions_NotTheStandardTuneDefaults()
         {
             // A blocks database that runs with blob files and auto-compaction disabled: the one-shot must put both
-            // back exactly as configured, not reset them to the standard tune defaults the way routing the restore
-            // through Tune(Default) did.
+            // back exactly as configured, not reset them to the standard tune defaults.
             DbConfig config = new()
             {
                 AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
@@ -1312,11 +1311,7 @@ namespace Nethermind.Db.Test
             using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
             const int heights = 100;
-            byte[] value = new byte[4096];
-            Random.Shared.NextBytes(value);
-            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
-            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must actually be engaged before the compaction");
+            byte[] value = SeedBlobValues(db, heights);
 
             bool compacted = db.CompactReclaimingBlobFiles();
 
@@ -1355,11 +1350,7 @@ namespace Nethermind.Db.Test
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
 
             const int heights = 100;
-            byte[] value = new byte[4096];
-            Random.Shared.NextBytes(value);
-            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
-            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the runtime tune must engage blob mode before the compaction");
+            byte[] value = SeedBlobValues(db, heights);
 
             bool compacted = db.CompactReclaimingBlobFiles();
 
@@ -1397,12 +1388,7 @@ namespace Nethermind.Db.Test
             using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
             using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
-            const int heights = 100;
-            byte[] value = new byte[4096];
-            Random.Shared.NextBytes(value);
-            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
-            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the configured blob mode must be engaged before the tune disables it");
+            SeedBlobValues(db, 100);
 
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
             db.Tune(ITunableDb.TuneType.Default);
@@ -1433,12 +1419,7 @@ namespace Nethermind.Db.Test
 
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
 
-            const int heights = 100;
-            byte[] value = new byte[4096];
-            Random.Shared.NextBytes(value);
-            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
-            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the runtime tune must engage blob mode before the compaction");
+            SeedBlobValues(db, 100);
 
             bool compacted = db.CompactReclaimingBlobFiles();
 
@@ -1583,6 +1564,71 @@ namespace Nethermind.Db.Test
                     "the retained values must be rewritten compressed, not at their raw size");
                 Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Not.Null, "the pinned bottom key must still read back");
             }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_DoesNotReportCompletionAfterNativeFailure()
+        {
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;disable_auto_compactions=true;"
+            };
+            using (RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig))
+            using (OptionsCapturingDbOnTheRocks seeding = new(instance, tableConfig, LimboLogs.Instance))
+            {
+                SeedBlobValues(seeding, 100);
+            }
+
+            string blob = Directory.EnumerateFiles(DbPath, "*.blob", SearchOption.AllDirectories).First();
+            File.WriteAllBytes(blob, new byte[new FileInfo(blob).Length]);
+
+            using RocksDbInstance reopened = OpenBlocksInstance(config, out IRocksDbConfig reopenedConfig);
+            using OptionsCapturingDbOnTheRocks db = new(reopened, reopenedConfig, LimboLogs.Instance);
+            Assert.That(db.GatherProperty("rocksdb.background-errors"), Is.EqualTo("0"));
+
+            bool completed = db.CompactReclaimingBlobFiles();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed, Is.False);
+                Assert.That(ulong.Parse(db.GatherProperty("rocksdb.background-errors")!), Is.GreaterThan(0));
+                Assert.That(db.LatestLiveOption("enable_blob_garbage_collection"), Is.EqualTo("false"));
+            }
+
+            db.AppliedOptions.Clear();
+            bool retried = db.CompactReclaimingBlobFiles();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retried, Is.False);
+                Assert.That(db.AppliedOptions, Is.Empty, "an existing background error must prevent another rewrite");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_DoesNotReportCompletionAfterInterrupt()
+        {
+            using RocksDbInstance instance = OpenBlocksInstance(new DbConfig(), out IRocksDbConfig tableConfig);
+            using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.Default, interrupt: true);
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+            SeedBlobValues(db, 100);
+
+            bool interrupted = db.CompactReclaimingBlobFiles();
+            bool retried = db.CompactReclaimingBlobFiles();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(interrupted, Is.False);
+                Assert.That(retried, Is.False);
+            }
+        }
+
+        private byte[] SeedBlobValues(DbOnTheRocks db, int heights)
+        {
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= (ulong)heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must be engaged before compaction");
+            return value;
         }
 
         // Seeds block-ordered blob-sized values, then prunes everything except a scattered 1-in-retainEvery
@@ -2717,7 +2763,8 @@ namespace Nethermind.Db.Test
         RocksDbInstance instance,
         IRocksDbConfig config,
         ILogManager logManager,
-        ITunableDb.TuneType tuneToInject
+        ITunableDb.TuneType tuneToInject,
+        bool interrupt = false
         ) : OptionsCapturingDbOnTheRocks(instance, config, logManager)
     {
         public bool TuneInjected { get; private set; }
@@ -2731,6 +2778,7 @@ namespace Nethermind.Db.Test
         {
             if (!TuneInjected)
             {
+                if (interrupt) InterruptCompactions();
                 Tune(tuneToInject);
                 TuneInjected = true;
                 LiveBlobFilesWhenTuneInjected = LatestLiveBlobFiles();
