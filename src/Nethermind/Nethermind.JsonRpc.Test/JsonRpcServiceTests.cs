@@ -616,6 +616,33 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Returns_eth_getLogs_module_when_parameter_binding_throws_after_rental()
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        JsonRpcRequest request = new()
+        {
+            JsonRpc = "2.0",
+            Method = "eth_getLogs",
+            ParamsUtf8 = Encoding.UTF8.GetBytes("""[{"fromBlock":"0x1","toBlock":"0x2","address":[null]}]"""),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        };
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            SendRequestWithPool(pool, request),
+            ErrorCodes.InvalidParams,
+            "invalid argument 0: non-string address at index 0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task Returns_internal_error_without_renting_module_when_logging_throws([Values("eth_getLogs", "eth_newFilter")] string method)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
