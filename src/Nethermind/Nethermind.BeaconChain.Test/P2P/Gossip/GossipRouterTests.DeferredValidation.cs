@@ -165,7 +165,7 @@ public partial class GossipRouterTests
         (GossipVerdict? first, Task firstValidation) = fixture.SendVote(fixture.Sender, aggregatorIndex: 1);
         (GossipVerdict? queued, Task queuedValidation) = fixture.SendVote(fixture.Sender, aggregatorIndex: 2);
         first!.Complete(MessageValidity.Rejected);
-        await firstValidation;
+        await firstValidation.WaitAsync(TimeSpan.FromSeconds(5));
         bool queuedCompletedByRejection = queued!.IsCompleted;
         queued.Complete(MessageValidity.Ignored);
         await queuedValidation.WaitAsync(TimeSpan.FromSeconds(5));
@@ -201,7 +201,7 @@ public partial class GossipRouterTests
         (GossipVerdict? Raised, Task Validation)[] forgeries = [.. Enumerable.Range(2, 4).Select(index => fixture.SendVote(fixture.Sender, (ulong)index))];
         int inFlightWhilePromoted = fixture.Validation.PendingVotes;
         forgeries[0].Raised!.Complete(MessageValidity.Rejected);
-        await forgeries[0].Validation;
+        await forgeries[0].Validation.WaitAsync(TimeSpan.FromSeconds(5));
 
         MessageValidity[] sameSlot = [.. Enumerable.Range(10, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
         bool queuedCompletedByRejection = forgeries[1..].Any(static forgery => forgery.Raised!.IsCompleted);
@@ -691,7 +691,7 @@ public partial class GossipRouterTests
         (GossipVerdict? Raised, Task Validation)[] held = [.. Enumerable.Range(10, inFlight).Select(index => fixture.SendVote(fixture.Sender, (ulong)index))];
         int newSourceVotesWhileHeld = NewSourceVotes();
         held[0].Raised!.Complete(demoted ? MessageValidity.Rejected : MessageValidity.Accepted);
-        await held[0].Validation;
+        await held[0].Validation.WaitAsync(TimeSpan.FromSeconds(5));
         (GossipVerdict? Raised, Task Validation)[] afterChange = demoted ? [] : [.. Enumerable.Range(30, 3).Select(index => fixture.SendVote(fixture.Sender, (ulong)index))];
         foreach ((GossipVerdict? raised, Task validation) in held[1..].Concat(afterChange))
         {

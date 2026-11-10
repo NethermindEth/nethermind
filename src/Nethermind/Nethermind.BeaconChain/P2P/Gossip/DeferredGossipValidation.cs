@@ -25,8 +25,8 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
-/// A peer with no accepted vote since it joined or since its last rejected vote (or no longer among the last
-/// <see cref="AcceptedVoteSourcesCapacity"/> peers with one; the set is not kept across restarts) gets a smaller fraction of that bound, and all
+/// A peer with no accepted vote since it joined or since its last rejected vote (or not among the <see cref="AcceptedVoteSourcesCapacity"/>
+/// peers with one most recently promoted or offering a vote; the set is not kept across restarts) gets a smaller fraction of that bound, and all
 /// such peers together a quarter of it: a new peer id costs nothing, so a fraction per peer alone grows with the ids one host makes, and one
 /// relayed valid vote must not keep an id's forgeries admitted. A peer whose vote is rejected has its new votes refused for the rest of the
 /// wall slot (at most <paramref name="maxPendingVotes"/> peers per slot), or until one of its votes already being checked is accepted. Its votes
@@ -56,7 +56,7 @@ internal sealed class DeferredGossipValidation(
     /// <summary>The largest message counted as a vote; anything larger is no legal aggregate or payload attestation and is held to the main bounds.</summary>
     internal const int MaxVoteMessageBytes = 32 * 1024;
 
-    /// <summary>The most peers with an accepted vote that keep their standing; past it the least recently promoted one is new again.</summary>
+    /// <summary>The most peers with an accepted vote that keep their standing; past it the one least recently promoted or offering a vote is new again.</summary>
     internal const int AcceptedVoteSourcesCapacity = 1024;
 
     // One delivering peer's share of a bound, as the router's own per-peer bounds.
@@ -86,7 +86,8 @@ internal sealed class DeferredGossipValidation(
     private long _pendingColumnBytes;
     private int _pendingVotesOfNewSources;
     // Guards the rejected set and its slot. A peer's promotion, demotion and mark change together under it, and admission reads the mark under
-    // it; admission reads the accepted set outside it, which at worst admits one vote of a peer being promoted as a new peer's vote.
+    // it; admission reads the accepted set outside it, which at worst admits one vote of a peer being promoted as a new peer's vote, or one
+    // vote of a peer being demoted at its old share.
     private readonly Lock _rejectedVoteSourcesLock = new();
     private readonly HashSet<PeerId> _rejectedVoteSources = [];
     private ulong _rejectedVoteSourcesSlot;
