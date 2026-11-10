@@ -43,6 +43,9 @@ jobs:
     env:
       NATIVE_TEST_PROJECT: Nethermind.Crypto.LeanFfi.Test
       RUSTFLAGS: -C target-cpu=native
+      # rustdoc reads neither RUSTFLAGS nor .cargo/config.toml, so without this the doctest build hits
+      # the crate's carry-less-multiply compile_error.
+      RUSTDOCFLAGS: -C target-cpu=native
       LEANVM_NUM_THREADS: 1
     strategy:
       fail-fast: false
@@ -145,7 +148,16 @@ jobs:
       - name: Test native proof backend
         if: steps.lean-paths.outputs.run == 'true'
         working-directory: tools/lean-ffi
-        run: cargo test --release --locked -- --test-threads=1
+        # zk_alloc gives every allocating thread its own slab and never releases it, and libtest runs each
+        # test on a new thread, so one process keeps every proving test's peak resident (~19 GB, past the
+        # runner's 16 GB). One process per test bounds it to the largest single test (~6 GB).
+        run: |
+          cargo test --release --locked --no-run
+          tests=$(cargo test --release --locked -q -- --list --format terse | sed -n 's/: test$//p')
+          test -n "$tests"
+          for name in $tests; do
+            cargo test --release --locked -q -- --exact "$name" || exit 1
+          done
 
       - name: Test live Lean integration
         if: steps.lean-paths.outputs.run == 'true'
