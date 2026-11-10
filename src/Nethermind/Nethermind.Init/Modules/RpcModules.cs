@@ -124,9 +124,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
+            .AddSingleton<IBatchConcurrencyStrategy, TraceTransactionBatchConcurrency>()
             // Each instance holds two block-processing scopes for the life of the process. Exclusive instances are
             // created on demand up to the capacity, or all at startup with JsonRpc.PreloadRpcModules.
-            .AddSingleton<IBatchConcurrencyStrategy, TraceTransactionBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.GetTraceModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
