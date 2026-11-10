@@ -116,6 +116,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         if (vm.VmState.IsStatic)
         {
+            if (TTracingInst.IsActive) TraceCreateWriteProtection<TGasPolicy, TOpCreate>(vm, in stack, TEip8037.IsActive);
             goto StaticCallViolation;
         }
 
@@ -142,6 +143,8 @@ public static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
+                if (TTracingInst.IsActive)
+                    TraceCreateInitCodeSizeError<TGasPolicy, TOpCreate>(vm, in memoryPositionOfInitCode, in initCodeLength, TEip8037.IsActive);
                 goto OutOfGas;
             }
         }
@@ -346,6 +349,41 @@ public static partial class EvmInstructions
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
         vm.TraceMemoryOperationGasCost(in initCodePosition, in initCodeLength,
             baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
+    }
+
+    /// <summary>Reports a static creation's write protection from the step, as Geth's dynamic gas function raises it.</summary>
+    /// <remarks>
+    /// Geth sizes the init-code memory first, then fails the gas function on write protection before pricing that
+    /// memory, and reports the error as out of gas. The step carries the base charge alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateWriteProtection<TGasPolicy, TOpCreate>(VirtualMachine<TGasPolicy> vm, in EvmStack stack, bool eip8037)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        // Reads a copy, so the stack keeps its operands; an underflow was already reported when the step started.
+        EvmStack operands = stack;
+        if (!operands.PopUInt256(out _, out UInt256 initCodePosition, out UInt256 initCodeLength))
+            return;
+
+        vm.TraceOperationReady(CreateGasCost.Base<TOpCreate>(vm.Spec.IsEip8038Enabled, eip8037),
+            TryGetTraceMemorySize(in initCodePosition, in initCodeLength, out _) ? "out of gas: write protection" : "gas uint64 overflow");
+    }
+
+    /// <summary>Reports an init code over the EIP-3860 limit from the step, as Geth's dynamic gas function rejects it.</summary>
+    /// <remarks>
+    /// Geth sizes and prices the init-code memory before it checks the init-code size, and reports a gas function
+    /// error as out of gas. The step carries the base charge alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateInitCodeSizeError<TGasPolicy, TOpCreate>(VirtualMachine<TGasPolicy> vm, in UInt256 initCodePosition, in UInt256 initCodeLength, bool eip8037)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        string error = !TryGetTraceMemorySize(in initCodePosition, in initCodeLength, out ulong size) ? "gas uint64 overflow"
+            : size > 0x1FFFFFFFE0UL ? "out of gas: gas uint64 overflow"
+            : "out of gas: max initcode size exceeded";
+        vm.TraceOperationReady(CreateGasCost.Base<TOpCreate>(vm.Spec.IsEip8038Enabled, eip8037), error);
     }
 
     /// <summary>

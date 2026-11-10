@@ -10,10 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- Main, the ZkvmThrow export and the failure protocol are identical in
          all three guests; only WriteOutput differs, and each guest supplies it
          as the other half of the partial class. Compiled in rather than
@@ -24,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -27,6 +28,9 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -314,6 +318,65 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FullSyncUntilNoRequest(peerInfo);
         Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
+    }
+
+    [Test]
+    public async Task Downloaded_pos_block_on_a_non_terminal_pow_parent_is_rejected()
+    {
+        UInt256 ttd = 1_000_000_000_000;
+        TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = ttd };
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(4, 4, true, ttd);
+        BlockTree localTree = blockTrees.NotSyncedTree;
+        BlockTree remoteTree = blockTrees.SyncedTree;
+        BlockHeader parent = remoteTree.Head!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.Hash, Is.EqualTo(localTree.Head!.Hash));
+            Assert.That(parent.TotalDifficulty, Is.LessThan(ttd));
+        }
+
+        // The chain continues past the zero-difficulty block.
+        Block posBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(parent.GasLimit)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent)))
+            .TestObject;
+        Block child = Build.A.Block
+            .WithParent(posBlock)
+            .WithGasLimit(posBlock.GasLimit)
+            .WithDifficulty(parent.Difficulty)
+            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(posBlock.Header, specProvider.GetSpec(posBlock.Header)))
+            .TestObject;
+        remoteTree.SuggestBlock(posBlock);
+        remoteTree.SuggestBlock(child);
+        remoteTree.TryUpdateMainChain(child.Header, true, preloadedBlocks: [posBlock, child]);
+        Assert.That(remoteTree.Head!.Hash, Is.EqualTo(child.Hash));
+
+        await using IContainer node = CreateMergeNode(builder => builder
+                .AddSingleton<IBlockTree>(localTree)
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb)
+                .AddDecorator<IBlockTree, StateTrackingBlockTree>()
+                .AddSingleton<ISpecProvider>(specProvider)
+                .AddSingleton<IBlockValidator, BlockValidator>(),
+            new MergeConfig { TerminalTotalDifficulty = ttd.ToString() });
+        PostMergeContext ctx = node.Resolve<PostMergeContext>();
+
+        PeerInfo peerInfo = new(new SyncPeerMock(remoteTree, false, Response.AllCorrect, ttd * 1000));
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(localTree.Head!.Hash, Is.EqualTo(parent.Hash));
+            Assert.That(localTree.IsKnownBlock(posBlock.Number, posBlock.Hash!), Is.False);
+            Assert.That(localTree.IsKnownBlock(child.Number, child.Hash!), Is.False);
+            Assert.That(() => ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed,
+                Arg.Is<string>(static details => details.Contains("A proof-of-stake block cannot follow a non-terminal proof-of-work parent."))), Throws.Nothing);
+        }
     }
 
     [TestCase(32UL, 32UL, 0UL, 32UL)]

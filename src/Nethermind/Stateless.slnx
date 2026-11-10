@@ -32,6 +32,7 @@
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
+    <Project Path="Nethermind.Zkvm.Abstractions/Nethermind.Zkvm.Abstractions.csproj" />
   </Folder>
   <Project Path="Nethermind.Stateless.AirbenderGuest/Nethermind.Stateless.AirbenderGuest.csproj" />
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />

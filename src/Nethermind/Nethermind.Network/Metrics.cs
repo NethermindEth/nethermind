@@ -47,6 +47,10 @@ namespace Nethermind.Network
         public static long P2PBytesReceived;
 
         [CounterMetric]
+        [Description("Number of sync-serve requests dropped because the peer had too many requests in flight.")]
+        public static long SyncServeRequestsDroppedOverPeerLimit;
+
+        [CounterMetric]
         [Description("Number of bytes sent through Discovery (UDP).")]
         public static long DiscoveryBytesSent;
 

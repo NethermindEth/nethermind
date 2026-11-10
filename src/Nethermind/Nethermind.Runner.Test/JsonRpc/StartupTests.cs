@@ -157,6 +157,28 @@ public class StartupTests
         AssertErrorCodeResponse(response, ErrorCodes.ParseError);
     }
 
+    [TestCase("true", "null", TestName = "Boolean id is an Invalid Request with null id")]
+    [TestCase("{\"a\":1}", "null", TestName = "Object id is an Invalid Request with null id")]
+    [TestCase("[1]", "null", TestName = "Array id is an Invalid Request with null id")]
+    [TestCase("1.5", "1.5", TestName = "Fractional id is echoed verbatim")]
+    [TestCase("1.0", "1.0", TestName = "Integral id with a fraction part is echoed verbatim")]
+    [TestCase("1e40", "1e40", TestName = "Id beyond decimal range is echoed verbatim")]
+    public async Task ProcessJsonRpcRequest_AnswersAnyJsonIdWithStatus200(string idJson, string expectedIdJson)
+    {
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(idJson: idJson));
+
+        Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+        AssertJsonResponse(response, root =>
+        {
+            int? errorCode = root.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("id").GetRawText(), Is.EqualTo(expectedIdJson));
+                Assert.That(errorCode, Is.EqualTo(expectedIdJson == "null" ? ErrorCodes.InvalidRequest : null));
+            }
+        });
+    }
+
     [TestCase("", TestName = "Empty input")]
     [TestCase(" \r\n\t", TestName = "Whitespace-only input")]
     public async Task ProcessJsonRpcRequest_EmptyInput_ReturnsParseErrorBadRequest(string request)
@@ -175,6 +197,22 @@ public class StartupTests
         string response = await ProcessJsonRpcRequest(request);
 
         AssertArrayResultResponse(response, expectedId: 1);
+    }
+
+    [TestCase(false, TestName = "Single notification")]
+    [TestCase(true, TestName = "Batch of notifications")]
+    public async Task ProcessJsonRpcRequest_Notifications_AreAnsweredWithEmptyBody(bool batch)
+    {
+        string notification = $$"""{"jsonrpc":"2.0","method":"{{GetBlobsV1Method}}","params":[[]]}""";
+        string request = batch ? $"[{notification},{notification}]" : notification;
+
+        (string response, int statusCode) = await ProcessJsonRpcRequestWithStatus(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(response, Is.Empty);
+        }
     }
 
     [Test]

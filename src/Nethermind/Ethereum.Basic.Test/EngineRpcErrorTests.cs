@@ -4,7 +4,9 @@
 #nullable enable annotations
 
 using System;
+using System.Collections.Generic;
 using Ethereum.Test.Base;
+using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -47,6 +49,20 @@ public class EngineRpcErrorTests
     [TestCase("""{"errorCode": " -32602 "}""", ExpectedResult = InvalidParams, TestName = "Padded error code")]
     public int? Fixture_error_code_is_parsed(string json) =>
         JsonToEthereumTest.ParseErrorCode(_serializer.Deserialize<TestEngineNewPayloadsJson>(json));
+
+    // A rejection reports the error as the client gave it, its data included, so the consumer can tell the causes apart.
+    [TestCase(null, ExpectedResult = "-32602: Invalid params", TestName = "No data")]
+    [TestCase("missing block access list", ExpectedResult = "-32602: Invalid params: missing block access list", TestName = "String data as is")]
+    public string Rpc_rejection_names_code_message_and_data(object? data) =>
+        BlockchainTestBase.DescribeRpcRejection(ErrorResponse(data), InvalidParams, "Invalid params");
+
+    [Test]
+    public void Rpc_rejection_writes_structured_data_as_compact_json() =>
+        Assert.That(BlockchainTestBase.DescribeRpcRejection(ErrorResponse(new Dictionary<string, string> { ["err"] = "bad" }), InvalidParams, "Invalid params"),
+            Is.EqualTo("""-32602: Invalid params: {"err":"bad"}"""));
+
+    private static JsonRpcErrorResponse ErrorResponse(object? data) =>
+        new() { Error = new Error { Code = InvalidParams, Message = "Invalid params", Data = data } };
 
     [Test]
     public void Unparsable_error_code_is_not_silently_ignored() =>

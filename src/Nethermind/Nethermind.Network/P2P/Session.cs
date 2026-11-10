@@ -89,6 +89,7 @@ namespace Nethermind.Network.P2P
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsChannelClosed => _isChannelClosed;
+        public bool IsOutboundBufferFull => _context?.Channel is { IsWritable: false };
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }

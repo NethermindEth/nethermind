@@ -2,13 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -24,6 +33,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
+using NSubstitute;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -97,12 +107,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = GetTracer(tracerCode);
         Action trace = () => ExecuteBlock(tracer, MStore());
-        Assert.That(trace, Throws.TypeOf<ArgumentException>());
+        Assert.That(trace, Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCase("fe", "INVALID")]
     [TestCase("0c", "opcode 0xc not defined")]
-    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode)
+    [TestCase("5e", "MCOPY", MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+    [TestCase("f5", "CREATE2", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("3f", "EXTCODEHASH", MainnetSpecProvider.ByzantiumBlockNumber, 0UL)]
+    [TestCase("fd", "REVERT", MainnetSpecProvider.SpuriousDragonBlockNumber, 0UL)]
+    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode,
+        ulong blockNumber = MainnetSpecProvider.ParisBlockNumber + 2, ulong timestamp = MainnetSpecProvider.CancunBlockTimestamp)
     {
         const string userTracer = """
             {
@@ -113,7 +128,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             }
             """;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-            GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
+            GetTracer(userTracer), Bytes.FromHexString(code), (blockNumber, timestamp));
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
     }
@@ -274,6 +289,28 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("600160005d", 21006UL, "step:TSTORE:100:out of gas:2:0,1:0", null)]
     [TestCase("600160005d", 21106UL, "step:TSTORE:100::2:0,1:0", null)]
     [TestCase("600160005d60005c", 100000UL, "step:TLOAD:100::1:0:0", null)]
+    [TestCase("0a", 21000UL, "step:EXP:0:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("61ffff60020a", 21115UL, "step:EXP:110:out of gas:2:2,65535:0", null)]
+    [TestCase("61ffff60020a", 100000UL, "step:EXP:110::2:2,65535:0", null)]
+    [TestCase("600160010b", 21010UL, "step:SIGNEXTEND:5:out of gas:2:1,1:0", null)]
+    [TestCase("6001600020", 21035UL, "step:KECCAK256:30:out of gas:2:0,1:0", null)]
+    [TestCase("6001600020", 100000UL, "step:KECCAK256:39::2:0,1:0", null)]
+    [TestCase("3c", 21000UL, "step:EXTCODECOPY:100:stack underflow (0 <=> 4):0::0", null)]
+    [TestCase("60016000600061beef3c", 21062UL, "step:EXTCODECOPY:100:out of gas:4:48879,0,0,1:0", null)]
+    [TestCase("60016000600061beef3c", 23617UL, "step:EXTCODECOPY:2606:out of gas:4:48879,0,0,1:0", null)]
+    [TestCase("60016000600061beef3c", 100000UL, "step:EXTCODECOPY:2606::4:48879,0,0,1:0", null)]
+    [TestCase("600040", 21022UL, "step:BLOCKHASH:20:out of gas:1:0:0", null)]
+    [TestCase("600049", 21005UL, "step:BLOBHASH:3:out of gas:1:0:0", null)]
+    [TestCase("6020600060005e", 21017UL, "step:MCOPY:9:out of gas:3:0,0,32:0", null)]
+    [TestCase("6020600060005e", 100000UL, "step:MCOPY:9::3:0,0,32:0", null)]
+    [TestCase("5f5f60205fa2", 22392UL, "step:LOG2:1384:out of gas:4:0,32,0,0:0", null)]
+    [TestCase("5f5f60205fa2", 100000UL, "step:LOG2:1384::4:0,32,0,0:0", null)]
+    [TestCase("5f5f5ff0", 53005UL, "step:CREATE:32000:out of gas:3:0,0,0:0", null)]
+    [TestCase("5f5f5f5ff5", 53007UL, "step:CREATE2:32000:out of gas:4:0,0,0,0:0", null)]
+    [TestCase("6200c0015f5ff0", 100000UL, "step:CREATE:32000:out of gas: max initcode size exceeded:3:0,0,49153:0", null)]
+    [TestCase("6420000000005f5ff0", 100000UL, "step:CREATE:32000:out of gas: gas uint64 overflow:3:0,0,137438953472:0", null)]
+    [TestCase("680100000000000000005f5ff0", 100000UL, "step:CREATE:32000:gas uint64 overflow:3:0,0,18446744073709551616:0", null)]
+    [TestCase("5fff", 26001UL, "step:SELFDESTRUCT:5000:out of gas:1:0:0", null)]
     [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
     [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
     [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
@@ -388,13 +425,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     [TestCase("5d", "step:100:stack underflow (0 <=> 2)", null)]
     [TestCase("600160005d", "step:100:", "fault:100:write protection")]
-    public void Static_transient_store_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
+    [TestCase("5f5f5ff0", "step:32000:out of gas: write protection", null)]
+    [TestCase("5f5f5f5ff5", "step:32000:out of gas: write protection", null)]
+    [TestCase("680100000000000000005f5ff0", "step:32000:gas uint64 overflow", null)]
+    [TestCase("5f5f5f5fa2", "step:0:", "fault:0:write protection")]
+    public void Static_context_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
     {
         const string userTracer = """
             {
                 events: [],
-                step: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
-                fault: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
+                step: function(log) { if (log.op.toNumber() === 0x$opcode) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { if (log.op.toNumber() === 0x$opcode) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
                 result: function() { return this.events; }
             }
             """;
@@ -402,7 +443,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
         byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0)
             .PushData(TestItem.AddressC).PushData(50000).Op(Instruction.STATICCALL).Op(Instruction.STOP).Done;
-        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer.Replace("$opcode", childCode[^2..], StringComparison.Ordinal)), code, MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
     }
@@ -494,16 +536,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("flatCallTracer")]
-    [TestCase("noSuchTracer.js")]
-    [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase("callTracer_legacy.tracer")]
     [TestCase(null)]
     [TestCase("{ ) }")]
     public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
         Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("callTracer_legacy.tracer")]
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
@@ -769,9 +811,19 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     // every other failure faults from EndInstructionTrace, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
-    // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
-    [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
-    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("5f5f0a00", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:EXP,P2:EXP,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_exp_zero_exponent")]
+    // As in Geth, an opcode that fails before it runs reports the error from step and calls no fault.
+    [TestCase("20", "S0:KECCAK256(stack underflow (0 <=> 2)),P0:KECCAK256", 0, TestName = "Callbacks_ordered_stack_underflow")]
+    [TestCase("0a", "S0:EXP(stack underflow (0 <=> 2)),P0:EXP", 0, TestName = "Callbacks_ordered_exp_stack_underflow")]
+    [TestCase("5e", "S0:MCOPY(stack underflow (0 <=> 3)),P0:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_stack_underflow")]
+    [TestCase("a2", "S0:LOG2(stack underflow (0 <=> 4)),P0:LOG2", 0, TestName = "Callbacks_ordered_log2_stack_underflow")]
+    [TestCase("f5", "S0:CREATE2(stack underflow (0 <=> 4)),P0:CREATE2", 0, TestName = "Callbacks_ordered_create2_stack_underflow")]
+    [TestCase("ff", "S0:SELFDESTRUCT(stack underflow (0 <=> 1)),P0:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_self_destruct_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256(out of gas),P6:KECCAK256", 0, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("63ffffffff51", "S0:PUSH4,P0:PUSH4,S5:MLOAD(out of gas),P5:MLOAD", 0, TestName = "Callbacks_ordered_memory_out_of_gas")]
+    [TestCase("63ffffffff5f5f5e", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:PUSH0,P6:PUSH0,S7:MCOPY(out of gas),P7:MCOPY", 0, TestName = "Callbacks_ordered_mcopy_out_of_gas")]
+    [TestCase("5f5f63ffffffff5fa2", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:PUSH4,P2:PUSH4,S7:PUSH0,P7:PUSH0,S8:LOG2(out of gas),P8:LOG2", 0, TestName = "Callbacks_ordered_log2_out_of_gas")]
+    [TestCase("5f600163ffffffff5ff5", "S0:PUSH0,P0:PUSH0,S1:PUSH1,P1:PUSH1,S3:PUSH4,P3:PUSH4,S8:PUSH0,P8:PUSH0,S9:CREATE2(out of gas),P9:CREATE2", 0, TestName = "Callbacks_ordered_create2_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
     [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
     [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
@@ -780,7 +832,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string userTracer = @"{
                     sequence: [],
                     faults: 0,
-                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString()) },
+                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString() + (log.getError() ? '(' + log.getError() + ')' : '')) },
                     postStep: function(log, db) { this.sequence.push('P' + log.getPC() + ':' + log.op.toString()) },
                     fault: function(log, db) { this.sequence.push('F' + log.getPC() + ':' + log.op.toString()); this.faults++ },
                     result: function(ctx, db) { return this.sequence.join(',') + '|' + this.faults }
@@ -793,6 +845,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         AssertResult(traces, $"{sequence}|{faults}");
+    }
+
+    [Test]
+    public void Self_destruct_post_step_reports_the_charge_beyond_its_static_cost()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push("postStep:" + log.getCost()); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        // A cold beneficiary that does not exist adds 2600 and 25000 to the static 5000.
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), Bytes.FromHexString("61beefff"), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "postStep:32600" });
     }
 
     [Test]
@@ -1051,7 +1121,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x26a\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
     }
 
     [Test]
@@ -1350,6 +1420,934 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(() => JsonSerializer.Serialize(trace.CustomTracerResult, shallow), Throws.InstanceOf<JsonException>());
     }
 
+    private static string DepthError(int maxDepth) => $"JavaScript tracer result exceeds the maximum depth of {maxDepth} (possibly cyclic)";
+
+    private static IEnumerable<TestCaseData> DeepResultCases()
+    {
+        (string Name, string Body, string? Expected)[] cases =
+        [
+            ("object_2000", ChainScript("obj", 2000, "scalar"), ExpectedChain("obj", 2000, "scalar")),
+            ("object_4096", ChainScript("obj", 4096, "scalar"), ExpectedChain("obj", 4096, "scalar")),
+            ("array_4096", ChainScript("arr", 4096, "scalar"), ExpectedChain("arr", 4096, "scalar")),
+            ("mixed_4096", ChainScript("mix", 4096, "scalar"), ExpectedChain("mix", 4096, "scalar")),
+            ("empty_end_4096", ChainScript("mix", 4096, "empty"), ExpectedChain("mix", 4096, "empty")),
+            ("object_4097", ChainScript("obj", 4097, "scalar"), null),
+            ("empty_end_4097", ChainScript("mix", 4097, "empty"), null),
+            ("array_5000", ChainScript("arr", 5000, "scalar"), null),
+            ("cyclic_object", "var o = {}; o.self = o; return o;", null),
+            ("cyclic_object_after_scalars", "var o = {n: 1, s: 'x', z: null, t: true, d: 0.1, l: 3000000000, w: {value: 2n}}; o.self = o; return o;", null),
+            ("cyclic_array", "var a = []; a.push(a); return a;", null),
+            ("mutual_cycle", "var a = {}; var b = [a]; a.b = b; return a;", null),
+        ];
+        foreach ((string name, string body, string? expected) in cases)
+        {
+            foreach (bool capture in new[] { true, false })
+            {
+                yield return new TestCaseData(body, expected, capture)
+                    .SetName($"{nameof(Deep_javascript_results_render_or_fail_cleanly)}_{name}_{(capture ? "captured" : "thrown")}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(DeepResultCases))]
+    public void Deep_javascript_results_render_or_fail_cleanly(string resultBody, string? expected, bool capture) =>
+        // A thread-pool thread, as an RPC request has: the failure being fixed depended on its stack.
+        Task.Run(() =>
+        {
+            NumberConversion original = ForcedNumberConversion.Value;
+            ForcedNumberConversion.Value = NumberConversion.Decimal;
+            try
+            {
+                using (GethLikeJavaScriptTxTracer tracer = CreateResultTracer(resultBody, capture))
+                {
+                    if (expected is null && !capture)
+                    {
+                        JavaScriptTraceFailure failure = Assert.Throws<JavaScriptTraceFailure>(() => tracer.BuildResult())!;
+                        Assert.That(failure.Message, Is.EqualTo(DepthError(EthereumJsonSerializer.DefaultMaxDepth)));
+                    }
+                    else
+                    {
+                        using GethLikeTxTrace trace = tracer.BuildResult();
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(trace.TraceError, expected is null ? Is.EqualTo(DepthError(EthereumJsonSerializer.DefaultMaxDepth)) : Is.Null);
+                            Assert.That(trace.CustomTracerResult, expected is null ? Is.Null : Is.Not.Null);
+                        }
+
+                        if (expected is not null)
+                        {
+                            string json = ResultJson(trace);
+                            Assert.That(json, Is.EqualTo(expected));
+                            AssertValidJson(json, EthereumJsonSerializer.DefaultMaxDepth);
+                        }
+                    }
+
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(Engine.CurrentEngine, Is.Null, "the engine must be released on every path");
+                        Assert.That(ForcedNumberConversion.Value, Is.EqualTo(NumberConversion.Decimal), "the number format must be restored on every path");
+                    }
+                }
+
+                using GethLikeJavaScriptTxTracer next = CreateResultTracer("return {after: [1, 'x', {deep: {er: null}}]};", capture);
+                using GethLikeTxTrace after = next.BuildResult();
+                Assert.That(ResultJson(after), Is.EqualTo("""{"after":[1,"x",{"deep":{"er":null}}]}"""));
+            }
+            finally
+            {
+                ForcedNumberConversion.Value = original;
+            }
+        }).GetAwaiter().GetResult();
+
+    private static readonly JsonSerializerOptions MaxDepth0 = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 0 };
+    private static readonly JsonSerializerOptions MaxDepth3 = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 3 };
+    private static readonly JsonSerializerOptions MaxDepth4 = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 4 };
+
+    private static IEnumerable<TestCaseData> DepthBoundaryCases()
+    {
+        foreach (int maxDepth in new[] { 3, 4 })
+        {
+            foreach (string shape in new[] { "obj", "arr", "mix" })
+            {
+                foreach (string end in shape == "obj" ? new[] { "scalar", "empty", "view", "wrapper", "null" } : new[] { "scalar", "empty" })
+                {
+                    for (int containers = maxDepth - 1; containers <= maxDepth + 1; containers++)
+                    {
+                        yield return new TestCaseData(maxDepth, shape, end, containers, false, containers <= maxDepth)
+                            .SetName($"{nameof(Javascript_result_depth_limit_counts_open_objects_and_arrays)}_max{maxDepth}_{shape}_{end}_{containers}");
+                    }
+                }
+            }
+        }
+
+        // MaxDepth 0 stands for the serializer default of 64.
+        foreach (int containers in new[] { 64, 65 })
+        {
+            yield return new TestCaseData(0, "obj", "scalar", containers, false, containers <= 64)
+                .SetName($"{nameof(Javascript_result_depth_limit_counts_open_objects_and_arrays)}_max0_obj_scalar_{containers}");
+        }
+
+        // The limit counts the writer's depth, so a script value written inside a host array has one level less.
+        foreach (int containers in new[] { 2, 3 })
+        {
+            yield return new TestCaseData(3, "obj", "scalar", containers, true, containers <= 2)
+                .SetName($"{nameof(Javascript_result_depth_limit_counts_open_objects_and_arrays)}_max3_in_host_array_{containers}");
+        }
+    }
+
+    [TestCaseSource(nameof(DepthBoundaryCases))]
+    public void Javascript_result_depth_limit_counts_open_objects_and_arrays(int maxDepth, string shape, string end, int containers, bool inHostArray, bool accepted)
+    {
+        JsonSerializerOptions options = maxDepth switch { 0 => MaxDepth0, 3 => MaxDepth3, _ => MaxDepth4 };
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result: function() {" + ChainScript(shape, containers, end) + "}}");
+        object result = tracer.result();
+        object root = inHostArray ? new[] { result } : result;
+
+        if (accepted)
+        {
+            string expected = ExpectedChain(shape, containers, end);
+            Assert.That(JsonSerializer.Serialize(root, options), Is.EqualTo(inHostArray ? "[" + expected + "]" : expected));
+        }
+        else
+        {
+            Assert.That(() => JsonSerializer.Serialize(root, options),
+                Throws.InstanceOf<JsonException>().With.Message.EqualTo(DepthError(maxDepth == 0 ? 64 : maxDepth)));
+        }
+    }
+
+    // At the limit a script value is looked at before its depth is checked: one that is neither an object, an array nor a
+    // view, or whose value getter throws, fails as it does anywhere else; the getter of any other property is not reached.
+    [TestCase("{a: {a: {a: new ArrayBuffer(1)}}}", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer")]
+    [TestCase("[[[new ArrayBuffer(1)]]]", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer")]
+    [TestCase("{a: {a: {a: { get value() { throw new Error('value getter'); } }}}}", typeof(ScriptEngineException), "The V8 runtime cannot perform the requested operation because a script exception is pending")]
+    [TestCase("{a: {a: {a: { get x() { throw new Error('getter'); } }}}}", typeof(JavaScriptResultDepthException), "JavaScript tracer result exceeds the maximum depth of 3 (possibly cyclic)")]
+    public void Javascript_result_depth_limit_comes_after_the_value_kind(string expression, Type exception, string message)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result: function() { return " + expression + "; }}");
+        object result = tracer.result();
+
+        Assert.That(() => JsonSerializer.Serialize(result, MaxDepth3), Throws.TypeOf(exception).With.Message.StartWith(message));
+    }
+
+    [TestCase(JsonNumberHandling.Strict, "[[[1.5]]]")]
+    [TestCase(JsonNumberHandling.WriteAsString, null)]
+    public void Javascript_result_scalar_at_the_depth_limit_needs_strict_number_handling(JsonNumberHandling handling, string? expected)
+    {
+        // Other number handling is applied by the serializer only, which does not write a scalar inside the deepest container.
+        JsonSerializerOptions options = ReflectionOptions(handling, maxDepth: 3);
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result: function() { return [[[1.5]]]; }}");
+        object result = tracer.result();
+
+        if (expected is not null) Assert.That(JsonSerializer.Serialize(result, options), Is.EqualTo(expected));
+        else Assert.That(() => JsonSerializer.Serialize(result, options), Throws.TypeOf<JavaScriptResultDepthException>().With.Message.EqualTo(DepthError(3)));
+    }
+
+    [TestCase("({a: 1, b: 'x', c: true, d: false})", """{"a":1,"b":"x","c":true,"d":false}""")]
+    [TestCase("[1, 'x', true, false]", """[1,"x",true,false]""")]
+    [TestCase("[[], {}, [{}], {a: []}]", """[[],{},[{}],{"a":[]}]""")]
+    [TestCase("({Outer: {Inner: {DUP1: 1}}, lower: [{PUSH1: 2}], mIxEd: {LOG2: [3]}})", """{"Outer":{"Inner":{"DUP1":1}},"lower":[{"PUSH1":2}],"mIxEd":{"LOG2":[3]}}""")]
+    [TestCase("({b: 1, 2: 'x', a: 3, 1: 'y'})", """{"1":"y","2":"x","b":1,"a":3}""")]
+    [TestCase("""({'a"b': 1, 'ł': 2, '': 3, 'tab\t': 4, '<&>': 5})""", """{"a\"b":1,"ł":2,"":3,"tab\t":4,"<&>":5}""")]
+    [TestCase("null", "null")]
+    [TestCase("undefined", "{}")]
+    [TestCase("({a: null})", """{"a":null}""")]
+    [TestCase("({a: undefined, b: 1})", """{"b":1}""")]
+    [TestCase("[null, 1]", "[null,1]")]
+    [TestCase("[undefined, 1]", "[{},1]")]
+    [TestCase("(function(){ var a = [1]; a[3] = 4; return a; })()", "[1,{},{},4]")]
+    [TestCase("({value: 5n})", "\"5\"")]
+    [TestCase("({value: 5n, other: 1})", "\"5\"")]
+    [TestCase("({other: 1, value: 5n})", "\"5\"")]
+    [TestCase("({x: {value: 5n, other: {deep: 1}}})", """{"x":"5"}""")]
+    [TestCase("({value: -123456789012345678901234567890n})", "\"-123456789012345678901234567890\"")]
+    [TestCase("({value: 5, other: 1})", """{"value":5,"other":1}""")]
+    [TestCase("({value: undefined, a: 1})", """{"a":1}""")]
+    [TestCase("({error: undefined, a: 1})", """{"a":1}""")]
+    [TestCase("({error: 'boom', a: 1})", """{"error":"boom","a":1}""")]
+    [TestCase("[{value: undefined, a: 1}]", """[{"a":1}]""")]
+    [TestCase("(function(){ var o = {value: undefined, get later(){ return 'value' in o; }}; return o; })()", """{"later":true}""")]
+    [TestCase("42", "42")]
+    [TestCase("-7", "-7")]
+    [TestCase("2147483647", "2147483647")]
+    [TestCase("3000000000", "3000000000")]
+    [TestCase("[4294967296, -2147483648]", "[4294967296,-2147483648]")]
+    [TestCase("9007199254740993", "9007199254740992")]
+    [TestCase("1e21", "1E+21")]
+    [TestCase("0.1", "0.1")]
+    [TestCase("({z: -0})", """{"z":0}""")]
+    [TestCase("[1e-7, 5e-324, 1.7976931348623157e308]", "[1E-07,5E-324,1.7976931348623157E+308]")]
+    [TestCase("''", "\"\"")]
+    [TestCase("new Uint8Array([1, 2, 3])", """{"0":1,"1":2,"2":3}""")]
+    [TestCase("new Uint8Array([])", "{}")]
+    [TestCase("new Uint8Array([7, 1, 255, 8]).subarray(1, 3)", """{"0":1,"1":255}""")]
+    [TestCase("({a: new Uint8Array([1])})", """{"a":{"0":1}}""")]
+    [TestCase("new Uint16Array([256, 1])", """{"0":0,"1":1,"2":1,"3":0}""")]
+    [TestCase("new Int32Array([-1])", """{"0":255,"1":255,"2":255,"3":255}""")]
+    [TestCase("new Float64Array([1.5])", """{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":248,"7":63}""")]
+    [TestCase("new DataView(new Uint8Array([1, 2, 3]).buffer, 1)", """{"0":2,"1":3}""")]
+    [TestCase("function(){}", "{}")]
+    [TestCase("(function(){ var f = function(){}; f.x = 1; return f; })()", """{"x":1}""")]
+    [TestCase("({f: () => 1, a: 1})", """{"f":{},"a":1}""")]
+    [TestCase("new Date(0)", "{}")]
+    [TestCase("({d: new Date(0)})", """{"d":{}}""")]
+    [TestCase("/ab+c/g", "{}")]
+    [TestCase("({toJSON: function(){ return 'J'; }, a: 1})", """{"toJSON":{},"a":1}""")]
+    [TestCase("(function(){ var a = [1]; a.x = 2; return a; })()", "[1]")]
+    [TestCase("({ get a() { return 1; }, b: 2 })", """{"a":1,"b":2}""")]
+    [TestCase("(function(){ var o = { get a() { o.b = 2; return 1; }, b: 1 }; return o; })()", """{"a":1,"b":2}""")]
+    [TestCase("(function(){ var s = {x: 1}; return {a: s, b: s}; })()", """{"a":{"x":1},"b":{"x":1}}""")]
+    [TestCase("(function(){ var s = [1]; return [s, s]; })()", "[[1],[1]]")]
+    [TestCase("(function(){ var s = {x: [1]}; var l = [s]; return {a: s, b: s, c: [l, l]}; })()", """{"a":{"x":[1]},"b":{"x":[1]},"c":[[{"x":[1]}],[{"x":[1]}]]}""")]
+    [TestCase("[new Map([[1, 2]]), new Set([1]), new WeakMap(), Promise.resolve(1), new Error('e')]", "[{},{},{},{},{}]")]
+    [TestCase("[Symbol('s'), {[Symbol('k')]: 1, a: 2}, {a: Symbol('v')}]", """[{},{"a":2},{}]""")]
+    [TestCase("[new Number(1), new String('ab'), new Boolean(false)]", """[1,"ab",false]""")]
+    [TestCase("(function(){ var o = Object.create(null); o.a = 1; return o; })()", """{"a":1}""")]
+    [TestCase("Object.defineProperty({a: 1}, 'hidden', {value: 2, enumerable: false})", """{"a":1}""")]
+    [TestCase("Object.create({inherited: 1})", """{"inherited":1}""")]
+    [TestCase("(function(){ class K { constructor(){ this.a = 1; } get g(){ return 2; } } return new K(); })()", """{"a":1}""")]
+    [TestCase("new Proxy({a: 1}, {})", """{"a":1}""")]
+    [TestCase("(function(){ return arguments; })(1, 2)", """{"0":1,"1":2}""")]
+    [TestCase("Object.freeze({a: 1, value: undefined})", """{"a":1}""")]
+    [TestCase("({value: {toString: function(){ return 'x'; }}})", """{"value":{"toString":{}}}""")]
+    public void Javascript_result_rendering_keeps_its_bytes(string expression, string expected)
+    {
+        using GethLikeJavaScriptTxTracer tracer = CreateResultTracer("return " + expression + ";", capture: false);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        Assert.That(ResultJson(trace), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Javascript_result_rendering_keeps_escaped_and_multibyte_strings()
+    {
+        // Escapes are spelled with a separate backslash so the sources stay plain ASCII apart from the multibyte letters.
+        const string U = @"\" + "u";
+        using GethLikeJavaScriptTxTracer tracer = CreateResultTracer(
+            "return ['q\"b\\\\s/\\n\\t" + U + "0001<>&\\'" + U + "2028', 'zażółć ' + String.fromCodePoint(0x1F984) + ' 日本', String.fromCharCode(0xD800) + 'x'];",
+            capture: false);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        Assert.That(ResultJson(trace), Is.EqualTo(
+            "[\"q\\\"b\\\\s/\\n\\t" + U + "0001<>&'" + U + "2028\",\"zażółć " + U + "D83E" + U + "DD84 日本\",\"" + U + "FFFDx\"]"));
+    }
+
+    [Test]
+    public void Javascript_result_rendering_keeps_long_strings()
+    {
+        using GethLikeJavaScriptTxTracer tracer = CreateResultTracer("return ['ab'.repeat(50000), '\"\\n'.repeat(20000)];", capture: false);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        Assert.That(ResultJson(trace), Is.EqualTo("[\"" + string.Concat(Enumerable.Repeat("ab", 50000)) + "\",\"" + string.Concat(Enumerable.Repeat("\\\"\\n", 20000)) + "\"]"));
+    }
+
+    [TestCase("NaN", typeof(JsonException), "The value 'NaN' is not a valid JSON number.")]
+    [TestCase("[-Infinity]", typeof(JsonException), "The value '-Infinity' is not a valid JSON number.")]
+    [TestCase("({ get a() { throw new Error('getter boom'); } })", typeof(ScriptEngineException), "The V8 runtime cannot perform the requested operation because a script exception is pending")]
+    [TestCase("[{ get a() { throw new Error('nested getter boom'); } }]", typeof(ScriptEngineException), "The V8 runtime cannot perform the requested operation because a script exception is pending")]
+    [TestCase("new Uint8Array([1, 2]).buffer", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer Path: $.")]
+    [TestCase("({b: new Uint8Array([1, 2]).buffer})", typeof(NotSupportedException), "Microsoft.ClearScript.V8.V8ScriptItem+V8ArrayBuffer")]
+    public void Javascript_result_rendering_keeps_its_failures(string expression, Type exception, string message)
+    {
+        using GethLikeJavaScriptTxTracer tracer = CreateResultTracer("return " + expression + ";", capture: false);
+
+        Assert.That(() => tracer.BuildResult(), Throws.TypeOf(exception).With.Message.StartWith(message));
+    }
+
+    private static IEnumerable<TestCaseData> ScalarNumberHandlingCases()
+    {
+        object?[] values = ["x", 1, 3000000000L, 0.1, double.NaN, 1.5f, float.NaN, float.NegativeInfinity, true, new System.Numerics.BigInteger(-5), null];
+        // Every combination of the three flags; reading from strings changes no output, but makes the handling non-strict.
+        for (int handling = 0; handling <= 7; handling++)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                yield return new TestCaseData((JsonNumberHandling)handling, values[i])
+                    .SetName($"{nameof(Javascript_result_scalars_keep_the_serializer_number_handling)}_handling{handling}_{values[i]?.GetType().Name ?? "null"}_{i}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(ScalarNumberHandlingCases))]
+    public void Javascript_result_scalars_keep_the_serializer_number_handling(JsonNumberHandling handling, object? value)
+    {
+        JsonSerializerOptions options = ReflectionOptions(handling);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Render(ScriptArrayOf(value)), Is.EqualTo(Render(new List<object?> { value })));
+            Assert.That(Render(ScriptObjectOf(("p", value))), Is.EqualTo(Render(new Dictionary<string, object?> { ["p"] = value })));
+        }
+
+        string Render(object root)
+        {
+            try
+            {
+                return JsonSerializer.Serialize(root, options);
+            }
+            catch (Exception exception)
+            {
+                return $"{exception.GetType()}: {exception.Message}";
+            }
+        }
+    }
+
+    // One value of each scalar type the walk can write with its converter, as ClearScript passes them. The serializer's
+    // default options have no converter for BigInteger and write its properties, so rows with those options leave it out.
+    private static readonly object?[] ScriptScalars = ["x", 1, 3000000000L, 0.1, 1.5f, true, new System.Numerics.BigInteger(-5), null];
+    private static readonly object?[] ScriptScalarsWithoutBigInteger = ["x", 1, 3000000000L, 0.1, 1.5f, true, null];
+
+    // The expected bytes are those the serializer writes for a scalar inside an IList<object> (array items) and as a
+    // value serialized on its own (property values).
+    [TestCase(JsonNumberHandling.Strict, false,
+        """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowReadingFromString, false,
+        """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.WriteAsString, false,
+        """["x",1,3000000000,0.1,"1.5",true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString, false,
+        """["x",1,3000000000,0.1,"1.5",true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals, false,
+        """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.AllowReadingFromString, false,
+        """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.WriteAsString, false,
+        """["x",1,3000000000,0.1,"1.5",true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString, false,
+        """["x",1,3000000000,0.1,"1.5",true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
+    [TestCase(JsonNumberHandling.Strict, true,
+        """["x",1,3000000000,0.1,1.5,true,null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":1.5,"f":true,"g":null}""")]
+    [TestCase(JsonNumberHandling.WriteAsString, true,
+        """["x","1","3000000000","0.1","1.5",true,null]""", """{"a":"x","b":"1","c":"3000000000","d":"0.1","e":"1.5","f":true,"g":null}""")]
+    public void Javascript_result_scalars_render_under_each_number_handling(JsonNumberHandling handling, bool defaultOptions, string inArray, string asProperties) =>
+        AssertScalarsRender(defaultOptions ? DefaultOptions(handling) : ReflectionOptions(handling), defaultOptions ? ScriptScalarsWithoutBigInteger : ScriptScalars, inArray, asProperties);
+
+    [TestCase(JsonNumberHandling.Strict, "ArgumentException", "ArgumentException")]
+    [TestCase(JsonNumberHandling.AllowReadingFromString, "ArgumentException", "ArgumentException")]
+    [TestCase(JsonNumberHandling.WriteAsString, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    [TestCase(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.AllowReadingFromString, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.WriteAsString, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    [TestCase(JsonNumberHandling.AllowNamedFloatingPointLiterals | JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString, """["NaN","-Infinity"]""", """{"a":"NaN","b":"-Infinity"}""")]
+    public void Javascript_result_named_floats_render_under_each_number_handling(JsonNumberHandling handling, string inArray, string asProperties) =>
+        AssertScalarsRender(ReflectionOptions(handling), [float.NaN, float.NegativeInfinity], inArray, asProperties);
+
+    // Number handling set on a type applies to a property value, which the serializer writes with a call of its own,
+    // but not to an array item, which it writes as part of the list.
+    [TestCase(typeof(float), false,
+        """["x",1,3000000000,0.1,1.5,true,"-5",null]""", """{"a":"x","b":1,"c":3000000000,"d":0.1,"e":"1.5","f":true,"g":"-5","h":null}""")]
+    [TestCase(typeof(double), true,
+        """["x",1,3000000000,0.1,1.5,true,null]""", """{"a":"x","b":1,"c":3000000000,"d":"0.1","e":1.5,"f":true,"g":null}""")]
+    public void Javascript_result_number_handling_set_on_a_scalar_type_applies_to_property_values(Type type, bool defaultOptions, string inArray, string asProperties)
+    {
+        JsonSerializerOptions options = defaultOptions ? DefaultOptions(JsonNumberHandling.Strict) : ReflectionOptions(JsonNumberHandling.Strict);
+        options.TypeInfoResolver = new DefaultJsonTypeInfoResolver
+        {
+            Modifiers = { info => { if (info.Type == type) info.NumberHandling = JsonNumberHandling.WriteAsString; } }
+        };
+        AssertScalarsRender(options, defaultOptions ? ScriptScalarsWithoutBigInteger : ScriptScalars, inArray, asProperties);
+    }
+
+    [TestCase(true,
+        """["base String",1,3000000000,0.1,"base Single","base Boolean","-5",null]""",
+        """{"a":"base String","b":1,"c":3000000000,"d":0.1,"e":"base Single","f":"base Boolean","g":"-5","h":null}""")]
+    [TestCase(false,
+        """["typed String",1,3000000000,0.1,"typed Single","typed Boolean","-5",null]""",
+        """{"a":"typed String","b":1,"c":3000000000,"d":0.1,"e":"typed Single","f":"typed Boolean","g":"-5","h":null}""")]
+    public void Javascript_result_scalars_use_the_converters_registered_for_their_type_or_a_base_type(bool baseType, string inArray, string asProperties)
+    {
+        JsonSerializerOptions options = ReflectionOptions(JsonNumberHandling.Strict);
+        JsonConverter[] converters = baseType ? [new BaseTypeConverter()] : [new TypedConverter<string>(), new TypedConverter<bool>(), new TypedConverter<float>()];
+        foreach (JsonConverter converter in converters)
+        {
+            options.Converters.Insert(0, converter);
+        }
+
+        AssertScalarsRender(options, ScriptScalars, inArray, asProperties);
+    }
+
+    [TestCase("[[['x', 1, 3000000000, 0.1, true, null]]]", """[[["x",1,3000000000,0.1,true,null]]]""")]
+    [TestCase("({a: {a: {s: 'x', i: 1, l: 3000000000, d: 0.1, b: true, z: null}}})", """{"a":{"a":{"s":"x","i":1,"l":3000000000,"d":0.1,"b":true,"z":null}}}""")]
+    public void Javascript_result_scalars_render_inside_the_deepest_container_with_the_tracer_options(string expression, string expected)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result: function() { return " + expression + "; }}");
+        object result = tracer.result();
+
+        Assert.That(SerializeWithRawNumbers(result, MaxDepth3), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// Renders <paramref name="values"/> as the items of a script array and as the properties <c>a</c>, <c>b</c>, ... of a
+    /// script object; a failure renders as the name of its exception.
+    /// </summary>
+    private static void AssertScalarsRender(JsonSerializerOptions options, object?[] values, string inArray, string asProperties)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Render(ScriptArrayOf(values)), Is.EqualTo(inArray));
+            Assert.That(Render(ScriptObjectOf(values.Select(static (value, i) => (((char)('a' + i)).ToString(), value)).ToArray())), Is.EqualTo(asProperties));
+        }
+
+        string Render(object root)
+        {
+            try
+            {
+                return SerializeWithRawNumbers(root, options);
+            }
+            catch (Exception exception)
+            {
+                return exception.GetType().Name;
+            }
+        }
+    }
+
+    // Tracer results are rendered with raw numbers, which the Nethermind converter for long reads from the thread.
+    private static string SerializeWithRawNumbers(object root, JsonSerializerOptions options)
+    {
+        NumberConversion original = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            return JsonSerializer.Serialize(root, options);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = original;
+        }
+    }
+
+    private static JsonSerializerOptions DefaultOptions(JsonNumberHandling handling) =>
+        new() { NumberHandling = handling, Converters = { new JavaScriptObjectConverter() } };
+
+    /// <summary>Writes the scalar types it accepts as the name of their type, from a converter declared for their base type.</summary>
+    private sealed class BaseTypeConverter : JsonConverter<object>
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(string) || typeToConvert == typeof(bool) || typeToConvert == typeof(float);
+
+        public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => writer.WriteStringValue("base " + value.GetType().Name);
+    }
+
+    private sealed class TypedConverter<T> : JsonConverter<T>
+    {
+        public override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) => writer.WriteStringValue("typed " + typeof(T).Name);
+    }
+
+    [Test]
+    public void Javascript_result_walk_disposes_the_open_enumerators_when_it_fails()
+    {
+        List<TrackingEnumerator> opened = [];
+        IJavaScriptObject root = FakeObject(FakeObject(FakeObject(FakeObject(null))));
+        using Utf8JsonWriter writer = new(Stream.Null);
+
+        Assert.That(() => new JavaScriptObjectConverter().Write(writer, root, MaxDepth3),
+            Throws.InstanceOf<JsonException>().With.Message.EqualTo(DepthError(3)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opened, Has.Count.EqualTo(3));
+            Assert.That(opened.Select(static enumerator => enumerator.Disposed), Is.All.True);
+        }
+
+        IJavaScriptObject FakeObject(IJavaScriptObject? child) => TrackedFakeObject(opened, child);
+    }
+
+    [Test]
+    public void Javascript_result_walk_disposes_each_enumerator_it_finishes()
+    {
+        List<TrackingEnumerator> opened = [];
+        IJavaScriptObject root = FakeObject(FakeObject(FakeObject(null)));
+        using MemoryStream output = new();
+        using (Utf8JsonWriter writer = new(output))
+        {
+            new JavaScriptObjectConverter().Write(writer, root, MaxDepth3);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(output.ToArray()), Is.EqualTo("""{"a":{"a":{}}}"""));
+            Assert.That(opened, Has.Count.EqualTo(3));
+            Assert.That(opened.Select(static enumerator => enumerator.Disposed), Is.All.True);
+        }
+
+        IJavaScriptObject FakeObject(IJavaScriptObject? child) => TrackedFakeObject(opened, child);
+    }
+
+    /// <summary>A fake script object holding <paramref name="child"/> as <c>a</c>, recording each enumerator it hands out.</summary>
+    private static IJavaScriptObject TrackedFakeObject(List<TrackingEnumerator> opened, IJavaScriptObject? child)
+    {
+        object fake = Substitute.For([typeof(IJavaScriptObject), typeof(IDictionary<string, object>)], []);
+        ((IDictionary<string, object>)fake).GetEnumerator().Returns(_ =>
+        {
+            TrackingEnumerator enumerator = new(child);
+            opened.Add(enumerator);
+            return enumerator;
+        });
+        return (IJavaScriptObject)fake;
+    }
+
+    [Test]
+    public void Javascript_result_interrupted_while_rendering_reports_the_interruption([Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        Action interrupt = engine.Interrupt;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.interruptForTest=action;}}"))
+            installer.InvokeMethod("install", interrupt);
+        // The getter runs while the result is rendered, as the trace timeout can fire then; the cycle after it reaches the depth limit.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { interruptForTest(); return 1; }, rest: o}; }}",
+            CaptureJavaScriptErrors = capture
+        });
+
+        Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+    }
+
+    [Test]
+    public void Javascript_request_cancellation_interrupts_a_busy_tracer(
+        [Values("expression", "setup", "result", "nested", "render")] string phase, [Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        // While the result renders, a getter cancels the request and returns; the cycle after it then reaches the depth limit,
+        // which reports the interruption. A busy getter that V8 stops is reported as a pending script exception instead.
+        Action entered = phase == "render" ? request.Cancel : () => request.CancelAfter(150);
+        using ScriptObject spin = (ScriptObject)((ScriptObject)engine.CreateTracer("{f: function() { var e = Date.now() + 20; while (Date.now() < e) {} }}")).GetProperty("f");
+        Func<object> nested = () => spin.Invoke(false);
+        bool caught = false;
+        Action caughtNested = () => caught = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(action, nested, caught){globalThis.enteredForTest=action;globalThis.nestedForTest=nested;globalThis.caughtForTest=caught;}}"))
+            installer.InvokeMethod("install", entered, nested, caughtNested);
+        // Every busy script ends on its own after 5 s, so a tracer the request cannot stop fails the bound instead of hanging.
+        const string busy = "enteredForTest(); var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        string script = phase switch
+        {
+            "expression" => "{fault: function() {}, result: (function() {" + busy + "})()}",
+            "setup" => "{fault: function() {}, result: function() { return 1; }, setup: function() {" + busy + "}}",
+            "result" => "{fault: function() {}, result: function() {" + busy + "}}",
+            // A host helper re-enters a 20 ms script; an interrupt there must end the whole script, not reach the catch.
+            "nested" => "{fault: function() {}, result: function() { enteredForTest(); var end = Date.now() + 5000;"
+                + " while (Date.now() < end) { try { nestedForTest(); } catch (e) { caughtForTest(); } } throw new Error('escape'); }}",
+            _ => "{fault: function() {}, result: function() { var o = {}; o.self = o; return {get first() { enteredForTest(); return 1; }, rest: o}; }}"
+        };
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = script,
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+            Assert.That(caught, Is.False);
+        }
+    }
+
+    [Test]
+    public void Javascript_result_is_not_rendered_after_the_request_is_cancelled([Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        bool rendered = false;
+        Action render = () => rendered = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(cancel, render){globalThis.cancelForTest=cancel;globalThis.renderedForTest=render;}}"))
+            installer.InvokeMethod("install", (Action)request.Cancel, render);
+        // The result hook cancels the request as its last call; the getter of what it returns runs only if it is rendered.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { var r = {get value() { renderedForTest(); return 1; }}; cancelForTest(); return r; }}",
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token
+        });
+
+        OperationCanceledException failure = Assert.Throws<OperationCanceledException>(() => tracer.BuildResult())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rendered, Is.False);
+            Assert.That(failure.CancellationToken, Is.EqualTo(request.Token));
+        }
+    }
+
+    [Test]
+    public void Javascript_request_cancelled_while_the_hook_check_throws_is_reported_as_cancellation([Values] bool capture)
+    {
+        using CancellationTokenSource request = new();
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, step: function() {}}",
+            CaptureJavaScriptErrors = capture,
+            ExecutionCancellationToken = request.Token,
+            Timeout = TimeSpan.FromSeconds(30)
+        });
+        engine.Interrupt();
+        // The hook check sits inside the handlers that classify it, so a request cancellation that becomes visible only
+        // after the check has thrown is still reported as cancellation. The observer acts once, on this thread only.
+        bool cancelledAtThrow = false;
+        int owner = Environment.CurrentManagedThreadId;
+        EventHandler<FirstChanceExceptionEventArgs> cancel = (_, args) =>
+        {
+            if (Environment.CurrentManagedThreadId != owner || cancelledAtThrow || args.Exception is not ScriptInterruptedException) return;
+            cancelledAtThrow = true;
+            request.Cancel();
+        };
+        AppDomain.CurrentDomain.FirstChanceException += cancel;
+        Exception failure;
+        try { failure = Assert.Catch(() => tracer.SetOperationStack(default))!; }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= cancel; }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelledAtThrow, Is.True);
+            Assert.That(failure, Is.TypeOf<OperationCanceledException>());
+            Assert.That((failure as OperationCanceledException)?.CancellationToken, Is.EqualTo(request.Token));
+        }
+    }
+
+    [Test]
+    public void Javascript_recorded_hook_failure_outlasts_the_trace_timeout()
+    {
+        using Engine engine = new(Shanghai.Instance);
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; }, step: function() { throw new Error('first step failure'); }}",
+            CaptureJavaScriptErrors = true,
+            Timeout = TimeSpan.FromMilliseconds(200)
+        });
+        tracer.SetOperationStack(default);
+        bool expired = WaitForInterrupt(engine);
+
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expired, Is.True);
+            Assert.That(trace.TraceError, Does.Contain("first step failure"));
+        }
+    }
+
+    [Test]
+    public void Javascript_interrupt_while_no_script_runs_stops_the_next_script(
+        [Values("construction", "result", "trace timeout")] string before, [Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        // V8 drops an interrupt that arrives while no script runs; the engine has to stop the script entered after it.
+        const string busy = "var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape');";
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = before == "construction"
+                ? "{fault: function() {}, result: (function() {" + busy + "})()}"
+                : "{fault: function() {}, result: function() {" + busy + "}}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(before == "trace timeout" ? 50 : 30_000)
+        };
+
+        if (before == "construction") engine.Interrupt();
+        Stopwatch elapsed = Stopwatch.StartNew();
+        Exception failure = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), options);
+            if (before == "result") engine.Interrupt();
+            else if (before == "trace timeout") Thread.Sleep(250);
+            elapsed.Restart();
+            using GethLikeTxTrace trace = tracer.BuildResult();
+        })!;
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+    }
+
+    [Test]
+    public void Javascript_hook_does_not_start_after_the_trace_timeout([Values] bool capture)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        bool armed = false, busy = false;
+        Func<bool> late = () => busy = armed;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(late){globalThis.lateForTest=late;}}"))
+            installer.InvokeMethod("install", late);
+        // The warmed step hook turns busy only once the test has seen the trace timeout's interrupt reach the engine.
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(), GethTraceOptions.Default with
+        {
+            Tracer = "{fault: function() {}, result: function() { return 1; },"
+                + " step: function() { if (lateForTest()) { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); } }}",
+            CaptureJavaScriptErrors = capture,
+            Timeout = TimeSpan.FromMilliseconds(150)
+        });
+        // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
+        try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
+        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        bool expired = WaitForInterrupt(engine);
+        armed = true;
+
+        Exception failure = Assert.Catch(() => tracer.SetOperationStack(default))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expired, Is.True);
+            Assert.That(busy, Is.False);
+            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+        }
+    }
+
+    [Test]
+    public void Engine_dispose_stops_interrupt_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Interrupt();
+        Timer redelivery = RedeliveryTimer(engine)!;
+        engine.Dispose();
+        Assert.That(redelivery.Change(10, 10), Is.False);
+    }
+
+    [Test]
+    public void Engine_interrupt_after_dispose_starts_no_redelivery()
+    {
+        Engine engine = new(Shanghai.Instance);
+        engine.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.DoesNotThrow(engine.Interrupt);
+            Assert.That(RedeliveryTimer(engine), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Engine_repeated_interrupt_waits_for_the_delivery_gate()
+    {
+        // Interrupt delivery takes the gate that disposal also takes, so a delivery cannot run while the gate is held.
+        Engine engine = new(Shanghai.Instance);
+        Thread second = new(engine.Interrupt);
+        bool started = false, finishedWhileHeld = false;
+        try
+        {
+            engine.Interrupt();
+            using (InterruptGate(engine).EnterScope())
+            {
+                second.Start();
+                started = true;
+                finishedWhileHeld = second.Join(300);
+            }
+        }
+        finally
+        {
+            if (started) second.Join();
+            engine.Dispose();
+        }
+        Assert.That(finishedWhileHeld, Is.False);
+    }
+
+    private static Timer? RedeliveryTimer(Engine engine) =>
+        (Timer?)typeof(Engine).GetField("_interruptRedelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine);
+
+    private static Lock InterruptGate(Engine engine) =>
+        (Lock)typeof(Engine).GetField("_interruptGate", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(engine)!;
+
+    private static bool WaitForInterrupt(Engine engine) => SpinWait.SpinUntil(() =>
+    {
+        try { engine.ThrowIfInterrupted(); return false; }
+        catch (ScriptInterruptedException) { return true; }
+    }, TimeSpan.FromSeconds(5));
+
+    [Test]
+    public void Javascript_trace_timeout_starts_after_setup_and_interrupts_a_busy_result([Values] bool busyResult)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        string script = busyResult
+            ? "{fault: function() {}, result: function() { var end = Date.now() + 5000; while (Date.now() < end) {} throw new Error('escape'); }}"
+            : "{fault: function() {}, result: function() { return 7; }, setup: function() { var end = Date.now() + 750; while (Date.now() < end) {} }}";
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState), new Context(),
+            GethTraceOptions.Default with { Tracer = script, Timeout = TimeSpan.FromMilliseconds(250) });
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        if (busyResult)
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        }
+        else
+        {
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            Assert.That(JsonSerializer.Serialize(trace, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+        }
+    }
+
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public void Javascript_result_depth_limit_counts_undefined_in_an_array_as_an_object(int arrays, bool accepted)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result: function() { var v = [undefined]; for (var i = 1; i < " + arrays + "; i++) { v = [v]; } return v; }}");
+        object result = tracer.result();
+
+        // The serializer writes undefined in an array as an empty object, which takes a level of its own.
+        if (accepted) Assert.That(JsonSerializer.Serialize(result, MaxDepth3), Is.EqualTo(new string('[', arrays) + "{}" + new string(']', arrays)));
+        else Assert.That(() => JsonSerializer.Serialize(result, MaxDepth3), Throws.InstanceOf<JsonException>().With.Message.EqualTo(DepthError(3)));
+    }
+
+    private sealed class TrackingEnumerator(object? child) : IEnumerator<KeyValuePair<string, object>>
+    {
+        private bool _moved;
+
+        public bool Disposed { get; private set; }
+
+        public KeyValuePair<string, object> Current => new("a", child!);
+
+        object IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            if (child is null || _moved) return false;
+            _moved = true;
+            return true;
+        }
+
+        public void Reset() => _moved = false;
+
+        public void Dispose() => Disposed = true;
+    }
+
+    // Reflection metadata, which production falls back to, so that float and BigInteger do not fail the metadata coverage check.
+    private static JsonSerializerOptions ReflectionOptions(JsonNumberHandling handling, int maxDepth = EthereumJsonSerializer.DefaultMaxDepth) =>
+        new(EthereumJsonSerializer.JsonOptions) { NumberHandling = handling, MaxDepth = maxDepth, TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+
+    private static IJavaScriptObject ScriptArrayOf(params object?[] items)
+    {
+        object fake = Substitute.For([typeof(IJavaScriptObject), typeof(IList<object>)], []);
+        ((IEnumerable<object>)fake).GetEnumerator().Returns(_ => new List<object>(items!).GetEnumerator());
+        return (IJavaScriptObject)fake;
+    }
+
+    private static IJavaScriptObject ScriptObjectOf(params (string Key, object? Value)[] properties)
+    {
+        object fake = Substitute.For([typeof(IJavaScriptObject), typeof(IDictionary<string, object>)], []);
+        ((IDictionary<string, object>)fake).GetEnumerator().Returns(_ => properties.Select(static property => new KeyValuePair<string, object>(property.Key, property.Value!)).GetEnumerator());
+        return (IJavaScriptObject)fake;
+    }
+
+    private GethLikeJavaScriptTxTracer CreateResultTracer(string resultBody, bool capture) =>
+        new(new Engine(Shanghai.Instance), new Db(TestState), new Context(),
+            GethTraceOptions.Default with { Tracer = "{fault: function() {}, result: function(ctx, db) {" + resultBody + "}}", CaptureJavaScriptErrors = capture });
+
+    /// <summary>
+    /// Script that returns <paramref name="containers"/> nested objects (<c>obj</c>), arrays (<c>arr</c>) or both in turn
+    /// (<c>mix</c>, an object innermost). The innermost one holds 1 (<c>scalar</c>), a <c>{value: 1n}</c> wrapper written as
+    /// a string (<c>wrapper</c>) or <c>null</c>, or is itself empty (<c>empty</c>) or a one-byte view (<c>view</c>).
+    /// </summary>
+    private static string ChainScript(string shape, int containers, string end)
+    {
+        (string start, int wraps) = end switch
+        {
+            "scalar" => ("1", containers),
+            "wrapper" => ("{value: 1n}", containers),
+            "null" => ("null", containers),
+            "empty" => (shape == "arr" ? "[]" : "{}", containers - 1),
+            "view" => ("new Uint8Array([1])", containers - 1),
+            _ => throw new ArgumentOutOfRangeException(nameof(end))
+        };
+        string wrap = shape switch
+        {
+            "obj" => "v = {a: v};",
+            "arr" => "v = [v];",
+            "mix" => "v = i % 2 == 0 ? {a: v} : [v];",
+            _ => throw new ArgumentOutOfRangeException(nameof(shape))
+        };
+        return "var v = " + start + "; for (var i = 0; i < " + wraps + "; i++) { " + wrap + " } return v;";
+    }
+
+    /// <summary>The JSON of <see cref="ChainScript"/>, built with loops rather than by the code under test.</summary>
+    private static string ExpectedChain(string shape, int containers, string end)
+    {
+        (string inner, int wraps) = end switch
+        {
+            "scalar" => ("1", containers),
+            "wrapper" => ("\"1\"", containers),
+            "null" => ("null", containers),
+            "empty" => (shape == "arr" ? "[]" : "{}", containers - 1),
+            "view" => ("""{"0":1}""", containers - 1),
+            _ => throw new ArgumentOutOfRangeException(nameof(end))
+        };
+        StringBuilder json = new();
+        for (int i = wraps - 1; i >= 0; i--) json.Append(IsArray(i) ? "[" : """{"a":""");
+        json.Append(inner);
+        for (int i = 0; i < wraps; i++) json.Append(IsArray(i) ? ']' : '}');
+        return json.ToString();
+
+        bool IsArray(int wrapFromInside) => shape == "arr" || (shape == "mix" && wrapFromInside % 2 == 1);
+    }
+
+    private static void AssertValidJson(string json, int maxDepth)
+    {
+        Utf8JsonReader reader = new(Encoding.UTF8.GetBytes(json), new JsonReaderOptions { MaxDepth = maxDepth });
+        while (reader.Read())
+        {
+        }
+
+        Assert.That(reader.BytesConsumed, Is.EqualTo(Encoding.UTF8.GetByteCount(json)));
+    }
+
     [Test]
     public void Engine_in_another_runtime_stays_usable_while_a_violation_is_pending()
     {
@@ -1378,6 +2376,203 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             ((object)hoardingTracer as IDisposable)?.Dispose();
         }
     }
+
+    [Test]
+    [NonParallelizable]
+    public void Heap_held_at_the_soft_limit_does_not_raise_the_hard_limit()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        ulong hardLimit = runtime.HeapSizeLimit;
+        dynamic hoveringTracer = engine.CreateTracer(HoveringTracer);
+        try
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                hoveringTracer.step(null, null);
+            }
+
+            int steps = (int)hoveringTracer.result(null, null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(steps, Is.EqualTo(10), "the script stays under the soft limit after each collection");
+                Assert.That(runtime.HeapSizeLimit, Is.EqualTo(hardLimit), "the collections enforcing the soft limit leave V8's hard limit as configured");
+            }
+        }
+        finally
+        {
+            ((object)hoveringTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Allocation_burst_between_heap_samples_ends_in_the_memory_limit_error()
+    {
+        // V8 ends the process if the burst reaches its hard heap limit, so the burst runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(AllocationBurstChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Large_call_without_interrupt_checks_ends_in_the_memory_limit_error_at_the_next_hook()
+    {
+        // V8 ends the process if the call reaches its hard heap limit, so the call runs in a child process.
+        (int exitCode, string output) = await RunInChildProcess(UnsampledCallChildArgument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.Zero, output);
+            Assert.That(output, Does.Contain("exceeded its memory limit"));
+        }
+    }
+
+    [Test]
+    public void Hard_heap_limit_covers_the_fixed_old_space()
+    {
+        using TracerRuntime runtime = new();
+
+        Assert.That(runtime.HeapSizeLimit, Is.GreaterThanOrEqualTo(16384UL * 1024 * 1024), "V8's hard limit includes the old space");
+    }
+
+    private static async Task<(int ExitCode, string Output)> RunInChildProcess(string argument)
+    {
+        ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(GethLikeJavaScriptTracerTests).Assembly.Location);
+        start.ArgumentList.Add(argument);
+        using Process child = new() { StartInfo = start };
+        Assert.That(child.Start(), Is.True);
+        Task<string> output = child.StandardOutput.ReadToEndAsync();
+        Task<string> error = child.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(2));
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            child.Kill(entireProcessTree: true);
+            await child.WaitForExitAsync();
+            Assert.Fail($"The child process did not end.\n{await output}\n{await error}");
+        }
+
+        return (child.ExitCode, $"{await output}\n{await error}");
+    }
+
+    // Runs before the test host starts, so whatever ends a child process ends only that process.
+    private static Task<int> Main(string[] args) => args switch
+    {
+        [AllocationBurstChildArgument] => Task.FromResult(RunAllocationBurst()),
+        [UnsampledCallChildArgument] => Task.FromResult(RunUnsampledCall()),
+        _ => MicrosoftTestingPlatformEntryPoint.Main(args)
+    };
+
+    private static int RunAllocationBurst()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic burstingTracer = engine.CreateTracer(BurstingTracer);
+        try
+        {
+            burstingTracer.step(null, null);
+            Console.Error.WriteLine("The burst ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)burstingTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private static int RunUnsampledCall()
+    {
+        using TracerRuntime runtime = new();
+        using Engine engine = new(Shanghai.Instance, runtime);
+        dynamic unsampledCallTracer = engine.CreateTracer(UnsampledCallTracer);
+        try
+        {
+            try
+            {
+                unsampledCallTracer.step(null, null);
+            }
+            catch (ScriptEngineException exception)
+            {
+                Console.Error.WriteLine($"The large call was interrupted while it ran: {exception.Message}");
+                return 1;
+            }
+
+            unsampledCallTracer.step(null, null);
+            Console.Error.WriteLine("The hook after the large call ended without a memory-limit error.");
+            return 1;
+        }
+        catch (ScriptEngineException exception)
+        {
+            Console.WriteLine(exception.Message);
+            return exception.Message.Contains("exceeded its memory limit", StringComparison.Ordinal) ? 0 : 1;
+        }
+        finally
+        {
+            ((object)unsampledCallTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private const string AllocationBurstChildArgument = "--nethermind-js-tracer-allocation-burst";
+    private const string UnsampledCallChildArgument = "--nethermind-js-tracer-unsampled-call";
+
+    // One JSON.parse that builds about 640 MiB of heap, far over the 128 MiB soft limit. The built-in never reaches an
+    // interrupt check, so the heap is not sampled until the next hook enters the script.
+    private const string UnsampledCallTracer = @"{
+                    step: function(log, db) {
+                        if (!this.h) this.h = JSON.parse('[' + ('[' + '{},'.repeat(999) + '{}],').repeat(10000) + '[]]');
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.h.length; }
+                }";
+
+    // Tries to allocate about 9.6 GB in one step, far past the soft limit. Only the heap samples taken while the step
+    // runs can end the step with the memory-limit error. Without them the step would finish if the host has enough
+    // memory, and the child would report the missing error; otherwise the child dies or times out. Every one of these
+    // outcomes fails the test.
+    private const string BurstingTracer = @"{
+                    hoard: [],
+                    step: function(log, db) { for (var i = 0; i < 40; i++) this.hoard.push(new Array(30000000).fill(i + 0.5)); },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.hoard.length; }
+                }";
+
+    // Keeps 120 MB of arrays alive (about 116 MiB of heap after a collection) and leaves 16 MB of garbage per step,
+    // so the heap is over the 128 MiB soft limit when the next step starts and back under it after the collection
+    // that enforces the limit.
+    private const string HoveringTracer = @"{
+                    live: null,
+                    steps: 0,
+                    step: function(log, db) {
+                        this.steps++;
+                        if (this.live === null) {
+                            this.live = [];
+                            for (var i = 0; i < 15; i++) this.live.push(new Array(1000000).fill(i + 0.5));
+                        }
+                        var garbage = new Array(2000000).fill(1.5);
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.steps; }
+                }";
 
     private const string HoardingTracer = @"{
                     hoard: [],
@@ -1558,7 +2753,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                  });
                                                  return this.trace;
                                              },
-                                             fault: this.step
+                                             fault: function(log, db) { this.step(log, db); }
                                          }
                                          """;
 }
@@ -1986,6 +3181,35 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expected })));
     }
 
+    [Test]
+    public void Depth_rejected_call_emits_balanced_callbacks_without_fault(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode)
+    {
+        Prepare builder = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0);
+        if (opcode is Instruction.CALL or Instruction.CALLCODE) builder = builder.PushData(0);
+        byte[] code = builder.PushData(Recipient).Op(Instruction.GAS).Op(opcode).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((1UL, 0), 1_000_000_000_000UL, code,
+            blockGasLimit: 1_000_000_000_000UL);
+        const string tracer = """
+            {
+                enters: 0, exits: 0, faults: 0, rejected: [], deep: 0,
+                step: function(log) {
+                    if (log.getDepth() == 1025 && log.op.toNumber() >= 0xf0 && !log.getError()) this.deep++;
+                },
+                fault: function(log) { this.faults++; },
+                enter: function(frame) { this.enters++; },
+                exit: function(frame) {
+                    this.exits++;
+                    if (frame.getError()) this.rejected.push([frame.getGasUsed(), frame.getError()]);
+                },
+                result: function() { return [this.enters, this.exits, this.faults, this.rejected, this.deep]; }
+            }
+            """;
+        string result = RunTrace(block, transaction, tracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo("[1025,1025,0,[[0,\"max call depth exceeded\"]],1]"));
+    }
+
     private const string ErrorTracer = """
         {
             events: [],
@@ -2034,8 +3258,10 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
             step: function(log, db) {
                 if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) < 0) return;
                 var target = toAddress(log.stack.peek(1).toString(16).padStart(40, "0"));
+                this.stepCost = log.getCost();
                 this.events.push("step:" + log.getCost() + ":" + log.getGas() + ":" + log.getRefund() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + log.memory.length() + ":" + db.getBalance(target).toString() + ":" + db.exists(target));
             },
+            postStep: function(log) { if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) >= 0 && log.getCost() !== this.stepCost) this.events.push("postStep:" + log.getCost()); },
             fault: function(log) { this.events.push("fault:" + log.getError()); },
             enter: function(frame) { this.events.push("enter:" + frame.getGas()); },
             exit: function(frame) { this.events.push("exit:" + frame.getGasUsed() + ":" + (frame.getError() || "")); },
