@@ -33,6 +33,7 @@ internal static class SecuredTrieNodeValidator
     /// <param name="rlp">The node's encoding.</param>
     /// <param name="depth">The number of nibbles from the root to the node.</param>
     /// <param name="isHashed">Whether the node is referenced by its hash rather than embedded in its parent.</param>
+    /// <returns>0 for a branch; for a leaf or an extension, where its items start.</returns>
     /// <exception cref="TrieException">The node is malformed, or its path does not end at the key length.</exception>
     /// <remarks>
     /// The encoding must be a leaf whose path ends at the key, an extension whose path stops short of it, or a branch above it
@@ -45,7 +46,7 @@ internal static class SecuredTrieNodeValidator
     /// </para>
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void Validate(ReadOnlySpan<byte> rlp, int depth, bool isHashed)
+    public static int Validate(ReadOnlySpan<byte> rlp, int depth, bool isHashed)
     {
         int remaining = KeyNibbles - depth;
         int length = rlp.Length;
@@ -63,7 +64,7 @@ internal static class SecuredTrieNodeValidator
             if (mismatch == 0)
             {
                 if (remaining <= 0) ThrowInvalidNode();
-                return;
+                return 0;
             }
         }
 
@@ -99,17 +100,17 @@ internal static class SecuredTrieNodeValidator
             && position + 1 == length && Unsafe.Add(ref node, position) == EmptyString)
         {
             if (remaining <= 0 || children < 2) ThrowInvalidNode();
-            return;
+            return 0;
         }
 
-        ValidateOtherNode(ref node, itemsStart, position, length, remaining);
+        return ValidateOtherNode(ref node, itemsStart, position, length, remaining);
     }
 
     /// <summary>Checks a list node, from its items at <paramref name="itemsStart"/>, that is not a branch of hashed children:
     /// a leaf, an extension, or a branch with an embedded child.</summary>
     /// <param name="mismatch">Where the node first failed to read as a branch of hashed children.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ValidateOtherNode(ref byte node, int itemsStart, int mismatch, int length, int remaining)
+    private static int ValidateOtherNode(ref byte node, int itemsStart, int mismatch, int length, int remaining)
     {
         int position = itemsStart;
         int children = 0;
@@ -134,7 +135,7 @@ internal static class SecuredTrieNodeValidator
         if (slot == BranchChildren && position + 1 == length && Unsafe.Add(ref node, position) == EmptyString)
         {
             if (remaining <= 0 || children < 2) ThrowInvalidNode();
-            return;
+            return 0;
         }
 
         // Each item's prefix is checked before the item is measured, as measuring a list recurses into its items: the path
@@ -151,6 +152,7 @@ internal static class SecuredTrieNodeValidator
         }
 
         ValidateLeafOrExtension(ref node, itemsStart, secondItem, length, remaining);
+        return itemsStart;
     }
 
     /// <summary>Moves <paramref name="position"/>, below <paramref name="length"/>, past a branch's child reference if it is

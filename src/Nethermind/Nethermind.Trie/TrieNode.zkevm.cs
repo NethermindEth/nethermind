@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -392,6 +394,30 @@ namespace Nethermind.Trie
             position = Rlp.Encode(destination, position, compactKey);
             Rlp.Encode(destination, position, value);
             return true;
+        }
+
+        /// <summary>Loads and decodes this node, a witness node of a secured trie, and checks it <paramref name="depth"/> nibbles
+        /// below the root; see <see cref="SecuredTrieNodeValidator"/>.</summary>
+        /// <remarks>The check reads the node's shape, so the decode takes it from there rather than counting items again.</remarks>
+        internal void ResolveSecuredNode(ITrieNodeResolver tree, in TreePath path, int depth)
+        {
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.IsNull)
+            {
+                WriteLoadedRlp(rlp = new CappedArray<byte>(tree.LoadRlp(path, Keccak ?? ThrowMissingKeccak()) ?? ThrowNullRlp()));
+                IsPersisted = true;
+            }
+
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            if (itemsStart == 0) _nodeData = new BranchData();
+            else DecodeLeafOrExtension(span, itemsStart, null);
+
+            [DoesNotReturn, StackTraceHidden]
+            static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
+
+            [DoesNotReturn, StackTraceHidden]
+            byte[] ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
         }
 
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>

@@ -281,8 +281,8 @@ public partial class PatriciaTree
     {
         if (node.NodeData is not null) return;
 
-        node.ResolveNode(TrieStore, path);
-        if (isSecured) SecuredTrieNodeValidator.Validate(node.FullRlp.AsSpan(), depth, isHashed: node.Keccak is not null);
+        if (isSecured) node.ResolveSecuredNode(TrieStore, path, depth);
+        else node.ResolveNode(TrieStore, path);
     }
 
     /// <summary>Decodes the child a walk reaches through an extension, <paramref name="depth"/> nibbles below the root of a secured
