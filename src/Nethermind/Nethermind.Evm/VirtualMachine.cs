@@ -658,8 +658,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// It is raised only for CALL operations and before a child snapshot or frame exists. A rejection is handled
     /// like a failed precheck: it pushes zero and returns the reserved gas less <paramref name="gasUsed"/>, none of it
     /// when <paramref name="gasUsed"/> exceeds the reservation, and also stages the revert data as return data and
-    /// copies it into the output window. State and access-list changes made by the hook persist whether the call is
-    /// then rejected or proceeds. The default continues.
+    /// copies it into the output window. The hook is not told the size of the reservation: a <paramref name="gasUsed"/>
+    /// above it is clamped to the reservation, and the excess is not charged to the caller. State and access-list
+    /// changes made by the hook persist whether the call is then rejected or proceeds. The default continues.
     /// </remarks>
     protected internal virtual byte[]? OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value, out ulong gasUsed)
     {
@@ -676,8 +677,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// The hook runs for CREATE, CREATE2 and TCREATE after the operation's own gas is charged, and before the
     /// depth, balance and nonce checks, the child gas reservation, the nonce increment and the address warm-up.
     /// A rejection pushes zero, stages the revert data as return data and leaves the remaining gas with the
-    /// caller, so the nonce and the address warmth are unchanged. State and access-list changes made by the
-    /// hook persist whether the creation is then rejected, fails a later check or proceeds. The default continues.
+    /// caller, so the nonce and the address warmth are unchanged. Unlike <see cref="OnValueTransferCallPrecheck"/>,
+    /// the hook reports no consumed gas: it runs before any gas is reserved for the creation, so a rejection has no
+    /// reservation to charge and costs the caller the operation's own gas only. State and access-list changes made by
+    /// the hook persist whether the creation is then rejected, fails a later check or proceeds. The default continues.
     /// </remarks>
     protected internal virtual byte[]? OnValueTransferCreatePrecheck(Address creator, Address contractAddress, in UInt256 value) => null;
 

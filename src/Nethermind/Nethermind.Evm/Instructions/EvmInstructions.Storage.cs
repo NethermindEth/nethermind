@@ -462,7 +462,11 @@ public static partial class EvmInstructions
             EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
                 ref gas, vm, in storageCell, in currentValue, in newValue);
             if (accountingResult != EvmExceptionType.None)
+            {
+                if (TTracingInst.IsActive)
+                    vm.TraceOperationReady(traceStorageAccessCost + spec.GasCosts.SStoreResetCost, accountingResult.GetEvmExceptionDescription());
                 return accountingResult;
+            }
         }
 
         // Retrieve the refund value associated with clearing storage.
@@ -624,7 +628,11 @@ public static partial class EvmInstructions
             EvmExceptionType accountingResult = TGasPolicy.ApplyStorageTransitionAccounting(
                 ref gas, vm, in storageCell, in currentValue, in newValue);
             if (accountingResult != EvmExceptionType.None)
+            {
+                if (TTracingInst.IsActive)
+                    vm.TraceOperationReady(traceExecutionCost, accountingResult.GetEvmExceptionDescription());
                 return accountingResult;
+            }
 
             bool originalIsZero = originalValue.IsZero;
             bool currentSameAsOriginal = originalValue == currentValue;

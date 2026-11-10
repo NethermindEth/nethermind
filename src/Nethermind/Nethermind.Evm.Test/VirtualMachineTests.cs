@@ -3889,9 +3889,8 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Intercepted_bad_instruction_precompile_call_returns_failure_without_refunding_child_gas(bool traced)
+    [Test]
+    public void Intercepted_bad_instruction_precompile_call_returns_failure_without_refunding_child_gas([Values] bool traced)
     {
         _hookedMachine.HandleChildFrame = true;
         _hookedMachine.HandledChildExceptionType = EvmExceptionType.BadInstruction;
@@ -3911,17 +3910,7 @@ public sealed class VirtualMachineExtensionHooksTests
             .RETURN(0, 96)
             .Done;
 
-        (Block block, Transaction transaction) prepared = PrepareTx(code);
-        if (traced)
-        {
-            TestAllTracerWithOutput result = ExecutePrepared(prepared);
-            Assert.That(result.Error, Is.Null);
-        }
-        else
-        {
-            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
-            Assert.That(result.TransactionExecuted, Is.True);
-        }
+        ExecuteSuccessfully(code, traced);
 
         StorageCell initialGasCell = new(parent, UInt256.Zero);
         StorageCell callResultCell = new(parent, UInt256.One);
@@ -3940,26 +3929,15 @@ public sealed class VirtualMachineExtensionHooksTests
         Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.BadInstruction, false)]));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Precompile_out_of_gas_is_reported_to_completion_hook(bool traced)
+    [Test]
+    public void Precompile_out_of_gas_is_reported_to_completion_hook([Values] bool traced)
     {
         byte[] code = Prepare.EvmCode
             .CALL(100, BN254AddPrecompile.Address, 0, 0, 0, 0, 0)
             .Op(Instruction.POP)
             .Done;
-        (Block block, Transaction transaction) prepared = PrepareTx(code);
 
-        if (traced)
-        {
-            TestAllTracerWithOutput result = ExecutePrepared(prepared);
-            Assert.That(result.Error, Is.Null);
-        }
-        else
-        {
-            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
-            Assert.That(result.TransactionExecuted, Is.True);
-        }
+        ExecuteSuccessfully(code, traced);
 
         Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.OutOfGas, false)]));
     }
@@ -4170,6 +4148,39 @@ public sealed class VirtualMachineExtensionHooksTests
     }
 
     [Test]
+    public void Creation_rejected_at_the_nonce_limit_has_the_same_outcome_with_and_without_value([Values] bool salted, [Values(0, 7)] int value)
+    {
+        byte[] initCode = [(byte)Instruction.STOP];
+        byte[] salt = new byte[32];
+        Address creator = SenderRecipientAndMiner.Default.Recipient;
+        _worldState.CreateAccount(creator, 0, ulong.MaxValue);
+        Address contractAddress = salted ? ContractAddress.From(creator, salt, initCode) : ContractAddress.From(creator, ulong.MaxValue);
+        Prepare code = Prepare.EvmCode.StoreDataInMemory(0, initCode);
+        Func<Prepare, UInt256, Prepare> create = salted
+            ? (p, operand) => p.PushData(salt).CREATEx(2, operand, 0, (UInt256)initCode.Length)
+            : (p, operand) => p.CREATEx(1, operand, 0, (UInt256)initCode.Length);
+        AppendMeasuredOperation(code, create, (UInt256)value, 64);
+
+        TestAllTracerWithOutput result = Execute(code.RETURN(64, 96).Done, transactionValue: 0);
+        byte[] output = result.ReturnValue!;
+        // As in the precheck test: the creation, its init-code word, the CREATE2 hash word, its operand pushes and the closing GAS.
+        UInt256 createGas = GasCostOf.Create + GasCostOf.InitCodeWord + (salted ? GasCostOf.Sha3Word : 0)
+            + GasCostOf.VeryLow * (salted ? 4UL : 3UL) + GasCostOf.Base;
+        (Address, Address, UInt256)[] expectedPrechecks = value == 0 ? [] : [(creator, contractAddress, (UInt256)value)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(ReadWord(output, 0), Is.EqualTo(UInt256.Zero), "pushed address");
+            Assert.That(ReadWord(output, 1), Is.EqualTo(createGas), "gas spent by the creation");
+            Assert.That(ReadWord(output, 2), Is.EqualTo(UInt256.Zero), "RETURNDATASIZE");
+            Assert.That(_hookedMachine.ValueTransferCreatePrechecks, Is.EqualTo(expectedPrechecks));
+            Assert.That(_worldState.GetNonce(creator), Is.EqualTo(ulong.MaxValue));
+            Assert.That(_worldState.AccountExists(contractAddress), Is.False);
+        }
+    }
+
+    [Test]
     public void Value_transfer_precheck_rejection_is_traced_as_a_reverted_subcall([Values] bool create)
     {
         byte[] revertData = [0xde, 0xad];
@@ -4243,9 +4254,8 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Staticcall_selfdestruct_does_not_invoke_selfdestruct_hook(bool traced)
+    [Test]
+    public void Staticcall_selfdestruct_does_not_invoke_selfdestruct_hook([Values] bool traced)
     {
         Deploy(Prepare.EvmCode
             .PushData(TestItem.AddressA)
@@ -4256,18 +4266,8 @@ public sealed class VirtualMachineExtensionHooksTests
             .STATICCALL(50_000, Child, 0, 0, 0, 0)
             .Op(Instruction.POP)
             .Done;
-        (Block block, Transaction transaction) prepared = PrepareTx(code);
 
-        if (traced)
-        {
-            TestAllTracerWithOutput result = ExecutePrepared(prepared);
-            Assert.That(result.Error, Is.Null);
-        }
-        else
-        {
-            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
-            Assert.That(result.TransactionExecuted, Is.True);
-        }
+        ExecuteSuccessfully(code, traced);
 
         Assert.That(_hookedMachine.SelfDestructCalls, Is.Zero);
     }
@@ -4292,9 +4292,8 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Eoa_fast_path_can_be_controlled_by_the_vm(bool skipFastPath)
+    [Test]
+    public void Eoa_fast_path_can_be_controlled_by_the_vm([Values] bool skipFastPath)
     {
         _hookedMachine.SkipEoaCallFastPath = skipFastPath;
         byte[] code = Prepare.EvmCode
@@ -4424,6 +4423,16 @@ public sealed class VirtualMachineExtensionHooksTests
 
     private TransactionResult ExecutePrepared((Block Block, Transaction Transaction) prepared, ITxTracer tracer) =>
         _processor.Execute(prepared.Transaction, new BlockExecutionContext(prepared.Block.Header, _specProvider.GetSpec(prepared.Block.Header)), tracer);
+
+    /// <summary>Runs <paramref name="code"/> with or without tracing and asserts that the transaction executed.</summary>
+    private void ExecuteSuccessfully(byte[] code, bool traced)
+    {
+        (Block Block, Transaction Transaction) prepared = PrepareTx(code);
+        if (traced)
+            Assert.That(ExecutePrepared(prepared).Error, Is.Null);
+        else
+            Assert.That(ExecutePrepared(prepared, NullTxTracer.Instance).TransactionExecuted, Is.True);
+    }
 
     private sealed class ActionAndLogTracer : TestAllTracerWithOutput
     {

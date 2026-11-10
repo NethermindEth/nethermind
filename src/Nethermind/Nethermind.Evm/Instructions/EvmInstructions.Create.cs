@@ -163,30 +163,27 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
-        // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
-            goto OutOfGas;
-
-        // The value-transfer precheck below sees the derived address, so derive it before the depth, balance and nonce checks.
-        ulong accountNonce = state.GetNonce(env.ExecutingAccount);
-
-        // Compute the contract address:
-        // - For CREATE: based on the executing account and its current nonce.
-        // - For CREATE2: based on the executing account, the provided salt, and the init code.
-        // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
-        Address contractAddress = !TOpCreate.IsSalted
-            ? ContractAddress.From(env.ExecutingAccount, accountNonce)
-            : isTransientCreate
-                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
-                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
-
-        if (!value.IsZero && vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, contractAddress, in value) is { } precheckRevert)
+        // The value-transfer precheck sees the derived address, so a value-bearing creation loads its init code and
+        // derives the address ahead of the depth, balance and nonce checks. A zero-value creation raises no precheck
+        // and keeps those rejections ahead of the load and the address hashing.
+        ReadOnlyMemory<byte> initCode = default;
+        ulong accountNonce = 0;
+        Address? contractAddress = null;
+        if (!value.IsZero)
         {
-            if (!TEip8037.IsActive && vm.IsTracingActions)
-                TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, contractAddress, initCode, precheckRevert);
+            if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out initCode))
+                goto OutOfGas;
 
-            vm.ReturnDataBuffer = precheckRevert;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            accountNonce = state.GetNonce(env.ExecutingAccount);
+            contractAddress = DeriveCreateAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
+            if (vm.OnValueTransferCreatePrecheck(env.ExecutingAccount, contractAddress, in value) is { } precheckRevert)
+            {
+                if (!TEip8037.IsActive && vm.IsTracingActions)
+                    TraceRevertedCreatePrecheck<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, contractAddress, initCode, precheckRevert);
+
+                vm.ReturnDataBuffer = precheckRevert;
+                return stack.PushZero<TTracingInst, OnFlag>();
+            }
         }
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
@@ -200,6 +197,10 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
+        // Load the initialization code from memory based on the specified position and length.
+        if (contractAddress is null && !vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out initCode))
+            goto OutOfGas;
+
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
@@ -212,12 +213,16 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        // Ensure the executing account's nonce hasn't reached the maximum.
+        // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
+        if (contractAddress is null)
+            accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
+
+        contractAddress ??= DeriveCreateAddress<TOpCreate>(env.ExecutingAccount, accountNonce, salt, initCode.Span);
 
         if (isTransientCreate)
         {
@@ -336,6 +341,20 @@ public static partial class EvmInstructions
     BadInstruction:
         return EvmExceptionType.BadInstruction;
     }
+
+    /// <summary>Computes the address of the contract a creation deploys.</summary>
+    /// <remarks>
+    /// CREATE derives it from the creator and its nonce, CREATE2 from the creator, the salt and the init code, and
+    /// TCREATE as CREATE2 with the EIP-8360 0xfe prefix.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Address DeriveCreateAddress<TOpCreate>(Address creator, ulong nonce, Span<byte> salt, ReadOnlySpan<byte> initCode)
+        where TOpCreate : struct, IOpCreate =>
+        !TOpCreate.IsSalted
+            ? ContractAddress.From(creator, nonce)
+            : TOpCreate.IsTransient
+                ? ContractAddress.FromTransientCreate(creator, salt, initCode)
+                : ContractAddress.From(creator, salt, initCode);
 
     /// <summary>Reports the gas the creation is about to charge, before init-code memory is expanded.</summary>
     /// <remarks>As in Geth, a creation that cannot pay the base charge reports that charge alone.</remarks>

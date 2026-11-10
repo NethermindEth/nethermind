@@ -47,7 +47,9 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// <summary>Empties the accessed addresses and storage keys, the pre-warmed precompiles included.</summary>
     /// <remarks>
     /// Lets an engine start a call with an empty EIP-2929 access list rather than the transaction's pre-warmed one.
-    /// Call it only on entry to the top-level frame, which never restores its access snapshot.
+    /// Call it only on entry to the top-level frame of a transaction that is not an EIP-8141 frame transaction: that
+    /// frame never restores its access snapshot. A frame transaction snapshots the access list before each frame and
+    /// restores it when the frame or its atomic batch fails, and a clear in between invalidates that snapshot.
     /// </remarks>
     public readonly void ClearAccessList()
     {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Autofac;
 using Nethermind.Config;
@@ -144,6 +145,26 @@ public sealed class StorageTransitionAccountingTests
         }
     }
 
+    // The step reports what the handler charged before the policy rejected the write: the legacy reset cost, or the
+    // cold slot access plus the net-metered base cost.
+    [Test]
+    public void Policy_error_is_reported_to_the_instruction_trace([Values] bool legacyMetering)
+    {
+        _probe.Result = EvmExceptionType.OutOfGas;
+        (Block block, Transaction transaction) = PrepareTransaction(
+            Prepare.EvmCode.SSTORE(0, [1]).Done);
+        StorageRefundTracer tracer = new();
+
+        TransactionResult result = Execute(transaction, block, tracer, MeteringSpec(legacyMetering));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            (ulong, string?)[] expected = [(legacyMetering ? GasCostOf.SReset : GasCostOf.ColdSLoad + GasCostOf.WarmStateRead, "out of gas")];
+            Assert.That(tracer.Ready, Is.EqualTo(expected));
+        }
+    }
+
     [Test]
     public void Policy_bookkeeping_cell_is_reverted_with_primary_storage()
     {
@@ -233,9 +254,8 @@ public sealed class StorageTransitionAccountingTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Policy_storage_refund_selectors_are_used(bool reversal)
+    [Test]
+    public void Policy_storage_refund_selectors_are_used([Values] bool reversal)
     {
         _probe.StorageClearRefund = CustomClearRefund;
         _probe.StorageReversalRefund = CustomReversalRefund;
@@ -389,11 +409,22 @@ public sealed class StorageTransitionAccountingTests
 
         public long? StorageRefund { get; private set; }
 
+        /// <summary>The SSTORE steps reported ready, in order.</summary>
+        public List<(ulong GasCost, string? Error)> Ready { get; } = [];
+
+        private bool _isSstore;
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            _isSstore = opcode == Instruction.SSTORE;
+
         public void ReportStorageRefund(long refund) => StorageRefund = refund;
 
         public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) { }
 
-        public void ReportOperationReady(ulong gasCost, string? error) { }
+        public void ReportOperationReady(ulong gasCost, string? error)
+        {
+            if (_isSstore) Ready.Add((gasCost, error));
+        }
     }
 
     private sealed class ProbeState
