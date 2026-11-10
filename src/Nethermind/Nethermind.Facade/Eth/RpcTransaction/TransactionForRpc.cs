@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -127,6 +128,17 @@ public abstract class TransactionForRpc
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
         return validateFeeCapOrder ? ordered : result;
     }
+
+    /// <summary>Converts a debug trace call with its message-level fork checks and blob fee defaults.</summary>
+    internal Result<Transaction> ToTraceCallTransaction(IReleaseSpec spec, ulong? gasCap, UInt256 baseFee) =>
+        GetTraceCallForkError(spec, baseFee) is { } error
+            ? Result<Transaction>.Fail(error)
+            : ConvertTraceCallTransaction(spec, gasCap);
+
+    internal virtual string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) => null;
+
+    internal virtual Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap) =>
+        ToCallTransaction(spec, gasCap);
 
     private TxType ResolveType(IReleaseSpec? spec)
     {

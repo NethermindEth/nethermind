@@ -311,7 +311,7 @@ internal static class SimulateErrorMessages
     /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
     /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
     /// </summary>
-    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+    public const string FeeCapBelowBaseFee = RpcTransactionErrors.FeeCapBelowBaseFee;
 
     /// <summary>
     /// Returned when the sender does not have enough balance to cover gas + value

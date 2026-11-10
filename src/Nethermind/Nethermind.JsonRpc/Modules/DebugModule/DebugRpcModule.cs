@@ -148,68 +148,6 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec, BlockHeader header)
-    {
-        if (GetTraceCallForkError(call, spec, header.BaseFeePerGas) is { } forkError)
-            return forkError;
-
-        // Unlike eth_call, Geth traces a blob fee cap without blob hashes from Cancun, as eth_simulateV1 does;
-        // the cap is kept so that a zero cap still zeroes the blob base fee.
-        if (call is BlobTransactionForRpc { BlobVersionedHashes: null, Blobs: null, MaxFeePerBlobGas: { } loneBlobFeeCap })
-        {
-            Result<Transaction> converted = BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-            if (converted) converted.Data.MaxFeePerBlobGas = loneBlobFeeCap;
-            return converted;
-        }
-
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas: null or { IsZero: true } })
-            return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
-
-        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
-        Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
-        return result;
-    }
-
-    private static string? GetTraceCallForkError(TransactionForRpc call, IReleaseSpec spec, UInt256 baseFee)
-    {
-        // Inspect RPC fields, not the inferred envelope: conversion supplies empty access lists for newer types.
-        string? unsupported = call switch
-        {
-            AccessListTransactionForRpc { AccessList: not null } when !spec.IsEip2930Enabled => "access list",
-            BlobTransactionForRpc { MaxFeePerBlobGas: not null } when !spec.IsEip4844Enabled => "blob",
-            BlobTransactionForRpc { BlobVersionedHashes: not null } when !spec.IsEip4844Enabled => "blob",
-            SetCodeTransactionForRpc { AuthorizationList: not null } when !spec.IsEip7702Enabled => "setcode",
-            _ => null
-        };
-        bool dynamicFeesBeforeLondon = !spec.IsEip1559Enabled
-            && call is EIP1559TransactionForRpc { MaxFeePerGas: not null } or EIP1559TransactionForRpc { MaxPriorityFeePerGas: not null };
-        if (unsupported is null && !dynamicFeesBeforeLondon) return null;
-
-        if (call is EIP1559TransactionForRpc { GasPrice: not null } fees
-            && (fees.MaxFeePerGas is not null || fees.MaxPriorityFeePerGas is not null))
-            return RpcTransactionErrors.GasPriceInEip1559;
-        if (call is BlobTransactionForRpc { To: null, BlobVersionedHashes: not null })
-            return TxErrorMessages.TxMissingTo;
-        if (call is SetCodeTransactionForRpc { To: null, AuthorizationList: not null })
-            return TxErrorMessages.NotAllowedCreateTransaction;
-        if (dynamicFeesBeforeLondon)
-            return FeeDefaultRules.FeeFieldsBeforeLondon;
-
-        string sender = ((call as LegacyTransactionForRpc)?.From ?? Address.Zero).ToString(withEip55Checksum: true);
-        // Geth's message precheck rejects fees before unsupported fields, and fields before intrinsic gas or balance.
-        if (spec.IsEip1559Enabled && call is LegacyTransactionForRpc legacy)
-        {
-            UInt256 feeCap = legacy.GasPrice ?? (call as EIP1559TransactionForRpc)?.MaxFeePerGas ?? UInt256.Zero;
-            UInt256 tipCap = legacy.GasPrice ?? (call as EIP1559TransactionForRpc)?.MaxPriorityFeePerGas ?? UInt256.Zero;
-            if (feeCap < tipCap)
-                return ErrorWrapper.DebugTrace($"{TxErrorMessages.TipAboveFeeCap}: address {sender}, maxPriorityFeePerGas: {tipCap}, maxFeePerGas: {feeCap}");
-            if (feeCap < baseFee && (!feeCap.IsZero || !tipCap.IsZero))
-                return ErrorWrapper.DebugTrace($"{SimulateErrorMessages.FeeCapBelowBaseFee}: address {sender}, maxFeePerGas: {feeCap}, baseFee: {baseFee}");
-        }
-        return ErrorWrapper.DebugTrace($"transaction type not supported: {unsupported} tx (sender {sender})");
-    }
-
     private bool IsTransactionIndexingInProgress()
     {
         if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
@@ -277,7 +215,7 @@ public class DebugRpcModule(
         if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
             return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
 
-        Result<Transaction> txResult = ToTraceCallTransaction(call, spec, callHeader);
+        Result<Transaction> txResult = call.ToTraceCallTransaction(spec, jsonRpcConfig.GasCap, callHeader.BaseFeePerGas);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
