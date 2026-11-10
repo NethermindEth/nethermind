@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.FluentRlp;
 /// <remarks>
 /// Put it on a type with a hand-written converter, or on a parameter of an <see cref="RlpSerializableAttribute"/>
 /// record whose type cannot carry it. The generated converter then computes the payload length of a record or a list
-/// of such values without a pass over them. A write that does not match the length throws
+/// of such values without a pass over them. A write that is not a single byte string of that length throws
 /// <see cref="InvalidOperationException"/>.
 /// </remarks>
 /// <param name="length">The number of bytes of the byte string, from 2 to <see cref="int.MaxValue"/> minus 5.</param>

@@ -150,6 +150,58 @@ public ref struct RlpWriter
         Write(leadingZeros < 0 ? [] : bigEndian[leadingZeros..]);
     }
 
+    /// <summary>Writes a custom value as exactly one byte string of the declared payload length.</summary>
+    /// <remarks>The converter runs once. Content writers validate the output in place, without a buffer copy.</remarks>
+    /// <exception cref="InvalidOperationException">The converter writes a different shape or length.</exception>
+    /// <exception cref="ArgumentException">The converter exceeds the destination capacity.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void WriteFixedLength<TContext>(TContext value, int length, RefRlpWriterAction<TContext> action)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(length, 2);
+        int encodedLength = Rlp.LengthOfString(length);
+        if (!_isContent)
+        {
+            MeasureFixedLength(value, length, encodedLength, action);
+            return;
+        }
+
+        int start = _length;
+        int longPrefixes = _longPrefixBytes;
+        int openSequences = _openSequences;
+        action(ref this, value);
+        if (_length - start != encodedLength || _longPrefixBytes != longPrefixes || _openSequences != openSequences)
+            ThrowInvalidByteString();
+
+        ValidateByteString(_destination.Slice(start, encodedLength), length);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void MeasureFixedLength<TContext>(TContext value, int length, int encodedLength, RefRlpWriterAction<TContext> action)
+    {
+        RlpWriter writer = ContentWriter(Reserve(encodedLength));
+        writer.WriteFixedLength(value, length, action);
+        _length += encodedLength;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ValidateByteString(ReadOnlySpan<byte> destination, int length)
+    {
+        int encodedLength = destination.Length;
+        int prefixLength = encodedLength - length;
+        byte prefix = length <= RlpPrefix.MaxShortLength
+            ? (byte)(RlpPrefix.ShortString + length)
+            : (byte)(RlpPrefix.LongString + prefixLength - 1);
+        if (destination[0] != prefix) ThrowInvalidByteString();
+        for (int i = 1; i < prefixLength; i++)
+        {
+            if (destination[i] != (byte)(length >> (8 * (prefixLength - i - 1)))) ThrowInvalidByteString();
+        }
+    }
+
+    [DoesNotReturn]
+    private static void ThrowInvalidByteString()
+        => throw new InvalidOperationException("RLP converter did not write the declared byte string");
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteUInt64(ulong value)
     {

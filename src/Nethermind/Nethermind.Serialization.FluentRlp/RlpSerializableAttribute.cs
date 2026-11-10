@@ -18,7 +18,8 @@ public enum RlpRepresentation : byte
 /// <summary>Generates an <see cref="IRlpConverter{T}"/> named <c>{Record}RlpConverter</c> for the record.</summary>
 /// <remarks>
 /// Only the primary constructor parameters are encoded. The generator reports an error for a record that also
-/// declares settable properties or instance fields, because their values would be lost.
+/// declares stored instance properties or fields, including initialized and readonly state, because their values
+/// cannot be reconstructed reliably. Computed properties without backing storage are supported.
 /// </remarks>
 /// <param name="representation">The encoding of the record.</param>
 /// <param name="length">

@@ -39,6 +39,9 @@ public record RawData(int Tag, byte[] Data);
 public record DataBlocks(RawData[] Values);
 
 [RlpSerializable]
+public record NestedNumbers(List<List<int>> Lists, int[][] Arrays);
+
+[RlpSerializable]
 public record Integers(short A, int B, long C, Int128 D);
 
 [RlpSerializable]
@@ -90,6 +93,60 @@ public record BlobMap(Dictionary<Blob, Blob> Values);
 [RlpSerializable]
 public record BlobPairList(List<(Blob, Blob)> Values);
 
+[RlpFixedLength(2)]
+public record FixedShape(int Mode);
+
+public static class FixedShapeConverter
+{
+    public static FixedShape ReadFixedShape(this ref RlpReader reader) => reader.Choice(
+        static (scoped ref RlpReader r) => r.ReadSequence(static (scoped ref RlpReader r) =>
+        {
+            r.ReadInteger<int>();
+            r.ReadInteger<int>();
+            return new FixedShape(1);
+        }),
+        static (scoped ref RlpReader r) =>
+        {
+            r.ReadInteger<int>();
+            r.ReadInteger<int>();
+            r.ReadInteger<int>();
+            return new FixedShape(2);
+        },
+        static (scoped ref RlpReader r) =>
+        {
+            r.ReadBytes(2);
+            return new FixedShape(0);
+        });
+
+    public static void Write(this ref RlpWriter writer, FixedShape value)
+    {
+        if (value.Mode == 1)
+            writer.WriteSequence(static (ref RlpWriter w) => { w.Write(1); w.Write(2); });
+        else if (value.Mode == 2)
+        {
+            writer.Write(1);
+            writer.Write(2);
+            writer.Write(3);
+        }
+        else writer.Write(new byte[] { 1, 2 });
+    }
+}
+
+[RlpSerializable]
+public record ShapeField([RlpFixedLength(2)] FixedShape Value);
+
+[RlpSerializable]
+public record ShapeArray(FixedShape[] Values);
+
+[RlpSerializable]
+public record ShapeList(List<FixedShape> Values);
+
+[RlpSerializable]
+public record ShapePair((FixedShape, FixedShape) Values);
+
+[RlpSerializable]
+public record ShapeDictionary(Dictionary<FixedShape, FixedShape> Values);
+
 [RlpSerializable]
 public record UnhintedEntry(byte[] Address, List<byte[]> Keys);
 
@@ -107,6 +164,58 @@ public record FixedAddress(byte[] Bytes)
 
 public class RlpDerivedTest
 {
+    public enum FixedContainer { Field, Array, List, Pair, Dictionary }
+
+    [Test]
+    public void FixedLengthRequiresByteString([Values(0, 1, 2)] int mode, [Values] FixedContainer container, [Values] bool read)
+    {
+        FixedShape item = new(mode);
+        byte[] encoded = Rlp.Write(container, (ref RlpWriter w, FixedContainer container) => w.WriteSequence(container, (ref RlpWriter w, FixedContainer container) =>
+        {
+            if (container is FixedContainer.Array or FixedContainer.List)
+                w.WriteSequence(item, static (ref RlpWriter w, FixedShape item) => w.Write(item));
+            else if (container == FixedContainer.Dictionary)
+                w.WriteSequence(item, static (ref RlpWriter w, FixedShape item) =>
+                    w.WriteSequence(item, static (ref RlpWriter w, FixedShape item) => { w.Write(item); w.Write(item); }));
+            else
+            {
+                w.Write(item);
+                if (container == FixedContainer.Pair) w.Write(item);
+            }
+        }));
+
+        void Convert()
+        {
+            if (read)
+            {
+                _ = container switch
+                {
+                    FixedContainer.Field => (object)Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadShapeField()),
+                    FixedContainer.Array => Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadShapeArray()),
+                    FixedContainer.List => Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadShapeList()),
+                    FixedContainer.Pair => Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadShapePair()),
+                    _ => Rlp.Read(encoded, static (scoped ref RlpReader r) => r.ReadShapeDictionary())
+                };
+            }
+            else
+            {
+                byte[] actual = container switch
+                {
+                    FixedContainer.Field => Rlp.Write<ShapeFieldRlpConverter, ShapeField>(new ShapeField(item)),
+                    FixedContainer.Array => Rlp.Write<ShapeArrayRlpConverter, ShapeArray>(new ShapeArray([item])),
+                    FixedContainer.List => Rlp.Write<ShapeListRlpConverter, ShapeList>(new ShapeList([item])),
+                    FixedContainer.Pair => Rlp.Write<ShapePairRlpConverter, ShapePair>(new ShapePair((item, item))),
+                    _ => Rlp.Write(new ShapeDictionary(new() { [item] = item }), static (ref RlpWriter w, ShapeDictionary value) => w.Write(value))
+                };
+                Assert.That(actual, Is.EqualTo(encoded));
+            }
+        }
+
+        if (mode == 0) Assert.That(Convert, Throws.Nothing);
+        else if (read) Assert.That(Convert, Throws.TypeOf<RlpReaderException>());
+        else Assert.That(Convert, Throws.InvalidOperationException);
+    }
+
     [Test]
     public void FlatRecord()
     {
@@ -169,6 +278,26 @@ public class RlpDerivedTest
 
         IntegerTuples decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadIntegerTuples());
         Assert.That(decoded.Values, Is.EqualTo(tuples.Values));
+    }
+
+    [Test]
+    public void NestedCollectionLengthsMatchPayload([Values(0, 1, 55, 56, 256)] int count)
+    {
+        int[] items = Enumerable.Range(0, count).ToArray();
+        NestedNumbers value = new([items.ToList(), [], [128]], [items, [], [128]]);
+        byte[] expected = Rlp.Write(value, static (ref RlpWriter w, NestedNumbers value) =>
+            w.WriteSequence(value, static (ref RlpWriter w, NestedNumbers value) =>
+            {
+                w.Write(value.Lists, static (ref RlpWriter w, List<int> items) => w.Write(items, Int32RlpConverter.Write));
+                w.Write(value.Arrays, static (ref RlpWriter w, int[] items) => w.Write(items, Int32RlpConverter.Write));
+            }));
+        byte[] actual = Rlp.Write<NestedNumbersRlpConverter, NestedNumbers>(value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(Rlp.Read(actual, static (scoped ref RlpReader r) => r.ReadNestedNumbers()), Is.EqualTo(value).UsingPropertiesComparer());
+        }
     }
 
     [Test]
@@ -493,7 +622,7 @@ public class RlpDerivedTest
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Pair(int A, int B);", "RLP0001", TestName = "Newtype with two parameters")]
     [TestCase("[RlpSerializable(length: 20)] public record Number(int A);", "RLP0005", TestName = "Length without a byte array")]
     [TestCase("public record Triple((int, int, int) A);", "RLP0004", TestName = "Tuple of three")]
-    [TestCase("public record Account(int Nonce) { public int Twice => Nonce * 2; public int Cached { get; } = Nonce * 2; public const int Size = 1; public int Nonce { get; init; } = Nonce; }", null, TestName = "Derived and redeclared members")]
+    [TestCase("public record Account(int Nonce) { public int Twice => Nonce * 2; public const int Size = 1; public int Nonce { get; init; } = Nonce; }", null, TestName = "Derived and redeclared members")]
     [TestCase("public partial record Account(int Nonce); public partial record Account { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in another part")]
     [TestCase("public record Account(int Nonce) { public int Nonce { get; init; } = Nonce * 2; }", "RLP0002", TestName = "Redeclared parameter property with another value")]
     [TestCase("public record Base { public int Balance { get; init; } } [RlpSerializable] public record Account(int Nonce) : Base;", "RLP0003", TestName = "Derived record")]
@@ -503,6 +632,9 @@ public class RlpDerivedTest
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop(Loop Inner);", "RLP0006", TestName = "Recursive Newtype")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop((int, Loop) Inner);", "RLP0006", TestName = "Recursive Newtype through a tuple")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record A(B Inner); [RlpSerializable(RlpRepresentation.Newtype)] public record B(A Inner);", "RLP0006", TestName = "Mutually recursive Newtypes")]
+    [TestCase("[RlpSerializable, RlpFixedLength(2)] public record Pair(int A, int B);", "RLP0007", TestName = "Fixed byte string annotation on a generated sequence")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype), RlpFixedLength(2)] public record Key(byte[] Bytes);", null, TestName = "Fixed byte string annotation on a generated newtype")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype, 3), RlpFixedLength(2)] public record Key(byte[] Bytes);", "RLP0007", TestName = "Conflicting newtype lengths")]
     [TestCase("public record Key([RlpFixedLength(1)] byte[] A);", "RLP0007", TestName = "Fixed length below 2")]
     [TestCase("public record Key([RlpFixedLength(int.MaxValue)] byte[] A);", "RLP0007", TestName = "Fixed length exceeds encoded length limit")]
     [TestCase("public record Key([RlpFixedLength(8)] long A);", "RLP0007", TestName = "Fixed length on an integer")]
@@ -516,7 +648,11 @@ public class RlpDerivedTest
     [TestCase("public record Account(int Nonce) { public int Balance { get => field; init => field = value; } }", "RLP0002", TestName = "Field-backed settable property")]
     [TestCase("public partial record Account(int Nonce) { public readonly int Balance = 0; } public partial record Account { public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Readonly field assigned in another part")]
     [TestCase("public record Account(int Nonce) { public int Balance { get; } = 0; public Account(int nonce, int balance) : this(nonce) => Balance = balance; }", "RLP0002", TestName = "Initialized get-only property reassigned by constructor")]
-    [TestCase("public record Account(int Nonce) { public readonly int Balance = Nonce * 2; public Account(string nonce) : this(int.Parse(nonce)) { } }", null, TestName = "Derived field with delegating constructor")]
+    [TestCase("public record Account(int Nonce) { public readonly int Balance = Nonce * 2; public Account(string nonce) : this(int.Parse(nonce)) { } }", "RLP0002", TestName = "Derived field with delegating constructor")]
+    [TestCase("public record Account(int Nonce) { public System.Collections.Generic.List<int> Values { get; } = []; }", "RLP0002", TestName = "Initialized mutable get-only collection")]
+    [TestCase("public record Account(int Nonce) { public readonly int[] Values = new int[1]; }", "RLP0002", TestName = "Initialized readonly array")]
+    [TestCase("public record Account(int Nonce) { public int Cached { get; } = Nonce * 2; }", "RLP0002", TestName = "Cached property can become stale after with")]
+    [TestCase("public record Account(int Nonce) { public System.Guid Id { get; } = System.Guid.NewGuid(); }", "RLP0002", TestName = "Nondeterministic initializer")]
     [TestCase("public record Account(int Nonce) { public int Balance => Nonce * 2; }", null, TestName = "Computed property without storage")]
     [TestCase("public record Account(int Nonce) { public readonly int Balance = 0; public Account(int nonce, int balance) : this(nonce) { (Balance, Nonce) = (balance, nonce); } }", "RLP0002", TestName = "Readonly field assigned by deconstruction")]
     [TestCase("public record Account(int Nonce) { private readonly int _balance = 0; public int Balance { get => _balance; init => _balance = value; } }", "RLP0002", TestName = "Readonly field assigned by an init accessor")]
