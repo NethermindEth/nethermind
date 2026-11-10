@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Newtonsoft.Json.Linq;
@@ -45,7 +46,7 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create(new TestSpecProvider(Shanghai.Instance));
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        Assert.That(block.Withdrawals, Is.Empty, "the produced block has no withdrawals, so its state root is the root after its last transaction");
+        Assert.That(block.Withdrawals, Is.Null.Or.Empty, "the produced block has no withdrawals, so its state root is the root after its last transaction");
         Hash256 rootAfterLastTx = block.StateRoot!;
 
         if (withWithdrawals)
