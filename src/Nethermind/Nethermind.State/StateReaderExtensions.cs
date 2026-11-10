@@ -47,7 +47,7 @@ namespace Nethermind.State
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
                 FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
-            });
+            }, diagnostics: null);
             collector.Finish();
             return collector.Stats;
         }
