@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -455,6 +458,56 @@ public class TransactionProcessorFeeTests
         Assert.That(result.ErrorDescription, Does.Contain(TestItem.AddressA.ToString(withEip55Checksum: true)));
     }
 
+    private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
+    {
+        BlockReceiptsTracer tracer = new();
+        tracer.SetOtherTracer(otherTracer);
+
+        tracer.StartNewBlockTrace(block);
+        foreach (Transaction tx in block.Transactions)
+        {
+            ITxTracer txTracer = tracer.StartNewTxTrace(tx);
+            _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
+            tracer.EndTxTrace();
+        }
+        tracer.EndBlockTrace();
+    }
+}
+
+/// <summary>Verifies the fee semantics that <see cref="ExecutionOptions"/> select for a restoring call.</summary>
+public class TransactionProcessorCallFeeTests
+{
+    private IContainer _container = null!;
+    private ILifetimeScope _scope = null!;
+    private IDisposable _worldStateCloser = null!;
+    private IWorldState _stateProvider = null!;
+    private IReleaseSpec _spec = null!;
+
+    [SetUp]
+    public void Setup()
+    {
+        _spec = new OverridableReleaseSpec(PragueGnosis.Instance) { FeeCollector = TestItem.AddressC };
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(_spec))
+            .AddScoped<ITransactionProcessor, ObservingFeeProcessor>()
+            .Build();
+        _scope = _container.BeginLifetimeScope(builder =>
+            builder.AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState));
+        _stateProvider = _scope.Resolve<IWorldState>();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+        _stateProvider.Commit(_spec);
+        _stateProvider.CommitTree(0);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateCloser.Dispose();
+        _scope.Dispose();
+        _container.Dispose();
+    }
+
     private const ExecutionOptions FeeFreeCall = ExecutionOptions.CommitAndRestore
         | ExecutionOptions.SkipTransactionFees | ExecutionOptions.SkipLegacyGasPriceValidation;
     private static readonly byte[] FeeContextCode = Convert.FromHexString("3a6000524860205233316040524760605260806000f3");
@@ -478,6 +531,7 @@ public class TransactionProcessorFeeTests
             Assert.That(ReadFeeWord(tracer, 2), Is.EqualTo(1.Ether - 7));
             Assert.That(ReadFeeWord(tracer, 3), Is.EqualTo((UInt256)130));
             Assert.That(processor.GasPurchases, Is.Zero);
+            Assert.That(processor.FeePayments, Is.Zero, "the fee distribution a processor overrides is not reached");
             Assert.That(processor.RefundsPaid, Is.EqualTo(UInt256.Zero));
             Assert.That(processor.SenderAfterFees, Is.EqualTo(1.Ether - 7));
             Assert.That(processor.BeneficiaryAfterFees, Is.EqualTo(UInt256.Zero));
@@ -562,9 +616,8 @@ public class TransactionProcessorFeeTests
         }
     }
 
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    public void Fee_free_call_keeps_typed_base_fee_validation(ulong feeCap)
+    [Test]
+    public void Fee_free_call_keeps_typed_base_fee_validation([Values(0UL, 1UL)] ulong feeCap)
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
         Transaction tx = FeeCallTransaction(TestItem.AddressD, typed: true, feeCap);
@@ -589,6 +642,7 @@ public class TransactionProcessorFeeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(processor.GasPurchases, Is.EqualTo(1));
+            Assert.That(processor.FeePayments, Is.EqualTo(1));
             Assert.That(processor.RefundsPaid, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.BeneficiaryAfterFees, Is.GreaterThan(UInt256.Zero));
             Assert.That(processor.CollectorAfterFees, Is.GreaterThan(UInt256.Zero));
@@ -597,12 +651,10 @@ public class TransactionProcessorFeeTests
         }
     }
 
-    [TestCase(ExecutionOptions.Commit)]
-    [TestCase(ExecutionOptions.SkipValidation)]
-    [TestCase(ExecutionOptions.SkipValidationAndCommit)]
-    [TestCase(ExecutionOptions.BuildUp)]
-    [TestCase(ExecutionOptions.Warmup | ExecutionOptions.SkipValidation)]
-    public void Call_fee_flags_are_ignored_outside_restoring_calls(ExecutionOptions options)
+    [Test]
+    public void Call_fee_flags_are_ignored_outside_restoring_calls(
+        [Values(ExecutionOptions.Commit, ExecutionOptions.SkipValidation, ExecutionOptions.SkipValidationAndCommit,
+            ExecutionOptions.BuildUp, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation)] ExecutionOptions options)
     {
         ObservingFeeProcessor processor = CreateObservingFeeProcessor();
         processor.SetBlockExecutionContext(new BlockExecutionContext(FeeCallHeader(), _spec));
@@ -621,14 +673,11 @@ public class TransactionProcessorFeeTests
 
     private ObservingFeeProcessor CreateObservingFeeProcessor()
     {
-        _spec.FeeCollector = TestItem.AddressC;
         _stateProvider.CreateAccount(TestItem.AddressB, 123);
-        EthereumCodeInfoRepository repository = new(_stateProvider);
-        repository.InsertCode(FeeContextCode, TestItem.AddressB, _spec);
+        _stateProvider.InsertCode(TestItem.AddressB, FeeContextCode, _spec);
         _stateProvider.Commit(_spec);
         _stateProvider.CommitTree(0);
-        EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        return new(_specProvider, _stateProvider, vm, repository);
+        return (ObservingFeeProcessor)_scope.Resolve<ITransactionProcessor>();
     }
 
     private Transaction FeeCallTransaction(Address sender, bool typed, UInt256 price, UInt256 value = default) =>
@@ -643,10 +692,16 @@ public class TransactionProcessorFeeTests
         new(tracer.ReturnValue.AsSpan(index * 32, 32), isBigEndian: true);
 
     private sealed class ObservingFeeProcessor(
-        ISpecProvider specProvider, IWorldState worldState, IVirtualMachine vm, ICodeInfoRepository repository)
-        : EthereumTransactionProcessorBase(BlobBaseFeeCalculator.Instance, specProvider, worldState, vm, repository, LimboLogs.Instance)
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager logManager)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
         public int GasPurchases { get; private set; }
+        public int FeePayments { get; private set; }
         public UInt256 RefundsPaid { get; private set; }
         public UInt256 SenderAfterFees { get; private set; }
         public UInt256 BeneficiaryAfterFees { get; private set; }
@@ -673,20 +728,12 @@ public class TransactionProcessorFeeTests
             BeneficiaryAfterFees = WorldState.GetBalance(header.GasBeneficiary!);
             CollectorAfterFees = spec.FeeCollector is null ? UInt256.Zero : WorldState.GetBalance(spec.FeeCollector);
         }
-    }
 
-    private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
-    {
-        BlockReceiptsTracer tracer = new();
-        tracer.SetOtherTracer(otherTracer);
-
-        tracer.StartNewBlockTrace(block);
-        foreach (Transaction tx in block.Transactions)
+        protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
+            in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
         {
-            ITxTracer txTracer = tracer.StartNewTxTrace(tx);
-            _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
-            tracer.EndTxTrace();
+            FeePayments++;
+            base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
         }
-        tracer.EndBlockTrace();
     }
 }

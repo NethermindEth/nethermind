@@ -10,7 +10,8 @@ namespace Nethermind.Evm;
 public interface IOverridableCodeInfoRepository : ICodeInfoRepository
 {
     /// <summary>Whether account overrides replace native precompiles with account code.</summary>
-    bool DisablePrecompileOnAccountOverride { get; }
+    /// <remarks>Defaults to <see langword="true"/>, so an implementation that does not declare it keeps replacing them.</remarks>
+    bool DisablePrecompileOnAccountOverride => true;
     /// <summary>Makes <paramref name="key"/> run <paramref name="value"/> until the account's code changes in the world state.</summary>
     /// <remarks>
     /// Write the code to the world state first. The override records the account's code hash when it is set, so code

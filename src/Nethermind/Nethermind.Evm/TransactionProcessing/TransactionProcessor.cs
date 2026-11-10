@@ -1991,10 +1991,19 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
+        /// <summary>Pays the transaction's fees unless <paramref name="opts"/> make the execution fee-free.</summary>
+        /// <remarks>
+        /// Forwards to the overload without options, which distributes the fees and is the one to override for
+        /// chain-specific fee rules. Override this overload only to act on a fee-free execution as well.
+        /// </remarks>
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode, ExecutionOptions opts)
         {
-            if (!ShouldChargeTransactionFees(opts)) return;
+            if (ShouldChargeTransactionFees(opts))
+                PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
+        }
 
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
+        {
             UInt256 fees = premiumPerGas * spentGas;
 
             // Without EIP-8037 the destroy list is already finalized, so a destroyed beneficiary of a successful tx is paid
