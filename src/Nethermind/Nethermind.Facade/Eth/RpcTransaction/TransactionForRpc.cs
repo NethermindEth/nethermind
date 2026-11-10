@@ -99,7 +99,7 @@ public abstract class TransactionForRpc
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
-        if (result.IsError && result.Error != RpcTransactionErrors.ContractCreationWithoutData) return result;
+        if (result.IsError) return result;
         return GetSubmissionDataError() is { } error ? Result<Transaction>.Fail(error) : result;
     }
 
@@ -108,7 +108,7 @@ public abstract class TransactionForRpc
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
-        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+        && !result.IsError
             ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
             : result;
 
