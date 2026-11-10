@@ -52,6 +52,20 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
+    internal bool ContainsLocation(in SnapshotLocation location)
+    {
+        using Lock.Scope scope = _lock.EnterScope();
+        return location.ArenaId >= 0 && location.Offset >= 0 && location.Size > 0
+            && _arenas.TryGetValue(location.ArenaId, out ArenaFile? file)
+            && location.Offset <= file.MappedSize && location.Size <= file.MappedSize - location.Offset;
+    }
+
+    internal void PreserveFilesOnFailure()
+    {
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (KeyValuePair<int, ArenaFile> entry in _arenas) entry.Value.PersistOnShutdown();
+    }
+
     public ArenaManager(string basePath, IFlatDbConfig config, ILogManager logManager)
     {
         _basePath = basePath;

@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
@@ -86,6 +88,29 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+    }
+
+    /// <inheritdoc/>
+    public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        Span<byte> span = GetSpan(key, flags);
+        if (span.IsNull()) return null;
+
+        if (span.IsEmpty)
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            return null;
+        }
+
+        try
+        {
+            return new DbSpanMemoryManager(_mainDb, span);
+        }
+        catch
+        {
+            _mainDb.DangerousReleaseMemory(span);
+            throw;
+        }
     }
 
     public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct

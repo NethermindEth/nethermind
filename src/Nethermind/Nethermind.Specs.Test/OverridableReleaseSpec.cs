@@ -138,6 +138,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
+        public bool IsEip8347Enabled { get; set; } = spec.IsEip8347Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public IReadOnlyList<Address> Eip8253Accounts { get => IsEip8253Enabled ? field : []; set; } = spec.Eip8253Accounts;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;

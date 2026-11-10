@@ -1,0 +1,11 @@
+{
+  "authority": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+  "deletion": "storage slot zero becomes zero; no account deletion claimed",
+  "forkTimestamp": 48,
+  "recipient": "0x2000000000000000000000000000000000000001",
+  "referenceCommit": "e31a37fb88c2b75c0897c033bd3f4279dee42268",
+  "reorg": "A5 -\u003e common A1 -\u003e B2..B6, independently re-crossing at B4",
+  "sender": "0x71562b71999873db5b286df957af199ec94617f7",
+  "sharedCodeTwin": "0x1000000000000000000000000000000000000002",
+  "writer": "0x1000000000000000000000000000000000000001"
+}

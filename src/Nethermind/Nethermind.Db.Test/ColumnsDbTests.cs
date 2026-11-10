@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -178,6 +180,41 @@ public class ColumnsDbTests
 
         if (!disposeSnapshotFirst) snapshot.Dispose();
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, 0));
+    }
+
+    [Test]
+    public void Snapshot_column_lends_the_snapshot_version_pinned([Values] bool flush)
+    {
+        ColumnDb column = (ColumnDb)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] key = [1, 2, 3];
+        column.Set(key, [1, 1]);
+        if (flush) _db.Flush();
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadOnlyKeyValueStore reader = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        long baseline = column._allocatedSpan.Sum;
+        MemoryManager<byte>? owned = reader.GetOwnedMemory(key);
+        column.Set(key, [2, 2]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Read(key), Is.EqualTo(new byte[] { 1, 1 }), "a snapshot reads its own version");
+            Assert.That(Read([9]), Is.Null, "a miss");
+            Assert.That(owned, Is.Not.Null);
+            Assert.That(column._allocatedSpan.Sum, Is.EqualTo(baseline + 1));
+        }
+
+        snapshot.Dispose();
+
+        Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1, 1 }), "owned memory survives snapshot disposal");
+        ((IDisposable)owned).Dispose();
+        Assert.That(column._allocatedSpan.Sum, Is.EqualTo(baseline));
+
+        byte[]? Read(byte[] readKey)
+        {
+            StrongBox<byte[]?> value = new();
+            reader.TryGet(readKey, ReadFlags.None, static (span, value) => value.Value = span.ToArray(), value);
+            return value.Value;
+        }
     }
 
     [Test]

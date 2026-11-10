@@ -31,7 +31,7 @@ internal readonly struct KeepAll<TKey> : IMergeKeep<TKey>
 /// (<see cref="_entriesDirty"/>); every user of the shared entry pool must preserve this convention so rents can
 /// skip clearing.
 /// </remarks>
-internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
+internal sealed class SortedMergeDictionary<TKey, TValue> : IReadOnlyCollection<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
     private const int StackScratchLength = 256;
@@ -364,6 +364,17 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     private readonly struct DelegateKeep(Func<int, TKey, bool> keep) : IMergeKeep<TKey>
     {
         public bool Keep(int sourceIndex, TKey key) => keep(sourceIndex, key);
+    }
+
+    /// <summary>Replaces each value with <paramref name="map"/> of it, keeping the keys and their order.</summary>
+    /// <remarks>If <paramref name="map"/> throws, the dictionary is left empty, so no reader sees some values mapped and others not.</remarks>
+    internal void MapValues(Func<TValue, TValue> map)
+    {
+        int count = _count;
+        _count = 0;
+        Span<Entry> entries = _entries.AsSpan(0, count);
+        for (int i = 0; i < entries.Length; i++) entries[i].Value = map(entries[i].Value);
+        _count = count;
     }
 
     public void NoResizeClear()

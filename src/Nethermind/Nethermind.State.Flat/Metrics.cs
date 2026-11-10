@@ -258,16 +258,16 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
     public static IMetricObserver InMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
 
-    internal static void RecordInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    public static void RecordInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
     {
         Interlocked.Add(ref _inMemorySlotFilterMemory, bytes);
         Interlocked.Increment(ref _inMemorySlotFilterBuilds);
         InMemorySlotFilterBuildTime.Observe(elapsedTicks);
     }
 
-    internal static void RecordInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _inMemorySlotFilterBuildFailures);
+    public static void RecordInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _inMemorySlotFilterBuildFailures);
 
-    internal static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
+    public static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
 
     // Backed by a field so callers can update via Interlocked.Increment/Decrement(ref ...).
     internal static long _persistedSnapshotBloomCount;

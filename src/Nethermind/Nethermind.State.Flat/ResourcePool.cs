@@ -110,7 +110,7 @@ public class ResourcePool : IResourcePool
     }
 
     // Using stack for better cpu cache effectiveness
-    private sealed class ConcurrentStackPool<T>(int maxCapacity = 16) where T : class, IDisposable, IResettable
+    internal sealed class ConcurrentStackPool<T>(int maxCapacity = 16) where T : class, IDisposable, IResettable
     {
         private readonly T?[] _items = new T?[maxCapacity];
         private readonly Lock _lock = new();

@@ -344,6 +344,21 @@ public class SortedMergeDictionaryTests
     }
 
     [Test]
+    public void MapValues_ReplacesValuesInKeyOrder_AndLeavesDictionaryEmptyOnThrow()
+    {
+        using SortedMergeDictionary<int, int> dict = FromPairs((3, 30), (1, 10), (2, 20));
+
+        dict.MapValues(static value => value + 1);
+        Assert.That(dict, Is.EqualTo(new[] { KeyValuePair.Create(1, 11), KeyValuePair.Create(2, 21), KeyValuePair.Create(3, 31) }));
+        AssertValue(dict, 2, 21);
+
+        Assert.That(
+            () => dict.MapValues(static value => value > 21 ? throw new InvalidOperationException() : value),
+            Throws.InvalidOperationException);
+        AssertEmptyAndReusable(dict, 1, 2, 3);
+    }
+
+    [Test]
     public void ThrowingComparer_DuringSort_LeavesDictionaryEmptyAndReusable()
     {
         using SortedMergeDictionary<int, int> dict = FromPairs((1, 10), (2, 20), (3, 30));
