@@ -14,7 +14,7 @@ string Body(string name) => CiWorkflow.Bodies(workflow, name).Single();
 var resolver = Body("Resolve branch and configuration");
 var analyzer = Body("Analyze benchmark output");
 var text = File.ReadAllText(Path.Combine(workflow.Root, ".github/workflows/run-expb-reproducible-benchmarks.yml"));
-const string automated = """[{"id":"fusaka","payload_set":"fusaka","amount":"1000","delay_seconds":"0"},{"id":"fusaka-delay1s","payload_set":"fusaka","amount":"100","delay_seconds":"1"}]""";
+const string automated = """[{"id":"fusaka","payload_set":"fusaka","amount":"1000","delay_seconds":"0","mode":"timing"},{"id":"fusaka-delay1s","payload_set":"fusaka","amount":"100","delay_seconds":"1","mode":"timing"},{"id":"fusaka-instructions","payload_set":"fusaka","amount":"1000","delay_seconds":"0","mode":"instructions"}]""";
 void Require(bool condition, string message) => RpcScriptTests.Assert(condition, message);
 void Contains(string value, params string[] fragments) { foreach (var fragment in fragments) Require(value.Contains(fragment, StringComparison.Ordinal), "missing " + fragment + " in " + value); }
 (int Code, Dictionary<string, string> Values, string Log) Run(string body, Dictionary<string, string> environment, string? directory = null)
@@ -354,6 +354,145 @@ tests.Case("checkpoint connects render install and launch", () =>
         var step = text.Split($"      - name: {name}\n", StringSplitOptions.None)[1].Split("\n      - name:", StringSplitOptions.None)[0];
         Contains(step[..step.IndexOf("run: |", StringComparison.Ordinal)], "STARTUP_BLOCK: ${{ steps.render-config.outputs.startup_block }}");
     }
+});
+tests.Case("dispatch counts instructions of one nethermind image", () =>
+{
+    var (code, values, log) = Resolve(("DISPATCH_MEASUREMENT_MODE", "instructions"), ("DISPATCH_DOCKER_IMAGES", ""));
+    Require(code == 0, log);
+    Require(values["mode"] == "single" && values["measurement_mode"] == "instructions", "instruction dispatch mode");
+    Require(JsonNode.DeepEquals(JsonNode.Parse(values["cells"]), JsonNode.Parse("""[{"id":"fusaka","payload_set":"fusaka","amount":"25","delay_seconds":"0","mode":"instructions"}]""")), "instruction dispatch cell");
+});
+foreach (var (key, value, message) in new[]
+{
+    ("DISPATCH_CLIENT", "reth", "measurement_mode=instructions is Nethermind-only"),
+    ("DISPATCH_DOCKER_IMAGES", "a/x:1,a/x:2", "measurement_mode=instructions counts one image"),
+    ("DISPATCH_DOTTRACE", "sampling", "a profiler changes the counts"),
+    ("DISPATCH_PERF", "true", "a profiler changes the counts")
+})
+    tests.Case($"reject instructions with {key}={value}", () =>
+    {
+        var images = key == "DISPATCH_DOCKER_IMAGES" ? value : key == "DISPATCH_CLIENT" ? "vendor/client:latest" : "";
+        var result = Resolve(("DISPATCH_MEASUREMENT_MODE", "instructions"), ("DISPATCH_DOCKER_IMAGES", images), (key, value));
+        Require(result.Code != 0, "unsupported instruction configuration accepted");
+        Contains(result.Log, message);
+    });
+if (yq.Length > 0)
+    tests.Case("render sets up the instruction cell", () =>
+    {
+        JsonNode RenderScenario(string cellMode, string extraFlags, string clientEnv)
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N")));
+            var topology = Path.Combine(directory.FullName, "cpu");
+            for (var index = 0; index < 16; index++)
+            {
+                var core = Directory.CreateDirectory(Path.Combine(topology, $"cpu{index}/topology"));
+                File.WriteAllText(Path.Combine(core.FullName, "thread_siblings_list"), $"{index % 8},{index % 8 + 8}\n");
+            }
+            var source = Path.Combine(directory.FullName, "source.yaml");
+            var rendered = Path.Combine(directory.FullName, "rendered.yaml");
+            File.WriteAllText(source, "resources:\n  cpu: 8\n  cpuset: \"2-7,10-15\"\n  infra_cpuset: \"0-1,8-9\"\n  mem: 64g\nscenarios:\n  nethermind:\n    amount: 10\n");
+            var render = Body("Render benchmark config");
+            // The test brings its own yq, so only the download is left out.
+            var body = render[..render.IndexOf("YQ=\"${RUNNER_TEMP}/yq\"", StringComparison.Ordinal)] + render[render.IndexOf("sed \\", StringComparison.Ordinal)..];
+            var result = Run(body, new()
+            {
+                ["YQ"] = yq, ["SOURCE_CONFIG_FILE"] = source, ["RENDERED_CONFIG_FILE"] = rendered, ["DOCKER_TAG"] = "test", ["DELAY_SECONDS"] = "0", ["AMOUNT"] = "10",
+                ["PAYLOAD_SET"] = "fusaka", ["STATE_LAYOUT"] = "flat", ["CLIENT"] = "nethermind", ["SCENARIO_NAME"] = "test", ["ADDITIONAL_EXTRA_FLAGS"] = extraFlags,
+                ["TRACE_BLOCKS"] = "", ["CLIENT_ENV"] = clientEnv, ["MEASUREMENT_MODE"] = "standard", ["EXPB_ENV_PASSTHROUGH"] = "", ["CELL_MODE"] = cellMode,
+                ["EXPB_DATA_DIR"] = "/data/expb-data", ["FLAT_SNAPSHOT_DIR"] = "/data/snapshot", ["FLAT_SNAPSHOT_BLOCK_DIR"] = "/data/snapshot-block",
+                ["CPU_TOPOLOGY_DIR"] = topology, ["DOCKER_CPU"] = "", ["DOCKER_CPUSET"] = "", ["DOCKER_INFRA_CPUSET"] = ""
+            });
+            Require(result.Code == 0, result.Log);
+            var parsed = CiWorkflow.Run(CiWorkflow.Quote(yq) + " -o=json .scenarios.test " + CiWorkflow.Quote(rendered), [], workflow.Root);
+            Require(parsed.Code == 0, parsed.Error);
+            return JsonNode.Parse(parsed.Output)!;
+        }
+
+        var scenario = RenderScenario("instructions", "--Blocks.PreWarming=Block", "DOTNET_TieredPGO=1");
+        var environment = scenario["extra_env"]!;
+        Require(environment["NETHERMIND_COUNT_INSTRUCTIONS"]!.ToString() == "1" && environment["NETHERMIND_DETERMINISTIC_BENCHMARK"]!.ToString() == "1"
+            && environment["DOTNET_TieredCompilation"]!.ToString() == "0" && environment["DOTNET_PROCESSOR_COUNT"]!.ToString() == "1", "counting environment");
+        // The processing thread keeps the first CPU of the client's pinned set.
+        Require(environment["NETHERMIND_COUNT_PIN_CPU"]!.ToString() == "2", "pinned CPU");
+        Require(JsonNode.DeepEquals(scenario["security_opt"], JsonNode.Parse("""["seccomp=unconfined"]""")) && JsonNode.DeepEquals(scenario["cap_add"], JsonNode.Parse("""["PERFMON"]""")), "counter permissions");
+        var flags = scenario["extra_flags"]!.AsArray().Select(flag => flag!.ToString()).ToArray();
+        Require(flags.Contains("--FlatDb.MaxInMemoryBaseSnapshotCount=100000") && flags.Contains("--Merge.SweepMemory=NoGC"), "counting flags");
+        // A dispatch's own flags and client_env win over the counting setup.
+        Require(flags.Where(flag => flag.StartsWith("--Blocks.PreWarming", StringComparison.Ordinal)).SequenceEqual(["--Blocks.PreWarming=Block"]) && environment["DOTNET_TieredPGO"]!.ToString() == "1", "caller overrides lost");
+
+        var timing = RenderScenario("timing", "", "");
+        Require(timing["extra_env"] is null && timing["cap_add"] is null && !(timing["extra_flags"]?.AsArray().Any(flag => flag!.ToString() == "--Blocks.PreWarming=None") ?? false), "timing cell got the counting setup");
+    });
+foreach (var (blocks, status) in new[] { (new[] { 100, 101, 102 }, "ok"), (new[] { 50, 100, 101, 102 }, "ok"), (new[] { 100, 101 }, "missing"), (new[] { 100, 101, 103 }, "missing"), (new[] { 100, 101, 101 }, "missing") })
+    tests.Case($"instruction cell counts every measured block {string.Join(',', blocks)}", () =>
+    {
+        var counts = string.Concat(blocks.Select(block => $"EXPB-COUNT block={block} instr=1000 cycles=500\n"));
+        var (code, values, log, _) = Analyze(counts + Table(3), ("CELL_MODE", "instructions"));
+        Require(code == 0 && values["counts_status"] == status, log);
+        var kept = File.ReadAllText(Path.Combine(Path.GetDirectoryName(values["metrics_file"])!, "expb-counts.log"));
+        Require(kept.Split("EXPB-COUNT block=").Length - 1 == blocks.Length, "counted lines not kept");
+    });
+tests.Case("timing cell keeps no instruction counts", () =>
+{
+    var (code, values, log, _) = Analyze("EXPB-COUNT block=100 instr=1000 cycles=500\n" + Table(3));
+    Require(code == 0 && values["counts_status"] == "not-requested", log);
+    Require(!File.Exists(Path.Combine(Path.GetDirectoryName(values["metrics_file"])!, "expb-counts.log")), "timing cell kept counts");
+});
+string BuildComment(Dictionary<string, string> files)
+{
+    var directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
+    foreach (var (name, contents) in files)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(directory, name))!);
+        File.WriteAllText(Path.Combine(directory, name), contents);
+    }
+    var (code, values, log) = Run(Body("Build PR comparison comment"), new()
+    {
+        ["METRICS_DIR"] = Path.Combine(directory, "metrics"), ["MASTER_CACHE_ROOT"] = Path.Combine(directory, "cache"), ["BASE_SHA"] = new string('a', 40),
+        ["CELLS"] = automated, ["STATE_LAYOUT"] = "flat", ["CLEAN_BRANCH"] = "perf-example", ["IMAGE"] = "nethermindeth/nethermind:perf-example",
+        ["BENCHMARK_RESULT"] = "success", ["IMAGE_REVISION"] = new string('a', 40), ["RUN_URL"] = "https://example.invalid/run", ["CLIENT"] = "nethermind", ["RUNNER_TEMP"] = directory
+    });
+    Require(code == 0, log);
+    return values["body"];
+}
+tests.Case("PR comment names the master baseline commit and an empty instruction cell", () =>
+{
+    var comment = BuildComment(new()
+    {
+        ["metrics/expb-single-metrics-fusaka-delay1s-run1/expb-metrics.env"] = "SOURCE=k6\nAVG=30.0\nMEDIAN=30.0\n",
+        ["cache/expb-master-metrics-cache-fusaka-delay1s/master-metrics.env"] = "SOURCE=k6\nAVG=33.0\nMEDIAN=33.0\n",
+        ["cache/expb-master-metrics-cache-fusaka-delay1s/master-revision.txt"] = new string('b', 40) + "\n"
+    });
+    Contains(comment, "Scenario: `nethermind-flat-fusaka-perf-example-delay1s` · master baseline `bbbbbbbbbbbb`", "#### fusaka: 1000 payloads, counted in instructions", "No instruction counts were produced");
+});
+tests.Case("PR comment compares the instruction cell with its master counts", () =>
+{
+    const string line = "EXPB-COUNT block=100 txs=5 gas=21000 instr={0} cycles=50000000 alloc=1000000 gc=0/0/0 mux=0 jit=0 exec=1 roots=1 commit=1 cyc=1/1/1\n";
+    var comment = BuildComment(new()
+    {
+        ["metrics/expb-single-metrics-fusaka-instructions-run1/expb-counts.log"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, line, 101_000_000),
+        ["cache/expb-master-metrics-cache-fusaka-instructions/master-counts.log"] = string.Format(System.Globalization.CultureInfo.InvariantCulture, line, 100_000_000),
+        ["cache/expb-master-metrics-cache-fusaka-instructions/master-revision.txt"] = new string('b', 40) + "\n"
+    });
+    Contains(comment, "| **Instructions, whole block** | 100.00M | 101.00M | +1.00% |", "Baseline: master `bbbbbbbbbbbb`. The PR's base is `aaaaaaaaaaaa`");
+});
+tests.Case("CPUs a cancelled run left offline come back", () =>
+{
+    var bodies = CiWorkflow.Bodies(workflow, "Bring back CPUs a cancelled run left offline");
+    Require(bodies.Length == 2 && bodies[0].TrimEnd('\n') == bodies[1].TrimEnd('\n'), "both benchmark jobs need the same CPU recovery step");
+    var cpus = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"), "cpu")).FullName;
+    // cpu0 has no online file, as on a real box; cpufreq is not a CPU.
+    foreach (var (cpu, state) in new[] { (0, ""), (1, "1"), (2, "0"), (3, "0") })
+    {
+        Directory.CreateDirectory(Path.Combine(cpus, $"cpu{cpu}"));
+        if (state.Length > 0) File.WriteAllText(Path.Combine(cpus, $"cpu{cpu}", "online"), state + "\n");
+    }
+    Directory.CreateDirectory(Path.Combine(cpus, "cpufreq"));
+    var result = CiWorkflow.Run("set -- " + CiWorkflow.Quote(cpus) + "\n" + bodies[0], [], workflow.Root);
+    Require(result.Code == 0, result.Output + result.Error);
+    Require(new[] { 1, 2, 3 }.All(cpu => File.ReadAllText(Path.Combine(cpus, $"cpu{cpu}", "online")).Trim() == "1"), "offline CPUs stayed offline");
+    Contains(result.Output, "Brought cpu2 back online.", "Brought cpu3 back online.");
+    Require(!result.Output.Contains("cpu1", StringComparison.Ordinal), "an online CPU was touched");
 });
 tests.Complete();
 
