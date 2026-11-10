@@ -1344,7 +1344,7 @@ public class DebugRpcModule(
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
             .Where(blockResult => blockResult.Number is ulong n && bundleBlockNumbers.Contains(n))
-            .Select(blockResult => blockResult.Traces);
+            .Select(blockResult => (IEnumerable<GethLikeTxTrace>)blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
