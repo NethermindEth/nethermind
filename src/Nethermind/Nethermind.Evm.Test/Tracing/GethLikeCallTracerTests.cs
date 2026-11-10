@@ -63,11 +63,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", "reason")] string reason)
     {
-        byte[] output = new byte[reason.Length == 0 ? 68 : 100];
+        const int abiWordLength = 32;
+        int selectorLength = TransactionSubstate.ErrorFunctionSelector.Length;
+        int stringDataOffset = selectorLength + 2 * abiWordLength;
+        byte[] output = new byte[stringDataOffset + (reason.Length == 0 ? 0 : abiWordLength)];
         TransactionSubstate.ErrorFunctionSelector.CopyTo(output, 0);
-        output[35] = 32;
-        output[67] = (byte)reason.Length;
-        Encoding.ASCII.GetBytes(reason).CopyTo(output, 68);
+        output[selectorLength + abiWordLength - 1] = abiWordLength;
+        output[stringDataOffset - 1] = (byte)reason.Length;
+        Encoding.ASCII.GetBytes(reason).CopyTo(output, stringDataOffset);
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
