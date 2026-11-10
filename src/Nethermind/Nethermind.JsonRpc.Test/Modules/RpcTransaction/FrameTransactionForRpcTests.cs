@@ -61,6 +61,31 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
+    public void FromTransaction_InBlock_WhenFloorBinds_ReportsGasAsMaxGas()
+    {
+        byte[] calldata = new byte[8 * 1024];
+        Array.Fill(calldata, (byte)0xff);
+        Transaction tx = BuildMinimalFrameTx();
+        tx.Frames =
+        [
+            SelfVerify(PrefixFrameGas),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 21_000, 50_000, UInt256.Zero, calldata),
+        ];
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        bool priced = FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out ulong maxGas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(priced, Is.True);
+            Assert.That(maxGas, Is.GreaterThan(intrinsicGas + tx.GasLimit));
+        }
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
+
+        using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
+
+        Assert.That(json.RootElement.GetProperty("gas").GetString(), Is.EqualTo($"0x{maxGas:x}"));
+    }
+
+    [Test]
     public void ToCallTransaction_NonFrameCreationWithoutData_UsesCallDefaults(
         [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
