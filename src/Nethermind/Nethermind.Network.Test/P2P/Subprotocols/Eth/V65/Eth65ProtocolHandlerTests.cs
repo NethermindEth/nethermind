@@ -277,7 +277,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         private static ValueHash256[] GenerateValueHashes(int count)
@@ -308,7 +308,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
         }
     }
 }

@@ -55,8 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
 
-            TransactionForRpcWithProof txWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            TransactionForRpcWithProof txWithProof = new();
             TransactionForRpcContext extraData = new(
                 chainId: specProvider.ChainId,
                 blockHash: block.Hash,

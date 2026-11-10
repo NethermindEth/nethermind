@@ -12,6 +12,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Converters;
@@ -47,16 +48,58 @@ public class FrameTransactionForRpcTests
     private static readonly EthereumJsonSerializer Serializer = new();
 
     [Test]
-    public void ToTransaction_NonFrameCreationWithoutData_IsRejected(
+    public void FromTransaction_InBlock_ReportsGasAsIntrinsicPlusFrameLimits()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _), Is.True);
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
+
+        using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
+
+        Assert.That(json.RootElement.GetProperty("gas").GetString(), Is.EqualTo($"0x{intrinsicGas + tx.GasLimit:x}"));
+    }
+
+    [Test]
+    public void FromTransaction_InBlock_WhenFloorBinds_ReportsGasAsMaxGas()
+    {
+        byte[] calldata = new byte[8 * 1024];
+        Array.Fill(calldata, (byte)0xff);
+        Transaction tx = BuildMinimalFrameTx();
+        tx.Frames =
+        [
+            SelfVerify(PrefixFrameGas),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 21_000, 50_000, UInt256.Zero, calldata),
+        ];
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        bool priced = FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out ulong maxGas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(priced, Is.True);
+            Assert.That(maxGas, Is.GreaterThan(intrinsicGas + tx.GasLimit));
+        }
+        TransactionForRpcContext context = new(tx.ChainId!.Value, TestItem.KeccakA, 1, 0, 1, 1, Eip8141Prototype.Instance);
+
+        using JsonDocument json = JsonDocument.Parse(Serializer.Serialize(TransactionForRpc.FromTransaction(tx, context)));
+
+        Assert.That(json.RootElement.GetProperty("gas").GetString(), Is.EqualTo($"0x{maxGas:x}"));
+    }
+
+    [Test]
+    public void ToCallTransaction_NonFrameCreationWithoutData_UsesCallDefaults(
         [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         Transaction tx = new() { Type = type };
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
         if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
 
-        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+        Result<Transaction> result = rpc.ToCallTransaction(Prague.Instance);
 
-        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(type == TxType.SetCode ? Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction : null));
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        }
     }
 
     [Test]

@@ -20,6 +20,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
@@ -567,16 +568,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 return innerService.Deserialize<T>(bytes);
             }
 
-            public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-            {
-                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
-                {
-                    deserializeEntered.Set();
-                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
-                }
-
-                return innerService.Deserialize<T>(buffer);
-            }
+            public T Deserialize<T>(ZeroPacket packet) where T : MessageBase => innerService.Deserialize<T>(packet);
         }
     }
 }

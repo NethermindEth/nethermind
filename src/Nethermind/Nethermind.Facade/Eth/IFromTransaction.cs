@@ -50,8 +50,8 @@ public readonly record struct TransactionForRpcContext
         int txIndex,
         ulong blockTimestamp,
         UInt256 baseFee,
+        IReleaseSpec spec,
         TxReceipt? receipt = null,
-        IReleaseSpec? spec = null,
         ulong? excessBlobGas = null)
     {
         ChainId = chainId;

@@ -856,6 +856,24 @@ public class OtsRpcModuleTests
         return block;
     }
 
+    [Test]
+    public void Search_reports_frame_tx_gas_from_the_including_block_spec()
+    {
+        using Fixture f = new(specProvider: new TestSpecProvider(Eip8141Prototype.Instance));
+        Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas));
+        tx.ChainId = f.Container.Resolve<ISpecProvider>().ChainId;
+        tx.MaxFee = 1_000;
+        tx.Hash = TestItem.KeccakH;
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames!);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _), Is.True);
+        f.AddBlock([tx], [Call(TestItem.AddressA)]);
+
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+
+        TransactionForRpc frameTx = response.Data.Txs.Single(t => t.Hash == tx.Hash);
+        Assert.That(frameTx.Gas, Is.EqualTo(intrinsicGas + tx.GasLimit));
+    }
+
     private static Transaction ExecutionTransaction(ulong nonce, Address? to, byte[] data, UInt256 value) =>
         Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(500_000).WithGasPrice(2_000_000_000)
             .WithValue(value).WithData(data).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
@@ -941,12 +959,12 @@ public class OtsRpcModuleTests
             ? Module.ots_searchTransactionsBefore(TestItem.AddressA, cursor, pageSize)
             : Module.ots_searchTransactionsAfter(TestItem.AddressA, cursor, pageSize);
 
-        public void AddBlock(params ParityTraceAction[] actions)
-        {
-            int number = Blocks.Count;
+        public void AddBlock(params ParityTraceAction[] actions) =>
             AddBlock(actions.Select((a, i) => Build.A.Transaction
-                .WithNonce(number * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray(), UInt256.Zero, actions);
-        }
+                .WithNonce(Blocks.Count * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray(), actions);
+
+        public void AddBlock(Transaction[] transactions, ParityTraceAction[] actions) =>
+            AddBlock(transactions, UInt256.Zero, actions);
 
         public void AddBlock(Transaction[] transactions, UInt256 baseFee, params ParityTraceAction[] actions)
         {

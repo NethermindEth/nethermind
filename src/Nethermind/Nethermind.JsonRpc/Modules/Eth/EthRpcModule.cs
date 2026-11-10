@@ -314,7 +314,7 @@ public partial class EthRpcModule(
 
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
+            ? GetBlockSearchErrorResult<UInt256?>(searchResult)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -330,7 +330,7 @@ public partial class EthRpcModule(
 
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
+            ? GetBlockSearchErrorResult<UInt256?>(searchResult)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -610,6 +610,9 @@ public partial class EthRpcModule(
             return (orderError, ErrorCodes.InvalidInput);
         }
 
+        if (rpcTx.GetSubmissionDataError() is { } dataError)
+            return (dataError, ErrorCodes.InvalidInput);
+
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using RentedTimeout timeout = _rpcConfig.RentTimeout();
@@ -772,7 +775,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
-            return ResultWrapper<BlockForRpc?>.Success(null);
+            return GetBlockSearchErrorResult<BlockForRpc?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -910,7 +913,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
+            return GetBlockSearchErrorResult<ArrayPoolList<byte>?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -939,7 +942,7 @@ public partial class EthRpcModule(
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
             {
-                return ResultWrapper<TransactionForRpc?>.Success(null);
+                return GetBlockSearchErrorResult<TransactionForRpc?>(searchResult);
             }
 
             Block block = searchResult.Object!;
@@ -980,7 +983,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<BlockForRpc?>.Success(null);
+            return GetBlockSearchErrorResult<BlockForRpc?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -1336,6 +1339,16 @@ public partial class EthRpcModule(
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
+    /// <summary>
+    /// Maps a failed block search for a method that answers an unknown block with <c>null</c>: history below the served
+    /// floor keeps its <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error, so it is not mistaken for an unknown block,
+    /// and every other error is a <c>null</c> result.
+    /// </summary>
+    protected static ResultWrapper<TResult> GetBlockSearchErrorResult<TResult>(SearchResult<Block> searchResult) =>
+        searchResult.ErrorCode == ErrorCodes.PrunedHistoryUnavailable
+            ? ResultWrapper<TResult>.Fail(searchResult)
+            : ResultWrapper<TResult>.Success(default!);
+
     /// <summary>Trims each proof key that was not sent full width, so it is echoed as a quantity.</summary>
     internal static AccountProof EchoStorageKeys(AccountProof proof, StorageKeys storageKeys)
     {
@@ -1377,7 +1390,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         return searchResult switch
         {
-            { IsError: true } => ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null),
+            { IsError: true } => GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult),
             _ => _receiptFinder.GetBlockReceipts(searchResult.Object, blockFinder, _specProvider)
         };
     }
