@@ -1444,6 +1444,33 @@ public ref partial struct EvmStack
         where TTracingInst : struct, IFlag
         => Push20Bytes<TTracingInst, OnFlag>(ref MemoryMarshal.GetReference(address.Bytes));
 
+    /// <summary>Pushes the Keccak-256 digest of <paramref name="input"/>, hashed straight into the new top slot.</summary>
+    /// <remarks>The digest lands in the slot as big-endian bytes and is reversed there, so it never passes
+    /// through a local. <paramref name="input"/> is EVM memory, which never overlaps the stack.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType PushKeccak256<TTracingInst>(scoped ReadOnlySpan<byte> input)
+        where TTracingInst : struct, IFlag
+    {
+        nint headOffset = Head;
+        nint newOffset = headOffset + 1;
+        if (newOffset >= MaxStackSize)
+        {
+            return EvmExceptionType.StackOverflow;
+        }
+        Head = newOffset;
+
+        ref byte slot = ref Unsafe.Add(ref _stack, headOffset * WordSize);
+        KeccakCache.ComputeTo(input, out Unsafe.As<byte, ValueHash256>(ref slot));
+
+        if (TTracingInst.IsActive && TracesPushes)
+        {
+            _tracer.TraceBytes(in slot, 32);
+        }
+
+        SwapSlot(ref slot);
+        return EvmExceptionType.None;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EvmExceptionType Push32Bytes<TTracingInst, TCheckDepth>(in ValueHash256 hash)
         where TTracingInst : struct, IFlag

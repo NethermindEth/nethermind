@@ -1553,6 +1553,27 @@ namespace Nethermind.Core.Test
             where TWriter : struct, IRlpWriteBackend, allows ref struct
             => writer.WriteByte(value);
 
+        [Test]
+        public void Two_word_input_matches_incremental_hash([Values(20, 32, 64)] int outputLength, [Values(0, 1, 7)] int inputOffset)
+        {
+            Random random = new(outputLength * 8 + inputOffset);
+            byte[] buffer = new byte[inputOffset + 64];
+            byte[] actual = new byte[outputLength];
+            byte[] expected = new byte[outputLength];
+            for (int i = 0; i < 64; i++)
+            {
+                random.NextBytes(buffer);
+                ReadOnlySpan<byte> input = buffer.AsSpan(inputOffset, 64);
+
+                KeccakHash.ComputeHash(input, actual);
+                KeccakHash reference = KeccakHash.Create(outputLength);
+                reference.Update(input);
+                reference.UpdateFinalTo(expected);
+
+                Assert.That(actual, Is.EqualTo(expected));
+            }
+        }
+
         private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>
         {
             public Memory<byte> Memory => data;

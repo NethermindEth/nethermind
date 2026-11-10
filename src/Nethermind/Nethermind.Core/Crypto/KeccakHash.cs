@@ -236,6 +236,15 @@ public sealed partial class KeccakHash
             Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
                 Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
         }
+        else if (input.Length == 2 * Vector256<byte>.Count)
+        {
+            // Two words, such as a mapping key and its slot: two vector moves instead of a variable-length copy.
+            ref byte source = ref MemoryMarshal.GetReference(input);
+            ref byte destination = ref MemoryMarshal.GetReference(stateBytes);
+            Unsafe.As<byte, Vector256<byte>>(ref destination) = Unsafe.As<byte, Vector256<byte>>(ref source);
+            Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref destination, Vector256<byte>.Count)) =
+                Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref source, Vector256<byte>.Count));
+        }
         else if (input.Length >= roundSize)
         {
             input = AbsorbMessageIntoZeroState(state, stateBytes, input, roundSize);
