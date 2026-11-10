@@ -117,7 +117,7 @@ public abstract class KademliaAdapterBase(
 
                 if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node:hide}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node:hide}; the newer ENR has no acceptable discovery endpoint.");
                     if (node.ObserveEnrSequence(record.EnrSequence))
                     {
                         return;

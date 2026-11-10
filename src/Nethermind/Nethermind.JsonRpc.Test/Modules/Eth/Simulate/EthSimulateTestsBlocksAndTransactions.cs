@@ -1668,6 +1668,19 @@ public class EthSimulateTestsBlocksAndTransactions
 
     private static IEnumerable<TestCaseData> SpecErrorCases()
     {
+        foreach (bool validation in new[] { false, true })
+        {
+            yield return new TestCaseData(
+                (Func<SimulatePayload<TransactionForRpc>>)(() => new()
+                {
+                    BlockStateCalls = [new() { Calls = [new SetCodeTransactionForRpc { From = TestItem.AddressA, Input = [0], AuthorizationList = [] }] }],
+                    Validation = validation
+                }),
+                ErrorCodes.InvalidInput,
+                Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)
+                .SetName($"AuthorizationCreation_validation_{validation}_32000");
+        }
+
         yield return new TestCaseData(
             (Func<SimulatePayload<TransactionForRpc>>)BlockNumberNotIncreasingPayload,
             ErrorCodes.InvalidInputBlocksOutOfOrder,
