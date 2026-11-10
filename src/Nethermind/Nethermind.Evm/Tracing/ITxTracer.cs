@@ -454,7 +454,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// follows. From EIP-8037 a creation runs its precheck in the creating operation, so only its collision is reported.
     /// The default implementation drops it.
     /// </remarks>
-    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     { }
 

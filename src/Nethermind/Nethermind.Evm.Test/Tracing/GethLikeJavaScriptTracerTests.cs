@@ -166,20 +166,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             """;
         byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
         byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
-        // The first creation lacks the balance to transfer, so it fails its precheck; the second, identical but for
-        // its value, deploys at the same address because the failed precheck leaves the creator's nonce unchanged.
+        // A creation with 1000 ether to transfer fails its precheck. CREATE deploys first, so its failed creation
+        // reports the address for the creator's next nonce; CREATE2 fails first, then deploys at the same address.
         Prepare code = salted
             ? Prepare.EvmCode.Create2(initCode, salt, 1000.Ether).Op(Instruction.POP).Create2(initCode, salt, 0)
-            : Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0);
-        Address expected = salted ? ContractAddress.From(Recipient, salt, initCode) : ContractAddress.From(Recipient, 0);
-        string type = salted ? "CREATE2" : "CREATE";
+            : Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).Create(initCode, 1000.Ether);
+        const string rejected = "exit:insufficient balance for transfer";
+        string create2 = Enter("CREATE2", ContractAddress.From(Recipient, salt, initCode));
+        string[] expected = salted
+            ? [create2, rejected, create2, "exit:"]
+            : [Enter("CREATE", ContractAddress.From(Recipient, 0)), "exit:", Enter("CREATE", ContractAddress.From(Recipient, 1)), rejected];
 
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
             GetTracer(userTracer), code.Op(Instruction.POP).STOP().Done, MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
 
-        string to = $"{type}:{expected.ToString().ToLowerInvariant()}";
-        AssertResult(trace, new[] { to, "exit:insufficient balance for transfer", to, "exit:" });
+        AssertResult(trace, expected);
+
+        static string Enter(string type, Address to) => $"{type}:{to.ToString().ToLowerInvariant()}";
     }
 
     [Test]

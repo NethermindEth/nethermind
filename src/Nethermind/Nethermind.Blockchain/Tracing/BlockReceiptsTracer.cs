@@ -329,7 +329,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public void ReportPrecompileAccountRead(Address address) =>
         _currentTxTracer.ReportPrecompileAccountRead(address);
 
-    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) =>
         _currentTxTracer.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
 
