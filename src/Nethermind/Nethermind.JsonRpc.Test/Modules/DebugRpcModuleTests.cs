@@ -566,8 +566,8 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_missing_block_identifies_selector(
-        [Values("number", "number-object", "hash", "hash-object")] string selectorKind,
+    public async Task Debug_traceCall_missing_block_preserves_selector_policy(
+        [Values("number", "number-object", "hash", "hash-object", "safe", "finalized")] string selectorKind,
         [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool invalidOptions)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -577,11 +577,15 @@ public partial class DebugRpcModuleTests
             "number" => "0x190",
             "number-object" => new { blockNumber = "0x190" },
             "hash" => TestItem.KeccakA.ToString(),
+            "safe" or "finalized" => selectorKind,
             _ => new { blockHash = TestItem.KeccakA.ToString(), requireCanonical = true }
         };
-        string expected = selectorKind.StartsWith("number", StringComparison.Ordinal)
-            ? "block #400 not found"
-            : $"block {TestItem.KeccakA} not found";
+        string expected = selectorKind switch
+        {
+            "number" or "number-object" => "block #400 not found",
+            "safe" or "finalized" => "header not found",
+            _ => $"block {TestItem.KeccakA} not found"
+        };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, selector,
             new
