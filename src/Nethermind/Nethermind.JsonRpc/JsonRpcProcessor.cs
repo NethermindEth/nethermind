@@ -571,7 +571,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                     if (_logger.IsDebug) DebugRequest(request, context);
 
-                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context, cancellationToken);
                     await WriteSingleResponseAsync(request, singleResponse, sink, cancellationToken);
                     break;
 
@@ -600,7 +600,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (_logger.IsDebug) DebugRequest(request, context);
 
-            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context, cancellationToken);
             await WriteSingleResponseAsync(request, response, sink, cancellationToken);
         }
         finally
@@ -660,7 +660,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && !isStopped
                     && concurrency > 1
                     && CanExecuteConcurrently(request, concurrency)
-                    && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
+                    && !(window ??= new BatchExecutionWindow(concurrency, this, context, cancellationToken)).IsFull)
                 {
                     if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex + window.Count + 1, requestCount);
                     window.Add(request);
@@ -672,7 +672,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 if (window?.Count > 0)
                 {
                     Task<JsonRpcResult.Entry>? execution = window.Take(out JsonRpcRequest executed);
-                    JsonRpcResult.Entry executedResponse = execution is null ? await HandleSingleRequest(executed, context) : await execution;
+                    JsonRpcResult.Entry executedResponse = execution is null ? await HandleSingleRequest(executed, context, cancellationToken) : await execution;
                     if (isStopped)
                     {
                         // Already executed alongside the item that stopped the batch, so it is answered as if it never ran.
@@ -705,7 +705,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 else
                 {
                     if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex, requestCount);
-                    response = await HandleSingleRequest(request, context);
+                    response = await HandleSingleRequest(request, context, cancellationToken);
                 }
 
                 await WriteBatchResponseAsync(request, response, ref batchStarted, requestIndex, requestCount, sink, cancellationToken);
@@ -740,8 +740,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         && _batchConcurrency.TryGetValue(method, out IBatchConcurrencyStrategy? strategy)
         && strategy.CanExecuteConcurrently(request, concurrency);
 
-    private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context) =>
-        Task.Run(() => HandleSingleRequest(request, context).AsTask());
+    private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken) =>
+        Task.Run(() => HandleSingleRequest(request, context, cancellationToken).AsTask());
 
     private ValueTask WriteBatchResponseAsync(
         JsonRpcRequest request,
@@ -946,12 +946,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return _diagnostics.RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
 
-        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
+        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
             : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);
@@ -1097,7 +1097,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     /// <summary>The batch items executing in the background, in request order.</summary>
     /// <remarks>An item added to an empty window starts only once a second one joins it, so a run of one executes inline.</remarks>
-    private sealed class BatchExecutionWindow(int capacity, JsonRpcProcessor processor, JsonRpcContext context)
+    private sealed class BatchExecutionWindow(int capacity, JsonRpcProcessor processor, JsonRpcContext context, CancellationToken cancellationToken)
     {
         private readonly JsonRpcRequest[] _requests = new JsonRpcRequest[capacity];
         private readonly Task<JsonRpcResult.Entry>?[] _executions = new Task<JsonRpcResult.Entry>?[capacity];
@@ -1109,10 +1109,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         public void Add(JsonRpcRequest request)
         {
-            if (Count == 1) _executions[_head] ??= processor.ExecuteInBackground(_requests[_head], context);
+            if (Count == 1) _executions[_head] ??= processor.ExecuteInBackground(_requests[_head], context, cancellationToken);
             int index = (_head + Count) % _requests.Length;
             _requests[index] = request;
-            _executions[index] = Count == 0 ? null : processor.ExecuteInBackground(request, context);
+            _executions[index] = Count == 0 ? null : processor.ExecuteInBackground(request, context, cancellationToken);
             Count++;
         }
 

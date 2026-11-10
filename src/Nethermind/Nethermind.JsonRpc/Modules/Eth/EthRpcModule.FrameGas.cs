@@ -20,26 +20,25 @@ public partial class EthRpcModule
     /// <remarks>An omitted limit is resolved only when its frame can succeed, so a frame that always reverts fails the
     /// call with <see cref="ErrorCodes.ExecutionReverted"/> instead of returning a result as explicit limits would.</remarks>
     private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
-        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken,
+        BlockOverride? blockOverride = null, SearchResult<BlockHeader>? searchResult = null)
     {
         // Requests the executor rejects before execution get its errors, as they would with explicit limits.
         if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx) || blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap())
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: searchResult);
+            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, searchResult);
 
         SearchResult<BlockHeader> search = searchResult ?? _blockFinder.SearchForHeader(blockParameter);
         if (search.IsError) return ResultWrapper<TResult>.Fail(search);
         if (!_blockchainBridge.HasStateForBlock(search.Object!))
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: search);
-        using RentedTimeout timeout = _rpcConfig.RentTimeout();
-        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
+            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, search);
+        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, cancellationToken, out int errorCode, stateOverride, blockOverride);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
 
         FrameForRpc[]? originalFrames = frameTx.Frames;
         frameTx.Frames = result.Data;
         try
         {
-            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, timeout.Token, search);
+            return executor.ExecuteTx(request, blockParameter, cancellationToken, stateOverride, blockOverride, search);
         }
         finally
         {

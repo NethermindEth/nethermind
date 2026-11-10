@@ -638,7 +638,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         RecordingObserver observer = new();
 
         using JsonRpcResponse response = await service.SendRequestAsync(
-            RpcTest.BuildJsonRequest("debug_traceBlockByNumber", "latest", new { tracer = "callTracer" }), new JsonRpcContext(RpcEndpoint.Http));
+            RpcTest.BuildJsonRequest("debug_traceBlockByNumber", "latest", new { tracer = "callTracer" }), new JsonRpcContext(RpcEndpoint.Http), CancellationToken.None);
         response.ObserveStreamedResult(observer, NullLogger.Instance);
         string envelope = await WriteAsync(TransportKind.Pipe, response, isBatch: false);
 

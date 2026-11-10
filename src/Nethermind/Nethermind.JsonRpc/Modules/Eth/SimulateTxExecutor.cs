@@ -107,6 +107,7 @@ public class SimulateTxExecutor<TTrace>(
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
+        CancellationToken cancellationToken,
         Dictionary<Address, AccountOverride>? stateOverride = null,
         SearchResult<BlockHeader>? searchResult = null)
     {
@@ -202,18 +203,10 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        try
-        {
-            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-                : Execute(header.Clone(), data, stateOverride, timeout.Token);
-        }
-        finally
-        {
-            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        }
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, cancellationToken);
     }
 
     private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(

@@ -637,7 +637,7 @@ public class McpTransactionToolsTests
         eth.eth_getTransactionReceipt(Arg.Any<Hash256>()).Returns(ResultWrapper<ReceiptForRpc?>.Success(
             new ReceiptForRpc { Status = status, GasUsed = 50_000, EffectiveGasPrice = 1, Logs = movements.Select(MovementLog).ToArray() }));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info =>
             {
                 LegacyTransactionForRpc call = (LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0);
@@ -670,14 +670,14 @@ public class McpTransactionToolsTests
                     }).ToArray()
                 }]
             };
-            eth.eth_simulateV1(Arg.Any<SimulatePayload<TransactionForRpc>>(), Arg.Any<BlockParameter?>())
+            eth.eth_simulateV1(Arg.Any<SimulatePayload<TransactionForRpc>>(), Arg.Any<BlockParameter?>(), Arg.Any<CancellationToken>())
                 .Returns(ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success([simulated]));
             provider.Override(nameof(IEthRpcModule.eth_simulateV1), eth);
         }
         if (nativeTransfers is not null)
         {
             IDebugRpcModule debug = Substitute.For<IDebugRpcModule>();
-            debug.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(_ =>
+            debug.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(_ =>
             {
                 NativeCallTracerCallFrame root = new() { Type = Instruction.CALL, From = SwapAccount(1), To = SwapAccount(4), Value = value };
                 foreach (McpValueTransfer transfer in nativeTransfers)
@@ -765,7 +765,7 @@ public class McpTransactionToolsTests
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
         string symbol = "OLD";
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ => ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString(symbol))));
         TimeProvider time = Substitute.For<TimeProvider>();
         DateTimeOffset now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);

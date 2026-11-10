@@ -174,7 +174,7 @@ internal sealed class McpEthExtraTools(
             return McpEthHelpers.InvalidInput("Pass 'to' for a call or transfer, or 'data' with init code for a contract deployment.");
         }
 
-        return executor.ExecuteAsync("estimate_gas", nameof(IEthRpcModule.eth_estimateGas), (eth, _) =>
+        return executor.ExecuteAsync("estimate_gas", nameof(IEthRpcModule.eth_estimateGas), (eth, cancellation) =>
         {
             if (!TryResolveState(blockParameter, nameof(block), out BlockParameter? query, out ulong number, out CallToolResult? failure))
             {
@@ -192,7 +192,7 @@ internal sealed class McpEthExtraTools(
                 Gas = Math.Max(1, Math.Min(_maxCallGas, blockGasLimit))
             };
 
-            using ResultWrapper<UInt256?> result = eth.eth_estimateGas(transaction, query);
+            using ResultWrapper<UInt256?> result = eth.eth_estimateGas(transaction, query, cancellationToken: cancellation);
             if (result.Result.ResultType != ResultType.Success)
             {
                 return Task.FromResult(McpEthHelpers.WithRevertReason(executor.Failure("estimate_gas", result), result));
@@ -339,7 +339,7 @@ internal sealed class McpEthExtraTools(
                 return Task.FromResult(failure);
             }
 
-            using ResultWrapper<AccountProof> result = eth.eth_getProof(account, keys, query);
+            using ResultWrapper<AccountProof> result = eth.eth_getProof(account, keys, query, cancellation);
             return Task.FromResult(result.Result.ResultType == ResultType.Success
                 ? executor.Success(result.Data)
                 : executor.Failure("get_proof", result));

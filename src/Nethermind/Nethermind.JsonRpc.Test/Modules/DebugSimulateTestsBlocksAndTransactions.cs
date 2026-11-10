@@ -138,7 +138,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
 
         // Execute and verify the error message includes block number
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

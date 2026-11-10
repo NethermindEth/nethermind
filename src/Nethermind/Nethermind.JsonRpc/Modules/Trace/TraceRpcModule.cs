@@ -976,10 +976,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// Trace simulated blocks transactions (eth_simulateV1)
         /// </summary>
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
-            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) =>
+            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null, CancellationToken cancellationToken = default) =>
             TryGetParityTypes(traceTypes ?? ["Trace"], out ParityTraceTypes parityTypes)
                 ? new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: parityTypes), _secondsPerSlot)
-                    .Execute(payload, blockParameter)
+                    .Execute(payload, blockParameter, cancellationToken)
                 : InvalidTraceTypes<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>();
     }
 }

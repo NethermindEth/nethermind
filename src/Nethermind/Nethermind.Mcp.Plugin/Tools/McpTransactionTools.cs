@@ -1169,7 +1169,7 @@ internal sealed class McpTransactionTools(
 
         // Simulating on a hash selector pins the base block even if the head moves meanwhile.
         using ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            eth.eth_simulateV1(payload, new BlockParameter(header.Hash!));
+            eth.eth_simulateV1(payload, new BlockParameter(header.Hash!), token);
         if (result.Result.ResultType != ResultType.Success)
         {
             return SimulateFailure(result);

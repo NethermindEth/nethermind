@@ -31,11 +31,8 @@ public class OverlayRpcModule(
     ISpecProvider specProvider,
     IJsonRpcConfig jsonRpcConfig) : IOverlayRpcModule
 {
-    public ResultWrapper<OverlayCreationCode?> overlay_callConstructor(Address address, byte[] code)
+    public ResultWrapper<OverlayCreationCode?> overlay_callConstructor(Address address, byte[] code, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
-        CancellationToken token = timeout.Token;
-
         BlockHeader? head = blockFinder.Head?.Header;
         if (head is null) return ResultWrapper<OverlayCreationCode?>.Fail("head block not found", ErrorCodes.ResourceNotFound);
         if (!stateReader.HasStateForBlock(head)) return NoState<OverlayCreationCode?>(head);
@@ -45,7 +42,7 @@ public class OverlayRpcModule(
         ulong low = 0, high = head.Number;
         for (ulong step = 1; high > 0; step <<= 1)
         {
-            token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
             ulong probe = high > step ? high - step : 0;
             if (!HasCodeAt(probe, address))
             {
@@ -58,7 +55,7 @@ public class OverlayRpcModule(
 
         while (low < high)
         {
-            token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
             ulong middle = low + (high - low) / 2;
             if (HasCodeAt(middle, address)) high = middle;
             else low = middle + 1;
@@ -70,7 +67,7 @@ public class OverlayRpcModule(
         try
         {
             ContractCreationTracer creation = new(address);
-            if (!TryTrace(block, null, creation, token, out ResultWrapper<OverlayCreationCode?>? failure)) return failure;
+            if (!TryTrace(block, null, creation, cancellationToken, out ResultWrapper<OverlayCreationCode?>? failure)) return failure;
             if (creation.TxIndex < 0) return ResultWrapper<OverlayCreationCode?>.Fail("contract construction txn not found", ErrorCodes.ResourceNotFound);
 
             ulong gasLimit = jsonRpcConfig.GasCap ?? block.Header.GasLimit;
@@ -113,7 +110,7 @@ public class OverlayRpcModule(
 
             Block replay = new(block.Header, block.Body.WithChangedTransactions(transactions));
             ConstructorOutputTracer output = new(address, creation.TxIndex);
-            if (!TryTrace(replay, stateOverride, output, token, out failure)) return failure;
+            if (!TryTrace(replay, stateOverride, output, cancellationToken, out failure)) return failure;
             if (output.Error is not null) return ResultWrapper<OverlayCreationCode?>.Fail(output.Error, ErrorCodes.ExecutionError);
 
             byte[]? runtimeCode = creation.IsTopLevel ? output.DeployedCode : output.Output;
@@ -125,11 +122,8 @@ public class OverlayRpcModule(
         }
     }
 
-    public ResultWrapper<IEnumerable<FilterLog>> overlay_getLogs(Filter filter, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public ResultWrapper<IEnumerable<FilterLog>> overlay_getLogs(Filter filter, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default)
     {
-        using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
-        CancellationToken token = timeout.Token;
-
         if (filter.FromBlock.Type is BlockParameterType.Pending || filter.ToBlock.Type is BlockParameterType.Pending)
             return ResultWrapper<IEnumerable<FilterLog>>.Fail("pending logs are not supported", ErrorCodes.InvalidInput);
 
@@ -168,14 +162,14 @@ public class OverlayRpcModule(
         {
             for (ulong number = from; number <= to; number++)
             {
-                token.ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
                 Block? block = singleBlock
                     ? blockFinder.FindBlock(fromHeader.Hash!, BlockTreeLookupOptions.None, number)
                     : blockFinder.FindBlock(number, BlockTreeLookupOptions.RequireCanonical);
                 if (block is null) return ResultWrapper<IEnumerable<FilterLog>>.Fail($"block {number} not found", ErrorCodes.ResourceNotFound);
                 if (block.Transactions.Length == 0) continue;
 
-                if (!TryTrace(block, stateOverride, tracer, token, out ResultWrapper<IEnumerable<FilterLog>>? failure)) return failure;
+                if (!TryTrace(block, stateOverride, tracer, cancellationToken, out ResultWrapper<IEnumerable<FilterLog>>? failure)) return failure;
                 if (maxLogs > 0 && logs.Count > maxLogs)
                     return ResultWrapper<IEnumerable<FilterLog>>.Fail($"too many logs, max {maxLogs} per response", ErrorCodes.LimitExceeded);
             }

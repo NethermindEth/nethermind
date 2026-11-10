@@ -389,8 +389,9 @@ namespace Nethermind.JsonRpc.Modules
                 MethodInfo = methodInfo;
 
                 ParameterInfo[] parameters = methodInfo.GetParameters();
-                ExpectedParameter[] expectedParameters = new ExpectedParameter[parameters.Length];
-                for (int i = 0; i < parameters.Length; i++)
+                HasCancellationToken = HasTrailingCancellationToken(methodInfo, parameters);
+                ExpectedParameter[] expectedParameters = new ExpectedParameter[HasCancellationToken ? parameters.Length - 1 : parameters.Length];
+                for (int i = 0; i < expectedParameters.Length; i++)
                 {
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;
@@ -484,6 +485,15 @@ namespace Nethermind.JsonRpc.Modules
             public Func<IRpcModule, object?>? DirectNoParameterInvoker { get; }
             public Func<IRpcModule, object?[], object?>? DirectParameterInvoker { get; }
             public ExpectedParameter[] ExpectedParameters { get; }
+
+            /// <summary>Whether the method's last parameter is a <see cref="CancellationToken"/>, which the dispatcher supplies.</summary>
+            /// <remarks>
+            /// The token is not one of <see cref="ExpectedParameters"/>, so clients never send it. It is cancelled when the
+            /// request is aborted or <see cref="IJsonRpcConfig.Timeout"/> elapses, and is valid only until the method's
+            /// result is returned, so work deferred past that, such as a streamed result, must not use it.
+            /// </remarks>
+            public bool HasCancellationToken { get; }
+
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
             internal Type? ResultWrapperType { get; }
@@ -623,14 +633,27 @@ namespace Nethermind.JsonRpc.Modules
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     Type parameterType = parameters[i].ParameterType;
+                    // The dispatcher always supplies a CancellationToken, so it is never null to unbox.
                     if (parameterType.IsByRef ||
-                        parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null && !parameters[i].IsOptional)
+                        parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) is null && !parameters[i].IsOptional
+                        && parameterType != typeof(CancellationToken))
                     {
                         return false;
                     }
                 }
 
                 return true;
+            }
+
+            private static bool HasTrailingCancellationToken(MethodInfo methodInfo, ParameterInfo[] parameters)
+            {
+                int index = Array.FindIndex(parameters, static parameter => parameter.ParameterType == typeof(CancellationToken));
+                if (index >= 0 && index != parameters.Length - 1)
+                {
+                    throw new InvalidOperationException($"{methodInfo.DeclaringType?.Name}.{methodInfo.Name} must declare its {nameof(CancellationToken)} parameter last.");
+                }
+
+                return index >= 0;
             }
 
             private static bool CanUseDirectInvokerReturn(Type returnType) =>

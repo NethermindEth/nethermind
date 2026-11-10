@@ -476,7 +476,7 @@ public class McpLimitsTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         using CancellationTokenSource cancellation = new();
         int calls = 0;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (Interlocked.Increment(ref calls) == 1) cancellation.Cancel();

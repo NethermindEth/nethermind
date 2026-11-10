@@ -413,9 +413,9 @@ internal sealed partial class McpEthTools(
             Gas = gasLimit
         };
 
-        return _executor.ExecuteAsync("call", nameof(IEthRpcModule.eth_call), (eth, _) =>
+        return _executor.ExecuteAsync("call", nameof(IEthRpcModule.eth_call), (eth, cancellation) =>
         {
-            using ResultWrapper<HexBytes> result = eth.eth_call(transaction, blockParameter);
+            using ResultWrapper<HexBytes> result = eth.eth_call(transaction, blockParameter, cancellationToken: cancellation);
             return Task.FromResult(result.Result.ResultType == ResultType.Success
                 ? _executor.Success(result.Data)
                 : McpEthHelpers.WithRevertReason(_executor.Failure("call", result), result));

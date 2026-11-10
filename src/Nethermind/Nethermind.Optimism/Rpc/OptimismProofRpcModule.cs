@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -22,8 +23,8 @@ namespace Nethermind.Optimism.Rpc;
 /// </remarks>
 public class OptimismProofRpcModule(IProofRpcModule inner, IReceiptFinder receiptFinder) : IProofRpcModule
 {
-    public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
-        inner.proof_call(tx, blockParameter);
+    public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken) =>
+        inner.proof_call(tx, blockParameter, cancellationToken);
 
     public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
     {
@@ -46,6 +47,6 @@ public class OptimismProofRpcModule(IProofRpcModule inner, IReceiptFinder receip
     public ResultWrapper<ReceiptWithProof?> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader) =>
         inner.proof_getTransactionReceipt(txHash, includeHeader);
 
-    public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter) =>
-        inner.proof_getProofWithMeta(accountAddress, storageKeys, blockParameter);
+    public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken) =>
+        inner.proof_getProofWithMeta(accountAddress, storageKeys, blockParameter, cancellationToken);
 }

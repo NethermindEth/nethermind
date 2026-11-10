@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -64,7 +65,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
@@ -181,7 +182,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.That(chain.ReadOnlyState.AccountExists(contractAddress), Is.True);
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest, CancellationToken.None);
 
         //Check results
         byte[] addressBytes = result.Data[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);

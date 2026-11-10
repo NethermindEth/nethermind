@@ -161,7 +161,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = SlowToken(out _);
         int calls = 0;
         bool expired = false;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 calls++;
@@ -189,7 +189,7 @@ public class McpTxTokensTests
         Address[] cached = [TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
         foreach (Address address in cached) Assert.That(metadata.Get(eth, address, BlockParameter.Latest), Is.Not.Null);
         bool spent = !interrupted;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ => { spent = true; return ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString("MISS"))); });
         eth.ClearReceivedCalls();
 
@@ -209,7 +209,7 @@ public class McpTxTokensTests
     {
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0);
@@ -243,7 +243,7 @@ public class McpTxTokensTests
         blockFinder.Head.Returns(_ => new Block(head));
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0);
@@ -281,7 +281,7 @@ public class McpTxTokensTests
         if (!spent)
         {
             IEthRpcModule missing = SlowToken(out _);
-            missing.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            missing.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
                 .Returns(_ => ResultWrapper<HexBytes>.Success(new HexBytes([])));
             Assert.That(metadata.Get(missing, weth, BlockParameter.Latest), Is.Not.Null);
         }
@@ -323,7 +323,7 @@ public class McpTxTokensTests
         await McpPriceIsolationTests.Deposit(node);
         IEthRpcModule eth = SlowToken(out _);
         eth.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(ResultWrapper<UInt256?>.Success(UInt256.Zero));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)call.ArgAt<SignableTransactionForRpc>(0);
@@ -345,7 +345,7 @@ public class McpTxTokensTests
     public void Token_metadata_treats_missing_trie_node_as_a_transient_failure()
     {
         IEthRpcModule eth = SlowToken(out _);
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(ResultWrapper<HexBytes>.Fail("missing trie node 0xab", ErrorCodes.Default));
         bool transient = false;
 
@@ -418,7 +418,7 @@ public class McpTxTokensTests
         byte[] decimals = new byte[32];
         WriteWord(decimals, 0, (ulong)feedDecimals);
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
-            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(info => ResultWrapper<HexBytes>.Success(new HexBytes(
                 ((LegacyTransactionForRpc)info.ArgAt<SignableTransactionForRpc>(0)).Input![0] == 0xfe ? round : decimals)));
         McpChainProfile profile = _node.Chain.Container.Resolve<McpChainProfile>();
@@ -619,7 +619,7 @@ public class McpTxTokensTests
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
-            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 entered.TrySetResult();
@@ -668,7 +668,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 string current = symbol;
@@ -839,7 +839,7 @@ public class McpTxTokensTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 Interlocked.Increment(ref count);

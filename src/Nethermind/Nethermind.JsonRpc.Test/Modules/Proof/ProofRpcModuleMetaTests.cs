@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -91,7 +92,7 @@ public class ProofRpcModuleMetaTests
     public void Returns_proof_payload_alongside_meta()
     {
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, [], BlockParameter.Earliest);
+            TestItem.AddressA, [], BlockParameter.Earliest, CancellationToken.None);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         AccountProofWithMeta payload = result.Data;
@@ -111,7 +112,7 @@ public class ProofRpcModuleMetaTests
     public void Meta_counters_have_sane_values()
     {
         AccountProofWithMeta payload = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, [], BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest, CancellationToken.None).Data;
 
         Assert.That(payload.Meta, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -127,9 +128,9 @@ public class ProofRpcModuleMetaTests
     public void Identical_queries_produce_identical_diagnostics()
     {
         AccountProofWithMeta first = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, [], BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest, CancellationToken.None).Data;
         AccountProofWithMeta second = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, [], BlockParameter.Earliest).Data;
+            TestItem.AddressA, [], BlockParameter.Earliest, CancellationToken.None).Data;
 
         using (Assert.EnterMultipleScope())
         {
@@ -143,7 +144,7 @@ public class ProofRpcModuleMetaTests
     public void MaxDepth_grows_when_storage_trie_is_traversed()
     {
         AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressB, [], BlockParameter.Earliest).Data;
+            TestItem.AddressB, [], BlockParameter.Earliest, CancellationToken.None).Data;
 
         StorageKeys storageKeys = [];
         for (int i = 0; i < StorageSlotCount; i++)
@@ -151,7 +152,7 @@ public class ProofRpcModuleMetaTests
             storageKeys.Add((UInt256)i);
         }
         AccountProofWithMeta withStorage = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
+            TestItem.AddressB, storageKeys, BlockParameter.Earliest, CancellationToken.None).Data;
 
         using (Assert.EnterMultipleScope())
         {
@@ -168,7 +169,7 @@ public class ProofRpcModuleMetaTests
         StorageKeys storageKeys = [2, 1, 1];
 
         AccountProofWithMeta result = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
+            TestItem.AddressB, storageKeys, BlockParameter.Earliest, CancellationToken.None).Data;
 
         Assert.That(result.Proof.StorageProofs.Select(static p => p.Key), Is.EqualTo(new byte[][] { [2], [1], [1] }));
     }
@@ -183,7 +184,7 @@ public class ProofRpcModuleMetaTests
         }
 
         ResultWrapper<AccountProofWithMeta> result = _proofRpcModule.proof_getProofWithMeta(
-            TestItem.AddressA, storageKeys, BlockParameter.Earliest);
+            TestItem.AddressA, storageKeys, BlockParameter.Earliest, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

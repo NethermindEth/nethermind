@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
@@ -44,7 +45,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressB },
-            new BlockParameter(head.Number));
+            new BlockParameter(head.Number), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Witness.Headers, Is.Not.Empty);
@@ -72,7 +73,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressB },
-            param);
+            param, CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         using (Assert.EnterMultipleScope())
@@ -89,7 +90,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> result = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressA },
-            new BlockParameter(0UL));
+            new BlockParameter(0UL), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -125,7 +126,7 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 200_000,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         // Return data: SLOAD(0) returned as 32 bytes big-endian — the trailing byte holds 0x42.
@@ -163,7 +164,7 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 200_000,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Witness.Headers.Count, Is.GreaterThanOrEqualTo(2),
@@ -203,7 +204,7 @@ public class ProofRpcModuleCallTests
         ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         // Revert surfaces no top-level Result; the payload lives in error.data (hex), mirroring eth_call.
@@ -268,7 +269,7 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 200_000,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         // REVERT surfaces an in-payload error but the witness is still returned.
@@ -326,14 +327,14 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 200_000,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
 
         using ResultWrapper<CallResultWithProof> withoutGas = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
                 To = contractAddress,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -383,7 +384,7 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 50_000, // small budget so the infinite loop trips OOG quickly
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Error, Is.Not.Null, "OOG must surface an in-payload error so callers can act on it");
@@ -442,7 +443,7 @@ public class ProofRpcModuleCallTests
                 To = contractAddress,
                 Gas = 200_000,
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof proof = proofWrapper.Data!;
 
         Assert.That(proof.Result, Is.Not.Null);
@@ -499,7 +500,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Witness.State, Is.Not.Empty);
@@ -534,7 +535,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressB },
-            new BlockParameter(head.Number));
+            new BlockParameter(head.Number), CancellationToken.None);
 
         Assert.That(wrapper.Data, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -558,7 +559,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         // Touched accounts: sender (AddressA) and the contract. The witness must record both
@@ -594,7 +595,7 @@ public class ProofRpcModuleCallTests
         ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = caller, Gas = 200_000 },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof proof = wrapper.Data!;
 
         Assert.That(proof.Witness.State, Is.Not.Empty);
@@ -636,7 +637,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = caller, Gas = 200_000 },
-            new BlockParameter(blockchain.BlockTree.Head!.Number));
+            new BlockParameter(blockchain.BlockTree.Head!.Number), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         using (Assert.EnterMultipleScope())
@@ -669,10 +670,10 @@ public class ProofRpcModuleCallTests
         {
             using ResultWrapper<CallResultWithProof> atDeploy = blockchain.ProofRpcModule.proof_call(
                 new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
-                new BlockParameter(deployBlock));
+                new BlockParameter(deployBlock), CancellationToken.None);
             using ResultWrapper<CallResultWithProof> atLater = blockchain.ProofRpcModule.proof_call(
                 new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
-                new BlockParameter(laterBlock));
+                new BlockParameter(laterBlock), CancellationToken.None);
 
             using (Assert.EnterMultipleScope())
             {
@@ -721,7 +722,7 @@ public class ProofRpcModuleCallTests
             {
                 using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
                     new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
-                    new BlockParameter(block));
+                    new BlockParameter(block), CancellationToken.None);
                 CallResultWithProof result = wrapper.Data!;
                 Assert.That(result.Result, Is.Not.Null.And.Not.Empty, $"task {i}: result");
                 Assert.That(result.Result![^1], Is.EqualTo(0xBB), $"task {i}: storage value");
@@ -839,7 +840,7 @@ public class ProofRpcModuleCallTests
         ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Error, Is.Not.Null);
@@ -871,7 +872,7 @@ public class ProofRpcModuleCallTests
                 Gas = 200_000,
                 // No Nonce set — the collector must resolve it from state.
             },
-            new BlockParameter(blockNumber));
+            new BlockParameter(blockNumber), CancellationToken.None);
         CallResultWithProof result = wrapper.Data!;
 
         // The SLOAD-returning contract returns 0x42 in the last byte of its 32-byte return.

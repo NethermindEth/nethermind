@@ -64,28 +64,36 @@ public static class RpcTest
 
     public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        await using IContainer container = CreateContainerForModule<T>(module);
+        await using IContainer container = CreateContainerForModule<T>(module, new JsonRpcConfig().Timeout);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
-        return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
+        return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http), CancellationToken.None);
     }
 
     public static Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestSerializedRequest(module, new JsonRpcConfig().Timeout, method, parameters);
+
+    /// <param name="timeout">The dispatcher's <see cref="IJsonRpcConfig.Timeout"/>, which bounds a method that takes a <see cref="CancellationToken"/>.</param>
+    public static Task<string> TestSerializedRequest<T>(T module, int timeout, string method, params object?[]? parameters) where T : class, IRpcModule =>
         TestSerializedRequest(
             module,
             module is IContextAwareRpcModule { Context: not null } contextAwareModule ? contextAwareModule.Context : new JsonRpcContext(RpcEndpoint.Http),
+            timeout,
             method,
             parameters);
 
-    public static async Task<string> TestSerializedRequest<T>(T module, JsonRpcContext context, string method, params object?[]? parameters) where T : class, IRpcModule
+    public static Task<string> TestSerializedRequest<T>(T module, JsonRpcContext context, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestSerializedRequest(module, context, new JsonRpcConfig().Timeout, method, parameters);
+
+    private static async Task<string> TestSerializedRequest<T>(T module, JsonRpcContext context, int timeout, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        await using IContainer container = CreateContainerForModule<T>(module);
+        await using IContainer container = CreateContainerForModule<T>(module, timeout);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, context, CancellationToken.None).ConfigureAwait(false);
 
         if (response.TryGetStreamableResult(out _))
         {
@@ -114,21 +122,22 @@ public static class RpcTest
     /// <summary>Sends a request whose result is streamed and writes the response into <paramref name="writer"/>.</summary>
     public static async Task TestStreamedRequest<T>(T module, PipeWriter writer, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        await using IContainer container = CreateContainerForModule<T>(module);
+        await using IContainer container = CreateContainerForModule<T>(module, new JsonRpcConfig().Timeout);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcContext context = new(RpcEndpoint.Http);
-        using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context);
+        using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context, CancellationToken.None);
 
         Assert.That(response.TryGetStreamableResult(out _), Is.True, $"precondition: {method} must return a streamed result");
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await writer.FlushAsync();
     }
 
-    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()
+    private static IContainer CreateContainerForModule<T>(T module, int timeout) where T : class, IRpcModule => new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
             {
-                EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
+                EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType],
+                Timeout = timeout
             }))
             .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
             .AddScoped<T>(module)

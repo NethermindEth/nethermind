@@ -538,7 +538,7 @@ public class OtsRpcModuleTests
         using JsonDocument args = JsonDocument.Parse("[]");
         JsonRpcContext context = new(RpcEndpoint.Http);
         using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
-            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_getApiLevel", Params = args.RootElement }, context);
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_getApiLevel", Params = args.RootElement }, context, CancellationToken.None);
         using JsonDocument json = Serialize(response);
         Assert.That(json.RootElement.TryGetProperty("error", out _), Is.True);
     }
@@ -557,7 +557,7 @@ public class OtsRpcModuleTests
         using JsonDocument args = JsonDocument.Parse(parameters);
         JsonRpcContext context = new(RpcEndpoint.Http);
         using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
-            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = method, Params = args.RootElement }, context);
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = method, Params = args.RootElement }, context, CancellationToken.None);
         using JsonDocument json = Serialize(response);
         Assert.That(json.RootElement.TryGetProperty("result", out _), Is.True, json.RootElement.ToString());
     }
@@ -1946,7 +1946,7 @@ public class OtsRpcModuleTests
         using JsonDocument args = JsonDocument.Parse($"[\"{TestItem.AddressA}\",0,25]");
         JsonRpcContext context = new(RpcEndpoint.Http);
         using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
-            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_searchTransactionsBefore", Params = args.RootElement }, context);
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_searchTransactionsBefore", Params = args.RootElement }, context, CancellationToken.None);
         using JsonDocument json = Serialize(response);
         using (Assert.EnterMultipleScope())
         {
