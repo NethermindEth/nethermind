@@ -36,6 +36,8 @@ public sealed class StorageRangeVisitor(Address address, in ValueHash256 startKe
 
     public bool IsFullDbScan => false;
 
+    public bool IsRangeScan => IsFullDbScan;
+
     public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) =>
         !_isComplete && (nodeContext.Storage is null
             ? _accountPath.CompareToTruncated(nodeContext.Path, nodeContext.Path.Length) == 0
