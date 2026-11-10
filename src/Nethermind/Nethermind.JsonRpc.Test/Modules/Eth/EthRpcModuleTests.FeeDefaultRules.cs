@@ -219,6 +219,31 @@ public partial class EthRpcModuleTests
         oracle.DidNotReceive().GetMaxPriorityGasFeeEstimate();
     }
 
+    [Test]
+    public async Task Submission_calldata_conflicts_follow_signing_and_fee_checks(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values] bool suppliedGas, [Values] bool invalidFee)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        string gas = suppliedGas ? "\"gas\":\"0x76c0\"," : "";
+        using JsonDocument request = JsonDocument.Parse($$"""
+            {"from":"{{HeldAccount}}","to":"{{FeeRecipient}}","nonce":"0x0",{{gas}}
+             "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","input":"0x01","data":"0x2a"}
+            """);
+        string response = await ctx.Test.TestEthRpc(method, request.RootElement);
+        string expected = method == "eth_signTransaction" && !suppliedGas ? "gas not specified"
+            : invalidFee ? "gasPrice must be non-zero after london fork"
+            : Nethermind.Facade.Eth.RpcTransaction.RpcTransactionErrors.DataAndInputDiffer;
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)
     {
         using Context ctx = london ? await Context.CreateWithLondonEnabled() : await Context.Create();
