@@ -1198,14 +1198,18 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
-    public void StoreByteAfterGas_changes_only_its_byte_in_initialized_words([Values(0, 2048)] int start)
+    public void StoreByteAfterGas_changes_only_its_byte_in_initialized_words(
+        [Values("array", "inline", "freshInline")] string backing, [Values(0, 512, 2048)] int start)
     {
         const int length = 3 * EvmPooledMemory.WordSize;
         byte[] pattern = CreatePattern(length, 0x31);
         byte[] expected = new byte[start + length];
         pattern.CopyTo(expected, start);
 
-        EvmPooledMemory memory = new();
+        using EvmFrameMemory owner = new();
+        bool fresh = backing == "freshInline";
+        if (fresh) owner.GetSpan().Clear(); else owner.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = backing == "array" ? default : new(owner, fresh);
         try
         {
             for (int i = 0; i < length; i += EvmPooledMemory.WordSize)

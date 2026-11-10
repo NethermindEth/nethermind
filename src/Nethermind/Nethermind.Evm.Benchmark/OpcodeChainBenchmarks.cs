@@ -41,7 +41,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "MemoryByteDisjoint", "MemoryByteCarried", "MemoryByteDisjointCarried", "MemoryByteRun")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "MemoryByteDisjoint", "MemoryByteCarried", "MemoryByteDisjointCarried", "MemoryByteRun", "MemoryByteAfterUnalignedWord")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -258,6 +258,9 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.PUSH1, Chain == "MemoryByteCarried" ? (byte)0 : (byte)32, (byte)Instruction.MLOAD], 4),
                 "MemoryByteRun" => ([.. Enumerable.Range(0, 31).SelectMany(static k => new[] { (byte)Instruction.DUP1, (byte)Instruction.PUSH1, (byte)k, (byte)Instruction.MSTORE8 }),
                     (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 96),
+                // The word store covers only part of the aligned word the byte lands in.
+                "MemoryByteAfterUnalignedWord" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH1, 4, (byte)Instruction.MSTORE,
+                    (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 10, (byte)Instruction.MSTORE8], 6),
                 "StaticIdentity" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
                     (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
                     (byte)Instruction.PUSH1, 4, (byte)Instruction.PUSH2, 0xff, 0xff,
