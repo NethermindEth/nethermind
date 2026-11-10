@@ -204,7 +204,7 @@ public class SnapshotCompactor(
     /// inline also keeps the whole merge on the compacting thread; otherwise <c>Task.WaitAll</c> would inline whichever
     /// merges the pool had not started.
     /// </remarks>
-    private static Task StartMerge(Action merge)
+    internal static Task StartMerge(Action merge)
     {
         if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
         {
