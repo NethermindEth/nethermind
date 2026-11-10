@@ -15,9 +15,8 @@ namespace Nethermind.Consensus.Stateless;
 /// Mirrors <c>_validate_secured_trie_paths</c> of the zkEVM spec's <c>incremental_mpt.py</c>, which checks every witness
 /// node reachable from a trie's root once it decodes that trie: the state trie for every block, and a storage trie once
 /// its old storage is read, or written without being cleared first. Here these are the scope opening and the first load
-/// of a storage tree's root, which a cleared storage tree never loads. <see cref="SecuredTriePath"/>'s checks of the nodes
-/// a trie operation visits leave out the nodes off its paths, which only this walk reaches. A child the witness lacks is
-/// left unchecked, as the spec leaves it hashed.
+/// of a storage tree's root, which a cleared storage tree never loads. A trie operation visits only nodes reachable from
+/// that root, which the walk has checked by then. A child the witness lacks is left unchecked, as the spec leaves it hashed.
 /// </remarks>
 internal sealed class WitnessTriePaths
 {

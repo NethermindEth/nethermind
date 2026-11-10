@@ -32,8 +32,14 @@ public sealed class WitnessCapturingBlockProcessor(
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
+    private Action<Block>? _transactionsExecuted;
 
-    public event Action<Block>? TransactionsExecuted;
+    /// <remarks>Forwarded to the inner processor, and to the witness processor for the block it runs.</remarks>
+    public event Action<Block>? TransactionsExecuted
+    {
+        add { inner.TransactionsExecuted += value; _transactionsExecuted += value; }
+        remove { inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
+    }
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(
         Block suggestedBlock,
@@ -52,7 +58,7 @@ public sealed class WitnessCapturingBlockProcessor(
             && rendezvous.HasPendingRequest(blockHash);
 
         if (!shouldCapture)
-            return Process(inner, suggestedBlock, options, blockTracer, spec, token);
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         ulong parentBlockNumber = suggestedBlock.Number - 1;
         BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
@@ -61,7 +67,7 @@ public sealed class WitnessCapturingBlockProcessor(
         witness.ResetForBlock();
 
         // If ProcessOne throws, the handler's using-registration cancels the pending slot — nothing to do here.
-        (Block Block, TxReceipt[] Receipts) result = Process(witness.Processor, suggestedBlock, options, blockTracer, spec, token);
+        (Block Block, TxReceipt[] Receipts) result = ProcessWithWitness(suggestedBlock, options, blockTracer, spec, token);
 
         if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
             return result; // request was declined or cancelled — nothing to publish.
@@ -82,10 +88,13 @@ public sealed class WitnessCapturingBlockProcessor(
         return result;
     }
 
-    private (Block Block, TxReceipt[] Receipts) Process(IBlockProcessor processor, Block block, ProcessingOptions options,
-        IBlockTracer tracer, IReleaseSpec spec, CancellationToken token)
+    /// <remarks>The witness processor is built on the first witnessed block, so the handlers reach it here rather than as
+    /// they are added.</remarks>
+    private (Block Block, TxReceipt[] Receipts) ProcessWithWitness(Block block, ProcessingOptions options, IBlockTracer tracer,
+        IReleaseSpec spec, CancellationToken token)
     {
-        Action<Block>? handlers = TransactionsExecuted;
+        IBlockProcessor processor = witness.Processor;
+        Action<Block>? handlers = _transactionsExecuted;
         processor.TransactionsExecuted += handlers;
         try
         {

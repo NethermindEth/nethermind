@@ -45,7 +45,11 @@ public sealed class TrustedInputCapturingBlockProcessor(
     private bool _stopping;
 
     /// <inheritdoc/>
-    public event Action<Block>? TransactionsExecuted;
+    public event Action<Block>? TransactionsExecuted
+    {
+        add => inner.TransactionsExecuted += value;
+        remove => inner.TransactionsExecuted -= value;
+    }
 
     /// <inheritdoc/>
     public (Block Block, TxReceipt[] Receipts) ProcessOne(
@@ -59,7 +63,7 @@ public sealed class TrustedInputCapturingBlockProcessor(
             || options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
             || rendezvous.HasPendingRequest(suggestedBlock.Hash))
         {
-            return Process(inner, suggestedBlock, options, blockTracer, spec, token);
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
 
         (Block Block, TxReceipt[] Receipts) result = default;
@@ -72,7 +76,7 @@ public sealed class TrustedInputCapturingBlockProcessor(
             tracer.Add(collector);
             try
             {
-                result = Process(inner, suggestedBlock, options, tracer, spec, token);
+                result = inner.ProcessOne(suggestedBlock, options, tracer, spec, token);
             }
             catch
             {
@@ -88,22 +92,7 @@ public sealed class TrustedInputCapturingBlockProcessor(
             return () => Capture(block, captured, collector.Inputs);
         });
 
-        return scheduled ? result : Process(inner, suggestedBlock, options, blockTracer, spec, token);
-    }
-
-    private (Block Block, TxReceipt[] Receipts) Process(IBlockProcessor processor, Block block, ProcessingOptions options,
-        IBlockTracer tracer, IReleaseSpec spec, CancellationToken token)
-    {
-        Action<Block>? handlers = TransactionsExecuted;
-        processor.TransactionsExecuted += handlers;
-        try
-        {
-            return processor.ProcessOne(block, options, tracer, spec, token);
-        }
-        finally
-        {
-            processor.TransactionsExecuted -= handlers;
-        }
+        return scheduled ? result : inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 
     internal bool TryScheduleCapture(Func<Action?> createCapture)

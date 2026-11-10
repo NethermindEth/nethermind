@@ -32,6 +32,24 @@ public class GuestCodeCacheTests
         }
     }
 
+    /// <summary>A table switch the budget refuses leaves the previous table's cache to the runs under that table.</summary>
+    [Test]
+    public void Handler_cache_survives_a_table_switch_past_the_budget()
+    {
+        // Over half the budget, so a second cache of this code does not fit beside the first.
+        CodeInfo codeInfo = new(new byte[4 << 20]);
+        nint[] table = new nint[1];
+        nint[] otherTable = new nint[1];
+
+        nint[]? cache = codeInfo.GetHandlerCache(table);
+        Assert.That(cache, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.GetHandlerCache(otherTable), Is.Null);
+            Assert.That(codeInfo.GetHandlerCache(table), Is.SameAs(cache));
+        }
+    }
+
     private static readonly ValueHash256 Stored = new("0x1c4a6a8d24f1b3c5e7091b2d4f6a8c0e2a4c6e8f0b2d4f6a8c0e2a4c6e8f0b2d");
     private static readonly ValueHash256 Absent = new("0x2c4a6a8d24f1b3c5e7091b2d4f6a8c0e2a4c6e8f0b2d4f6a8c0e2a4c6e8f0b2d");
 

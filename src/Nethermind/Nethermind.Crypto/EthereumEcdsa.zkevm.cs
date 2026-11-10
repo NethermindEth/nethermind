@@ -58,8 +58,8 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
             ? Accelerators.ZiskSecP256k1Recover(message, signature, recoveryId, publicKey)
             : Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey)) == Accelerators.Status.OK;
 
-    /// <summary>The recoveries <see cref="TryVerifyInBatch"/> checked last, which <see cref="RecoverAddressRaw"/> serves
-    /// without recovering.</summary>
+    /// <summary>The recoveries the last <see cref="TryVerifyInBatch"/> checked, when it passed, which
+    /// <see cref="RecoverAddressRaw"/> serves without recovering.</summary>
     private static VerifiedRecoveries? _verified;
 
     /// <summary>Sets the sender of each of <paramref name="transactions"/> from its signature, all in one call.</summary>
@@ -104,7 +104,8 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
     /// <returns>Whether every signature yields its given key; when one does not, nothing is set.</returns>
     /// <remarks>
     /// Airbender only. A <see langword="false"/> says nothing about the signatures, as a key or a y may be what is wrong,
-    /// so the caller then recovers the senders instead, and every other recovery is computed when it is needed.
+    /// so the caller then recovers the senders instead, and every other recovery is computed when it is needed. Either
+    /// way, the recoveries an earlier call served are no longer served.
     /// libairbender's batch fails, as a recovery would, unless each recovery id is at most 3, r and s lie in [1, n - 1],
     /// R's x (r, plus n for ids 2 and 3), R's y and the key's coordinates are below p, R's y has the parity of the id,
     /// and R and the key are on the curve. A served key therefore never stands in for a recovery that fails.
@@ -113,9 +114,11 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         bool useSignatureChainId, ReadOnlySpan<byte> senderKeys, ReadOnlySpan<byte> senderYs, in RecoveryHints others,
         ReadOnlySpan<byte> weights)
     {
+        _verified = null;
         int senders = transactions.Length;
         int count = senders + others.Count;
         if (senderKeys.Length != senders * 64 || senderYs.Length != senders * 32 || weights.Length != count * 16
+            || !others.HasWholeColumns
             || !TryPackSignatures(transactions, encodedTransactions, ecdsa, useSignatureChainId, count,
                 out byte[] messages, out byte[] signatures, out byte[] recoveryIds))
             return false;
@@ -155,6 +158,10 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         public ReadOnlySpan<byte> RecoveryIds { get; } = recoveryIds;
         public ReadOnlySpan<byte> Keys { get; } = keys;
         public ReadOnlySpan<byte> Ys { get; } = ys;
+
+        /// <summary>Whether every column holds <see cref="Count"/> entries.</summary>
+        public bool HasWholeColumns =>
+            Messages.Length == Count * 32 && Signatures.Length == Count * 64 && Keys.Length == Count * 64 && Ys.Length == Count * 32;
     }
 
     /// <param name="capacity">The signatures to make room for, the transactions' first.</param>

@@ -10,9 +10,8 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>Checks the paths of witness nodes of the state and storage tries, whose keys are keccaks of 64 nibbles.</summary>
 /// <remarks>
-/// Each node a trie operation visits is checked against its depth. A node off every visited path is checked against its
-/// depth by <see cref="WitnessTriePaths"/>' walk. A witness node no decoded trie reaches is left unchecked, as the spec
-/// only hashes it.
+/// <see cref="WitnessTriePaths"/>' walk checks every node reachable from the root of a trie the block decodes, which is every
+/// node a trie operation can visit. A witness node no decoded trie reaches is left unchecked, as the spec only hashes it.
 /// </remarks>
 internal static class SecuredTriePath
 {
@@ -45,11 +44,7 @@ internal static class SecuredTriePath
             return false;
         }
 
-        // Hex-prefix encoding: the first nibble flags a leaf (0x2, decoded as any flag from it up) and an odd nibble
-        // count (0x1), whose first nibble then shares the byte.
-        int flags = rlp[pathStart];
-        isLeaf = flags >= 0x20;
-        nibbles = 2 * (pathEnd - pathStart) - ((flags & 0x10) != 0 ? 1 : 2);
+        (nibbles, isLeaf) = HexPrefix.ReadHeader(rlp[pathStart..pathEnd]);
         return true;
     }
 

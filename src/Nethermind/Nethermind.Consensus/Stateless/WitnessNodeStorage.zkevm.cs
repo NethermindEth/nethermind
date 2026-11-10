@@ -11,7 +11,7 @@ internal static partial class WitnessNodeStorage
 {
     /// <summary>Builds a hash-keyed node storage holding the witness' state nodes.</summary>
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
-    /// <remarks>Checks no node; the trie walks check the nodes they visit against their depth (see
+    /// <remarks>Checks no node; <see cref="WitnessTriePaths"/> walks each trie the block decodes (see
     /// <see cref="SecuredTriePath"/>).</remarks>
     public static INodeStorage Create(IOwnedReadOnlyList<byte[]> state) => new HashKeyedNodeStorage(state.AsSpan());
 

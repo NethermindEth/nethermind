@@ -43,6 +43,27 @@ public class TrustedInputTests
         Assert.That(Execute(tampered).IsSuccess, Is.False);
     }
 
+    public enum BodyRoot { Transactions, Withdrawals, Uncles }
+
+    /// <summary>The header's hash binds the body only through the roots the trusted path checks itself.</summary>
+    [Test]
+    public async Task Header_root_the_body_does_not_match_fails_the_block([Values] BodyRoot root)
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        TrustedPayload payload = TrustedInput.Read(input);
+        using Witness witness = payload.Witness;
+        Block block = payload.GetBlock();
+        switch (root)
+        {
+            case BodyRoot.Transactions: block.Header.TxRoot = TestItem.KeccakA; break;
+            case BodyRoot.Withdrawals: block.Header.WithdrawalsRoot = TestItem.KeccakA; break;
+            default: block.Header.UnclesHash = TestItem.KeccakA; break;
+        }
+
+        byte[] tampered = TrustedInput.Write(payload.ChainId, ProtocolFork.Current, block, payload.EncodedTransactions, witness);
+        Assert.That(Execute(tampered).IsSuccess, Is.False);
+    }
+
     [Test]
     public async Task Public_output_distinguishes_pinned_future_fork()
     {

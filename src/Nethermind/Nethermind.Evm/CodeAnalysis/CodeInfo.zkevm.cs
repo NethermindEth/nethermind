@@ -53,13 +53,15 @@ public sealed partial class CodeInfo
     /// The handlers guest dispatch has resolved for this code under the paired table <paramref name="table"/>, by
     /// position, or <see langword="null"/> once the caches have taken <see cref="HandlerCacheBudget"/>.
     /// </summary>
-    /// <remarks>Another table, as a traced run uses, starts a new cache.</remarks>
+    /// <remarks>Another table, as a traced run uses, starts a new cache; one the budget refuses leaves the previous
+    /// table's cache to the runs under that table.</remarks>
     internal nint[]? GetHandlerCache(nint[] table)
     {
         if (!ReferenceEquals(_handlerCacheTable, table))
         {
-            _handlerCache = TryCreateHandlerCache(CodeLength);
-            if (_handlerCache is null) return null;
+            nint[]? cache = TryCreateHandlerCache(CodeLength);
+            if (cache is null) return null;
+            _handlerCache = cache;
             _handlerCacheTable = table;
         }
 

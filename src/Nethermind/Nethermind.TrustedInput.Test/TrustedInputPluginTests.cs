@@ -122,13 +122,7 @@ public class TrustedInputPluginTests
                 tracer.EndBlockTrace();
                 block.EncodedBlockAccessList = blockAccessList;
                 Assert.That(rendezvous.TryClaim(block.Hash!, out TaskCompletionSource<Witness?>? witness), Is.True);
-                witness!.SetResult(new Witness
-                {
-                    Codes = ArrayPoolList<byte[]>.Empty(),
-                    State = ArrayPoolList<byte[]>.Empty(),
-                    Keys = ArrayPoolList<byte[]>.Empty(),
-                    Headers = ArrayPoolList<byte[]>.Empty()
-                });
+                witness!.SetResult(EmptyWitness());
                 return (block, Array.Empty<TxReceipt>());
             });
         TrustedInputStore store = new(new TrustedInputConfig(), LimboLogs.Instance);
@@ -247,8 +241,8 @@ public class TrustedInputPluginTests
             return chain.BlockTree.FindHeader(block.ParentHash!);
         });
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GenerateExecutionWitness(Arg.Any<BlockHeader>(), block)
-            .Returns(call => chain.Bridge.GenerateExecutionWitness(call.Arg<BlockHeader>(), block));
+        bridge.GenerateExecutionWitness(Arg.Any<BlockHeader>(), block, Arg.Any<IBlockTracer>())
+            .Returns(call => chain.Bridge.GenerateExecutionWitness(call.Arg<BlockHeader>(), block, call.Arg<IBlockTracer>()));
         TrustedInputRpcModule module = new(new TrustedInputStore(new TrustedInputConfig(), LimboLogs.Instance),
             finder, bridge, chain.SpecProvider);
 
@@ -256,7 +250,7 @@ public class TrustedInputPluginTests
             () => module.trustedinput_getInput(new BlockParameter(block.Hash!)), CancellationToken.None,
             TaskCreationOptions.LongRunning, TaskScheduler.Default)));
 
-        bridge.Received(1).GenerateExecutionWitness(Arg.Any<BlockHeader>(), block);
+        bridge.Received(1).GenerateExecutionWitness(Arg.Any<BlockHeader>(), block, Arg.Any<IBlockTracer>());
         foreach (ResultWrapper<byte[]> result in results)
         {
             using (Assert.EnterMultipleScope())
@@ -273,9 +267,9 @@ public class TrustedInputPluginTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Block block = await chain.AddBlock(Transfer(chain));
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GenerateExecutionWitness(Arg.Any<BlockHeader>(), block)
+        bridge.GenerateExecutionWitness(Arg.Any<BlockHeader>(), block, Arg.Any<IBlockTracer>())
             .Returns(_ => throw new InvalidOperationException(),
-                call => chain.Bridge.GenerateExecutionWitness(call.Arg<BlockHeader>(), block));
+                call => chain.Bridge.GenerateExecutionWitness(call.Arg<BlockHeader>(), block, call.Arg<IBlockTracer>()));
         TrustedInputRpcModule module = new(new TrustedInputStore(new TrustedInputConfig(), LimboLogs.Instance),
             chain.BlockTree, bridge, chain.SpecProvider);
 
@@ -283,7 +277,37 @@ public class TrustedInputPluginTests
         ResultWrapper<byte[]> result = module.trustedinput_getInput(new BlockParameter(block.Hash!));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        bridge.Received(2).GenerateExecutionWitness(Arg.Any<BlockHeader>(), block);
+        bridge.Received(2).GenerateExecutionWitness(Arg.Any<BlockHeader>(), block, Arg.Any<IBlockTracer>());
+    }
+
+    /// <summary>The hints come from the execution that generates the witness, which an empty witness cannot repeat.</summary>
+    [Test]
+    public void Rpc_takes_the_recovery_hints_from_the_witness_generation()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        finder.FindHeader(block.ParentHash!).Returns(Build.A.BlockHeader.TestObject);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GenerateExecutionWitness(Arg.Any<BlockHeader>(), block, Arg.Any<IBlockTracer>()).Returns(call =>
+        {
+            IBlockTracer tracer = call.Arg<IBlockTracer>();
+            tracer.StartNewBlockTrace(block);
+            tracer.StartNewTxTrace(null).ReportAction(3000, default, TestItem.AddressA,
+                ECRecoverPrecompile.Address, RecoveryCall(), ExecutionType.CALL, true);
+            tracer.EndTxTrace();
+            tracer.EndBlockTrace();
+            return EmptyWitness();
+        });
+        TrustedInputRpcModule module = new(new TrustedInputStore(new TrustedInputConfig(), LimboLogs.Instance),
+            finder, bridge, MainnetSpecProvider.Instance);
+
+        ResultWrapper<byte[]> result = module.trustedinput_getInput(new BlockParameter(block.Hash!));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        TrustedPayload payload = Input.Read(result.Data);
+        using Witness witness = payload.Witness;
+        Assert.That(payload.RecoveryHints, Has.Length.EqualTo(Input.RecoveryHintLength));
     }
 
     [Test]
@@ -361,6 +385,14 @@ public class TrustedInputPluginTests
             await processor.DisposeAsync();
         }
     }
+
+    private static Witness EmptyWitness() => new()
+    {
+        Codes = ArrayPoolList<byte[]>.Empty(),
+        State = ArrayPoolList<byte[]>.Empty(),
+        Keys = ArrayPoolList<byte[]>.Empty(),
+        Headers = ArrayPoolList<byte[]>.Empty()
+    };
 
     private static byte[] RecoveryCall()
     {

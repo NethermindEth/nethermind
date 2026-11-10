@@ -4,8 +4,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
@@ -259,7 +257,7 @@ public static partial class TrustedInput
             message.Bytes.CopyTo(hints.AsSpan(i * MessageLength));
             signature.Bytes.CopyTo(hints.AsSpan(count * MessageLength + i * SignatureLength));
             key.Bytes.CopyTo(hints.AsSpan(count * (MessageLength + SignatureLength) + i * KeyLength));
-            Secp256k1.WriteSignatureY(signature, hints.AsSpan(count * (MessageLength + SignatureLength + KeyLength) + i * YLength, YLength));
+            WriteSignatureY(signature, hints.AsSpan(count * (MessageLength + SignatureLength + KeyLength) + i * YLength, YLength));
             hints[count * (MessageLength + SignatureLength + KeyLength + YLength) + i] = signature.RecoveryId;
         }
 
@@ -286,7 +284,7 @@ public static partial class TrustedInput
                 return [];
 
             key[1..].CopyTo(keys[(i * KeyLength)..]);
-            Secp256k1.WriteSignatureY(signature, ys.Slice(i * YLength, YLength));
+            WriteSignatureY(signature, ys.Slice(i * YLength, YLength));
         }
 
         return hints;
@@ -530,30 +528,18 @@ public static partial class TrustedInput
         public void Dispose() { }
     }
 
-    /// <summary>The y of a signature's R, which the sender hints carry.</summary>
-    /// <remarks>Its own class, so that a guest, which never writes an input, does not run the constants' initializer.</remarks>
-    private static class Secp256k1
+    /// <summary>Writes the y of <paramref name="signature"/>'s R big-endian: the root of x^3 + 7 whose parity the recovery
+    /// id gives, x being r, or r + n for ids 2 and 3.</summary>
+    /// <remarks>Decompresses R as libsecp256k1 does a public key, so R must lie on the curve, as it does for a signature
+    /// whose key was recovered.</remarks>
+    private static void WriteSignatureY(Signature signature, Span<byte> destination)
     {
-        private static readonly BigInteger FieldPrime =
-            BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", NumberStyles.HexNumber);
-
-        private static readonly BigInteger GroupOrder =
-            BigInteger.Parse("0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
-
-        /// <summary>Writes the y of <paramref name="signature"/>'s R big-endian: the root of x^3 + 7 whose parity the
-        /// recovery id gives, x being r, or r + n for ids 2 and 3.</summary>
-        public static void WriteSignatureY(Signature signature, Span<byte> destination)
-        {
-            BigInteger x = new(signature.RAsSpan, isUnsigned: true, isBigEndian: true);
-            if ((signature.RecoveryId & 2) != 0) x += GroupOrder;
-
-            // p = 3 mod 4, so a square's root is its (p + 1) / 4 power.
-            BigInteger y = BigInteger.ModPow((x * x * x + 7) % FieldPrime, (FieldPrime + 1) / 4, FieldPrime);
-            if (y.IsEven == ((signature.RecoveryId & 1) != 0)) y = FieldPrime - y;
-
-            destination.Clear();
-            y.TryWriteBytes(destination[(destination.Length - y.GetByteCount(isUnsigned: true))..], out _, isUnsigned: true, isBigEndian: true);
-        }
+        Span<byte> compressed = stackalloc byte[CompressedPublicKey.LengthInBytes];
+        compressed[0] = (byte)(0x02 | (signature.RecoveryId & 1));
+        UInt256 x = new(signature.RAsSpan, isBigEndian: true);
+        if ((signature.RecoveryId & 2) != 0) x += SecP256k1Curve.N;
+        x.ToBigEndian(compressed[1..]);
+        SecP256k1.Decompress(compressed).AsSpan(^YLength).CopyTo(destination);
     }
 
     /// <summary>The codes as executable code memory with their hashes, and as arrays copied on request.</summary>

@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
+using Nethermind.Stateless.Execution;
 
 namespace Nethermind.TrustedInput;
 
@@ -52,12 +53,14 @@ public sealed class TrustedInputRpcModule(
         }
     }
 
+    /// <remarks>The ECRECOVER inputs the hints need are collected as the witness generation executes the block.</remarks>
     private ResultWrapper<byte[]> Generate(BlockHeader parent, Block block)
     {
         if (!store.TryGet(block.Hash!, out byte[] input))
         {
-            using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block);
-            input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, witness);
+            StatelessExecutor.EcRecoverInputCollector collector = new();
+            using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block, collector);
+            input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, witness, collector.Inputs);
             store.Add(block.Number, block.Hash!, input);
         }
         return ResultWrapper<byte[]>.Success(input);

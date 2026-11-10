@@ -304,6 +304,12 @@ jobs:
             grep -Fxq "${output}" "$RUNNER_TEMP/stats.log" \
               || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
 
+            # As in the SSZ job: a guest that threw or rejected the block can still exit zero and print the right hash.
+            if grep -nE 'Exception|Invalid Block' "$RUNNER_TEMP/stats.log"; then
+              echo "::error::${input}: the run logged an exception or an invalid block"
+              exit 1
+            fi
+
             # Rows are named by block, as the stateless guest's are.
             dotnet run --file "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.cs" -- \
               --input "${input%.nti}.ssz" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
