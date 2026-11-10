@@ -21,7 +21,7 @@ public class InvalidBlockDetector
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => baseBlockProcessor.TransactionsExecuted += value;
             remove => baseBlockProcessor.TransactionsExecuted -= value;

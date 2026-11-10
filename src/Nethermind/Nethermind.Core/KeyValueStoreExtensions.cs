@@ -146,11 +146,11 @@ namespace Nethermind.Core
             /// checked before the empty-range guard, so an empty range is a side-effect-free probe for a caller with
             /// something irreversible to do first.</summary>
             [SkipLocalsInit]
-            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive, string columnName)
+            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive)
             {
                 if (db is not IRangeRemovableKeyValueStore rangeRemovable)
                 {
-                    throw new NotSupportedException($"The {columnName} database ({db.GetType().Name}) cannot remove a key range.");
+                    throw new NotSupportedException($"The database ({db.GetType().Name}) cannot remove a key range.");
                 }
 
                 if (fromInclusive >= toExclusive) return;

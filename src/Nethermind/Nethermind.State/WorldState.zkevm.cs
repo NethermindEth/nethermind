@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,6 +21,7 @@ public sealed partial class WorldState
     /// The guest's state is always a witness, so its world state forces the witness-backed code lookup that the
     /// host's stateless decorator adds on top of a world state.
     /// </remarks>
+    [SkipLocalsInit]
     public void RecordBytecodeAccess(Address address)
     {
         if (!IsContract(address)) return;

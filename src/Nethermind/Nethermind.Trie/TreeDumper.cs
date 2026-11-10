@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper(bool expectAccounts = true) : ITreeVisitor<OldStyleTrieVisitContext>
+    public class TreeDumper(bool expectAccounts = true) : INodeRecordVisitor<OldStyleTrieVisitContext>
     {
         private readonly StringBuilder _builder = new();
         public bool ExpectAccounts => expectAccounts;
@@ -39,23 +41,27 @@ namespace Nethermind.Trie
 
         public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash) => _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
 
-        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
+        /// <inheritdoc/>
+        public void VisitBranch(in OldStyleTrieVisitContext context, NodeRecordRef node) => _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
 
-        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+        /// <inheritdoc/>
+        public void VisitExtension(in OldStyleTrieVisitContext context, NodeRecordRef node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {KeyStringOfNode(node)} -> {KeccakOrRlpStringOfNode(node)}");
 
-        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
+        /// <inheritdoc/>
+        public void VisitLeaf(in OldStyleTrieVisitContext context, NodeRecordRef node)
         {
             if (!expectAccounts)
             {
-                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {KeyStringOfNode(node)} -> {KeccakOrRlpStringOfNode(node)}");
             }
         }
 
-        public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
+        /// <inheritdoc/>
+        public void VisitAccount(in OldStyleTrieVisitContext context, NodeRecordRef node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            RlpReader valueReader = new(node.Value.AsSpan());
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {KeyStringOfNode(node)} -> {KeccakOrRlpStringOfNode(node)}");
+            RlpReader valueReader = new(node.LeafValue);
             if (!context.IsStorage)
             {
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
@@ -70,7 +76,14 @@ namespace Nethermind.Trie
 
         public override string ToString() => _builder.ToString();
 
-        private static string KeccakOrRlpStringOfNode(TrieNode node) =>
-            node.Keccak is { } keccak ? keccak.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
+        private static string KeccakOrRlpStringOfNode(NodeRecordRef node) =>
+            node.Hash != ValueKeccak.Zero ? node.Hash.Bytes.ToHexString() : node.Rlp.ToHexString();
+
+        private static string KeyStringOfNode(NodeRecordRef node)
+        {
+            Span<byte> key = stackalloc byte[node.KeyLength(0)];
+            node.CopyKey(0, key);
+            return key.ToHexString(false);
+        }
     }
 }

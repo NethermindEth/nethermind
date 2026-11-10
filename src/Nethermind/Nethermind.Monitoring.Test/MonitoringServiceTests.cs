@@ -11,11 +11,10 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
-using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Network;
 using NUnit.Framework;
@@ -45,8 +44,11 @@ public class MonitoringServiceTests
             }
         }
 
-        Assert.That(container, Is.Not.Null, "metrics server did not start");
-        Assert.That(await ServesMetrics(port), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container, Is.Not.Null, "metrics server did not start");
+            Assert.That(await ServesMetrics(port), Is.True);
+        }
         await container.DisposeAsync();
 
         using TcpListener reboundListener = new(IPAddress.Loopback, port);
@@ -63,6 +65,39 @@ public class MonitoringServiceTests
 
         await Assert.ThatAsync(() => step.Execute(CancellationToken.None), Throws.InstanceOf<PortInUseException>());
         await Assert.ThatAsync(async () => await container.DisposeAsync(), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Counters_only_monitoring_runs_update_actions_without_exposing_or_pushing_metrics()
+    {
+        using TcpListener pushGateway = new(IPAddress.Loopback, 0);
+        pushGateway.Start();
+        using TcpListener exposeListener = new(IPAddress.Loopback, 0);
+        exposeListener.Start();
+        MetricsConfig config = new()
+        {
+            Enabled = false,
+            CountersEnabled = true,
+            IntervalSeconds = 1,
+            ExposeHost = "127.0.0.1",
+            ExposePort = ((IPEndPoint)exposeListener.LocalEndpoint).Port,
+            PushGatewayUrl = $"http://127.0.0.1:{((IPEndPoint)pushGateway.LocalEndpoint).Port}/metrics",
+            InitializeStaticLabels = false
+        };
+        await using IContainer container = BuildMonitoringContainer(config);
+        IMonitoringService monitoringService = container.Resolve<IMonitoringService>();
+        TaskCompletionSource updated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitoringService.AddMetricsUpdateAction(() => updated.TrySetResult());
+        StartMonitoring step = new(monitoringService, LimboLogs.Instance, config);
+
+        await Assert.ThatAsync(() => step.Execute(CancellationToken.None), Throws.Nothing,
+            "metrics server tried to bind the expose port");
+
+        Assert.That(await Task.WhenAny(updated.Task, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(updated.Task),
+            "metrics update actions never ran");
+        bool pushed = pushGateway.Pending();
+        pushGateway.Stop();
+        Assert.That(pushed, Is.False, "metrics were pushed to the Pushgateway");
     }
 
     private static int GetFreePort()
@@ -83,13 +118,16 @@ public class MonitoringServiceTests
             ExposePort = port,
             InitializeStaticLabels = false
         };
-        return new ContainerBuilder()
-            .AddModule(new MonitoringModule(config))
+        return BuildMonitoringContainer(config);
+    }
+
+    private static IContainer BuildMonitoringContainer(MetricsConfig config) =>
+        new ContainerBuilder()
+            .AddModule(new MonitoringModule())
             .AddSingleton<IMetricsConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMetricsController, MetricsController>()
             .Build();
-    }
 
     private static async Task<bool> ServesMetrics(int port)
     {
@@ -119,7 +157,10 @@ public class MonitoringServiceTests
     {
         AuthenticationHeaderValue header = MonitoringService.CreateBasicAuthHeader(username, password);
 
-        Assert.That(header.Scheme, Is.EqualTo("Basic"));
-        Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.Scheme, Is.EqualTo("Basic"));
+            Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        }
     }
 }

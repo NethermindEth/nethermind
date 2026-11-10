@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             NodeDataMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, "ce820457ca84deadc0de84feedbeef");
+            SerializerTester.Test(serializer, message, "ce820457ca84deadc0de84feedbeef");
         }
     }
 }

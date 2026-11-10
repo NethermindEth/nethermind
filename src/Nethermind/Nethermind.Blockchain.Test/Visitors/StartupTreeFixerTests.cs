@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -74,14 +78,64 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+            Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+        }
+    }
+
+    // A flat DB keeps the state of its in-memory tail on a clean shutdown, so the blocks above the persisted state
+    // need no re-execution; only those whose state was not kept, or that were never processed, are suggested.
+    [TestCase(2ul, 5ul, 2ul, TestName = "Nothing kept: everything above the persisted state is re-executed")]
+    [TestCase(4ul, 5ul, 4ul, TestName = "Part kept: resumes from the last block with state")]
+    [TestCase(5ul, 5ul, 5ul, TestName = "All kept: resumes from the head")]
+    [TestCase(5ul, 3ul, 3ul, TestName = "Unprocessed blocks with state are still executed")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public async Task Resumes_from_the_last_processed_block_whose_state_was_kept(ulong keptUpTo, ulong processedUpTo, ulong expectedHead)
+    {
+        MemDb blockInfosDb = new();
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead.WithBlockInfoDb(blockInfosDb);
+        BlockTree tree = builder.TestObject;
+        Block[] blocks = new Block[6];
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            BlockBuilder block = Build.A.Block.WithNumber((ulong)i).WithDifficulty((ulong)i + 1);
+            blocks[i] = (i == 0 ? block : block.WithParent(blocks[i - 1])).TestObject;
+            tree.SuggestBlock(blocks[i]);
+            if ((ulong)i <= processedUpTo) tree.TryUpdateMainChain(blocks[i].Header, true, preloadedBlocks: [blocks[i]]);
+        }
+
+        // An orphaned sibling of block 3, as a devnet leaves in the in-memory window; its state was kept too.
+        Block fork = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(blocks[2]).WithExtraData([1]).TestObject;
+        tree.SuggestBlock(fork);
+
+        // Restart with the persisted state at block 2.
+        tree = Build.A.BlockTree().WithoutSettingHead.WithDatabaseFrom(builder).WithBestPersistedState(2).TestObject;
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(c => c.Arg<BlockHeader>().Number <= Math.Max(keptUpTo, 2));
+        List<Hash256> suggested = [];
+        tree.NewBestSuggestedBlock += (_, e) => suggested.Add(e.Block.Hash!);
+        Assert.That(tree.Head!.Number, Is.EqualTo(2ul));
+
+        ulong moved = KeptStateResumer.Resume(tree, stateReader, NoErrorLimboLogs.Instance);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, stateReader, NoErrorLimboLogs.Instance);
+        await tree.Accept(fixer, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(moved, Is.EqualTo(expectedHead - 2));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[expectedHead].Hash));
+            Assert.That(tree.FindHeader(3, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blocks[3].Hash), "the fork stays off the canonical chain");
+            Assert.That(suggested.Where(h => h != fork.Hash), Is.EqualTo(blocks[((int)expectedHead + 1)..].Select(static b => b.Hash)));
+            Assert.That(suggested.Contains(fork.Hash!), Is.EqualTo(expectedHead < 3), "a fork below the resumed head is not re-executed");
+        }
     }
 
     [MaxTime(Timeout.MaxTestTime * 4)]
@@ -190,12 +244,15 @@ public class StartupTreeFixerTests
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2ul), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        }
     }
 }

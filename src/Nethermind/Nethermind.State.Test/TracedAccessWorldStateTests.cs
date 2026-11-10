@@ -244,7 +244,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             if (expectRecorded)
             {
                 Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(ac!.NonceChange, Is.Not.Null);
+#pragma warning restore NUnit2045
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(newNonce));
             }
             else
@@ -388,8 +390,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Get(in cell, out actual);
             Assert.That(actual, Is.EqualTo(UInt256.One));
             tws.Get(in cell, out actual);
-            Assert.That(actual, Is.EqualTo(UInt256.One));
-            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(UInt256.One));
+                Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+            }
         }
     }
 
@@ -410,7 +415,9 @@ public class TracedAccessWorldStateTests(bool parallel)
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
         }
     }
@@ -558,7 +565,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             (Action<TracedAccessWorldState>)(tws =>
             {
                 bool found = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+#pragma warning disable NUnit2045 // The lookup must succeed before dereferencing the returned value.
                 Assert.That(found, Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(account.Balance, Is.EqualTo((UInt256)77));
             }))
             .SetName("TryGetAccount_RecordsAccountRead");

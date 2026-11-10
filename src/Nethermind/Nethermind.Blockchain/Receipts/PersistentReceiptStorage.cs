@@ -341,13 +341,19 @@ namespace Nethermind.Blockchain.Receipts
                 return pendingHash;
             }
 
-            byte[] blockHashData = _transactionDb.Get(txHash);
-            if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
+            Span<byte> blockHashData = _transactionDb.GetSpan(txHash);
+            try
+            {
+                if (blockHashData.IsNull()) return FindReceiptObsolete(txHash)?.BlockHash;
+                if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
-
-            ulong blockNum = new RlpReader(blockHashData).DecodeULong();
-            return _blockTree.FindBlockHash(blockNum);
+                ulong blockNum = new RlpReader(blockHashData).DecodeULong();
+                return _blockTree.FindBlockHash(blockNum);
+            }
+            finally
+            {
+                _transactionDb.DangerousReleaseMemory(blockHashData);
+            }
         }
 
         /// <summary>
@@ -469,8 +475,8 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <inheritdoc/>
         /// <remarks>
-        /// Serves cached and pending receipts, and compact receipts read from the database that store their
-        /// transaction hashes, which give the transaction index without hashing the block's transactions.
+        /// Serves cached and pending receipts, and compact receipts read from the database. Stored transaction
+        /// hashes give the transaction index; when absent, the block's transactions are hashed to locate it.
         /// </remarks>
         public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
         {
@@ -500,7 +506,24 @@ namespace Nethermind.Blockchain.Receipts
                 RlpReader reader = new(receiptsData);
                 if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes)) return false;
 
-                int index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                int index = -1;
+                if (txHashes.IsEmpty)
+                {
+                    // Hash a copy: RecoverReceiptData expects the block positioned at its first transaction.
+                    ReceiptRecoveryBlock cursor = block;
+                    for (int i = 0; i < block.TransactionCount; i++)
+                    {
+                        if (cursor.GetNextTransactionValueHash() == txHash.ValueHash256)
+                        {
+                            index = i;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                }
                 if (index < 0) return false;
 
                 int end = reader.ReadSequenceLength() + reader.Position;
@@ -1119,11 +1142,11 @@ namespace Nethermind.Blockchain.Receipts
                 // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
                 {
-                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
                 }
                 else
                 {
-                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
                 }
 
                 removedAny |= fromInclusive < toExclusive;

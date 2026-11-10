@@ -42,6 +42,25 @@ namespace Nethermind.Consensus.Processing
         /// <inheritdoc/>
         public void RecoverDataForQueuedProcessing(Block block) => RecoverData(block, mayDeferToRecoveryInFlight: true);
 
+        /// <inheritdoc/>
+        public void RecoverDataForTransactionTrace(Block block)
+        {
+            if (block.InclusionListTransactions is not null)
+            {
+                RecoverData(block.InclusionListTransactions, _specProvider.GetSpec(block.Header), skipErrors: true);
+            }
+        }
+
+        /// <summary>
+        /// Recovers the senders and EIP-7702 authorities of the transactions of <paramref name="block"/> from
+        /// <paramref name="start"/> up to, but not including, <paramref name="end"/>.
+        /// </summary>
+        public void RecoverData(Block block, int start, int end)
+        {
+            Transaction[] txs = block.Transactions;
+            RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), _specProvider.GetSpec(block.Header), skipErrors: false, start, end);
+        }
+
         private void RecoverData(Block block, bool mayDeferToRecoveryInFlight)
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
@@ -51,7 +70,7 @@ namespace Nethermind.Consensus.Processing
                 && !(mayDeferToRecoveryInFlight && IsRecoveryInFlight(txs))
                 && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
-                RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), releaseSpec, skipErrors: false);
+                RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), releaseSpec, skipErrors: false, 0, txs.Length);
             }
 
             if (block.InclusionListTransactions is not null)
@@ -60,7 +79,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
+        private static bool AllSendersRecovered(ReadOnlySpan<Transaction> txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
             {
@@ -166,7 +185,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false) =>
-            RecoverData(txs, null, releaseSpec, skipErrors);
+            RecoverData(txs, null, releaseSpec, skipErrors, 0, txs.Length);
 
         private static byte[][]? AlignedEncodings(Transaction[] txs, byte[][]? encodedTransactions) =>
             encodedTransactions?.Length == txs.Length ? encodedTransactions : null;
@@ -174,26 +193,26 @@ namespace Nethermind.Consensus.Processing
         private static ReadOnlySpan<byte> EncodingAt(byte[][]? encodedTransactions, int i) =>
             encodedTransactions is null ? default : encodedTransactions[i];
 
-        private void RecoverData(Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, bool skipErrors)
+        private void RecoverData(Transaction[] txs, byte[][]? encodedTransactions, IReleaseSpec releaseSpec, bool skipErrors, int start, int end)
         {
-            if (txs.Length == 0)
+            if (start >= end)
                 return;
 
-            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            if (AllSendersRecovered(txs.AsSpan(start, end - start), checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
             using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-            if (txs.Length > 3)
+            if (end - start > 3)
             {
                 ParallelUnbalancedWork.For(
-                    0,
-                    txs.Length,
+                    start,
+                    end,
                     (recover: this, txs, encodedTransactions, releaseSpec, skipErrors),
                     RecoverSingle);
             }
             else
             {
-                for (int i = 0; i < txs.Length; i++)
+                for (int i = start; i < end; i++)
                 {
                     if (skipErrors) TryRecover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);
                     else Recover(txs[i], EncodingAt(encodedTransactions, i), releaseSpec);

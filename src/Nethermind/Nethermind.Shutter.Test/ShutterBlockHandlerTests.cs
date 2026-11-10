@@ -3,6 +3,8 @@
 
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
+using System.Collections;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -53,6 +55,28 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
     }
 
     [Test]
+    public async Task Ended_waits_do_not_keep_their_slots([Values] bool timeout)
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
+
+        for (ulong slot = ShutterTestsCommon.InitialSlot; slot < ShutterTestsCommon.InitialSlot + 5; slot++)
+        {
+            using CancellationTokenSource source = new();
+            using CancellationTokenSource timeoutSource = new();
+            Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(slot, source.Token, _ => timeoutSource);
+            (timeout ? timeoutSource : source).Cancel();
+            await Assert.ThatAsync(() => waitTask, timeout ? Is.Null : Throws.InstanceOf<OperationCanceledException>());
+        }
+
+        IDictionary blockWaitTasks = (IDictionary)typeof(ShutterBlockHandler)
+            .GetField("_blockWaitTasks", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(api.BlockHandler)!;
+        Assert.That(blockWaitTasks, Is.Empty);
+    }
+
+    [Test]
     public void Does_not_wait_after_cutoff()
     {
         ulong blockWaitCutoff = ShutterTestsCommon.Cfg.BlockUpToDateCutoff;
@@ -98,7 +122,9 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
         Block head = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
         Task newHead = Task.Run(() => api.TriggerNewHeadBlock(new(head)));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
         Assert.That(newHead.Wait(TimeSpan.FromSeconds(10)), Is.True, "NewHeadBlock handler deadlocked against the timeout callback");
+#pragma warning restore NUnit2045
         Assert.That(waitTask.Result, Is.EqualTo(head));
     }
 

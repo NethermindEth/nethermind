@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -177,8 +178,11 @@ public class BlockDecoderTests
         // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
         // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
-        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+            Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
@@ -245,6 +249,43 @@ public class BlockDecoderTests
         {
             Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
             Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+        }
+    }
+
+    [Test]
+    public void Encode_to_array_pool_span_matches_encode(
+        [ValueSource(nameof(BlockScenarios))] Block block, [Values] bool preEncodedTransactions)
+    {
+        BlockDecoder decoder = new();
+        Block target = preEncodedTransactions
+            ? new(block.Header, block.Body) { EncodedTransactions = block.Transactions.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray() }
+            : block;
+
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(target);
+
+        Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(decoder.Encode(target).Bytes));
+    }
+
+    [Test]
+    public void Header_behaviors_reach_the_encoded_header()
+    {
+        // A zero base fee with no later header field is written only under Eip1559Header.
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0)
+            .WithTransactions(Build.A.Transaction.WithNonce(1).Signed().TestObject, Build.A.Transaction.WithNonce(2).Signed().TestObject)
+            .TestObject;
+        BlockDecoder decoder = new();
+
+        byte[] encoded = decoder.Encode(block, RlpBehaviors.Eip1559Header).Bytes;
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(block, RlpBehaviors.Eip1559Header);
+        RlpReader ctx = new(encoded);
+        Block decoded = decoder.Decode(ref ctx)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Length, Is.EqualTo(decoder.GetLength(block, RlpBehaviors.Eip1559Header)));
+            Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(encoded));
+            Assert.That(decoded.Header.Hash, Is.EqualTo(block.Header.CalculateHash(RlpBehaviors.Eip1559Header)));
+            Assert.That(decoded.Transactions, Has.Length.EqualTo(2));
         }
     }
 

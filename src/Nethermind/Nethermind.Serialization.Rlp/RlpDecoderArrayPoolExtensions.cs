@@ -10,6 +10,10 @@ namespace Nethermind.Serialization.Rlp;
 /// <summary>
 /// Provides pool-backed RLP encoding helpers for decoders.
 /// </summary>
+/// <remarks>
+/// Null tests start with <c>default(T) is null</c>, which folds at every tier, so Debug code does not box
+/// a non-nullable struct to compare it with null.
+/// </remarks>
 public static class RlpDecoderArrayPoolExtensions
 {
     /// <summary>
@@ -17,16 +21,16 @@ public static class RlpDecoderArrayPoolExtensions
     /// </summary>
     public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (item is null)
+        if (default(T) is null && item is null)
         {
             return EmptyListSpan();
         }
 
-        ArrayPoolSpan<byte> buffer = new(decoder.GetLength(item, rlpBehaviors));
+        ArrayPoolSpan<byte> buffer = new(decoder.GetLength(item!, rlpBehaviors));
         try
         {
             RlpWriter writer = new(buffer);
-            decoder.Encode(ref writer, item, rlpBehaviors);
+            decoder.Encode(ref writer, item!, rlpBehaviors);
             return buffer;
         }
         catch
@@ -45,7 +49,7 @@ public static class RlpDecoderArrayPoolExtensions
         for (int i = 0; i < items.Length; i++)
         {
             T? item = items[i];
-            totalLength += item is null ? Rlp.OfEmptyList.Length : decoder.GetLength(item, behaviors);
+            totalLength += default(T) is null && item is null ? Rlp.OfEmptyList.Length : decoder.GetLength(item!, behaviors);
         }
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -59,13 +63,13 @@ public static class RlpDecoderArrayPoolExtensions
             for (int i = 0; i < items.Length; i++)
             {
                 T? item = items[i];
-                if (item is null)
+                if (default(T) is null && item is null)
                 {
                     writer.EncodeNullObject();
                 }
                 else
                 {
-                    decoder.Encode(ref writer, item, behaviors);
+                    decoder.Encode(ref writer, item!, behaviors);
                 }
             }
 

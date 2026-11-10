@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -83,6 +84,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
     /// <summary>Decodes the <c>[nonce, gas_price, gas_limit, to, value, data]</c> fields, with <c>max_fee_per_gas</c>
     /// after the gas price when <paramref name="hasMaxFeePerGas"/> is set.</summary>
+    [SkipLocalsInit]
     protected static void DecodeLegacyFields(Transaction transaction, ref RlpReader decoderContext, bool hasMaxFeePerGas)
     {
         LiteRlpReader rlp = new(decoderContext.Data);
@@ -107,7 +109,9 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    private static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
+    /// <summary>Decodes a nonce, reporting one wider than 64 bits as <c>NonceTooWide</c> rather than as a generic
+    /// integer-width error.</summary>
+    private protected static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
     {
         (_, int contentLength) = rlp.PeekPrefixAndContentLength(position);
         if (contentLength <= sizeof(ulong))

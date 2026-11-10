@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -35,6 +36,14 @@ namespace Nethermind.JsonRpc
             _flowTimeout.Value = null;
             return flow is not null && ReferenceEquals(flow.Source, cts) && Volatile.Read(ref flow.State) == FlowTimeout.Returned;
         }
+
+        /// <summary>The size of the debug module pool: <see cref="IJsonRpcConfig.DebugModuleConcurrentInstances"/>, or the processor count up to 16.</summary>
+        public static int GetDebugModuleConcurrentInstances(this IJsonRpcConfig config) =>
+            config.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16);
+
+        /// <summary>The size of the trace module pool: <see cref="IJsonRpcConfig.TraceModuleConcurrentInstances"/>, or 2.</summary>
+        public static int GetTraceModuleConcurrentInstances(this IJsonRpcConfig config) =>
+            config.TraceModuleConcurrentInstances ?? 2;
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {

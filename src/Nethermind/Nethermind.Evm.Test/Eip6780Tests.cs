@@ -183,8 +183,11 @@ namespace Nethermind.Evm.Test
 
         private void AssertSendAll()
         {
-            Assert.That(TestState.GetBalance(_contractAddress), Is.EqualTo(UInt256.Zero));
-            Assert.That(TestState.GetBalance(TestItem.PrivateKeyB.Address), Is.EqualTo(99.Ether));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TestState.GetBalance(_contractAddress), Is.EqualTo(UInt256.Zero));
+                Assert.That(TestState.GetBalance(TestItem.PrivateKeyB.Address), Is.EqualTo(99.Ether));
+            }
         }
 
     }

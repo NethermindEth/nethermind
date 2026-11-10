@@ -716,7 +716,7 @@ public class TraceStoreRpcModuleTests
         JToken? error = JToken.Parse(response)["error"];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.StandardResourceNotFound), response);
+            Assert.That((int?)error?["code"], Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
             Assert.That((string?)error?["message"], Is.EqualTo(sideChain ? $"{hash} block is not canonical" : "header not found"), response);
         }
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());

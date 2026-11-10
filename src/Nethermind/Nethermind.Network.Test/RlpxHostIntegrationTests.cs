@@ -45,8 +45,11 @@ public class RlpxHostIntegrationTests
         RlpxHost host = container.Resolve<RlpxHost>();
         try
         {
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
-            Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(host.ShouldContact(IPAddress.Parse(addr1)), Is.True, "first IP should be accepted");
+                Assert.That(host.ShouldContact(IPAddress.Parse(addr2)), Is.EqualTo(secondExpected));
+            }
         }
         finally
         {
@@ -220,7 +223,9 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(acceptsIpv6 ? IPAddress.IPv6Any : IPAddress.Any));
+#pragma warning restore NUnit2045
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
             Assert.That(await remoteHost.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(IPAddress.Loopback.ToString()));
             privilegedIpProvider.Received().IsPrivileged(Arg.Is<IPAddress>(ip => ip.Equals(IPAddress.Loopback)));
@@ -253,7 +258,9 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(listenerState.RlpxAddress, Is.EqualTo(IPAddress.Any));
+#pragma warning restore NUnit2045
             Assert.That(await CanConnect(AddressFamily.InterNetwork, port), Is.True);
             underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
                 message.StartsWith("Failed to bind RlpxHost") && message.Contains(typeof(SocketException).FullName!)));
@@ -461,7 +468,8 @@ public class RlpxHostIntegrationTests
         using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
         ipv6Listener.Start();
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
-        int refusedPort = GetAvailablePort();
+        using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
+        int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
         TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -474,7 +482,9 @@ public class RlpxHostIntegrationTests
         Node node = CreateDualStackNode(refusedPort, listeningPort);
         IPEndPoint originalAddress = node.Address;
         int originalDiscoveryPort = node.DiscoveryPort;
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
 
         try
@@ -517,14 +527,17 @@ public class RlpxHostIntegrationTests
         using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
         ipv6Listener.Start();
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
-        int refusedPort = GetAvailablePort();
+        using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
+        int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
 
         try
         {
             await host.Init();
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(await host.ConnectAsync(CreateDualStackNode(refusedPort, listeningPort)), Is.False);
             Assert.That(ipv6Listener.Pending(), Is.False, "a filtered fallback endpoint must not be dialed");
@@ -544,6 +557,8 @@ public class RlpxHostIntegrationTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
+        using Socket refusedIpv4 = ReserveRefusedPort(IPAddress.Loopback);
+        using Socket refusedIpv6 = ReserveRefusedPort(IPAddress.IPv6Loopback);
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
 
@@ -551,7 +566,9 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
-            Assert.That(await host.ConnectAsync(CreateDualStackNode(GetAvailablePort(), GetAvailablePort())), Is.False);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(((IPEndPoint)refusedIpv4.LocalEndPoint!).Port, ((IPEndPoint)refusedIpv6.LocalEndPoint!).Port)), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True,
                 "a failed speculative fallback must not suppress inbound peers from the same filter bucket");
         }
@@ -781,7 +798,9 @@ public class RlpxHostIntegrationTests
             ipv4Primary ? primary : alternate, 30303,
             ipv4Primary ? alternate : primary, 30304,
             sequence: 0);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(Node.TryFromEnr(record, primary.AddressFamily, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
         Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
@@ -813,7 +832,9 @@ public class RlpxHostIntegrationTests
             IPAddress.Parse("8.8.8.8"), 30303,
             ipv6: null, ipv6Port: 30304,
             sequence: 1);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
     }
 
@@ -1091,6 +1112,21 @@ public class RlpxHostIntegrationTests
         public void Agree(EncryptionHandshake handshake, Packet ack)
         {
         }
+    }
+
+    /// <summary>
+    /// A port that refuses connections for as long as the returned socket lives: it is bound but never listens.
+    /// </summary>
+    /// <remarks>
+    /// A port from <see cref="GetAvailablePort"/> is free again once returned, so a later pick, such as the host's own
+    /// listener port, can be the same one and turn the dial that should be refused into a connection. Exclusive, so no
+    /// address-reusing bind can share it either.
+    /// </remarks>
+    private static Socket ReserveRefusedPort(IPAddress address)
+    {
+        Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
+        socket.Bind(new IPEndPoint(address, 0));
+        return socket;
     }
 
     private static int GetAvailablePort()

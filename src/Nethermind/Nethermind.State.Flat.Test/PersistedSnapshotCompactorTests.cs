@@ -5,8 +5,10 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -14,8 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
@@ -29,11 +31,17 @@ public class PersistedSnapshotCompactorTests
     private ResourcePool _pool = null!;
     private ArenaManager _memArena = null!;
     private string _memArenaDir = null!;
+    private INodeRecordBuffer _buffer = null!;
+
+    // Holds the nodes of the static test case sources, which are built before any test runs.
+    private static readonly INodeRecordBuffer CaseBuffer = FlatTestHelpers.NewTestBuffer();
+    private static readonly INodeRecordBufferPin CaseBufferRetain = CaseBuffer.PinHead();
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
+        _buffer = FlatTestHelpers.NewTestBuffer();
         _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-compactortest-arena-{Guid.NewGuid():N}");
         _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
     }
@@ -42,7 +50,15 @@ public class PersistedSnapshotCompactorTests
     public void TearDown()
     {
         _memArena.Dispose();
+        _buffer.Dispose();
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
+    }
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown()
+    {
+        CaseBufferRetain.Dispose();
+        CaseBuffer.Dispose();
     }
 
     [TestCase(false)]
@@ -98,7 +114,8 @@ public class PersistedSnapshotCompactorTests
             // and the slot merge sees N inputs with N unique slot keys.
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             c.Storages[(TestItem.AddressA, (UInt256)i)] = (UInt256)((byte)i) << 248;
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
         }
 
@@ -107,8 +124,11 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
+            }
 
             for (int i = 1; i <= n; i++)
             {
@@ -116,15 +136,20 @@ public class PersistedSnapshotCompactorTests
                     $"Account from block {i} missing");
             }
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
             for (int i = 1; i <= n; i++)
             {
-                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
-                    $"Slot {i} must survive merge");
-                Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
-                    $"Slot {i} value mismatch");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
+                        $"Slot {i} must survive merge");
+                    Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
+                        $"Slot {i} value mismatch");
+                }
             }
         }
         finally { compacted!.Dispose(); }
@@ -150,17 +175,18 @@ public class PersistedSnapshotCompactorTests
         PersistedSnapshotCompactor compactor = tier.Compactor;
 
         Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
-        TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // → StorageTopSubTag (4-byte key)
-        TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // → StorageCompactSubTag (8-byte key)
-        TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
+        TreePath topPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_top"), 4);          // → StorageTopSubTag (4-byte key)
+        TreePath compactPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_compact"), 10); // → StorageCompactSubTag (8-byte key)
+        TreePath fallbackPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
         UInt256 slotIndex = 7;
 
+        INodeRecordBufferPin bufferPin = _buffer.PinHead();
         SnapshotContent c0 = new();
         c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         c0.Storages[(TestItem.AddressA, slotIndex)] = (UInt256)(0x42) << 248;
-        c0.StorageNodes[(addrHash256, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-        c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
-        c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
+        c0.SetStorageNodeRlp(_buffer, addrHash256, topPath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+        c0.SetStorageNodeRlp(_buffer, addrHash256, compactPath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
+        c0.SetStorageNodeRlp(_buffer, addrHash256, fallbackPath, FlatTestHelpers.LeafRlp(0xC1, 0x82));
 
         // Different address in the second source so AddressA has matchCount==1 (single
         // matching source) while still having ≥ 2 sources to compact.
@@ -170,8 +196,10 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("s1"));
         StateId s2 = new(2, Keccak.Compute("s2"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        using (Snapshot snapshot = new(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+            tier.ConvertToPersistedBase(snapshot).Dispose();
+        using (Snapshot snapshot = new(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+            tier.ConvertToPersistedBase(snapshot).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -184,7 +212,7 @@ public class PersistedSnapshotCompactorTests
             ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
             ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(bloom.MightContain(addrKey), Is.True, "Address key");
                 Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotIndex)), Is.True, "Slot key");
@@ -194,7 +222,7 @@ public class PersistedSnapshotCompactorTests
                     "Storage-trie compact");
                 Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
                     "Storage-trie fallback");
-            });
+            }
         }
     }
 
@@ -220,10 +248,12 @@ public class PersistedSnapshotCompactorTests
         for (int i = 1; i <= 8; i++)
         {
             states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
+            INodeRecordBufferPin bufferPin = _buffer.PinHead();
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            c.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute($"path{i}"), 4), FlatTestHelpers.LeafRlp((byte)(0xC1), (byte)i));
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -249,7 +279,9 @@ public class PersistedSnapshotCompactorTests
             using WholeReadSession session = compacted!.BeginWholeReadSession();
             WholeReadSessionReader reader = session.CreateReader();
             ushort[]? mergedIds = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
             Assert.That(mergedIds, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
                 "Compacted ref_ids must equal the union of source base blob-arena ids");
         }
@@ -267,7 +299,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_AccountOverride");
@@ -276,21 +310,24 @@ public class PersistedSnapshotCompactorTests
         // Regression: advance-corrupts-minKey bug in NWayPackedArrayMerge (StateTopNodes).
         // snapshot[0] has paths {A, B}, snapshot[1] has only {B} with different RLP.
         {
-            TreePath pathA = new(Hash256.Zero, 4);
-            TreePath pathB = new(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), 4);
+            TreePath pathA = FlatTestHelpers.CanonicalPath(Hash256.Zero, 4);
+            TreePath pathB = FlatTestHelpers.CanonicalPath(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), 4);
             SnapshotContent c0 = new();
-            c0.StateNodes[pathA] = new TrieNode(NodeType.Leaf, [0xC0]);
-            c0.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC0]);
+            c0.SetStateNodeRlp(CaseBuffer, pathA, FlatTestHelpers.LeafRlp(0xC0));
+            c0.SetStateNodeRlp(CaseBuffer, pathB, FlatTestHelpers.LeafRlp(0xC0));
             SnapshotContent c1 = new();
-            c1.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c1.SetStateNodeRlp(CaseBuffer, pathB, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStateNodeRlp(pathA, out byte[]? rlpA), Is.True);
-                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC0 }), "State node only in older source must survive");
-                    Assert.That(s.TryLoadStateNodeRlp(pathB, out byte[]? rlpB), Is.True);
-                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Overlapping state node — newer RLP must win");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStateNodeRlp(pathA, out byte[]? rlpA), Is.True);
+                        Assert.That(rlpA, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC0)), "State node only in older source must survive");
+                        Assert.That(s.TryLoadStateNodeRlp(pathB, out byte[]? rlpB), Is.True);
+                        Assert.That(rlpB, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)), "Overlapping state node — newer RLP must win");
+                    }
                 }))
                 .SetName("Merge_AdvanceOrder_StateTopNodes");
         }
@@ -298,21 +335,24 @@ public class PersistedSnapshotCompactorTests
         // Regression: same bug in NWayInnerMerge (StorageNodes inner merge).
         {
             Hash256 storageAddr = Keccak.Compute("storageAddr");
-            TreePath pathA = new(Hash256.Zero, 8);
-            TreePath pathB = new(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), 8);
+            TreePath pathA = FlatTestHelpers.CanonicalPath(Hash256.Zero, 8);
+            TreePath pathB = FlatTestHelpers.CanonicalPath(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), 8);
             SnapshotContent c0 = new();
-            c0.StorageNodes[(storageAddr, pathA)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            c0.StorageNodes[(storageAddr, pathB)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.SetStorageNodeRlp(CaseBuffer, storageAddr, pathA, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+            c0.SetStorageNodeRlp(CaseBuffer, storageAddr, pathB, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             SnapshotContent c1 = new();
-            c1.StorageNodes[(storageAddr, pathB)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
+            c1.SetStorageNodeRlp(CaseBuffer, storageAddr, pathB, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathA, out byte[]? rlpA), Is.True);
-                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Storage node only in older source must survive");
-                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathB, out byte[]? rlpB), Is.True);
-                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Overlapping storage node — newer RLP must win");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathA, out byte[]? rlpA), Is.True);
+                        Assert.That(rlpA, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)), "Storage node only in older source must survive");
+                        Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathB, out byte[]? rlpB), Is.True);
+                        Assert.That(rlpB, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81)), "Overlapping storage node — newer RLP must win");
+                    }
                 }))
                 .SetName("Merge_AdvanceOrder_StorageNodes");
         }
@@ -324,25 +364,28 @@ public class PersistedSnapshotCompactorTests
         // Top and Fallback across both inner key widths and active==2 for Compact.
         {
             Hash256 addrHash = Keccak.Compute(TestItem.AddressA.Bytes);
-            TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // StorageTopSubTag (4-byte key)
-            TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // StorageCompactSubTag (8-byte key)
-            TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // StorageFallbackSubTag (33-byte key)
+            TreePath topPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_top"), 4);          // StorageTopSubTag (4-byte key)
+            TreePath compactPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_compact"), 10); // StorageCompactSubTag (8-byte key)
+            TreePath fallbackPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_fb"), 20);     // StorageFallbackSubTag (33-byte key)
             SnapshotContent c0 = new();
-            c0.StorageNodes[(addrHash, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            c0.StorageNodes[(addrHash, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
-            c0.StorageNodes[(addrHash, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
+            c0.SetStorageNodeRlp(CaseBuffer, addrHash, topPath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+            c0.SetStorageNodeRlp(CaseBuffer, addrHash, compactPath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
+            c0.SetStorageNodeRlp(CaseBuffer, addrHash, fallbackPath, FlatTestHelpers.LeafRlp(0xC1, 0x82));
             SnapshotContent c1 = new();
-            c1.StorageNodes[(addrHash, compactPath)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
+            c1.SetStorageNodeRlp(CaseBuffer, addrHash, compactPath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, topPath, out byte[]? topRlp), Is.True);
-                    Assert.That(topRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Top sub-tag (active==1) must survive");
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, compactPath, out byte[]? compactRlp), Is.True);
-                    Assert.That(compactRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Compact sub-tag (active==2) — newer wins");
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, fallbackPath, out byte[]? fallbackRlp), Is.True);
-                    Assert.That(fallbackRlp, Is.EqualTo(new byte[] { 0xC1, 0x82 }), "Fallback sub-tag (active==1) must survive");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, topPath, out byte[]? topRlp), Is.True);
+                        Assert.That(topRlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)), "Top sub-tag (active==1) must survive");
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, compactPath, out byte[]? compactRlp), Is.True);
+                        Assert.That(compactRlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81)), "Compact sub-tag (active==2) — newer wins");
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, fallbackPath, out byte[]? fallbackRlp), Is.True);
+                        Assert.That(fallbackRlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x82)), "Fallback sub-tag (active==1) must survive");
+                    }
                 }))
                 .SetName("Merge_SingleSourceSubTag_AllTiers");
         }
@@ -350,24 +393,26 @@ public class PersistedSnapshotCompactorTests
         // Mixed: all data types across two snapshots.
         {
             Hash256 storageAddr = Keccak.Compute("storageAddr");
-            TreePath statePath = new(Keccak.Compute("statePath"), 4);
-            TreePath storagePath = new(Hash256.Zero, 4);
+            TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("statePath"), 4);
+            TreePath storagePath = FlatTestHelpers.CanonicalPath(Hash256.Zero, 4);
             SnapshotContent c0 = new();
             c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             c0.Storages[(TestItem.AddressA, 1)] = (UInt256)(0x42) << 248;
             c0.SelfDestructedStorageAddresses[TestItem.AddressB] = true;
-            c0.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC0, 0x80]);
-            c0.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.SetStateNodeRlp(CaseBuffer, statePath, FlatTestHelpers.LeafRlp(0xC0, 0x80));
+            c0.SetStorageNodeRlp(CaseBuffer, storageAddr, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)200).TestObject;
             c1.Storages[(TestItem.AddressA, 2)] = (UInt256)(0x99) << 248;
-            c1.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            c1.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
+            c1.SetStateNodeRlp(CaseBuffer, statePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+            c1.SetStorageNodeRlp(CaseBuffer, storageAddr, storagePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
@@ -380,29 +425,31 @@ public class PersistedSnapshotCompactorTests
                         "Self-destruct flag for B (set in c0) must be present after compaction");
 
                     Assert.That(s.TryLoadStateNodeRlp(statePath, out byte[]? stateRlp), Is.True);
-                    Assert.That(stateRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "State node — newer wins");
+                    Assert.That(stateRlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)), "State node — newer wins");
 
                     Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlp), Is.True);
-                    Assert.That(storageRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Storage node — newer wins");
+                    Assert.That(storageRlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81)), "Storage node — newer wins");
                 }))
                 .SetName("Merge_MixedDataTypes");
         }
 
         // Overlapping state node (newer wins) + non-overlapping accounts (both preserved).
         {
-            TreePath path = new(Keccak.Compute("path"), 4);
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
             SnapshotContent c0 = new();
-            c0.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC0]);
+            c0.SetStateNodeRlp(CaseBuffer, path, FlatTestHelpers.LeafRlp(0xC0));
             c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             SnapshotContent c1 = new();
-            c1.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c1.SetStateNodeRlp(CaseBuffer, path, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryLoadStateNodeRlp(path, out byte[]? rlp), Is.True);
-                    Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Newer state-node RLP wins");
+#pragma warning restore NUnit2045
+                    Assert.That(rlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)), "Newer state-node RLP wins");
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100));
                     Assert.That(s.TryGetAccount(TestItem.AddressB, out Account? b), Is.True);
@@ -413,20 +460,23 @@ public class PersistedSnapshotCompactorTests
 
         // Two distinct state node paths, both survive merge.
         {
-            TreePath p1 = new(Keccak.Compute("path1"), 4);
-            TreePath p2 = new(Keccak.Compute("path2"), 4);
+            TreePath p1 = FlatTestHelpers.CanonicalPath(Keccak.Compute("path1"), 4);
+            TreePath p2 = FlatTestHelpers.CanonicalPath(Keccak.Compute("path2"), 4);
             SnapshotContent c0 = new();
-            c0.StateNodes[p1] = new TrieNode(NodeType.Leaf, [0xC0]);
+            c0.SetStateNodeRlp(CaseBuffer, p1, FlatTestHelpers.LeafRlp(0xC0));
             SnapshotContent c1 = new();
-            c1.StateNodes[p2] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c1.SetStateNodeRlp(CaseBuffer, p2, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStateNodeRlp(p1, out byte[]? r1), Is.True);
-                    Assert.That(r1, Is.EqualTo(new byte[] { 0xC0 }));
-                    Assert.That(s.TryLoadStateNodeRlp(p2, out byte[]? r2), Is.True);
-                    Assert.That(r2, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStateNodeRlp(p1, out byte[]? r1), Is.True);
+                        Assert.That(r1, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC0)));
+                        Assert.That(s.TryLoadStateNodeRlp(p2, out byte[]? r2), Is.True);
+                        Assert.That(r2, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)));
+                    }
                 }))
                 .SetName("Merge_PreservesNonOverlapping");
         }
@@ -442,10 +492,13 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
-                    Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
-                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
+                        Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
+                        Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
+                        Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    }
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
@@ -469,18 +522,21 @@ public class PersistedSnapshotCompactorTests
         // Storage trie nodes survive self-destruct (only storage *slot* data is cleared).
         {
             Hash256 addrHash = Keccak.Compute(TestItem.AddressA.Bytes);
-            TreePath storagePath = new(Keccak.Compute("storage_path"), 4);
+            TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("storage_path"), 4);
             SnapshotContent c0 = new();
-            c0.StorageNodes[(addrHash, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.SetStorageNodeRlp(CaseBuffer, addrHash, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
             SnapshotContent c1 = new();
             c1.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, storagePath, out byte[]? rlp), Is.True,
-                        "Storage trie node must survive self-destruct of the account");
-                    Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, storagePath, out byte[]? rlp), Is.True,
+                            "Storage trie node must survive self-destruct of the account");
+                        Assert.That(rlp, Is.EqualTo(FlatTestHelpers.LeafRlp(0xC1, 0x80)));
+                    }
                 }))
                 .SetName("Merge_SelfDestruct_StorageNodesKept");
         }
@@ -499,7 +555,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100), "Account-only EOA copied verbatim");
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slotA), Is.False, "EOA has no slots");
 
@@ -531,8 +589,9 @@ public class PersistedSnapshotCompactorTests
         for (int i = 0; i < contents.Length; i++)
         {
             states[i + 1] = new StateId((ulong)(i + 1), Keccak.Compute($"{i + 1}"));
+            using INodeRecordBufferPin bufferPin = CaseBufferRetain.Copy();
             tier.ConvertToPersistedBase(
-                new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin)).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[contents.Length]);
@@ -597,7 +656,8 @@ public class PersistedSnapshotCompactorTests
         {
             SnapshotContent content = new();
             content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using Snapshot snapshot = new(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead());
+            tier.ConvertToPersistedBase(snapshot).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[8]);
@@ -610,8 +670,10 @@ public class PersistedSnapshotCompactorTests
         }
         else
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True,
                 "Expected a compacted snapshot");
+#pragma warning restore NUnit2045
             Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
             Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
             compacted.Dispose();
@@ -668,11 +730,14 @@ public class PersistedSnapshotCompactorTests
             "Expected a large-compacted snapshot at block 16");
         using (compacted)
         {
-            Assert.That(compacted!.To.BlockNumber, Is.EqualTo(16));
-            Assert.That(compacted.From.BlockNumber, Is.EqualTo(expectedFromBlock),
-                persistedBlock == 0
-                    ? "Unclamped: the walk follows the [0,8] large-compacted edge down to From=0"
-                    : "Clamped: the below-P [0,8] edge is rejected and the walk wins at From=P");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.To.BlockNumber, Is.EqualTo(16));
+                Assert.That(compacted.From.BlockNumber, Is.EqualTo(expectedFromBlock),
+                    persistedBlock == 0
+                        ? "Unclamped: the walk follows the [0,8] large-compacted edge down to From=0"
+                        : "Clamped: the below-P [0,8] edge is rejected and the walk wins at From=P");
+            }
         }
     }
 
@@ -680,7 +745,8 @@ public class PersistedSnapshotCompactorTests
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-        tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        using Snapshot snapshot = new(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead());
+        tier.ConvertToPersistedBase(snapshot).Dispose();
     }
 
     /// <summary>
@@ -699,41 +765,43 @@ public class PersistedSnapshotCompactorTests
         SnapshotRepository repo = tier.Repository;
         PersistedSnapshotCompactor compactor = tier.Compactor;
 
-        TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
-        TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);
-        TreePath onlyNewStatePath = new(Keccak.Compute("only_new_state"), 4);
+        TreePath sharedStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("shared_state"), 4);
+        TreePath onlyOldStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("only_old_state"), 4);
+        TreePath onlyNewStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("only_new_state"), 4);
         Hash256 storageTrieAddr = Keccak.Compute("storage_trie_addr");
-        TreePath sharedStoragePath = new(Keccak.Compute("shared_storage"), 6);
+        TreePath sharedStoragePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("shared_storage"), 6);
 
-        byte[] oldStateRlp = [0xC1, 0x80];
-        byte[] newStateRlp = [0xC2, 0x81, 0x42];
-        byte[] onlyOldRlp = [0xC1, 0x33];
-        byte[] onlyNewRlp = [0xC1, 0x55];
-        byte[] oldStorageRlp = [0xC1, 0x80];
-        byte[] newStorageRlp = [0xC2, 0x82, 0x99];
+        byte[] oldStateRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
+        byte[] newStateRlp = FlatTestHelpers.LeafRlp(0xC2, 0x81, 0x42);
+        byte[] onlyOldRlp = FlatTestHelpers.LeafRlp(0xC1, 0x33);
+        byte[] onlyNewRlp = FlatTestHelpers.LeafRlp(0xC1, 0x55);
+        byte[] oldStorageRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
+        byte[] newStorageRlp = FlatTestHelpers.LeafRlp(0xC2, 0x82, 0x99);
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= 8; i++)
         {
             StateId next = new((ulong)i, Keccak.Compute($"{i}"));
+            INodeRecordBufferPin bufferPin = _buffer.PinHead();
             SnapshotContent c = new();
             if (i == 1)
             {
-                c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, oldStateRlp);
-                c.StateNodes[onlyOldStatePath] = new TrieNode(NodeType.Leaf, onlyOldRlp);
-                c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, oldStorageRlp);
+                c.SetStateNodeRlp(_buffer, sharedStatePath, oldStateRlp);
+                c.SetStateNodeRlp(_buffer, onlyOldStatePath, onlyOldRlp);
+                c.SetStorageNodeRlp(_buffer, storageTrieAddr, sharedStoragePath, oldStorageRlp);
             }
             else if (i == 8)
             {
-                c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, newStateRlp);
-                c.StateNodes[onlyNewStatePath] = new TrieNode(NodeType.Leaf, onlyNewRlp);
-                c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, newStorageRlp);
+                c.SetStateNodeRlp(_buffer, sharedStatePath, newStateRlp);
+                c.SetStateNodeRlp(_buffer, onlyNewStatePath, onlyNewRlp);
+                c.SetStorageNodeRlp(_buffer, storageTrieAddr, sharedStoragePath, newStorageRlp);
             }
             else
             {
                 c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
             }
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
         }
 
@@ -742,21 +810,24 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         using (compacted)
         {
-            Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
-            Assert.That(sharedResult, Is.EqualTo(newStateRlp),
-                "Overlapping state-node path must resolve to newest writer's RLP");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
+                Assert.That(sharedResult, Is.EqualTo(newStateRlp),
+                    "Overlapping state-node path must resolve to newest writer's RLP");
 
-            Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
-            Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
-                "State node only in the oldest source must survive the merge with its original RLP");
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
+                Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
+                    "State node only in the oldest source must survive the merge with its original RLP");
 
-            Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
-            Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
-                "State node only in the newest source must survive the merge with its original RLP");
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
+                Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
+                    "State node only in the newest source must survive the merge with its original RLP");
 
-            Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
-            Assert.That(storageResult, Is.EqualTo(newStorageRlp),
-                "Overlapping storage-node path must resolve to newest writer's RLP");
+                Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
+                Assert.That(storageResult, Is.EqualTo(newStorageRlp),
+                    "Overlapping storage-node path must resolve to newest writer's RLP");
+            }
         }
     }
 
@@ -798,15 +869,17 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("p1"));
         StateId s2 = new(2, Keccak.Compute("p2"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        using (Snapshot snapshot = new(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+            tier.ConvertToPersistedBase(snapshot).Dispose();
+        using (Snapshot snapshot = new(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+            tier.ConvertToPersistedBase(snapshot).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
         Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         using (compacted)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < accountCount; i++)
                 {
@@ -821,7 +894,7 @@ public class PersistedSnapshotCompactorTests
                             $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
                     }
                 }
-            });
+            }
         }
     }
 
@@ -858,7 +931,8 @@ public class PersistedSnapshotCompactorTests
             StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
             if (i == 45) tip = next;
         }
@@ -869,9 +943,12 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
-                "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
-            Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
+                    "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+            }
             Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
                 "compacted span must equal alignment, not (blockNumber mod alignment)");
         }
@@ -895,6 +972,50 @@ public class PersistedSnapshotCompactorTests
         compactor.DoCompactSnapshot(new StateId(4, Keccak.Compute("b4")));
 
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
+    }
+
+    // A compaction whose snapshot fails to build or to register frees its region, so it must not leave a catalog
+    // row: the next restart would reload that row over the freed region.
+    [Test]
+    public async Task DoCompactSnapshot_Failure_LeavesNoCatalogRow([Values] bool failRegistration)
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 2; i++)
+        {
+            StateId to = new((ulong)i, Keccak.Compute($"p{i}"));
+            INodeRecordBufferPin bufferPin = _buffer.PinHead();
+            SnapshotContent c = new();
+            c.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute($"path{i}"), 4), FlatTestHelpers.LeafRlp(0x80));
+            using (Snapshot snapshot = new(prev, to, c, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
+            prev = to;
+        }
+
+        await using (ILifetimeScope scope = tier.BeginScope(builder =>
+        {
+            builder.AddSingleton<PersistedSnapshotCompactor>();
+            if (failRegistration)
+            {
+                ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+                repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
+                repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
+                    .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
+                repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
+                    .Do(_ => throw new InvalidOperationException());
+                builder.AddSingleton(repository);
+            }
+            else
+            {
+                // Without the bases' blob arena, the compacted snapshot fails to lease it.
+                builder.AddSingleton(new BlobArenaManager(Path.Combine(_memArenaDir, "blob"), 4 * 1024 * 1024));
+            }
+        }))
+        {
+            Assert.That(() => scope.Resolve<PersistedSnapshotCompactor>().DoCompactSnapshot(prev), Throws.InvalidOperationException);
+        }
+
+        Assert.That(tier.Resolve<ISnapshotCatalog>().Load().Select(e => e.Tier), Is.All.EqualTo(SnapshotTier.PersistedBase));
     }
 
     [Test]
@@ -923,7 +1044,8 @@ public class PersistedSnapshotCompactorTests
             tip = new((ulong)i, Keccak.Compute($"p{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = tip;
         }
 
@@ -932,8 +1054,11 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSized), Is.True);
         try
         {
-            Assert.That(compactSized!.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(compactSized.To.BlockNumber, Is.EqualTo(4));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compactSized!.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compactSized.To.BlockNumber, Is.EqualTo(4));
+            }
             for (int i = 1; i <= 4; i++)
                 Assert.That(compactSized.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True, $"account from block {i} missing");
         }
@@ -952,10 +1077,12 @@ public class PersistedSnapshotCompactorTests
         for (int i = 1; i <= 2; i++)
         {
             tip = new((ulong)i, Keccak.Compute($"sn{i}"));
+            INodeRecordBufferPin bufferPin = _buffer.PinHead();
             SnapshotContent c = new();
-            TreePath path = new(Keccak.Compute($"node{i}"), 4);
-            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, (byte)i]);
-            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"node{i}"), 4);
+            c.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, (byte)i));
+            using (Snapshot snapshot = new(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = tip;
         }
 
@@ -965,7 +1092,7 @@ public class PersistedSnapshotCompactorTests
         try
         {
             Assert.That(compacted!.To.BlockNumber, Is.EqualTo(2));
-            TreePath probe = new(Keccak.Compute("node2"), 4);
+            TreePath probe = FlatTestHelpers.CanonicalPath(Keccak.Compute("node2"), 4);
             Assert.That(compacted.TryLoadStateNodeRlp(probe, out _), Is.True, "state node must survive the no-address-column compaction");
         }
         finally { compacted!.Dispose(); }
@@ -992,14 +1119,15 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
         compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate
         compactor.DoCompactSnapshot(states[8]); // >CompactSize large-boundary merge
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True,
                 "sub-CompactSize window must be a PersistedSmallCompacted snapshot");
@@ -1014,7 +1142,7 @@ public class PersistedSnapshotCompactorTests
 
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedSmallCompacted, out _), Is.False,
                 "PersistedLargeCompacted must not resolve from the compacted bucket");
-        });
+        }
     }
 
     /// <summary>
@@ -1040,7 +1168,8 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -1049,7 +1178,7 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
         using (intermediate)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 // Minimal (capacity-1) bloom, but still populated by the merge (Count > 0), not the
                 // Count==0 AlwaysTrue sentinel and not a capacity-sized filter.
@@ -1059,7 +1188,7 @@ public class PersistedSnapshotCompactorTests
                 Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
                 Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);
                 Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
-            });
+            }
         }
     }
 
@@ -1085,7 +1214,8 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing, _buffer.PinHead()))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -1109,7 +1239,9 @@ public class PersistedSnapshotCompactorTests
                 Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
                 using (baseSnap)
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(ReferenceEquals(baseSnap!.Bloom, shared), Is.True, $"base {i} should share the big merge's bloom");
+#pragma warning restore NUnit2045
                     Assert.That(baseSnap.TryGetAccount(TestItem.Addresses[i - 1], out Account? a), Is.True, $"account from block {i} must still resolve");
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)(i * 100)));
                 }
@@ -1160,7 +1292,9 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
         using (big)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the big merge is clamped to From=4");
+#pragma warning restore NUnit2045
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? below), Is.True);
             using (below)
                 Assert.That(ReferenceEquals(below!.Bloom, big.Bloom), Is.False,
@@ -1219,17 +1353,23 @@ public class PersistedSnapshotCompactorTests
                 if (distinct.Add(src.Bloom)) dedupedSum += src.Bloom.Count;
             }
         }
-        Assert.That(distinct.Count, Is.LessThan(12), "precondition: bases [5,8] must share one bloom, so fewer than 12 distinct filters");
-        Assert.That(dedupedSum, Is.LessThan(naiveSum), "precondition: the shared bloom is double-counted by a naive per-source sum");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(distinct.Count, Is.LessThan(12), "precondition: bases [5,8] must share one bloom, so fewer than 12 distinct filters");
+            Assert.That(dedupedSum, Is.LessThan(naiveSum), "precondition: the shared bloom is double-counted by a naive per-source sum");
+        }
 
         compactor.DoCompactSnapshot(states[16], persistedBlockNumber: 4);
 
         Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
         using (big)
         {
-            Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the merge is clamped to From=4");
-            Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
-                "merged bloom capacity must count the shared source bloom once, not once per sharer");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the merge is clamped to From=4");
+                Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
+                    "merged bloom capacity must count the shared source bloom once, not once per sharer");
+            }
         }
     }
 }

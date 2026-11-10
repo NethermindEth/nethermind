@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -590,7 +589,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await Task.Delay(50, cancellationToken);
             }
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(blockTree.WasProcessed(dropped.Number, dropped.Hash!), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(blockTree.HeadHash, Is.EqualTo(head.Hash));
         });
@@ -740,7 +741,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ConfigureLocalNetwork(cfg, AllocatePort());
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+        SyncTestContext clientContext = client.Resolve<SyncTestContext>();
+        await clientContext.SyncFromServer(_server, cancellationToken);
+        clientContext.VerifyDeployedCodeWith(_server, cancellationToken);
     }
 
     private const int StressIterationCount = 30;
@@ -927,7 +930,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 networkConfig.FilterDiscoveryNodesByRecentIp = false;
             }, DbMode.Hash);
 
-            await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+            SyncTestContext clientContext = client.Resolve<SyncTestContext>();
+            await clientContext.SyncFromServer(_server, cancellationToken);
+            clientContext.VerifyDeployedCodeWith(_server, cancellationToken);
         });
     }
 
@@ -1093,7 +1098,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             Assert.That(blockProductionContext, Is.Not.Null);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(blockProductionContext!.CurrentBestBlock, Is.Not.Null);
+#pragma warning restore NUnit2045
 
             Assert.That(await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!), Is.EqualTo(AddBlockResult.Added));
 
@@ -1142,6 +1149,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ISyncModeSelector syncModeSelector,
         IRlpxHost rlpxHost,
         IWorldStateManager worldStateManager,
+        [KeyFilter(DbNames.Code)] IDb codeDb,
         PseudoNethermindRunner runner,
         ImmediateDisconnectFailure immediateDisconnectFailure,
         BlockProcessorExceptionDetector blockProcessorExceptionDetector)
@@ -1337,8 +1345,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
                 TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
-                Assert.That(clientBlock, Is.Not.Null);
-                Assert.That(clientReceipts, Is.Not.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clientBlock, Is.Not.Null);
+                    Assert.That(clientReceipts, Is.Not.Null);
+                }
 
                 if (checkContent)
                 {
@@ -1373,16 +1384,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TxReceipt[][] wrappedReceipts = [receipts];
             using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
-            IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
-            try
-            {
-                _receiptsMessageSerializer.Serialize(bb, asReceiptsMessage);
-                return bb.AsSpan().ToArray();
-            }
-            finally
-            {
-                bb.Release();
-            }
+            byte[] encoded = new byte[_receiptsMessageSerializer.GetLength(asReceiptsMessage)];
+            _receiptsMessageSerializer.Serialize(encoded, asReceiptsMessage);
+            return encoded;
         }
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken) =>
@@ -1391,6 +1395,36 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await VerifyHeadWith(sourceServer, token);
                 await VerifyAllBlocksAndReceipts(sourceServer, token);
             }, cancellationToken);
+
+        /// <summary>
+        /// Checks every contract the server deployed: both heads hold the account with the same code hash, and the bytes
+        /// in this node's code DB hash to it. Healing can also write that code, so this does not show which phase did.
+        /// </summary>
+        public void VerifyDeployedCodeWith(IContainer server, CancellationToken cancellationToken)
+        {
+            List<Address> deployed = server.Resolve<SyncTestContext>()._deployedContracts;
+            IStateReader serverState = server.Resolve<IWorldStateManager>().GlobalStateReader;
+            BlockHeader serverHead = server.Resolve<IBlockTree>().Head!.Header;
+            BlockHeader clientHead = blockTree.Head!.Header;
+
+            Assert.That(deployed, Is.Not.Empty, "The server deployed no contracts to check.");
+            foreach (Address address in deployed)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                bool onServer = serverState.TryGetAccount(serverHead, address, out AccountStruct expected);
+                bool onClient = worldStateManager.GlobalStateReader.TryGetAccount(clientHead, address, out AccountStruct actual);
+                ValueHash256 codeHash = expected.CodeHash;
+                byte[]? code = codeDb.Get(codeHash.Bytes);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(onServer && expected.HasCode, Is.True, $"Server account {address} with code.");
+                    Assert.That(onClient, Is.True, $"Client account {address}.");
+                    Assert.That(actual.CodeHash, Is.EqualTo(codeHash), $"Code hash of {address}.");
+                    Assert.That(code, Is.Not.Null, $"Client code {codeHash} of {address}.");
+                    Assert.That(ValueKeccak.Compute(code ?? []), Is.EqualTo(codeHash), $"Hash of the client code bytes of {address}.");
+                }
+            }
+        }
 
         /// <summary>Syncs from the server and compares every block, receipt, transaction lookup and access list.</summary>
         /// <returns>The finalized block number the sync ran against.</returns>
@@ -1528,11 +1562,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                         $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
                 }
 
-                Assert.That(sourceBal, Is.Not.Null, $"Source BAL missing at block {blockNumber}.");
-                Assert.That(syncedBal, Is.Not.Null, $"Synced BAL missing at block {blockNumber}.");
-                Assert.That(syncedBal, Is.EqualTo(sourceBal), $"BAL mismatch at block {blockNumber}.");
-                Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
-                    $"BAL hash mismatch at block {blockNumber}.");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(sourceBal, Is.Not.Null, $"Source BAL missing at block {blockNumber}.");
+                    Assert.That(syncedBal, Is.Not.Null, $"Synced BAL missing at block {blockNumber}.");
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(syncedBal, Is.EqualTo(sourceBal), $"BAL mismatch at block {blockNumber}.");
+                    Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
+                        $"BAL hash mismatch at block {blockNumber}.");
+                }
             }
         }
 
@@ -1606,7 +1646,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockProcessor blockProcessor,
             BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
-            public event Action? TransactionsExecuted
+            public event Action<Block>? TransactionsExecuted
             {
                 add => blockProcessor.TransactionsExecuted += value;
                 remove => blockProcessor.TransactionsExecuted -= value;

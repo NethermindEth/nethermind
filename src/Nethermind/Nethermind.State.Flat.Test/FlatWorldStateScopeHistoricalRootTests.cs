@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -23,9 +24,17 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
-    public void SetUp() => _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
+    public void SetUp()
+    {
+        _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
+        _buffer = FlatTestHelpers.NewTestBuffer();
+    }
+
+    [TearDown]
+    public void TearDown() => _buffer.Dispose();
 
     [Test]
     public void UpdateRootHash_HistoricalScope_DoesNotThrow_AndRetainsKnownRoot()
@@ -179,7 +188,7 @@ public class FlatWorldStateScopeHistoricalRootTests
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle readOnlyBundle =
-            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
 
         Assert.That(readOnlyBundle.IsHistorical, Is.False);
     }
@@ -210,12 +219,12 @@ public class FlatWorldStateScopeHistoricalRootTests
             FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)),
             reader,
             recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty(),
+            PersistedSnapshotStack.Empty(), bufferPin: null,
             isHistorical: isHistorical);
 
         return new SnapshotBundle(
             readOnlyBundle,
-            Substitute.For<ITrieNodeCache>(),
+            _buffer,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);
     }

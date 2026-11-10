@@ -25,20 +25,37 @@ public class RateLimiterTests
         long startTime = Environment.TickCount64;
         long deadline = startTime + durationMs;
         long counter = 0;
+        TimeSpan[] maxBacklog = new TimeSpan[concurrency];
 
-        Task[] tasks = Enumerable.Range(0, concurrency).Select(async (_) =>
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(async caller =>
         {
             while (Environment.TickCount64 < deadline)
             {
                 Interlocked.Increment(ref counter);
-                await rateLimiter.WaitAsync(CancellationToken.None);
+                Task wait = rateLimiter.WaitAsync(CancellationToken.None);
+                TimeSpan backlog = rateLimiter.Backlog;
+                if (backlog > maxBacklog[caller]) maxBacklog[caller] = backlog;
+                await wait;
             }
         }).ToArray();
 
         await Task.WhenAll(tasks);
 
-        int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
-        Assert.That(effectivePerSec, Is.InRange((int)(eventPerSec * 0.2), (int)(eventPerSec * 1.5)));
+        long elapsedMs = Environment.TickCount64 - startTime;
+        int effectivePerSec = (int)(counter / (elapsedMs / 1000.0));
+        // A stalled runner lowers the rate, so only the backlog shows that the limiter does not over-delay:
+        // each caller holds at most one slot, and the backlog includes the slot the reader just took.
+        // Task.Delay truncates to whole milliseconds, and timers run on a coarse clock (4 ms steps on Linux with HZ=250,
+        // 15.6 ms on Windows), so a caller can wake up to one clock step plus late clock updates before its slot.
+        TimeSpan backlogLimit = TimeSpan.FromSeconds((double)(concurrency + 1) / eventPerSec) + TimeSpan.FromMilliseconds(OperatingSystem.IsWindows() ? 17 : 10);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(effectivePerSec, Is.LessThanOrEqualTo((int)(eventPerSec * 1.5)));
+            Assert.That(maxBacklog.Max(), Is.LessThanOrEqualTo(backlogLimit));
+            // The backlog does not show how long Task.Delay sleeps. The last wait ends a few intervals after the deadline,
+            // so this loose bound catches a gross over-sleep but not a runner stall.
+            Assert.That(elapsedMs, Is.LessThan(durationMs + 2000));
+        }
     }
 
     [Test]

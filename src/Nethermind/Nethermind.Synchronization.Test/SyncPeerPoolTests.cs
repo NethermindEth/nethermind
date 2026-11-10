@@ -294,8 +294,11 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         ctx.Pool.DropUselessPeers(true);
 
-        Assert.That(peers[number].DisconnectRequested, Is.True, "the only plain peer is droppable");
-        Assert.That(peers.Where((p, i) => i != number).Any(static p => p.DisconnectRequested), Is.False, "static and trusted peers are never dropped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers[number].DisconnectRequested, Is.True, "the only plain peer is droppable");
+            Assert.That(peers.Where((p, i) => i != number).Any(static p => p.DisconnectRequested), Is.False, "static and trusted peers are never dropped");
+        }
     }
 
     [Test]
@@ -494,15 +497,21 @@ public class SyncPeerPoolTests
         using (SyncPeerAllocation firstAllocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
         using (SyncPeerAllocation secondAllocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
         {
-            Assert.That(secondAllocation.Current, Is.Not.SameAs(firstAllocation.Current), "first");
-            Assert.That(firstAllocation.Current, Is.Not.Null, "first A");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondAllocation.Current, Is.Not.SameAs(firstAllocation.Current), "first");
+                Assert.That(firstAllocation.Current, Is.Not.Null, "first A");
+            }
             Assert.That(secondAllocation.Current, Is.Not.Null, "first B");
         }
 
         using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
-        Assert.That(allocation1.Current, Is.Not.Null, "second A");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
+            Assert.That(allocation1.Current, Is.Not.Null, "second A");
+        }
         Assert.That(allocation2.Current, Is.Not.Null, "second B");
     }
 
@@ -520,9 +529,12 @@ public class SyncPeerPoolTests
         using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         using SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-        Assert.That(allocation1.HasPeer, Is.True);
-        Assert.That(allocation2.HasPeer, Is.True);
-        Assert.That(allocation3.HasPeer, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation1.HasPeer, Is.True);
+            Assert.That(allocation2.HasPeer, Is.True);
+            Assert.That(allocation3.HasPeer, Is.False);
+        }
     }
 
     [Test]
@@ -539,9 +551,12 @@ public class SyncPeerPoolTests
         using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         using SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
-        Assert.That(allocation1.HasPeer, Is.True);
-        Assert.That(allocation2.HasPeer, Is.True);
-        Assert.That(allocation3.HasPeer, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation1.HasPeer, Is.True);
+            Assert.That(allocation2.HasPeer, Is.True);
+            Assert.That(allocation3.HasPeer, Is.True);
+        }
     }
 
     [Test]
@@ -574,8 +589,11 @@ public class SyncPeerPoolTests
         using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
         using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
 
-        Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
-        Assert.That(allocation2.Current, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
+            Assert.That(allocation2.Current, Is.Null);
+        }
     }
 
     [Test]
@@ -587,7 +605,8 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
+        // The refresh goes through several thread-pool hops, as in It_is_fine_to_fail_init.
+        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
         Assert.That(peer.DisconnectRequested, Is.True);
     }
 
@@ -606,8 +625,11 @@ public class SyncPeerPoolTests
         using SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         ctx.Pool.RemovePeer(peer);
 
-        Assert.That(allocation.Current, Is.EqualTo(null));
-        Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation.Current, Is.EqualTo(null));
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -784,8 +806,11 @@ public class SyncPeerPoolTests
         // Allocate both peers — pool exhausted
         using SyncPeerAllocation a1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
         using SyncPeerAllocation a2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
-        Assert.That(a1.HasPeer, Is.True);
-        Assert.That(a2.HasPeer, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a1.HasPeer, Is.True);
+            Assert.That(a2.HasPeer, Is.True);
+        }
 
         // Start 2 waiters — both blocked, no peers available
         Task<SyncPeerAllocation> w1 = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 3000);
@@ -797,8 +822,11 @@ public class SyncPeerPoolTests
 
         using SyncPeerAllocation r1 = await w1;
         using SyncPeerAllocation r2 = await w2;
-        Assert.That(r1.HasPeer, Is.True);
-        Assert.That(r2.HasPeer, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(r1.HasPeer, Is.True);
+            Assert.That(r2.HasPeer, Is.True);
+        }
     }
 
     /// <summary>
@@ -875,8 +903,11 @@ public class SyncPeerPoolTests
 
         BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
-        Assert.That(result, Is.Null);
-        Assert.That(peers[0].DisconnectRequested, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(peers[0].DisconnectRequested, Is.False);
+        }
     }
 
     [Test]

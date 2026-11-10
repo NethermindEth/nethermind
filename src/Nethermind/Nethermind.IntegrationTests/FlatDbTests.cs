@@ -175,7 +175,6 @@ public class FlatDbTests
                 "--FlatDb.MaxReorgDepth", "16",
                 "--FlatDb.MinReorgDepth", "8",
                 "--FlatDb.RegenerateCompactionOffset", "true",
-                "--FlatDb.TrieCacheMemoryBudget", "1048576",
                 "--FlatDb.TrieWarmerWorkerCount", "0"
             ];
             IContainer node = await StartNodeAsync(databasePath, flatDbOptions);
@@ -192,7 +191,6 @@ public class FlatDbTests
                     Assert.That(startupLogs, Does.Contain("FlatDb.MaxReorgDepth = \"0x10\""));
                     Assert.That(startupLogs, Does.Contain("FlatDb.MinReorgDepth = \"0x8\""));
                     Assert.That(startupLogs, Does.Contain("FlatDb.RegenerateCompactionOffset = true"));
-                    Assert.That(startupLogs, Does.Contain("FlatDb.TrieCacheMemoryBudget = \"0x100000\""));
                     Assert.That(startupLogs, Does.Contain("FlatDb.TrieWarmerWorkerCount = 0"));
                 }
             }

@@ -29,7 +29,7 @@ public enum ReadOnlyQueryKind
     /// <summary>
     /// Replays and traced calls - debug_traceCall, debug_traceCallMany when none of its bundles carries its own override
     /// (overrides in its trace options keep it here), debug_traceTransaction and its by-index and in-block variants,
-    /// debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBlockFromFile,
+    /// debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBadBlock, debug_traceBlockFromFile,
     /// debug_intermediateRoots, debug_standardTraceBlockToFile, debug_standardTraceBadBlockToFile, trace_call,
     /// trace_callMany, trace_rawTransaction, trace_replayTransaction, trace_replayBlockTransactions, trace_block,
     /// trace_transaction, trace_get, trace_filter and proof_getTransactionReceipt - including the workers that trace the

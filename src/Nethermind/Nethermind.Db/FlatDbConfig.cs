@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db;
@@ -42,7 +43,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
-    public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public FlatLayout Layout { get; set; } = FlatLayout.Auto;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
@@ -54,7 +55,9 @@ public class FlatDbConfig : IFlatDbConfig
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
+    [Obsolete("The trie-node cache has been removed. This setting has no effect.")]
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
+    public ulong CompressedNodeRecordBufferMemoryBudget { get; set; } = 500UL.MiB;
     public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;

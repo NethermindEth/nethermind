@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Store.Test.Repositories;
 
@@ -270,7 +271,9 @@ public class ChainLevelInfoRepositoryTests
 
         ChainLevelInfo cached = repository.LoadLevel(1)!;
         readsBefore = db.ReadsCount;
+#pragma warning disable NUnit2045 // Keep the repository load separate from the dependent read-count check.
         Assert.That(repository.LoadLevelWithoutCaching(1), Is.SameAs(cached));
+#pragma warning restore NUnit2045
         Assert.That(db.ReadsCount, Is.EqualTo(readsBefore));
     }
 
@@ -373,8 +376,9 @@ public class ChainLevelInfoRepositoryTests
     {
         if (!native) return new MemDb();
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        return new DbOnTheRocks(directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
-            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance);
+        return new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(), new HyperClockCacheWrapper(),
+                new RealFileSystem(), LimboLogs.Instance, directory.Path)
+            .CreateDb(new DbSettings(DbNames.BlockInfos, "levels"));
     }
 
     private static IEnumerable<ulong> KeyLengthBoundaries()
@@ -416,11 +420,11 @@ public class ChainLevelInfoRepositoryTests
             return;
         }
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.HasBlockOnMainChain, Is.EqualTo(expected.HasBlockOnMainChain));
             Assert.That(actual.BlockInfos, Is.EqualTo(expected.BlockInfos));
-        });
+        }
     }
 
     private sealed class BatchTrackingDb(bool mixedLengths) : MemDb, IDb, IBatchReadOnlyDb

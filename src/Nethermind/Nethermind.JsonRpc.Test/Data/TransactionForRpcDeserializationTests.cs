@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -242,7 +241,7 @@ public class TransactionForRpcDeserializationTests
     [Test]
     public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
         Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
-            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+            Throws.TypeOf<DataAndInputDifferException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
 
     [Test]
     public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
@@ -296,9 +295,12 @@ public class TransactionForRpcDeserializationTests
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, spec: Cancun.Instance);
 
-        Assert.That(result.IsError, Is.True);
-        Assert.That(
-            result.Error,
-            Is.EqualTo(BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(
+                result.Error,
+                Is.EqualTo(BlockErrorMessages.BlobGasUsedAboveBlockLimit(Cancun.Instance.GasCosts.MaxBlobGasPerBlock, 7, 7 * Eip4844Constants.GasPerBlob)));
+        }
     }
 }

@@ -62,7 +62,7 @@ public class FrameGasEstimatorTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithGasLimit(60_000_000).TestObject;
         bool[] fill = new bool[frames.Length];
 
-        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, GasCap, 0, CancellationToken.None, out _);
+        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, GasCap, 0, null, CancellationToken.None, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -85,7 +85,7 @@ public class FrameGasEstimatorTests
         bool[] fill = new bool[frames.Length];
         Array.Fill(fill, true);
 
-        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, gasCap, errorMargin, CancellationToken.None, out _);
+        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, gasCap, errorMargin, null, CancellationToken.None, out _);
 
         Assert.That(result.IsError, Is.False, result.Error);
         using (Assert.EnterMultipleScope())

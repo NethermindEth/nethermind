@@ -52,8 +52,11 @@ public class EraFileFormatComplianceTests
     {
         List<EntryRecord> entries = ReadAllEntries(_preMergeFile.FilePath);
 
-        Assert.That(entries[0].Type, Is.EqualTo(TypeVersion), "Version must be the first entry per spec");
-        Assert.That(entries[0].Length, Is.EqualTo(0), "Version entry carries no data");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].Type, Is.EqualTo(TypeVersion), "Version must be the first entry per spec");
+            Assert.That(entries[0].Length, Is.EqualTo(0), "Version entry carries no data");
+        }
     }
 
     [Test]
@@ -94,19 +97,22 @@ public class EraFileFormatComplianceTests
         List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
         // Section ordering: all headers before any body
-        Assert.That(types.LastIndexOf(TypeCompressedHeader), Is.LessThan(types.IndexOf(TypeCompressedBody)), "all headers must precede any body per spec");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(types.LastIndexOf(TypeCompressedHeader), Is.LessThan(types.IndexOf(TypeCompressedBody)), "all headers must precede any body per spec");
 
-        // All bodies before any receipts
-        Assert.That(types.LastIndexOf(TypeCompressedBody), Is.LessThan(types.IndexOf(TypeCompressedSlimReceipts)), "all bodies must precede any receipts per spec");
+            // All bodies before any receipts
+            Assert.That(types.LastIndexOf(TypeCompressedBody), Is.LessThan(types.IndexOf(TypeCompressedSlimReceipts)), "all bodies must precede any receipts per spec");
 
-        // Receipts before TotalDifficulty
-        Assert.That(types.LastIndexOf(TypeCompressedSlimReceipts), Is.LessThan(types.IndexOf(TypeTotalDifficulty)), "all receipts must precede TotalDifficulty per spec");
+            // Receipts before TotalDifficulty
+            Assert.That(types.LastIndexOf(TypeCompressedSlimReceipts), Is.LessThan(types.IndexOf(TypeTotalDifficulty)), "all receipts must precede TotalDifficulty per spec");
 
-        // TotalDifficulty before AccumulatorRoot
-        Assert.That(types.LastIndexOf(TypeTotalDifficulty), Is.LessThan(types.IndexOf(TypeAccumulatorRoot)), "TotalDifficulty must precede AccumulatorRoot per spec");
+            // TotalDifficulty before AccumulatorRoot
+            Assert.That(types.LastIndexOf(TypeTotalDifficulty), Is.LessThan(types.IndexOf(TypeAccumulatorRoot)), "TotalDifficulty must precede AccumulatorRoot per spec");
 
-        // AccumulatorRoot before ComponentIndex
-        Assert.That(types.IndexOf(TypeAccumulatorRoot), Is.LessThan(types.LastIndexOf(TypeComponentIndex)), "AccumulatorRoot must precede ComponentIndex per spec");
+            // AccumulatorRoot before ComponentIndex
+            Assert.That(types.IndexOf(TypeAccumulatorRoot), Is.LessThan(types.LastIndexOf(TypeComponentIndex)), "AccumulatorRoot must precede ComponentIndex per spec");
+        }
     }
 
     [Test]
@@ -123,12 +129,15 @@ public class EraFileFormatComplianceTests
     {
         List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeTotalDifficulty), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeAccumulatorRoot), Is.EqualTo(1));
-        Assert.That(types.Count(t => t == TypeComponentIndex), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeTotalDifficulty), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeAccumulatorRoot), Is.EqualTo(1));
+            Assert.That(types.Count(t => t == TypeComponentIndex), Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -136,9 +145,12 @@ public class EraFileFormatComplianceTests
     {
         List<ushort> types = ReadAllEntries(_postMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
-        Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(types.Count(t => t == TypeCompressedHeader), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeCompressedBody), Is.EqualTo(SharedBlockCount));
+            Assert.That(types.Count(t => t == TypeCompressedSlimReceipts), Is.EqualTo(SharedBlockCount));
+        }
     }
 
     [Test]

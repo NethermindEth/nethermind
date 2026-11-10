@@ -1,0 +1,25 @@
+#!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#:include sync.helpers.cs
+using System.Text.Json.Nodes;
+
+try
+{
+    var input = Console.In.ReadToEnd();
+    var filter = args.FirstOrDefault() ?? "";
+    if (filter.Length == 0) Console.Write(input);
+    else Console.WriteLine(Sync.Select(JsonNode.Parse(input)!.AsArray(), filter).ToJsonString());
+    return 0;
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Cancelled.");
+    return 143;
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return 1;
+}

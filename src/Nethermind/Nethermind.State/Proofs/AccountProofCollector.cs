@@ -39,6 +39,15 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
 
+        // Measured crossover: up to four keys a linear scan is as fast as sorting once and binary searching per node.
+        private const int SortedLookupMinKeys = 5;
+
+        // The requested keys in trie order and the request index of each. All keys under one trie path form one
+        // contiguous run here, so a node finds its keys with one binary search instead of a scan of every key.
+        // Built on the first storage node, so account-only proofs and small requests never pay for it.
+        private ValueHash256[]? _sortedStorageKeys;
+        private int[]? _sortedStorageKeyIndices;
+
         internal CancellationToken CancellationToken => _cancellationToken;
 
         internal ValueHash256 HashedAddress => _hashedAddress;
@@ -95,7 +104,7 @@ namespace Nethermind.State.Proofs
                 _hashedStorageKeys[j] = storageKey;
                 _accountProof.StorageProofs[j] = new StorageProof
                 {
-                    Key = storageKeys?[j].ToHexString(true, true),
+                    Key = storageKeys?[j].WithoutLeadingZeros().ToArray(),
                     Value = Bytes.ZeroByte
                 };
                 j++;
@@ -153,7 +162,7 @@ namespace Nethermind.State.Proofs
             _storageProofItems[index] = [];
             _accountProof.StorageProofs[index] = new StorageProof
             {
-                Key = key.ToHexString(true, true),
+                Key = key.ToArray(),
                 Value = Bytes.ZeroByte
             };
         }
@@ -257,6 +266,12 @@ namespace Nethermind.State.Proofs
             }
 
             // Storage trie: visit nodes on the path to any requested storage slot
+            if (EnsureSortedLookup())
+            {
+                int first = FirstSortedKeyAtOrAfter(ctx.Path);
+                return first < _sortedStorageKeys!.Length && ComparePrefix(_sortedStorageKeys[first], ctx.Path) == 0;
+            }
+
             for (int i = 0; i < _hashedStorageKeys.Length; i++)
             {
                 if (IsPrefix(_hashedStorageKeys[i], ctx.Path))
@@ -285,6 +300,17 @@ namespace Nethermind.State.Proofs
 
             // Storage leaf: record the decoded value for every requested slot whose full path
             // ends at this leaf. Storage leaf Values are always RLP-encoded in a valid trie.
+            if (EnsureSortedLookup())
+            {
+                ValueHash256[] sortedKeys = _sortedStorageKeys!;
+                for (int j = FirstSortedKeyAtOrAfter(ctx.Path); j < sortedKeys.Length && ComparePrefix(sortedKeys[j], ctx.Path) == 0; j++)
+                {
+                    if (IsFullPathMatch(sortedKeys[j], ctx.Path, node.Key))
+                        _accountProof.StorageProofs[_sortedStorageKeyIndices![j]].Value = new RlpReader(node.Value.AsSpan()).DecodeByteArray();
+                }
+                return;
+            }
+
             for (int i = 0; i < _hashedStorageKeys.Length; i++)
             {
                 if (IsFullPathMatch(_hashedStorageKeys[i], ctx.Path, node.Key))
@@ -312,6 +338,16 @@ namespace Nethermind.State.Proofs
             }
 
             // Add the node RLP to every storage proof whose path passes through this node.
+            if (EnsureSortedLookup())
+            {
+                ValueHash256[] sortedKeys = _sortedStorageKeys!;
+                for (int j = FirstSortedKeyAtOrAfter(ctx.Path); j < sortedKeys.Length && ComparePrefix(sortedKeys[j], ctx.Path) == 0; j++)
+                {
+                    _storageProofItems[_sortedStorageKeyIndices![j]].Add(rlp);
+                }
+                return;
+            }
+
             for (int i = 0; i < _hashedStorageKeys.Length; i++)
             {
                 if (IsPrefix(_hashedStorageKeys[i], ctx.Path))
@@ -320,12 +356,59 @@ namespace Nethermind.State.Proofs
         }
 
         /// <summary>
+        /// Returns whether the request has enough keys for the sorted lookup, and builds the sorted keys on the first call.
+        /// </summary>
+        private bool EnsureSortedLookup()
+        {
+            if (_sortedStorageKeys is not null) return true;
+            if (_hashedStorageKeys.Length < SortedLookupMinKeys) return false;
+
+            ValueHash256[] sortedKeys = _hashedStorageKeys.AsSpan().ToArray();
+            int[] indices = new int[sortedKeys.Length];
+            for (int i = 0; i < indices.Length; i++) indices[i] = i;
+            Array.Sort(sortedKeys, indices);
+            _sortedStorageKeyIndices = indices;
+            _sortedStorageKeys = sortedKeys;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the first position in the sorted keys whose leading <paramref name="path"/> nibbles are not below the path.
+        /// </summary>
+        private int FirstSortedKeyAtOrAfter(in TreePath path)
+        {
+            ValueHash256[] sortedKeys = _sortedStorageKeys!;
+            int low = 0;
+            int high = sortedKeys.Length;
+            while (low < high)
+            {
+                int middle = low + ((high - low) >> 1);
+                if (ComparePrefix(sortedKeys[middle], path) < 0)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            return low;
+        }
+
+        /// <summary>
+        /// Compares the leading <paramref name="path"/> nibbles of <paramref name="key"/> with the path.
+        /// </summary>
+        private static int ComparePrefix(in ValueHash256 key, in TreePath path)
+        {
+            int length = path.Length;
+            int fullBytes = length / 2;
+            int result = key.Bytes[..fullBytes].SequenceCompareTo(path.Path.Bytes[..fullBytes]);
+            if (result != 0 || (length & 1) == 0) return result;
+            return (key.Bytes[fullBytes] >> 4) - (path.Path.Bytes[fullBytes] >> 4);
+        }
+
+        /// <summary>
         /// Returns true if <paramref name="currentPath"/> is a prefix of <paramref name="targetPath"/>.
         /// An empty path is a prefix of every target.
         /// </summary>
-        private static bool IsPrefix(in ValueHash256 targetPath, TreePath currentPath) =>
-            currentPath.Length <= Hash256.Size * 2
-            && new TreePath(targetPath, Hash256.Size * 2).CompareToTruncated(currentPath, currentPath.Length) == 0;
+        private static bool IsPrefix(in ValueHash256 targetPath, in TreePath currentPath) =>
+            currentPath.Length <= Hash256.Size * 2 && ComparePrefix(targetPath, currentPath) == 0;
 
         /// <summary>
         /// Returns true if the full trie path (context path + leaf node key) exactly equals <paramref name="targetPath"/>.

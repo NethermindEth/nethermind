@@ -541,9 +541,12 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+            Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+        }
     }
 
     [Test]
@@ -727,9 +730,12 @@ public class DepositTransactionBuilderTest
             .TestObject;
 
         Assert.That(depositTransactions.Length, Is.EqualTo(2));
-        Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(depositTransactions[0], Is.EqualTo(expectedTransaction_0).UsingTransactionComparer());
 
-        Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+            Assert.That(depositTransactions[1], Is.EqualTo(expectedTransaction_1).UsingTransactionComparer());
+        }
     }
 
     /// <summary>EIP-8141: the receipt status is the aggregate over the frames, so a deposit is credited exactly

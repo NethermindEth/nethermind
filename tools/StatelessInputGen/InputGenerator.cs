@@ -63,7 +63,7 @@ internal static class InputGenerator
         return 0;
     }
 
-    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests.</summary>
+    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests and the block access list.</summary>
     /// <remarks>Recovery mutates the supplied block: it fills transaction senders, marks the header post-merge,
     /// and attaches execution requests, generated access lists and account changes from replay.</remarks>
     internal static async Task<byte[]?> EncodeInput(
@@ -76,7 +76,7 @@ internal static class InputGenerator
             return null;
         }
 
-        await RecoverExecutionRequests(block, witness, specProvider, cancellationToken);
+        await RecoverByReplay(block, witness, specProvider, cancellationToken);
 
         // Only Amsterdam has a schema of its own; earlier forks share the current-fork schema.
         bool isAmsterdam = fork == ProtocolFork.Amsterdam;
@@ -125,15 +125,19 @@ internal static class InputGenerator
             AnsiConsole.MarkupLine($"[yellow]Beacon requests unusable ({error.EscapeMarkup()}), recovering them by replay[/]");
     }
 
-    private static async Task RecoverExecutionRequests(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
+    private static async Task RecoverByReplay(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
     {
-        // EIP-7685 request bodies are absent from block RLP; only their hash survives debug_getRawBlock.
-        if (!NeedsExecutionRequests(block))
+        // EIP-7685 request bodies and the EIP-7928 access list are absent from block RLP;
+        // only their hashes survive debug_getRawBlock.
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        bool needsRequests = NeedsExecutionRequests(block);
+        bool needsBlockAccessList = spec.BlockLevelAccessListsEnabled &&
+            block.EncodedBlockAccessList is null && block.BlockAccessList is null;
+        if (!needsRequests && !needsBlockAccessList)
             return;
 
         cancellationToken.ThrowIfCancellationRequested();
-        IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        if (!spec.RequestsEnabled)
+        if (needsRequests && !spec.RequestsEnabled)
             throw new InvalidDataException($"Cannot recover execution requests for block {block.Number}: {spec.Name} does not enable execution requests. Check the configured fork schedule.");
 
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();

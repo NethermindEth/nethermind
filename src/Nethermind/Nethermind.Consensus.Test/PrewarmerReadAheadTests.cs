@@ -206,7 +206,9 @@ public class PrewarmerReadAheadTests
             Assert.That(discovery.Wait(TimeSpan.FromSeconds(1)), Is.False, "a run of the transaction block processing is executing goes on");
             preWarmer.OnBeforeTxExecution();
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
             Assert.That(discovery.Wait(TimeSpan.FromSeconds(5)), Is.True, "the run stops once block processing has finished the transaction");
+#pragma warning restore NUnit2045
             Assert.That(_caches.StorageCache.TryGetValue(LongLoopFirstRead, out _), Is.False, "an overtaken run puts nothing it read into the caches");
         }
         finally
@@ -239,7 +241,9 @@ public class PrewarmerReadAheadTests
             preWarmer.OnBeforeTxExecution();
             preWarmer.OnBeforeTxExecution();
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
             Assert.That(discovery.Wait(Timeout), Is.True, "precondition: the run stops once block processing has finished the transaction");
+#pragma warning restore NUnit2045
             Assert.That(Volatile.Read(ref cells.Value), Is.EqualTo(Budget));
         }
         finally
@@ -572,7 +576,9 @@ public class PrewarmerReadAheadTests
             Assert.That(SpinWait.SpinUntil(() => _caches.ColdReadObserver is null, Timeout), Is.True, "the session has entered Close");
             bool endedBeforeRelease = end.Wait(TimeSpan.FromSeconds(1));
             envs.Release.Set();
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(envs.Returned.Wait(Timeout), Is.True, "the read-ahead returns its environment after cancellation");
+#pragma warning restore NUnit2045
             Assert.That(end.Wait(Timeout), Is.True, "the session joins the released read-ahead");
 
             int accounts = _caches.StateCache.SnapshotForTests().Count;
