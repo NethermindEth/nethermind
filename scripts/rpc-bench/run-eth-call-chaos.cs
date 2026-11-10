@@ -55,7 +55,7 @@ try
     await BenchmarkProcess.RunAsync("docker", ["rm", "-f", container], cancellation.Token);
     var arguments = new List<string> { "run", "-d", "--name", container, "--network", "host", "-v", work + ":/work", "-w", "/work/src/src/EthCallChaos" };
     foreach (var value in new[] { "ASPNETCORE_ENVIRONMENT=Production", "ASPNETCORE_URLS=http://127.0.0.1:" + port, "Kestrel__Endpoints__Http__Url=http://127.0.0.1:" + port, "DOTNET_CLI_HOME=/work", "NUGET_PACKAGES=/work/.nuget", "Rpc__NodeUrl=" + url, "Rpc__MaxCallsPerSecond=" + rate, "Rpc__MaxParallelCalls=" + parallel, "Validation__MinMeanThresholdMs=" + Get("ECC_MIN_MEAN_MS", "1"), "Validation__MaxCoefficientOfVariation=" + Get("ECC_MAX_CV", "10"), "ConnectionStrings__Sqlite=Data Source=/work/bench.db", "Storage__ConnectionString=Data Source=/work/bench.db" }) arguments.AddRange(["-e", value]);
-    arguments.AddRange([Get("SDK_IMAGE", "mcr.microsoft.com/dotnet/sdk:10.0"), "bash", "-lc", "dotnet run -c Release"]);
+    arguments.AddRange([Get("SDK_IMAGE", "mcr.microsoft.com/dotnet/sdk:11.0"), "bash", "-lc", "dotnet run -c Release"]);
     launched = true;
     await Required("docker", arguments);
     var api = "http://localhost:" + port;
