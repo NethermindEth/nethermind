@@ -98,7 +98,7 @@ public sealed class PbtAnchorImport(
     /// <summary>Whether a provenance is stored, refusing one other than <paramref name="provenance"/>.</summary>
     /// <exception cref="InvalidDataException">The stored provenance differs, with <paramref name="mismatchMessage"/>.</exception>
     private bool HasProvenance(byte[] provenance, string mismatchMessage) =>
-        targetDb.GetColumnDb(PbtColumns.Metadata).TryGet(_provenanceKey, static (prepared, expected) =>
+        targetDb.GetColumnDb(PbtColumns.Metadata).TryGet(_provenanceKey, ReadFlags.None, static (prepared, expected) =>
         {
             if (!prepared.SequenceEqual(expected.provenance))
                 throw new InvalidDataException(expected.mismatchMessage);

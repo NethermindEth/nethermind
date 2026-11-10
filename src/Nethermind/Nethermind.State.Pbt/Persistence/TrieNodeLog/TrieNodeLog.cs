@@ -337,9 +337,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                     : inner.GetOwnedMemory(key, flags);
             }
 
-            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
                 where TArg : allows ref struct =>
-                TryGet(key, action, arg, out bool tombstone) ? !tombstone : inner.TryGet(key, action, arg, flags);
+                TryGet(key, action, arg, out bool tombstone) ? !tombstone : inner.TryGet(key, flags, action, arg);
 
             /// <summary>The first level, then its second-level shard, which follows the first-level views.</summary>
             private bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone)

@@ -44,11 +44,11 @@ public class PbtRocksDbPersistence(
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         int epoch = 0;
-        bool hasEpoch = metadata.TryGet(SchemaEpochKey, static (value, epoch) => epoch.Value = value.Length == sizeof(int)
+        bool hasEpoch = metadata.TryGet(SchemaEpochKey, ReadFlags.None, static (value, epoch) => epoch.Value = value.Length == sizeof(int)
             ? BinaryPrimitives.ReadInt32BigEndian(value)
             : throw new InvalidDataException("Malformed PBT schema epoch. Rebuild or re-import into a new pbt database."), new PbtReadResult<int>(ref epoch));
-        bool hasCurrentState = metadata.TryGet(CurrentStateKey, static (value, _) => DecodeCurrentState(value), 0);
-        bool hasValidity = metadata.TryGet(ValidStateKey, static (value, _) => ValidateValidity(value), 0);
+        bool hasCurrentState = metadata.TryGet(CurrentStateKey, ReadFlags.None, static (value, _) => DecodeCurrentState(value), 0);
+        bool hasValidity = metadata.TryGet(ValidStateKey, ReadFlags.None, static (value, _) => ValidateValidity(value), 0);
 
         if (!hasEpoch)
         {
@@ -133,7 +133,7 @@ public class PbtRocksDbPersistence(
     private static (StateId State, ValueHash256 Root) ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
         (StateId State, ValueHash256 Root) current = (StateId.PreGenesis, default);
-        metadata.TryGet(CurrentStateKey, static (value, current) => current.Value = DecodeCurrentState(value), new PbtReadResult<(StateId, ValueHash256)>(ref current));
+        metadata.TryGet(CurrentStateKey, ReadFlags.None, static (value, current) => current.Value = DecodeCurrentState(value), new PbtReadResult<(StateId, ValueHash256)>(ref current));
         return current;
     }
 
@@ -187,7 +187,7 @@ public class PbtRocksDbPersistence(
         public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
             PbtAccount? account = null;
-            _accounts.TryGet(addressHash.Bytes, static (value, account) => account.Value = PbtAccount.Decode(value), new PbtReadResult<PbtAccount?>(ref account));
+            _accounts.TryGet(addressHash.Bytes, ReadFlags.None, static (value, account) => account.Value = PbtAccount.Decode(value), new PbtReadResult<PbtAccount?>(ref account));
             return account;
         }
 
@@ -195,14 +195,14 @@ public class PbtRocksDbPersistence(
         {
             Span<byte> persistedKey = stackalloc byte[TKey.Capacity];
             PackedSlotRun run = SlotRun.Empty;
-            _storages.TryGet(PbtStorageKeyLayout.Encode(runKey, persistedKey), static (value, run) => run.Value = SlotRun.Decode(value), new PbtReadResult<PackedSlotRun>(ref run));
+            _storages.TryGet(PbtStorageKeyLayout.Encode(runKey, persistedKey), ReadFlags.None, static (value, run) => run.Value = SlotRun.Decode(value), new PbtReadResult<PackedSlotRun>(ref run));
             return run;
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash)
         {
             CodeInfo? code = null;
-            _codes.TryGet(codeHash.Bytes, static (value, code) => code.Value = new CodeInfo(value.ToArray()), new PbtReadResult<CodeInfo?>(ref code));
+            _codes.TryGet(codeHash.Bytes, ReadFlags.None, static (value, code) => code.Value = new CodeInfo(value.ToArray()), new PbtReadResult<CodeInfo?>(ref code));
             return code;
         }
 
@@ -211,7 +211,7 @@ public class PbtRocksDbPersistence(
         {
             PbtColumns column = NodeGroupColumn(groupKey);
             // A group was validated as it was written.
-            return GetNodeGroupColumn(column).TryGet(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]), action, arg);
+            return GetNodeGroupColumn(column).TryGet(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]), ReadFlags.None, action, arg);
         }
 
         private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch

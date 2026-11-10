@@ -136,25 +136,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
-    /// <inheritdoc/>
-    /// <remarks>Lends the value pinned as read with this reader's options, so a snapshot's reader lends its snapshot's version.</remarks>
-    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
-        where TArg : allows ref struct
-    {
-        ReadOnlySpan<byte> value = _mainDb.GetNativeSlice(key, _columnFamily, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options, out nint handle);
-        if (value.IsNull()) return false;
-
-        try
-        {
-            action(value, arg);
-            return true;
-        }
-        finally
-        {
-            _mainDb.DangerousReleaseHandle(handle);
-        }
-    }
-
     public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
 
     public bool IsCached(ReadOnlySpan<byte> key) => _mainDb.IsCached(key, _columnFamily);

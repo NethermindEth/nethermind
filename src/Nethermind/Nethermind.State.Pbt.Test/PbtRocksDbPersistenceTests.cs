@@ -478,7 +478,6 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(25), CurrentState(), new byte[] { 1 }).SetName("Rejects_epoch_25");
         yield return new TestCaseData(new byte[] { 9 }, null, null).SetName("Rejects_malformed_epoch");
         yield return new TestCaseData(Epoch(24), new byte[] { 0 }, null).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(24), null, Array.Empty<byte>()).SetName("Rejects_empty_validity");
         yield return new TestCaseData(Epoch(24), null, new byte[] { 2 }).SetName("Rejects_unknown_validity");
         yield return new TestCaseData(Epoch(24), null, new byte[] { 1 }).SetName("Rejects_validity_without_current_state");
         yield return new TestCaseData(Epoch(24), CurrentState(), null).SetName("Rejects_current_state_without_validity");

@@ -212,7 +212,7 @@ public class ColumnsDbTests
         byte[]? Read(byte[] readKey)
         {
             StrongBox<byte[]?> value = new();
-            reader.TryGet(readKey, static (span, value) => value.Value = span.ToArray(), value);
+            reader.TryGet(readKey, ReadFlags.None, static (span, value) => value.Value = span.ToArray(), value);
             return value.Value;
         }
     }

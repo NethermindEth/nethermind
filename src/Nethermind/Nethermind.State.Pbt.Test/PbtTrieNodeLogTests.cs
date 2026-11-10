@@ -220,9 +220,9 @@ public class PbtTrieNodeLogTests
         IReadOnlyKeyValueStore topGroups = view.GetColumn(ColumnOf(TopKey));
 
         byte[] loaded = new byte[length];
-        bool found = topGroups.TryGet(TopKey, CopyTo, loaded);
+        bool found = topGroups.TryGet(TopKey, ReadFlags.None, CopyTo, loaded);
         long allocated = GC.GetAllocatedBytesForCurrentThread();
-        topGroups.TryGet(TopKey, CopyTo, loaded);
+        topGroups.TryGet(TopKey, ReadFlags.None, CopyTo, loaded);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         byte[] unlogged = new byte[Value2.Length];
 
@@ -231,8 +231,8 @@ public class PbtTrieNodeLogTests
             Assert.That(found, Is.True);
             Assert.That(loaded, Is.EqualTo(value));
             Assert.That(allocated, Is.Zero, "a logged value is passed without a copy of its own once the pool is warm");
-            Assert.That(view.GetColumn(ColumnOf(AccountKey)).TryGet(AccountKey, CopyTo, loaded), Is.False, "the tombstone hides the RocksDB value");
-            Assert.That(topGroups.TryGet(ColdKey, CopyTo, unlogged), Is.True, "a key the log does not hold is read from the snapshot");
+            Assert.That(view.GetColumn(ColumnOf(AccountKey)).TryGet(AccountKey, ReadFlags.None, CopyTo, loaded), Is.False, "the tombstone hides the RocksDB value");
+            Assert.That(topGroups.TryGet(ColdKey, ReadFlags.None, CopyTo, unlogged), Is.True, "a key the log does not hold is read from the snapshot");
             Assert.That(unlogged, Is.EqualTo(Value2));
         }
     }

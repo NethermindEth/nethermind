@@ -630,7 +630,7 @@ public sealed class TrieNodeLogShard : IAsyncDisposable
     public static ulong ReadUInt64(IReadOnlyKeyValueStore metadata, byte[] key)
     {
         ulong value = 0;
-        metadata.TryGet(key, static (bytes, value) => value.Value = bytes.Length == sizeof(ulong) ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0,
+        metadata.TryGet(key, ReadFlags.None, static (bytes, value) => value.Value = bytes.Length == sizeof(ulong) ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0,
             new PbtReadResult<ulong>(ref value));
         return value;
     }
