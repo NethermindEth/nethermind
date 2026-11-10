@@ -1378,7 +1378,7 @@ public class JsonRpcServiceTests
         if (rentalFailure)
         {
             IRpcModulePool<IMetadataTestRpcModule> pool = Substitute.For<IRpcModulePool<IMetadataTestRpcModule>>();
-            pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IMetadataTestRpcModule>(failure));
+            pool.GetModule(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IMetadataTestRpcModule>(failure));
             return TestRequestWithPool(pool, "test_string", "x");
         }
 
