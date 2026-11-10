@@ -28,6 +28,9 @@ public partial class PatriciaTree
     /// every write that ends its climb early.</remarks>
     private static bool ReleasesPoppedFrames => false;
 
+    // Whether the last write that deleted a leaf, which alone collapses a branch, was to a secured trie.
+    private bool _deletedFromSecuredTrie;
+
     /// <summary>Whether a trie write that changes a level unseals every ancestor still on its stack at once.</summary>
     /// <remarks>
     /// Once a level takes a changed child, every level above it does too, and here <see cref="TrieNode.Unseal"/> leaves the
@@ -91,6 +94,7 @@ public partial class PatriciaTree
         TrieNode? originalNode = node;
         int originalPathLength = path.Length;
         int nibbleCount = 2 * key.Length;
+        bool isSecured = nibbleCount == SecuredTrieNodeValidator.KeyNibbles;
         int consumed = 0;
 
         while (true)
@@ -101,7 +105,7 @@ public partial class PatriciaTree
                 break;
             }
 
-            node.ResolveNode(TrieStore, path);
+            ResolveReachedNode(node, path, consumed, isSecured);
 
             if (!node.IsBranch)
             {
@@ -129,12 +133,14 @@ public partial class PatriciaTree
                         });
 
                         consumed += keyLength;
+                        if (isSecured) ResolveExtensionChild(extensionChild, path, consumed);
                         node = extensionChild;
                         continue;
                     }
 
                     if (value.IsNullOrEmpty)
                     {
+                        _deletedFromSecuredTrie = isSecured;
                         node = null;
                     }
                     else if (node.Value.AsSpan().SequenceEqual(value.AsSpan()))
@@ -229,10 +235,11 @@ public partial class PatriciaTree
     {
         TreePath path = TreePath.Empty;
         int nibbleCount = 2 * key.Length;
+        bool isSecured = nibbleCount == SecuredTrieNodeValidator.KeyNibbles;
         int consumed = 0;
         while (node is not null)
         {
-            node.ResolveNode(TrieStore, path);
+            ResolveReachedNode(node, path, consumed, isSecured);
             INodeData? data = node.NodeData;
             if (data is BranchData)
             {
@@ -255,10 +262,49 @@ public partial class PatriciaTree
 
                 consumed += extensionKey.Length;
                 node = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                if (isSecured) ResolveExtensionChild(node, path, consumed);
             }
         }
 
         return default;
+    }
+
+    /// <summary>Decodes <paramref name="node"/> if a walk reaches it first, and then checks it <paramref name="depth"/> nibbles
+    /// below the root where <paramref name="isSecured"/>.</summary>
+    /// <remarks>
+    /// The state and storage tries, the only ones keyed by keccak, are the ones read from the witness. A node decoded once stays
+    /// decoded, so each is checked once, as the spec checks a witness node once a trie operation first reaches it (see
+    /// <see cref="SecuredTrieNodeValidator"/>). The nodes a block writes are built by the trie, not decoded.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ResolveReachedNode(TrieNode node, in TreePath path, int depth, bool isSecured)
+    {
+        if (node.NodeType != NodeType.Unknown) return;
+
+        node.ResolveNode(TrieStore, path);
+        if (isSecured) SecuredTrieNodeValidator.Validate(node.FullRlp.AsSpan(), depth, isHashed: node.Keccak is not null);
+    }
+
+    /// <summary>Decodes the child a walk reaches through an extension, <paramref name="depth"/> nibbles below the root of a secured
+    /// trie, and rejects it unless it is a branch.</summary>
+    private void ResolveExtensionChild(TrieNode? child, in TreePath path, int depth)
+    {
+        // The extension's own check rejects an empty child reference.
+        ResolveReachedNode(child!, path, depth, isSecured: true);
+        if (!child!.IsBranch) SecuredTrieNodeValidator.ThrowInvalidNode();
+    }
+
+    /// <remarks>Only after a delete from a secured trie. The child sits one level below the branch, whose depth the frames of
+    /// its ancestors add up to, and is checked if the collapse is the first operation to reach it.</remarks>
+    partial void ValidateCollapsingChild(TraverseStack ancestors, TrieNode branch)
+    {
+        if (!_deletedFromSecuredTrie || branch.FindOnlyChild() is not (>= 0 and var index)) return;
+
+        int depth = 1;
+        foreach (TraverseStackFrame frame in ancestors.Frames) depth += frame.Node.IsExtension ? frame.Node.Key!.Length : 1;
+
+        TreePath path = TreePath.Empty;
+        ResolveReachedNode(branch.GetChildWithChildPath(TrieStore, ref path, index)!, path, depth, isSecured: true);
     }
 
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;

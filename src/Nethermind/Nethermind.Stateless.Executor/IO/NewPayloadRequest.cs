@@ -14,13 +14,20 @@ namespace Nethermind.Stateless.Execution.IO;
 public partial class NewPayloadRequest<TExecutionPayload>
     where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
 {
+    /// <summary>The consensus layer's <c>MAX_BLOB_COMMITMENTS_PER_BLOCK</c>, which caps <see cref="VersionedHashes"/>.</summary>
+    private const ulong MaxBlobCommitmentsPerBlock = 4096;
+
+    [SszField(0)]
     public TExecutionPayload ExecutionPayload { get; set; } = default!;
 
-    [SszProgressiveList]
+    [SszField(1)]
+    [SszList(MaxBlobCommitmentsPerBlock)]
     public Hash256[] VersionedHashes { get; set; } = [];
 
+    [SszField(2)]
     public Hash256 ParentBeaconBlockRoot { get; set; } = null!;
 
+    [SszField(3)]
     public SszExecutionRequests ExecutionRequests { get; set; }
 
     public static NewPayloadRequest<TExecutionPayload> From(Block block, TExecutionPayload payload)

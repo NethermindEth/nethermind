@@ -221,6 +221,33 @@ public class StatelessSchemaTests
         }
     }
 
+    /// <remarks>The list is grown past the cap in the encoding itself, as the encoder refuses to write it.</remarks>
+    [Test]
+    public void Versioned_hashes_are_capped_at_the_blob_commitment_limit([Values(4096, 4097)] int count)
+    {
+        const int Cap = 4096;
+        NewPayloadRequest<SszExecutionPayload> request = new()
+        {
+            ExecutionPayload = new SszExecutionPayload(),
+            VersionedHashes = new Hash256[Cap],
+            ParentBeaconBlockRoot = Hash256.Zero,
+            ExecutionRequests = new() { Deposits = [], Withdrawals = [], Consolidations = [], BuilderDeposits = [], BuilderExits = [] }
+        };
+        Array.Fill(request.VersionedHashes, Hash256.Zero);
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(request);
+
+        // The fixed part holds the payload's and the hashes' offsets, the parent beacon block root, then the requests' offset,
+        // which is where the hashes end.
+        const int RequestsOffsetPosition = 2 * sizeof(uint) + Hash256.Size;
+        int hashesEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(RequestsOffsetPosition));
+        int extraBytes = (count - Cap) * Hash256.Size;
+        byte[] grown = [.. encoded.AsSpan(0, hashesEnd), .. new byte[extraBytes], .. encoded.AsSpan(hashesEnd)];
+        BinaryPrimitives.WriteUInt32LittleEndian(grown.AsSpan(RequestsOffsetPosition), (uint)(hashesEnd + extraBytes));
+
+        Assert.That(() => NewPayloadRequest<SszExecutionPayload>.Decode(grown, out NewPayloadRequest<SszExecutionPayload> _),
+            count > Cap ? Throws.TypeOf<InvalidDataException>() : Throws.Nothing);
+    }
+
     [TestCaseSource(nameof(BlobVersionedHashCases))]
     public bool Blob_versioned_hashes_must_match_in_payload_order(Transaction[] transactions, Hash256[] expected) =>
         StatelessExecutor.BlobVersionedHashesMatch(transactions, expected);
