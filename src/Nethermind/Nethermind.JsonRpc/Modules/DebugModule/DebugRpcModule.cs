@@ -1060,6 +1060,8 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
+        if (headerError is null && header!.IsGenesis)
+            return GetGenesisFileTraceFailure(header, options);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1079,6 +1081,8 @@ public class DebugRpcModule(
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, badBlocksOnly: true);
+        if (headerError is null && header!.IsGenesis)
+            return GetGenesisFileTraceFailure(header, options, badBlocksOnly: true);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1093,6 +1097,34 @@ public class DebugRpcModule(
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
+    }
+
+    private ResultWrapper<IEnumerable<string>> GetGenesisFileTraceFailure(BlockHeader header, GethTraceOptions? options, bool badBlocksOnly = false)
+    {
+        // Geth checks a nonzero transaction filter before rejecting genesis.
+        if (options?.TxHash is { } txHash && txHash != Hash256.Zero)
+        {
+            if (badBlocksOnly)
+            {
+                foreach (Block block in debugBridge.GetBadBlocks())
+                    if (ContainsTransaction(block, header.Hash!, txHash))
+                        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+            }
+            else if (ContainsTransaction(blockFinder.FindBlock(header.Hash!, header.Number), header.Hash!, txHash))
+            {
+                return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+            }
+            return ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput);
+        }
+        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
+
+        static bool ContainsTransaction(Block? block, Hash256 blockHash, Hash256 txHash)
+        {
+            if (block is null || block.Hash != blockHash) return false;
+            foreach (Transaction transaction in block.Transactions)
+                if (transaction.Hash == txHash) return true;
+            return false;
+        }
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
