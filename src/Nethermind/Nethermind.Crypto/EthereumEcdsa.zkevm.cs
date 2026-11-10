@@ -54,7 +54,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         byte recoveryId,
         ReadOnlySpan<byte> message,
         Span<byte> publicKey
-        ) => Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey) == Accelerators.Status.OK;
+        ) => (ZiskFlag.IsActive
+            ? Accelerators.ZiskSecP256k1Recover(message, signature, recoveryId, publicKey)
+            : Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey)) == Accelerators.Status.OK;
 
     /// <summary>Sets the sender of each of <paramref name="transactions"/> from its signature, all in one call.</summary>
     /// <param name="transactions">The transactions, signed.</param>

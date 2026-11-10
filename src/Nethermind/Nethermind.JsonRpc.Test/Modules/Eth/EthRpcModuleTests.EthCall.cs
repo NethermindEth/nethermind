@@ -740,16 +740,42 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_methods_share_empty_creation_defaults(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        ctx.Test.Container.Resolve<IJsonRpcConfig>().EstimateErrorMargin = 0;
+        string response = await ctx.Test.TestEthRpc(method,
+            new { from = TestItem.AddressA.ToString(), gas = "0x186a0" }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            if (method == "eth_createAccessList")
+            {
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo("0xcf08"), response);
+                Assert.That(json["result"]?["accessList"], Is.Empty, response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"], Is.EqualTo(method == "eth_call" ? "0x" : "0xcf08"), response);
+            }
+        }
+    }
+
+
+    [Test]
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
+        LegacyTransactionForRpc transaction = new()
         {
-            From = TestItem.AddressA
+            From = TestItem.AddressA,
+            Gas = 100_000
         };
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]
@@ -1432,7 +1458,7 @@ public partial class EthRpcModuleTests
 
     [TestCase(null)]
     [TestCase(new byte[0])]
-    public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)
+    public async Task Eth_call_to_is_null_with_empty_initcode_creates_a_contract(byte[]? data)
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction
@@ -1445,7 +1471,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]

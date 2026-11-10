@@ -107,7 +107,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = GetTracer(tracerCode);
         Action trace = () => ExecuteBlock(tracer, MStore());
-        Assert.That(trace, Throws.TypeOf<ArgumentException>());
+        Assert.That(trace, Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCase("fe", "INVALID")]
@@ -506,16 +506,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("flatCallTracer")]
-    [TestCase("noSuchTracer.js")]
-    [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase("callTracer_legacy.tracer")]
     [TestCase(null)]
     [TestCase("{ ) }")]
     public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
         Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("callTracer_legacy.tracer")]
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
@@ -2526,7 +2526,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                                  });
                                                  return this.trace;
                                              },
-                                             fault: this.step
+                                             fault: function(log, db) { this.step(log, db); }
                                          }
                                          """;
 }
@@ -2952,6 +2952,35 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
         string result = RunTrace(block, transaction, ErrorTracer, out GethLikeTxTrace native);
         using (native)
             Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expected })));
+    }
+
+    [Test]
+    public void Depth_rejected_call_emits_balanced_callbacks_without_fault(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode)
+    {
+        Prepare builder = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0);
+        if (opcode is Instruction.CALL or Instruction.CALLCODE) builder = builder.PushData(0);
+        byte[] code = builder.PushData(Recipient).Op(Instruction.GAS).Op(opcode).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((1UL, 0), 1_000_000_000_000UL, code,
+            blockGasLimit: 1_000_000_000_000UL);
+        const string tracer = """
+            {
+                enters: 0, exits: 0, faults: 0, rejected: [], deep: 0,
+                step: function(log) {
+                    if (log.getDepth() == 1025 && log.op.toNumber() >= 0xf0 && !log.getError()) this.deep++;
+                },
+                fault: function(log) { this.faults++; },
+                enter: function(frame) { this.enters++; },
+                exit: function(frame) {
+                    this.exits++;
+                    if (frame.getError()) this.rejected.push([frame.getGasUsed(), frame.getError()]);
+                },
+                result: function() { return [this.enters, this.exits, this.faults, this.rejected, this.deep]; }
+            }
+            """;
+        string result = RunTrace(block, transaction, tracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo("[1025,1025,0,[[0,\"max call depth exceeded\"]],1]"));
     }
 
     private const string ErrorTracer = """
