@@ -74,6 +74,43 @@ public partial class EthRpcModuleTests
             Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"));
 
     [Test]
+    public async Task Empty_creation_submission_checks_fees_before_data_and_data_before_estimation(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values] bool suppliedGas,
+        [Values("valid", "zero-price", "fee-order")] string feeKind)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        JsonObject request = new()
+        {
+            ["from"] = HeldAccount,
+            ["nonce"] = "0x0",
+        };
+        if (suppliedGas) request["gas"] = "0x186a0";
+        if (feeKind == "fee-order")
+        {
+            request["maxFeePerGas"] = "0x1";
+            request["maxPriorityFeePerGas"] = "0x2";
+        }
+        else
+        {
+            request["gasPrice"] = feeKind == "zero-price" ? "0x0" : "0x3b9aca00";
+        }
+        string expected = method == "eth_signTransaction" && !suppliedGas ? "gas not specified"
+            : feeKind == "zero-price" ? "gasPrice must be non-zero after london fork"
+            : feeKind == "fee-order" ? "maxFeePerGas (0x1) < maxPriorityFeePerGas (0x2)"
+            : "contract creation without any data provided";
+        string serialized = await ctx.Test.TestEthRpc(method, JsonSerializer.Deserialize<object>(request.ToJsonString()));
+        JToken json = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), serialized);
+            Assert.That(json["result"], Is.Null, serialized);
+        }
+    }
+
+    [Test]
     public async Task Fill_fee_cap_below_the_suggested_priority_fee_is_reported_in_hexadecimal()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();

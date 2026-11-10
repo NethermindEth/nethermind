@@ -408,6 +408,36 @@ public class TransactionForRpcTests
         Assert.That(DeserializeTransactionForRpc(json).ToValidatedTransaction().Error, Is.EqualTo(expected), "first failing check");
 
     [Test]
+    public void Empty_creation_is_allowed_only_for_calls(
+        [Values("{}", """{"gasPrice":"0x1"}""", """{"accessList":[]}""", """{"maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""")] string fields,
+        [Values] bool emptyInput)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(fields);
+        LegacyTransactionForRpc legacy = (LegacyTransactionForRpc)rpc;
+        if (emptyInput) legacy.Input = [];
+        Result<Transaction> call = rpc.ToCallTransaction(Prague.Instance);
+        Assert.That(call.IsError, Is.False, call.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Data!.IsContractCreation, Is.True);
+            Assert.That(call.Data.Data.IsEmpty, Is.True);
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+            Assert.That(legacy.To, Is.Null);
+            Assert.That(legacy.Input, emptyInput ? Is.Empty : Is.Null);
+        }
+    }
+
+    [Test]
+    public void ToCallTransaction_preserves_recipient_checks_before_fork_and_fee_order(
+        [Values("0x", "0x00")] string input)
+    {
+        TransactionForRpc rpc = DeserializeTransactionForRpc(
+            $$"""{"authorizationList":[],"input":"{{input}}","maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""");
+        Assert.That(rpc.ToCallTransaction(Istanbul.Instance).Error,
+            Is.EqualTo(Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction));
+    }
+
+    [Test]
     public void ToTransaction_with_input_validation_leaves_the_fee_cap_order_to_the_caller()
     {
         TransactionForRpc rpcTx = DeserializeTransactionForRpc(

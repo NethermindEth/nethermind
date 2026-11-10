@@ -81,7 +81,10 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     internal override string? GetSubmissionDataError() =>
         _data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data)
-            ? RpcTransactionErrors.DataAndInputDiffer : null;
+            ? RpcTransactionErrors.DataAndInputDiffer
+            : Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 }
+                ? RpcTransactionErrors.ContractCreationWithoutData
+                : null;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
@@ -138,9 +141,6 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
-            return RpcTransactionErrors.ContractCreationWithoutData;
-
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 

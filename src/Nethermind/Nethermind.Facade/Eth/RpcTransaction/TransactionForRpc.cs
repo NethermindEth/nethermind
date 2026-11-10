@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -102,15 +103,14 @@ public abstract class TransactionForRpc
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
         if (GetSubmissionDataError() is not { } error) return result;
-        if (this is BlobTransactionForRpc { Blobs: null } blob
+        if (error == RpcTransactionErrors.DataAndInputDiffer
+            && this is BlobTransactionForRpc { Blobs: null } blob
             && result.Error is RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx)
         {
             Result<Transaction> preceding = CheckFeeCapOrder(blob.ToTransactionBeforeBlobFields(gasCap, spec));
-            if (preceding.IsError && preceding.Error != RpcTransactionErrors.ContractCreationWithoutData) return preceding;
-            return Result<Transaction>.Fail(error);
+            return preceding.IsError ? preceding : Result<Transaction>.Fail(error);
         }
-        if (result.IsError && result.Error != RpcTransactionErrors.ContractCreationWithoutData) return result;
-        return Result<Transaction>.Fail(error);
+        return result.IsError ? result : Result<Transaction>.Fail(error);
     }
 
     internal virtual string? GetSubmissionDataError() => null;
@@ -118,7 +118,7 @@ public abstract class TransactionForRpc
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
-        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+        && !result.IsError
             ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
             : result;
 
@@ -138,6 +138,9 @@ public abstract class TransactionForRpc
     public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        if (result.Success(out Transaction? call, out _) && call.SupportsAuthorizationList
+            && SetCodeTxValidation.ValidateNoContractCreation(call) is { Error: { } createError })
+            return createError;
         Result<Transaction> ordered = CheckFeeCapOrder(result);
         if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);

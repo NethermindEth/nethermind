@@ -386,7 +386,7 @@ public partial class EthRpcModule(
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (rpcTx is BlobTransactionForRpc { Blobs: null }
-            && rpcTx.GetSubmissionDataError() is not null
+            && rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer
             && _blockFinder.Head?.Header is { } blobHead
             && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(blobHead).IsEip1559Enabled) is { } blobFeeError)
         {
