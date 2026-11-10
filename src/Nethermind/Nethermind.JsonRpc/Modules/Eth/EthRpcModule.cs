@@ -413,10 +413,16 @@ public partial class EthRpcModule(
 
         tx.ChainId = _blockchainBridge.GetChainId();
 
-        if (tx.Signature is not null && SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
-            return signerError;
-
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
+
+        if (tx.Signature is not null)
+        {
+            // Without a nonce the node picks one and the wallet signs for from, so the request's signature is not kept.
+            if (nonce is null && !tx.SupportsFrames)
+                tx.Signature = null;
+            else if (SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
+                return signerError;
+        }
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return await SendTx(tx, options);
@@ -428,9 +434,14 @@ public partial class EthRpcModule(
     /// </summary>
     /// <param name="from">The request's <c>from</c>, or null when it leaves it out.</param>
     /// <returns>The error that stops the send, or null when the signer is recovered and is <paramref name="from"/>, if given.</returns>
+    /// <remarks>
+    /// Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block processing
+    /// recovers it over the chain id it carries; so does this.
+    /// </remarks>
     private ResultWrapper<Hash256>? SendAsSigner(Transaction tx, Address? from)
     {
-        if (_blockchainBridge.RecoverTxSender(tx) is not { } signer)
+        IReleaseSpec spec = _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : _specProvider.GenesisSpec;
+        if (_blockchainBridge.RecoverTxSender(tx, useSignatureChainId: !spec.ValidateChainId) is not { } signer)
             return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
 
         if (from is not null && from != signer)

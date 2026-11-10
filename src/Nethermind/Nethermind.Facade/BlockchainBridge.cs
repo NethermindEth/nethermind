@@ -924,7 +924,7 @@ namespace Nethermind.Facade
         /// <summary>Whether a legacy signature's own chain id recovers the sender, as the receipts recovery does.</summary>
         private bool UsesSignatureChainId(BlockHeader header) => !specProvider.GetSpec(header).ValidateChainId;
 
-        private Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
+        public Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
             ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
         public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>

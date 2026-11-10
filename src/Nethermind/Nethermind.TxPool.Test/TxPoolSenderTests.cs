@@ -5,9 +5,12 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -95,7 +98,46 @@ public class TxPoolSenderTests
         }
     }
 
-    private static TxPoolSender BuildSender(out INonceManager nonceManager, ITxPool txPool = null, ITxSigner signer = null, IEthereumEcdsa ecdsa = null)
+    public enum GivenSender { Signer, AddressRecoveredWithoutTheSignatureChainId, None }
+
+    /// <remarks>
+    /// Where the spec does not validate chain ids, the pool accepts a legacy signature made for another chain, and block
+    /// processing recovers its signer over the chain id the signature carries.
+    /// </remarks>
+    [TestCase(GivenSender.Signer, true)]
+    [TestCase(GivenSender.AddressRecoveredWithoutTheSignatureChainId, false)]
+    [TestCase(GivenSender.None, true)]
+    public void Legacy_signature_for_another_chain_is_sent_only_as_its_signer_where_chain_ids_are_not_validated(GivenSender given, bool accepted)
+    {
+        EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        TxPoolSender sender = BuildSender(out INonceManager _, txPool, ecdsa: ecdsa,
+            spec: new OverridableReleaseSpec(SpuriousDragon.Instance) { ValidateChainId = false });
+        Transaction tx = Build.A.Transaction.WithNonce(0).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId + 1), TestItem.PrivateKeyA).TestObject;
+        Address otherAddress = ecdsa.RecoverAddress(tx);
+        tx.SenderAddress = given switch
+        {
+            GivenSender.Signer => TestItem.AddressA,
+            GivenSender.AddressRecoveredWithoutTheSignatureChainId => otherAddress,
+            _ => null
+        };
+
+        (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.None).Result;
+
+        Address[] submitted = [.. txPool.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name == nameof(ITxPool.SubmitTx))
+            .Select(static call => ((Transaction)call.GetArguments()[0]).SenderAddress)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherAddress, Is.Not.EqualTo(TestItem.AddressA), "precondition: without its chain id the signature recovers another address");
+            Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            Assert.That(submitted, Is.EqualTo(accepted ? new[] { TestItem.AddressA } : Array.Empty<Address>()), "the senders submitted to the pool");
+        }
+    }
+
+    private static TxPoolSender BuildSender(out INonceManager nonceManager, ITxPool txPool = null, ITxSigner signer = null, IEthereumEcdsa ecdsa = null,
+        IReleaseSpec spec = null)
     {
         if (txPool is null)
         {
@@ -110,7 +152,10 @@ public class TxPoolSenderTests
         chainHeadInfoProvider.ReadOnlyStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
         nonceManager = new NonceManager(chainHeadInfoProvider, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
 
-        return new TxPoolSender(txPool, sealer, nonceManager, ecdsa ?? Substitute.For<IEthereumEcdsa>());
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(spec ?? Prague.Instance);
+
+        return new TxPoolSender(txPool, sealer, nonceManager, ecdsa ?? Substitute.For<IEthereumEcdsa>(), specProvider);
     }
 
     private static Transaction FrameTx(ulong nonce, UInt256[] nonceKeys = null) => new()

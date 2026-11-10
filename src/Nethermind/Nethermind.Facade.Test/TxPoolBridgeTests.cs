@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -28,7 +29,7 @@ namespace Nethermind.Facade.Test
             _nonceManager = new NonceManager(Substitute.For<IChainHeadInfoProvider>(), Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
             // The sender checks a signature it keeps against the transaction's sender.
             _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
-            _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
+            _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa, Substitute.For<IChainHeadSpecProvider>());
         }
 
         [Test]

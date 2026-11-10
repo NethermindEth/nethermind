@@ -5,12 +5,13 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool
 {
-    public class TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa) : ITxSender
+    public class TxPoolSender(ITxPool txPool, ITxSealer sealer, INonceManager nonceManager, IEthereumEcdsa ecdsa, IChainHeadSpecProvider specProvider) : ITxSender
     {
         private static readonly AcceptTxResult SenderIsNotSigner = AcceptTxResult.Invalid.WithMessage("sender is not the signer");
 
@@ -18,6 +19,7 @@ namespace Nethermind.TxPool
         private readonly ITxSealer _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
         private readonly INonceManager _nonceManager = nonceManager ?? throw new ArgumentNullException(nameof(nonceManager));
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly IChainHeadSpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
         public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
@@ -27,7 +29,7 @@ namespace Nethermind.TxPool
             bool senderGiven = tx.SenderAddress is not null;
             if (!senderGiven)
             {
-                if (!_ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+                if (!_ecdsa.TryRecoverAddress(tx, out Address? senderAddress, UsesSignatureChainId()))
                 {
                     return new((tx.Hash!, AcceptTxResult.FailedToResolveSender));
                 }
@@ -75,7 +77,14 @@ namespace Nethermind.TxPool
         // so a given sender that is not that account is refused.
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven) =>
             !_sealer.TrySeal(tx, txHandlingOptions) ? AcceptTxResult.SignFailed
-            : senderGiven && tx.Signature is not null && !_ecdsa.Verify(tx.SenderAddress!, tx) ? SenderIsNotSigner
+            : senderGiven && tx.Signature is not null && !IsSignedBySender(tx) ? SenderIsNotSigner
             : _txPool.SubmitTx(tx, txHandlingOptions);
+
+        private bool IsSignedBySender(Transaction tx) =>
+            _ecdsa.TryRecoverAddress(tx, out Address? signer, UsesSignatureChainId()) && signer == tx.SenderAddress;
+
+        // Where the spec does not validate chain ids, the pool accepts a legacy signature for another chain, and block
+        // processing recovers it over the chain id it carries.
+        private bool UsesSignatureChainId() => !_specProvider.GetCurrentHeadSpec().ValidateChainId;
     }
 }

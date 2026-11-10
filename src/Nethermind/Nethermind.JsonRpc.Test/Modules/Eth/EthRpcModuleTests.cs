@@ -2373,7 +2373,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer,
-            ctx.Test.NonceManager, ctx.Test.EthereumEcdsa);
+            ctx.Test.NonceManager, ctx.Test.EthereumEcdsa, ctx.Test.ChainHeadInfoProvider.SpecProvider);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);

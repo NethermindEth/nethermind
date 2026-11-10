@@ -29,6 +29,11 @@ namespace Nethermind.Facade
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
+
+        /// <summary>Recovers the sender of <paramref name="tx"/>, or null when its signature recovers none.</summary>
+        /// <param name="useSignatureChainId">Whether a legacy EIP-155 signature is recovered over the chain id it carries, as
+        /// block processing does where the spec does not validate chain ids.</param>
+        Address? RecoverTxSender(Transaction tx, bool useSignatureChainId);
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
