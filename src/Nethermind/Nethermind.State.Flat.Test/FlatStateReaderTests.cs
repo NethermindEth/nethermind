@@ -18,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -133,8 +134,16 @@ public class FlatStateReaderTests
 
         reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics);
 
+        TrieStats expected = trieReader.CollectStats();
+        // The root branch of two hashes is 83 bytes and each account leaf 107; each storage trie is one 36-byte slot leaf.
+        const long stateSize = 83 + 2 * 107;
+        const long storageSize = 2 * 36;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(collector.Stats.StateSize, Is.EqualTo(stateSize));
+            Assert.That(collector.Stats.StorageSize, Is.EqualTo(storageSize));
+            Assert.That(expected.StateSize, Is.EqualTo(stateSize));
+            Assert.That(expected.StorageSize, Is.EqualTo(storageSize));
             Assert.That(collector.Stats.StateBranchCount, Is.EqualTo(1));
             Assert.That(collector.Stats.AccountCount, Is.EqualTo(2));
             Assert.That(collector.Stats.StorageLeafCount, Is.EqualTo(2));
@@ -143,6 +152,42 @@ public class FlatStateReaderTests
             Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
             Assert.That(diagnostics.NodeLookups, Is.EqualTo(5));
             Assert.That(diagnostics.CacheMisses, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Record_walk_on_one_thread_does_not_allocate([Values] bool fromPersistence)
+    {
+        // Sixteen leaves under a branch, held either in the buffer or only by persistence.
+        Dictionary<TreePath, byte[]> nodes = [];
+        byte[]?[] leaves = new byte[16][];
+        for (int i = 0; i < 16; i++) nodes[TreePath.Empty.Append(i)] = leaves[i] = FlatTestHelpers.LeafRlp((byte)i);
+        byte[] rootRlp = FlatTestHelpers.BranchRlp(leaves);
+        Hash256 rootHash = Keccak.Compute(rootRlp);
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(_header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        if (!fromPersistence)
+        {
+            // The fixture builds the same branch above the leaves.
+            foreach ((TreePath path, byte[] rlp) in nodes) snapshot.Content.SetStateNodeRlp(_buffer, path, rlp);
+            _buffer.SetRoot(null, rootHash, snapshot.Content.StateRootPointer);
+        }
+
+        nodes[TreePath.Empty] = rootRlp;
+        Snapshot? stateSnapshot = fromPersistence ? null : snapshot;
+        using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
+        NodeCounter counter = new();
+        NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
+        walk.Accept(rootHash);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        walk.Accept(rootHash);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(allocated, Is.Zero);
         }
     }
 
@@ -179,6 +224,36 @@ public class FlatStateReaderTests
                 Assert.That(proof.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
             }
         }
+    }
+
+    /// <summary>Serves state trie node RLP by path without allocating.</summary>
+    private sealed class PathRlpReader(Dictionary<TreePath, byte[]> nodes) : SubstitutablePersistenceReader
+    {
+        public override byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => nodes.GetValueOrDefault(path);
+        public override byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public override Account? GetAccount(Address address) => null;
+        public override bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+        public override StateId CurrentState => new(5, Keccak.EmptyTreeHash);
+        public override byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public override bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
+        public override IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public override IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public override bool IsPreimageMode => false;
+        public override void Dispose() { }
+    }
+
+    private sealed class NodeCounter : INodeRecordVisitor<EmptyContext>
+    {
+        public int Nodes;
+        public bool IsFullDbScan => true;
+        public bool ExpectAccounts => false;
+        public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
+        public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }
+        public void VisitMissingNode(in EmptyContext nodeContext, in ValueHash256 nodeHash) => throw new TrieException($"Missing node {nodeHash}");
+        public void VisitBranch(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitExtension(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitLeaf(in EmptyContext nodeContext, NodeRecordRef node) => Nodes++;
+        public void VisitAccount(in EmptyContext nodeContext, NodeRecordRef node, in AccountStruct account) { }
     }
 
     private class ThrowingFlatDbManager : IFlatDbManager
@@ -246,6 +321,14 @@ public class FlatStateReaderTests
 
             stateRoot = stateTree.RootHash;
             return new CountingTrieReader(stateTree, storageTrees);
+        }
+
+        /// <summary>The stats of the tries as <see cref="PatriciaTree.Accept{TNodeContext}"/> hands their nodes to <see cref="TrieStatsCollector"/>.</summary>
+        public TrieStats CollectStats()
+        {
+            TrieStatsCollector collector = new(new MemDb(), LimboLogs.Instance);
+            stateTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), stateTree.RootHash);
+            return collector.Stats;
         }
 
         /// <summary>Records the state nodes at <paramref name="statePaths"/> and the storage root of <paramref name="address"/> in <paramref name="snapshot"/>, indexing both roots as block processing publishes them.</summary>

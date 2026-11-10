@@ -39,6 +39,7 @@ using Nethermind.State;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -392,10 +393,12 @@ public class StatelessInputGeneratorTests
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
         IDbProvider dbProvider = container.Resolve<IDbProvider>();
+        TrieNodeRlpCollector stateNodes = new();
+        new PatriciaTree(new RawScopedTrieStore(container.Resolve<INodeStorage>()), NullLogManager.Instance).Accept(stateNodes, parent.StateRoot!);
         Witness witness = new()
         {
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
-            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllValues()]),
+            State = stateNodes.Nodes,
             Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
         };
@@ -450,4 +453,29 @@ public class StatelessInputGeneratorTests
         Keys = ArrayPoolList<byte[]>.Empty(),
         Headers = new ArrayPoolList<byte[]>(headers ?? [])
     };
+
+    private sealed class TrieNodeRlpCollector : ITreeVisitor<TreePathContextWithStorage>
+    {
+        public ArrayPoolList<byte[]> Nodes { get; } = new(0);
+
+        public bool IsFullDbScan => true;
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash)
+        {
+        }
+
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
+            Assert.Fail($"Missing trie node {nodeHash} at {nodeContext.Path}.");
+
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
+        {
+        }
+    }
 }

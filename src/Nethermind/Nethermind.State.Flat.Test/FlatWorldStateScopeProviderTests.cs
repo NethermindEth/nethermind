@@ -1412,6 +1412,9 @@ public class FlatWorldStateScopeProviderTests
         [Values(48, 512)] int slotsPerContract)
     {
         const int contractCount = 8;
+        // Accounts with storage that no block touches, so some state and storage nodes are read only from persistence.
+        const int untouchedContractCount = 4;
+        const int untouchedContractOffset = 100;
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
         Account baseAccount = new(1, 1);
 
@@ -1425,6 +1428,16 @@ public class FlatWorldStateScopeProviderTests
             expectedStorages[contract].Commit();
             expectedState.Set(TestItem.Addresses[contract], baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        Account[] untouchedAccounts = new Account[untouchedContractCount];
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            Address address = TestItem.Addresses[untouchedContractOffset + i];
+            StorageTree storage = new(expectedStore.GetTrieStore(address.ToAccountPath.ToHash256()), LimboLogs.Instance);
+            for (int slot = 0; slot < slotsPerContract; slot++) storage.Set((UInt256)slot, ((UInt256)(slot + 7)).ToMinimalBigEndian());
+            storage.Commit();
+            untouchedAccounts[i] = baseAccount.WithChangedStorageRoot(storage.RootHash);
+            expectedState.Set(address, untouchedAccounts[i]);
+        }
         expectedState.Commit();
 
         // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node buffer.
@@ -1436,6 +1449,10 @@ public class FlatWorldStateScopeProviderTests
         {
             ctx.PersistenceReader.GetAccount(TestItem.Addresses[contract]).Returns(baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        for (int i = 0; i < untouchedContractCount; i++)
+        {
+            ctx.PersistenceReader.GetAccount(TestItem.Addresses[untouchedContractOffset + i]).Returns(untouchedAccounts[i]);
+        }
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
         ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
@@ -1444,10 +1461,13 @@ public class FlatWorldStateScopeProviderTests
         warmer.Scope = scope;
 
         int lastBlock = blocksBetweenCommits + 2;
-        // The first and last blocks write every contract and the ones in between one each, so the last block
-        // updates tries committed many blocks, and buffer generations, before.
+        // The first block writes every contract, the ones in between one each, and the last block every contract but the
+        // last one. So the last block updates tries committed many blocks, and buffer generations, before, and the newest
+        // snapshot has no storage root for the last contract, which an older snapshot holds.
         (int First, int End) ContractsOf(int block) =>
-            block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
+            block == 1 ? (0, contractCount)
+            : block == lastBlock ? (0, contractCount - 1)
+            : (block % contractCount, block % contractCount + 1);
         UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
 
         for (int block = 1; block <= lastBlock; block++)
@@ -1502,8 +1522,30 @@ public class FlatWorldStateScopeProviderTests
         }
 
         NodeCollector bundleNodes = new();
-        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, VisitingOptions.Default, diagnostics: null);
-        Assert.That(bundleNodes.Nodes, Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+        ctx.SnapshotBundle.RunTreeVisitor(new TreeVisitorAdapter<TreePathContextWithStorage>(bundleNodes), scope.RootHash, VisitingOptions.Default, diagnostics: null);
+        HashSet<string> expectedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes;
+        Assert.That(bundleNodes.Nodes, Is.EquivalentTo(expectedNodes));
+
+        // A read-only bundle over the same snapshots reads every node through the newest snapshot's roots and persistence.
+        SnapshotPooledList snapshots = new(ctx.SnapshotBundle._snapshots.Count);
+        foreach (Snapshot snapshot in ctx.SnapshotBundle._snapshots)
+        {
+            snapshot.AcquireLease();
+            snapshots.Add(snapshot);
+        }
+        using ReadOnlySnapshotBundle readOnly = new(snapshots, ctx.PersistenceReader, false, PersistedSnapshotStack.Empty(), bufferPin: null);
+        OlderSnapshotNodeProbe probe = new(snapshots);
+        new PatriciaTree(new ReadOnlyStateTrieStoreAdapter(readOnly), LimboLogs.Instance).Accept(probe, scope.RootHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshots.Count, Is.GreaterThan(1), "the bundle holds several snapshots");
+            Assert.That(probe.Nodes, Is.EquivalentTo(expectedNodes));
+            // The untouched accounts keep state nodes that only persistence holds, and every block rewrites only part of
+            // each storage trie, so both kinds of lookup miss in the newest snapshot that holds the trie's root.
+            Assert.That(probe.StateMisses, Is.Positive, "some state nodes are only persisted");
+            Assert.That(probe.StorageMisses, Is.Positive, "some storage nodes are only persisted");
+            Assert.That(probe.OlderOnlyHits, Is.Empty, "an older snapshot never holds a node the newest one misses");
+        }
     }
 
     [Test]
@@ -1661,6 +1703,64 @@ public class FlatWorldStateScopeProviderTests
         NodeCollector collector = new();
         new PatriciaTree(store, LimboLogs.Instance).Accept(collector, root);
         return collector;
+    }
+
+    /// <summary>
+    /// Collects the nodes as <see cref="NodeCollector"/> does, and for each node the newest snapshot that holds the trie's root misses,
+    /// records whether an older snapshot would still have returned one at that path.
+    /// </summary>
+    private sealed class OlderSnapshotNodeProbe(SnapshotPooledList snapshots) : ITreeVisitor<TreePathContextWithStorage>
+    {
+        private readonly NodeCollector _collector = new();
+
+        public HashSet<string> Nodes => _collector.Nodes;
+
+        public int StateMisses { get; private set; }
+
+        public int StorageMisses { get; private set; }
+
+        public List<string> OlderOnlyHits { get; } = [];
+
+        public bool IsFullDbScan => false;
+
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash) { }
+
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) => _collector.VisitMissingNode(nodeContext, nodeHash);
+
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Probe(nodeContext, node);
+
+        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
+
+        private void Probe(in TreePathContextWithStorage nodeContext, TrieNode node)
+        {
+            _collector.VisitLeaf(nodeContext, node);
+            if (node.FullRlp.Length < Hash256.Size && nodeContext.Path.Length != 0) return;
+
+            Hash256? storage = nodeContext.Storage;
+            int newest = snapshots.Count - 1;
+            if (storage is not null)
+            {
+                while (newest >= 0 && !snapshots[newest].TryGetStorageRoot(storage, out _)) newest--;
+            }
+
+            if (newest < 0 || Holds(snapshots[newest], storage, nodeContext.Path)) return;
+
+            if (storage is null) StateMisses++;
+            else StorageMisses++;
+            for (int i = newest - 1; i >= 0; i--)
+            {
+                if (Holds(snapshots[i], storage, nodeContext.Path)) OlderOnlyHits.Add($"{storage}/{nodeContext.Path} in snapshot {i} of {snapshots.Count}");
+            }
+        }
+
+        private static bool Holds(Snapshot snapshot, Hash256? storage, in TreePath path) =>
+            storage is null ? snapshot.TryGetStateNode(path, out _) : snapshot.TryGetStorageNode((storage, path), out _);
     }
 
     private sealed class NodeCollector : ITreeVisitor<TreePathContextWithStorage>

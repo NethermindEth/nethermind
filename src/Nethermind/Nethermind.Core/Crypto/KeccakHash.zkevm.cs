@@ -132,6 +132,13 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Unsafe.SkipInit(out ValueHash256 hash);
+            Accelerators.ZiskKeccak256(data, length, (byte*)&hash);
+            return hash;
+        }
+
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         Sponge(ref lane, data, length);
@@ -438,6 +445,13 @@ public sealed partial class KeccakHash
 
                 fixed (byte* data = node)
                 {
+                    if (ZiskFlag.IsActive)
+                    {
+                        // The slot is not pinned: no GC can run before the call returns, as it suppresses the GC transition.
+                        Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                        continue;
+                    }
+
                     Debug.Assert(((nuint)data & 7) == 0);
                     // An array's data is 8-byte aligned; the rounding lets the JIT prove it.
                     Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
@@ -495,6 +509,12 @@ public sealed partial class KeccakHash
 
             fixed (byte* data = node)
             {
+                if (ZiskFlag.IsActive)
+                {
+                    Accelerators.ZiskKeccak256(data, (nuint)node.Length, (byte*)Unsafe.AsPointer(ref hash));
+                    continue;
+                }
+
                 Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
             }
 

@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -53,7 +54,16 @@ public class FlatStateReader(
 
     public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
-    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+        RunTreeVisitor(treeVisitor, new TreeVisitorAdapter<TCtx>(treeVisitor), baseBlock, visitingOptions, diagnostics);
+
+    /// <inheritdoc/>
+    public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
+        RunTreeVisitor(new NodeRecordVisitorAdapter<TCtx>(visitor), visitor, baseBlock, visitingOptions, diagnostics);
+
+    /// <param name="treeVisitor">The visitor as a historical state runs it.</param>
+    /// <param name="recordVisitor">The same visitor as the walk over node records runs it.</param>
+    private void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, INodeRecordVisitor<TCtx> recordVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
     {
         StateId stateId = new(baseBlock);
 
@@ -74,7 +84,7 @@ public class FlatStateReader(
 
         using (reader)
         {
-            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, treeVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
+            NodeRecordBufferVisitor<TCtx> visitor = new(reader, reader.StateSnapshot, recordVisitor, visitingOptions ?? VisitingOptions.Default, diagnostics);
             visitor.Accept(stateId.StateRoot.ToCommitment());
         }
     }

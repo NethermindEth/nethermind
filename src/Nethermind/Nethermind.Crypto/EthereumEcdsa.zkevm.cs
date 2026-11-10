@@ -54,7 +54,9 @@ public sealed class EthereumEcdsa(ulong chainId) : IEthereumEcdsa
         ReadOnlySpan<byte> message,
         Span<byte> publicKey
         ) => _verified?.TryGetKey(signature, recoveryId, message, publicKey) == true
-        || Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey) == Accelerators.Status.OK;
+        || (ZiskFlag.IsActive
+            ? Accelerators.ZiskSecP256k1Recover(message, signature, recoveryId, publicKey)
+            : Accelerators.SecP256k1Recover(message, signature, recoveryId, publicKey)) == Accelerators.Status.OK;
 
     /// <summary>The recoveries <see cref="TryVerifyInBatch"/> checked last, which <see cref="RecoverAddressRaw"/> serves
     /// without recovering.</summary>
