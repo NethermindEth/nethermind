@@ -14,12 +14,6 @@ public interface IKeyperSetManagerContract
     Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index);
 
     /// <summary>
-    /// Gets the current eon.
-    /// </summary>
-    ulong GetNumKeyperSets(BlockHeader blockHeader);
-
-
-    /// <summary>
     /// Gets the keyper set contract address from block number.
     /// </summary>
     /// <param name="blockNumber"></param>

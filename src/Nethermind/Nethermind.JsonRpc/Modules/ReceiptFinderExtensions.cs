@@ -8,7 +8,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Evm;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -27,17 +29,23 @@ namespace Nethermind.JsonRpc.Modules
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
             return searchResult.IsError
                 ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null)
-                : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
+                : receiptFinder.GetBlockReceipts(searchResult.Object, blockFinder, specProvider);
         }
 
-        internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
+        internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             Transaction[] transactions = block.Transactions;
-            TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
+            TxReceipt[] receipts = receiptFinder.Get(block);
+            if (receipts.Length != transactions.Length)
+            {
+                return EthRpcModule.GetMissingReceiptsResult(blockFinder, block);
+            }
+
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            UInt256? feePerBlobGas = null;
             // EIP-8116: logIndex counts within the receipt.
             ReceiptsForRpc<ReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, transaction, logIndexStart) =>
-                target.Populate(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), logIndexStart));
+                target.Populate(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header, ref feePerBlobGas), logIndexStart));
 
             return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
         }

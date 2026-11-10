@@ -36,14 +36,17 @@ public static partial class ExecutionRequestExtensions
         ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
+        Span<byte> hash = stackalloc byte[Hash256.Size];
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(Sha256(requests));
+            Sha256(requests, hash);
+            concatenatedHashes.AddRange(hash);
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(Sha256(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
+        Sha256(concatenatedHashes.AsSpan(), hash);
+        return new Hash256(hash);
     }
 
 
@@ -221,5 +224,5 @@ public static partial class ExecutionRequestExtensions
         }
     }
 
-    private static partial byte[] Sha256(ReadOnlySpan<byte> data);
+    private static partial void Sha256(ReadOnlySpan<byte> data, Span<byte> output);
 }

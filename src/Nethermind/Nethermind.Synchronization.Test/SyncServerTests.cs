@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -62,6 +63,45 @@ public class SyncServerTests
         ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
         Assert.That(result, Is.EqualTo(TestItem.KeccakA));
+    }
+
+    [Test]
+    public void Receipts_are_served_with_a_single_block_load([Values] bool bodyStored, [Values] bool hasTransactions)
+    {
+        Context ctx = new();
+        BlockHeader header = Build.A.BlockHeader
+            .WithTransactionsRoot(hasTransactions ? TestItem.KeccakB : Keccak.EmptyTreeHash)
+            .TestObject;
+        Hash256 hash = header.Hash!;
+        TxReceipt[] stored = [Build.A.Receipt.TestObject];
+        ctx.BlockTree.FindHeader(hash, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        ctx.BlockTree.HasBlock(header.Number, hash).Returns(bodyStored);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(hash).Returns(stored);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+
+        TxReceipt[]? served = server.GetReceipts(hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, bodyStored ? (hasTransactions ? Is.SameAs(stored) : Is.Empty) : Is.Null);
+            ctx.BlockTree.DidNotReceiveWithAnyArgs().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
+            receiptFinder.Received(hasTransactions && bodyStored ? 1 : 0).Get(hash);
+        }
+    }
+
+    [Test]
+    public void Receipts_are_not_served_for_an_unknown_block()
+    {
+        Context ctx = new();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, receiptFinder: receiptFinder);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.GetReceipts(TestItem.KeccakA), Is.Null);
+            receiptFinder.DidNotReceiveWithAnyArgs().Get(Arg.Any<Hash256>());
+        }
     }
 
     [Test]
@@ -213,8 +253,11 @@ public class SyncServerTests
         Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
         ctx.SyncServer.AddNewBlock(remoteBestBlock!, ctx.NodeWhoSentTheBlock);
-        Assert.That(localBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newBestLocalBlock.Header.Hash));
-        Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(localBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newBestLocalBlock.Header.Hash));
+            Assert.That(localBlockTree.FindBlock(remoteBestBlock!.Hash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(remoteBestBlock.Hash));
+        }
     }
 
     [Test]
@@ -267,8 +310,11 @@ public class SyncServerTests
         ApplyFakeTotalDifficulty(block, sendFakeTd);
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(8));
-        Assert.That(ctx.LocalBlockTree.FindBlock(postMergeBlock.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(8));
+            Assert.That(ctx.LocalBlockTree.FindBlock(postMergeBlock.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
     }
 
     [TestCase(9000010, true, 100)]
@@ -292,9 +338,12 @@ public class SyncServerTests
         ApplyFakeTotalDifficulty(block, sendFakeTd);
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
-        Assert.That(ctx.LocalBlockTree.FindBlock(terminalBlockWithLowerDifficulty.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(terminalBlockWithLowerDifficulty.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
+            Assert.That(ctx.LocalBlockTree.FindBlock(terminalBlockWithLowerDifficulty.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.Not.EqualTo(terminalBlockWithLowerDifficulty.Hash!));
+        }
     }
 
     [TestCase(9000010, true)]
@@ -315,9 +364,12 @@ public class SyncServerTests
         ApplyFakeTotalDifficulty(block, sendFakeTd);
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
-        Assert.That(ctx.LocalBlockTree.FindBlock(terminalBlockWithHigherTotalDifficulty.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(terminalBlockWithHigherTotalDifficulty.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
+            Assert.That(ctx.LocalBlockTree.FindBlock(terminalBlockWithHigherTotalDifficulty.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(terminalBlockWithHigherTotalDifficulty.Hash!));
+        }
     }
 
 
@@ -344,10 +396,13 @@ public class SyncServerTests
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
         ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
-        Assert.That(ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
-        Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newPostMergeBlock.Hash!));
-        Assert.That(ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number)!.BlockHash, Is.Not.EqualTo(poWBlockPostMerge.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
+            Assert.That(ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(newPostMergeBlock.Hash!));
+            Assert.That(ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number)!.BlockHash, Is.Not.EqualTo(poWBlockPostMerge.Hash!));
+        }
     }
 
 
@@ -492,7 +547,8 @@ public class SyncServerTests
         ConfigurePeers(ctx, [peer1, peer2]);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
-        await Task.Delay(100); // notifications fire on separate task
+        // Notifications fire on a separate task, and one that starts after Close() is dropped, so wait for the delivery.
+        await Wait.ForCondition(() => remoteServer2.ReceivedCalls().Any(static c => c.GetMethodInfo().Name == nameof(ISyncServer.AddNewBlock)), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(10));
         await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
         remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
         remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
@@ -631,8 +687,11 @@ public class SyncServerTests
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
 
-        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
-        Assert.That(notifiedEarliest, Is.EqualTo(100UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+            Assert.That(notifiedEarliest, Is.EqualTo(100UL));
+        }
     }
 
     [Test]
@@ -663,11 +722,14 @@ public class SyncServerTests
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
 
-        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
-        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
-            "while the pruner defers, the advertised earliest must track the later of the body and receipt frontiers, not the config barrier");
-        Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(120UL),
-            "the eth/69 status handshake reads LowestBlock directly, so it must carry the same floor as the range broadcast");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+            Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+                "while the pruner defers, the advertised earliest must track the later of the body and receipt frontiers, not the config barrier");
+            Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(120UL),
+                "the eth/69 status handshake reads LowestBlock directly, so it must carry the same floor as the range broadcast");
+        }
     }
 
     [TestCase(true, 150UL, 1UL, TestName = "LowestBlock_falls_back_to_the_config_pivot_while_no_ancient_body_was_inserted")]
@@ -732,9 +794,12 @@ public class SyncServerTests
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
 
-        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
-        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
-            "the broadcast must carry the same floor as the status handshake even when the pruner has already published a lower boundary");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+            Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+                "the broadcast must carry the same floor as the status handshake even when the pruner has already published a lower boundary");
+        }
     }
 
     [Test]
@@ -764,9 +829,12 @@ public class SyncServerTests
 
         ctx.HistoryPruner.NewOldestBlock += Raise.EventWith(new OnNewOldestBlockArgs(Build.A.BlockHeader.WithNumber(100).TestObject));
 
-        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
-        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
-            "the pruner published path must carry the same floor as the head driven one, so one peer never sees two different earliest values");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+            Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+                "the pruner published path must carry the same floor as the head driven one, so one peer never sees two different earliest values");
+        }
         ctx.BlockTree.Received().UpdateLowestServedBlock(120UL);
     }
 
@@ -797,8 +865,11 @@ public class SyncServerTests
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(64).TestObject));
 
-        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
-        Assert.That(notifiedEarliest, Is.EqualTo(64UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+            Assert.That(notifiedEarliest, Is.EqualTo(64UL));
+        }
     }
 
     [Test]
@@ -986,10 +1057,11 @@ public class SyncServerTests
             using ManualResetEventSlim start = new(false);
             ConcurrentQueue<Exception> failures = new();
 
-            Task[] tasks = new Task[threadCount];
+            // Dedicated threads: eight CPU-bound thread-pool bodies would hold the pool the parallel fixtures share.
+            Thread[] racers = new Thread[threadCount];
             for (int t = 0; t < threadCount; t++)
             {
-                tasks[t] = Task.Run(() =>
+                racers[t] = new Thread(() =>
                 {
                     // Rendezvous so every thread is inside the swap window together rather than in sequence.
                     start.Wait();
@@ -1005,10 +1077,11 @@ public class SyncServerTests
                         failures.Enqueue(e);
                     }
                 });
+                racers[t].Start();
             }
 
             start.Set();
-            Task.WaitAll(tasks);
+            foreach (Thread racer in racers) racer.Join();
 
             Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures.Select(static e => e.ToString())));
         }
@@ -1100,12 +1173,13 @@ public class SyncServerTests
             IBlockValidator? blockValidator = null,
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
-            ISpecProvider? specProvider = null) =>
+            ISpecProvider? specProvider = null,
+            IReceiptFinder? receiptFinder = null) =>
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                NullReceiptStorage.Instance,
+                receiptFinder ?? NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
                 blockValidator ?? Always.Valid,
                 sealValidator ?? Always.Valid,

@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
+using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -24,7 +25,8 @@ internal sealed class SnapshotHttpClient : IDisposable
 
     public async Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await GetAsync(url, new RangeHeaderValue(0, 0), ifRange: null, cancellationToken).ConfigureAwait(false);
+        // Cloudflare/R2 answers bytes=0-0 with 200 and the full body but honours other ranges (#14770).
+        using HttpResponseMessage response = await GetAsync(url, new RangeHeaderValue(0, 1), ifRange: null, cancellationToken).ConfigureAwait(false);
         EntityTagHeaderValue? etag = response.Headers.ETag;
 
         if (response.StatusCode == HttpStatusCode.PartialContent)
@@ -85,9 +87,8 @@ internal sealed class SnapshotHttpClient : IDisposable
                             return response;
 
                         HttpStatusCode status = response.StatusCode;
-                        string? reason = response.ReasonPhrase;
                         response.Dispose();
-                        throw new HttpRequestException($"Snapshot request failed with status {(int)status} {reason}.", null, status);
+                        throw new HttpRequestException($"Snapshot request failed with status {(int)status}.", null, status);
                     }
             }
         }
@@ -102,13 +103,14 @@ internal sealed class SnapshotHttpClient : IDisposable
         Uri redirectUri = new(currentUri, location);
         if (currentUri.Scheme == Uri.UriSchemeHttps && redirectUri.Scheme != Uri.UriSchemeHttps)
             throw new IOException(
-                $"Snapshot redirect from {currentUri} to {redirectUri} would downgrade the transport from https; refusing to follow.");
+                $"Snapshot redirect from {SensitiveLogMasking.SafeUrl(currentUri)} to {SensitiveLogMasking.SafeUrl(redirectUri)} would downgrade the transport from https; refusing to follow.");
 
         return redirectUri;
     }
 
     public static bool IsPermanentHttpError(HttpRequestException e) =>
         e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
+            and not HttpStatusCode.RequestTimeout
             and not HttpStatusCode.TooManyRequests
             and not HttpStatusCode.RequestedRangeNotSatisfiable;
 

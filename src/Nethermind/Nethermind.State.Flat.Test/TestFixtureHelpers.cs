@@ -12,7 +12,7 @@ using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.Test;
 

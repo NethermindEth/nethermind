@@ -997,7 +997,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
         JsonElement storage = sstoreEntry.GetProperty("storage");
         const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+#pragma warning disable NUnit2045 // Check the storage shape before reading its slot.
         Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+#pragma warning restore NUnit2045
         Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
@@ -2461,7 +2463,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         const int levels = VirtualMachineStatics.MaxCachedFrameDepth + 5;
         byte[] code = Prepare.EvmCode
             .MSTORE(0, ((UInt256)levels).ToBigEndian()).MSTORE(32, ((UInt256)RevertEvery).ToBigEndian())
-            .CALL(CallGas * 10, Recursive, 0, 0, 64, 0x20, 32)
+            .CALL(CallGas * 30, Recursive, 0, 0, 64, 0x20, 32)
             .PushData(0x40).Op(Instruction.MSTORE)
             .RETURN(0x20, 64)
             .Done;
@@ -2551,7 +2553,9 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         tracker.WarmUp(Probe);
         VmState<EthereumGasPolicy> broken = RentChild(frames, envs, in tracker);
         UInt256 location = 0x40;
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(broken.Memory.TrySaveWord(in location, DirtyWord), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(broken.Memory.Size, Is.EqualTo(0x60));
 
         // Clearing the journals the frame snapshotted makes its restore throw inside Dispose.
@@ -2608,6 +2612,14 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(Machine.FrameCache[1], Is.Not.Null, "the cached path was exercised");
             Assert.That(Machine.FrameCache[2], Is.Not.Null, "the cached path was exercised");
         }
+
+        if (name == "recursion")
+        {
+            RecordingTracer depths = new(Machine);
+            _processor.CallAndRestore(transaction, context, depths);
+            // Both deep chains must cross from the cached slots into pooled frames, or the program does not cover the boundary.
+            Assert.That(depths.Frames.Count(static f => f.Depth == VirtualMachineStatics.MaxCachedFrameDepth + 3), Is.EqualTo(2));
+        }
     }
 
     private static IEnumerable<TestCaseData> DifferentialPrograms()
@@ -2635,10 +2647,10 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
                 }
                 break;
             case "recursion":
-                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 15);
                 driver.Call(Instruction.CALL, Probe);
                 driver.Call(Instruction.CALL, Recursive, levels: 3);
-                driver.Call(Instruction.CALL, Recursive, levels: 10, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 2, gas: CallGas * 12);
                 driver.Call(Instruction.STATICCALL, Recursive, levels: 2);
                 driver.Call(Instruction.CALL, ProbeCaller);
                 break;

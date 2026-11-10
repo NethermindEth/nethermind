@@ -7,9 +7,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -57,12 +57,29 @@ public partial class BlockAccessListManager
         // BAL pool is larger since extra BALs are retained so they can be merged in order
         private static readonly int BalPoolSize = RuntimeInformation.ProcessorCount * 2;
 
+        // A plain ETH transfer journals at most 8 changes: sender nonce, sender balance (gas, value, refund),
+        // recipient existence and balance, and coinbase balance.
+        private const int SmallBalChangeCapacity = 8;
+
+        // A plain ETH transfer touches three accounts: sender, recipient and coinbase. Reads add no journal
+        // entries, so a small slice must cap its spares itself to bound what the small pool retains.
+        private const int SmallBalMaxPooledAccountChanges = 4;
+
+        // Plain-transfer slices wait for the in-order merge, so far more than BalPoolSize are rented at once.
+        private const int SmallBalPoolSize = 1024;
+
+        private static readonly ObjectPool<BlockAccessListAtIndex> SmallBalPool =
+            new DefaultObjectPool<BlockAccessListAtIndex>(
+                new BalPooledObjectPolicy(static () => new(SmallBalChangeCapacity, SmallBalMaxPooledAccountChanges)), SmallBalPoolSize);
+
+        private static readonly ObjectPool<BlockAccessListAtIndex> LargeBalPool =
+            new DefaultObjectPool<BlockAccessListAtIndex>(new BalPooledObjectPolicy(static () => new()), BalPoolSize);
+
         static ParallelTxProcessorWithWorldStateManager()
         {
-            StaticPool<BlockAccessListAtIndex>.SetMaxPooledCount(BalPoolSize);
             for (int i = 0; i < BalPoolSize; i++)
             {
-                StaticPool<BlockAccessListAtIndex>.Return(new());
+                LargeBalPool.Return(new());
             }
         }
 
@@ -171,7 +188,7 @@ public partial class BlockAccessListManager
                 BlockHeader header = _currentBlock.Header;
                 parentReader = processor.GetParentReader(header) ?? RentParentReader(header);
                 // Install a fresh BAL before Setup so the worker has somewhere to record changes.
-                processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
+                processor.WorldState.SetGeneratingBlockAccessList(RentBal(idx));
                 processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
                 if (IsTransactionSlot(idx)) Interlocked.Decrement(ref _txRentsLeft);
@@ -183,7 +200,7 @@ public partial class BlockAccessListManager
                 if (parentReader is not null && !processor.Keeps(parentReader)) parentReader.Dispose();
                 if (processor.WorldState.GetGeneratingBlockAccessList() is { } generatedBal)
                 {
-                    StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
+                    ReturnBal(generatedBal);
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(null);
                 // Release the parent reader too, so the recycled slot isn't poisoned.
@@ -247,7 +264,7 @@ public partial class BlockAccessListManager
             }
             finally
             {
-                StaticPool<BlockAccessListAtIndex>.Return(source);
+                ReturnBal(source);
             }
         }
 
@@ -273,6 +290,13 @@ public partial class BlockAccessListManager
 
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
+
+        // A tx without data is most likely a plain transfer; one that runs code grows its slice and moves to the large pool.
+        private BlockAccessListAtIndex RentBal(int idx)
+            => (IsTransactionSlot(idx) && _currentBlock!.Transactions[idx - 1].Data.IsEmpty ? SmallBalPool : LargeBalPool).Get();
+
+        private static void ReturnBal(BlockAccessListAtIndex bal)
+            => (bal.ChangeCapacity <= SmallBalChangeCapacity ? SmallBalPool : LargeBalPool).Return(bal);
 
         private TxProcessorWithWorldState NewProcessor()
             => new(true, _stateProvider, _logManager, _txProcessorFactory);
@@ -328,7 +352,7 @@ public partial class BlockAccessListManager
             {
                 if (_perTxBal[i] is { } bal)
                 {
-                    StaticPool<BlockAccessListAtIndex>.Return(bal);
+                    ReturnBal(bal);
                     _perTxBal[i] = null;
                 }
             }
@@ -407,6 +431,7 @@ public partial class BlockAccessListManager
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
+        public ExecutionRequestsProcessor ExecutionRequests => field ??= new ExecutionRequestsProcessor(TxProcessor);
         private readonly IDisposable _virtualMachine;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
@@ -558,5 +583,16 @@ public partial class BlockAccessListManager
     {
         public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
+    }
+
+    private sealed class BalPooledObjectPolicy(Func<BlockAccessListAtIndex> create) : IPooledObjectPolicy<BlockAccessListAtIndex>
+    {
+        public BlockAccessListAtIndex Create() => create();
+
+        public bool Return(BlockAccessListAtIndex obj)
+        {
+            obj.Reset();
+            return true;
+        }
     }
 }

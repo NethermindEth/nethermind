@@ -40,12 +40,21 @@ public class IndexedLogFinder(
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
     private readonly IBlockFinder _blockFinder = blockFinder;
 
-    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
-        GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
+    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+    {
+        // The index reads blocks by number, so it would answer for the canonical block in place of an unprocessed end.
+        if (fromBlock.Number < toBlock.Number)
+        {
+            ThrowIfNotProcessed(fromBlock);
+            ThrowIfNotProcessed(toBlock);
+        }
+
+        return GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
             : new FoundLogs(
                 FindIndexedLogs<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, indexRange, cancellationToken),
                 FindIndexedLogs<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, indexRange, cancellationToken));
+    }
 
     private IEnumerable<TLog> FindIndexedLogs<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
         where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
@@ -79,6 +88,10 @@ public class IndexedLogFinder(
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
         if (!filter.UseIndex || filter.AcceptsAnyBlock)
+            return null;
+
+        // The log index maps canonical block numbers; a single-block hash filter must use the requested block.
+        if (filter.IsBlockHashFilter)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)

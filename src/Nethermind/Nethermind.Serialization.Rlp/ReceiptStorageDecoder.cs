@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Rlp
     // TxType.FrameTx receipts carry the extension, so pre-fork data round-trips unchanged.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefTopicDecoder
     {
         private const byte MarkTxHashByte = 255;
         private static readonly KeccakDecoder HashDecoder = KeccakDecoder.Instance;
@@ -384,6 +384,47 @@ namespace Nethermind.Serialization.Rlp
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
         public Hash256[] DecodeTopics(RlpReader reader) => HashDecoder.DecodeNonNullArray(ref reader);
+
+        /// <inheritdoc/>
+        /// <remarks>Checks the topic count as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> does.</remarks>
+        public int StartDecodingTopics(ref RlpReader reader)
+        {
+            int end = reader.ReadSequenceLength() + reader.Position;
+            reader.GuardLimit(reader.PeekNumberOfItemsRemaining(end, RlpLimit.DefaultLimit.Limit + 1));
+            return end;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Rejects the topic as <see cref="RlpDecoder{T}.DecodeNonNullArray"/> rejects a null or malformed element.</remarks>
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic)
+        {
+            if (reader.PeekByte() == Rlp.EmptyListByte)
+            {
+                RlpHelpers.ThrowNullArrayElement(index);
+            }
+
+            try
+            {
+                reader.Position = RlpHelpers.ReadKeccakPrefix(reader.Data, reader.Position, allowNull: true, out bool hasValue);
+                if (!hasValue)
+                {
+                    ThrowNullTopic();
+                }
+
+                reader.Read(Hash256.Size).CopyTo(topic);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                ThrowTopicDecode(e);
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowTopicDecode(Exception exception) =>
+            throw new RlpException($"Cannot decode stream of {nameof(Hash256)}", exception);
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullTopic() => throw new RlpException($"{nameof(Hash256)} decoding returned null");
 
         public bool CanDecodeBloom => true;
     }

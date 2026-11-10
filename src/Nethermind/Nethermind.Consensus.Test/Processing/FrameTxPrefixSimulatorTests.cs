@@ -451,10 +451,13 @@ public class FrameTxPrefixSimulatorTests
 
         Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
         // Reading the head is the last step before contending for the env, so the env is still held here.
-        Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
-        // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
-        // fails deterministically on a zero wait is the reason check below.
-        Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
+            // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
+            // fails deterministically on a zero wait is the reason check below.
+            Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        }
 
         release.Set();
         Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);
@@ -542,10 +545,12 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
     }
 
-    [TestCase(0ul, Eip8141Constants.MaxVerifyGas)]
-    [TestCase(100_000ul, Eip8141Constants.MaxVerifyGas)]
+    [TestCase(0ul, 300_000ul)]
+    [TestCase(1ul, 100_000ul)]
+    [TestCase(100_000ul, 100_000ul)]
+    [TestCase(300_000ul, 300_000ul)]
     [TestCase(500_000ul, 500_000ul)]
-    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheDefault(ulong configured, ulong expected)
+    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheSharedFloor(ulong configured, ulong expected)
     {
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, maxVerifyGas: configured);
 

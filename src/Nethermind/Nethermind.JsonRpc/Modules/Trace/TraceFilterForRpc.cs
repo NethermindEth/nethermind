@@ -51,7 +51,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return (FromBlock ?? BlockParameter.Latest, ToBlock ?? BlockParameter.Latest);
             }
 
-            BlockParameter block = new(BlockHash, requireCanonical: true);
+            // Not required to be canonical when looked up: the range search checks it, and reports a hash selection that is
+            // not canonical as one that is not found.
+            BlockParameter block = new(BlockHash);
             return (block, block);
         }
 

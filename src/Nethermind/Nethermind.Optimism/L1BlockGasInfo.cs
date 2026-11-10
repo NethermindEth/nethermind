@@ -152,7 +152,7 @@ public sealed class L1BlockGasInfo
 
         if (_l1GasPrice is not null)
         {
-            if (_isIsthmus)
+            if (_operatorFeeScalar != 0 || _operatorFeeConstant != 0)
             {
                 operatorFeeScalar = _operatorFeeScalar;
                 operatorFeeConstant = _operatorFeeConstant;

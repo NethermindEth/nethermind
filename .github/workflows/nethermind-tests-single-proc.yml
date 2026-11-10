@@ -1,7 +1,7 @@
 name: Nethermind tests (Single Proc)
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -49,6 +49,9 @@ jobs:
           # The rate limiter's wall-clock throughput cases starve on one processor.
           - project: Nethermind.Core.Test
             filter: FullyQualifiedName!~RateLimiterTests
+          # The compactor's inline merges; the rest of the flat-state suite is not vetted for one processor.
+          - project: Nethermind.State.Flat.Test
+            filter: FullyQualifiedName~SnapshotCompactorTests
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

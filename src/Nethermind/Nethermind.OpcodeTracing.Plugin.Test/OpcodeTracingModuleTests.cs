@@ -43,8 +43,11 @@ public class OpcodeTracingModuleTests
             OutputDirectory = _tempDir
         });
 
-        Assert.That(container.Resolve<IEnumerable<StepInfo>>(), Is.Empty);
-        Assert.That(ResolveMainProcessingTracers(container), Has.One.InstanceOf<OpcodeBlockTracer>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IEnumerable<StepInfo>>(), Is.Empty);
+            Assert.That(ResolveMainProcessingTracers(container), Has.One.InstanceOf<OpcodeBlockTracer>());
+        }
     }
 
     [Test]
@@ -76,9 +79,12 @@ public class OpcodeTracingModuleTests
             OutputDirectory = _tempDir
         });
 
-        Assert.That(ResolveMainProcessingTracers(container), Is.Empty);
-        Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
-            Has.Member(typeof(StartOpcodeRetrospectiveTracing)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ResolveMainProcessingTracers(container), Is.Empty);
+            Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
+                Has.Member(typeof(StartOpcodeRetrospectiveTracing)));
+        }
     }
 
     private IContainer BuildContainer(IOpcodeTracingConfig config) =>

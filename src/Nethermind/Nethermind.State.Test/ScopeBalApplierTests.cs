@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -177,6 +178,28 @@ public class ScopeBalApplierTests
     }
 
     [Test]
+    public void ApplyBal_WritesAndMarksCodeSharedByClonesOnce()
+    {
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        CodeSetter codeSetter = new(null);
+        scope.StartWriteBatch(Arg.Any<int>()).Returns(Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>());
+        scope.CodeDb.BeginCodeWrite().Returns(codeSetter);
+        CodeChange shared = new(1, [0x01]);
+        CodeChange distinct = new(1, [0x02]);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(shared).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(distinct).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithNonceChanges(new NonceChange(1, 1)).WithCodeChanges(shared).TestObject).TestObject;
+
+        ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance);
+
+        Assert.That(codeSetter.Written, Is.EqualTo(new[] { shared.CodeHash, distinct.CodeHash }));
+        scope.CodeDb.Received(1).MarkCodePersisted(Arg.Is<ValueHash256>(h => h == shared.CodeHash));
+        scope.CodeDb.Received(1).MarkCodePersisted(Arg.Is<ValueHash256>(h => h == distinct.CodeHash));
+        scope.CodeDb.Received(2).MarkCodePersisted(Arg.Any<ValueHash256>());
+    }
+
+    [Test]
     public void ApplyBal_DoesNotResolveLoggerWhenNothingIsReported()
     {
         IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
@@ -206,8 +229,9 @@ public class ScopeBalApplierTests
     private sealed class CodeSetter(Exception? disposeFailure) : IWorldStateScopeProvider.ICodeSetter
     {
         public int Disposed { get; private set; }
+        public List<ValueHash256> Written { get; } = [];
 
-        public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
+        public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) => Written.Add(codeHash);
 
         public void Dispose()
         {

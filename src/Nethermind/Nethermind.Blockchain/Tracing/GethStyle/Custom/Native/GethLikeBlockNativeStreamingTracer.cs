@@ -17,17 +17,18 @@ internal sealed class GethLikeBlockNativeStreamingTracer(
     NativeTracerFactory txTracerFactory,
     Utf8JsonWriter writer,
     PipeWriter? pipeWriter,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    bool includeErrorResult = false)
     : GethLikeBlockNativeTracer(null, txTracerFactory)
 {
-    protected override void AddTrace(GethLikeTxTrace trace) => Write(writer, pipeWriter, trace, cancellationToken);
+    protected override void AddTrace(GethLikeTxTrace trace) => Write(writer, pipeWriter, trace, cancellationToken, includeErrorResult);
 
     /// <summary>Writes <paramref name="trace"/> as one block-trace entry, flushes it to the response, and disposes it.</summary>
-    public static void Write(Utf8JsonWriter writer, PipeWriter? pipeWriter, GethLikeTxTrace trace, CancellationToken cancellationToken)
+    public static void Write(Utf8JsonWriter writer, PipeWriter? pipeWriter, GethLikeTxTrace trace, CancellationToken cancellationToken, bool includeErrorResult = false)
     {
         using (trace)
         {
-            GethLikeTxTraceCollectionConverter.WriteEntry(writer, trace, EthereumJsonSerializer.JsonOptions);
+            GethLikeTxTraceCollectionConverter.WriteEntry(writer, trace, EthereumJsonSerializer.JsonOptions, includeErrorResult);
         }
 
         writer.Flush();

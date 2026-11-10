@@ -123,7 +123,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
         _jsonWriter!.WriteStartObject();
         _jsonWriter.WritePropertyName("output");
-        _jsonWriter.WriteStringValue(output.Span.ToHexString(false));
+        ByteArrayConverter.Convert(_jsonWriter, output.Span, skipLeadingZeros: false, addHexPrefix: false);
         _jsonWriter.WritePropertyName("gasUsed");
         HexWriter.WriteUlongHexStringValue(_jsonWriter, gasUsed);
         if (error is not null)
