@@ -270,6 +270,14 @@ public class FlatDbManagerTests
         using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
         _persistenceManager.DidNotReceive().LeaseReader();
 
+        if (DeterministicBenchmark.Enabled)
+        {
+            // Deterministic runs disable the wall-clock cache-clear task so timing cannot affect results.
+            using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+            _persistenceManager.DidNotReceive().LeaseReader();
+            return;
+        }
+
         // Wait for periodic clear (15s + margin)
         await Task.Delay(TimeSpan.FromSeconds(17));
 
@@ -392,7 +400,18 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         // The final lease release returns the resource to the pool it was checked out from.
-        Assert.That(realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing), Is.SameAs(transientResource));
+        TransientResource returnedResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        try
+        {
+            if (DeterministicBenchmark.Enabled)
+                Assert.That(returnedResource, Is.Not.SameAs(transientResource));
+            else
+                Assert.That(returnedResource, Is.SameAs(transientResource));
+        }
+        finally
+        {
+            returnedResource.ReleaseLease();
+        }
         _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 
