@@ -687,7 +687,7 @@ public static class FrameTxValidation
     {
         gasPrice = UInt256.Zero;
         UInt256 maxFee = transaction.MaxFee;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: HasEmptySignature(transaction))
             || UInt256.MultiplyOverflow((UInt256)transaction.GetBlobGas(), feePerBlobGas, out UInt256 blobFee)
             || !FrameTxFeeBudget.TryCalculate(in maxFee, in transaction.MaxPriorityFeePerGas, maxGas, in baseFee, in blobFee, out UInt256 requiredMaxFee, out UInt256 maxCost))
         {
@@ -696,6 +696,16 @@ public static class FrameTxValidation
 
         gasPrice = FrameTxFeeBudget.GasPrice(in baseFee, maxCost > requiredMaxFee ? maxCost - requiredMaxFee : UInt256.Zero, maxGas);
         return true;
+    }
+
+    private static bool HasEmptySignature(Transaction transaction)
+    {
+        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
+        {
+            if (signature.Signature.IsEmpty) return true;
+        }
+
+        return false;
     }
 
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
