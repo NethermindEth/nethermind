@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using IResettable = Nethermind.Core.Resettables.IResettable;
