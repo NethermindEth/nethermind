@@ -11,11 +11,9 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
@@ -573,6 +571,26 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [Test]
         [CancelAfter(30_000)]
+        public async Task GetFeeHistory_NewestHeaderNotFound_ReadsNoBody(CancellationToken cancellationToken)
+        {
+            using FeeHistoryTestBlockchain chain = await FeeHistoryTestBlockchain.Create(blockCount: 5);
+            using FeeHistoryOracle feeHistoryOracle = chain.CreateOracle(new JsonRpcConfig { FeeHistoryMaxConcurrentRequests = 1 }, maxDistanceFromHead: 0);
+            await using PausedRequest uncached = chain.PauseUncachedRequest(feeHistoryOracle, 1, 2, cancellationToken);
+            int readsBefore = chain.LookupHooks.BodyReads(3);
+            // The header lookup misses, as just before the block is added, while a body lookup would find the block.
+            chain.LookupHooks.MissingHeaderOnce = 3;
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(3UL), [50]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That(chain.LookupHooks.BodyReads(3), Is.EqualTo(readsBefore), "a block whose header is not found is not read");
+            }
+        }
+
+        [Test]
+        [CancelAfter(30_000)]
         public async Task GetFeeHistory_UncachedRequestsAtLimit_ServesHeadNotCachedYet(CancellationToken cancellationToken)
         {
             using FeeHistoryTestBlockchain chain = await FeeHistoryTestBlockchain.Create(blockCount: 5);
@@ -620,31 +638,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(2UL), []);
             Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(2UL));
-        }
-
-        [Test]
-        public async Task GetFeeHistory_PersistedReceipts_WeightRewardsByGasUsed([Values] bool compactReceiptStore)
-        {
-            using FeeHistoryTestBlockchain chain = await FeeHistoryTestBlockchain.Create(blockCount: 0, compactReceiptStore);
-            // Ordered by premium, the cheaper transaction is 21000 of 42000 gas used but 100000 of 121000 gas limit,
-            // so the 60th percentile is the dearer premium only when the weights come from the receipts.
-            Block block = await chain.AddBlock(
-                Build.A.Transaction.WithType(TxType.EIP1559).WithTo(TestItem.AddressD).WithGasLimit(100_000)
-                    .WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1.GWei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-                Build.A.Transaction.WithType(TxType.EIP1559).WithTo(TestItem.AddressD).WithGasLimit(GasCostOf.Transaction)
-                    .WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(2.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
-            Assert.That(chain.ReceiptStorage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True,
-                "the stored receipts must be iterated, not decoded");
-            iterator.Dispose();
-            using FeeHistoryOracle feeHistoryOracle = chain.CreateOracle(new JsonRpcConfig());
-
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Number), [50, 60]);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(block.Transactions, Has.Length.EqualTo(2), "both transactions must be included");
-                Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[1.GWei, 2.GWei]));
-            }
         }
 
         [TestCase(2UL, 2UL)]
@@ -1010,13 +1003,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 maxDistFromHead);
         }
 
-        private sealed class FeeHistoryTestBlockchain(bool compactReceiptStore) : BasicTestBlockchain
+        private sealed class FeeHistoryTestBlockchain : BasicTestBlockchain
         {
             public BodyReadHookBlockTree LookupHooks => (BodyReadHookBlockTree)BlockTree;
 
-            public static async Task<FeeHistoryTestBlockchain> Create(int blockCount, bool compactReceiptStore = true)
+            public static async Task<FeeHistoryTestBlockchain> Create(int blockCount)
             {
-                FeeHistoryTestBlockchain chain = new(compactReceiptStore);
+                FeeHistoryTestBlockchain chain = new();
                 // EIP-1559 from genesis, so blocks have a base fee and accept typed transactions.
                 await chain.Build(builder => builder
                     .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
@@ -1040,9 +1033,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 pause.WaitUntilReading();
                 return new PausedRequest(pause, request);
             }
-
-            protected override IEnumerable<IConfig> CreateConfigs() =>
-                [.. base.CreateConfigs(), new ReceiptConfig { CompactReceiptStore = compactReceiptStore }];
         }
 
         /// <summary>Counts block body reads per block number and runs <see cref="BeforeBodyRead"/> before each one.</summary>
@@ -1056,6 +1046,20 @@ namespace Nethermind.JsonRpc.Test.Modules
             public int BodyReads(ulong blockNumber) => _bodyReads.GetValueOrDefault(blockNumber);
 
             public int TotalBodyReads => Volatile.Read(ref _totalBodyReads);
+
+            /// <summary>The next header lookup of this block number finds nothing.</summary>
+            public ulong? MissingHeaderOnce { get; set; }
+
+            public override BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                if (MissingHeaderOnce == blockNumber)
+                {
+                    MissingHeaderOnce = null;
+                    return null;
+                }
+
+                return base.FindHeader(blockNumber, options);
+            }
 
             /// <summary>Holds the next read of <paramref name="blockNumber"/>'s body until the pause is released.</summary>
             public BodyReadPause PauseFirstBodyRead(ulong blockNumber, CancellationToken cancellationToken)

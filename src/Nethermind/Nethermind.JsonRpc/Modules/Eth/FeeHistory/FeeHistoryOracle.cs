@@ -113,7 +113,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
 
             // A block whose header is not found has no body to read.
-            if (hash is not null) uncachedRequestSlot.EnsureAcquired();
+            if (hash is null) return null;
+
+            uncachedRequestSlot.EnsureAcquired();
             Block block = _blockTree.FindBlock(blockParameter);
             return block is null
                 ? null
