@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -84,8 +85,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             static NodeDataMessage NodeData(byte[] entry) => new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { entry }));
 
             NodeDataMessage Deserialize() => eth66
-                ? service.Deserialize<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>(packet).EthMessage
-                : service.Deserialize<NodeDataMessage>(packet);
+                ? service.Deserialize<Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage>(new NettyBufferPacket(packet)).EthMessage
+                : service.Deserialize<NodeDataMessage>(new NettyBufferPacket(packet));
 
             IByteBuffer Serialize<T>(T message) where T : P2PMessage
             {
