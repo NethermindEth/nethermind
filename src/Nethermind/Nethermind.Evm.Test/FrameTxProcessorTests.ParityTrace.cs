@@ -37,6 +37,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
     private static readonly Address ParityCodeless = new("0x000000000000000000000000000000000000beef");
     private static readonly Address ParityDelegator = new("0x000000000000000000000000000000000000d313");
+    private static readonly Address ParityHalter = new("0x000000000000000000000000000000000000fe01");
     private const string RevertOutput = "0x00";
 
     /// <summary>Reverts with one byte of untouched memory, so its output is not empty.</summary>
@@ -115,6 +116,11 @@ public partial class FrameTxProcessorTests
                 DeployContract(ParityDelegator, [0xef, 0x01, 0x00, .. ParityCodeless.Bytes]);
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityDelegator), Frame(FrameMode.Default, target: Observer)];
                 break;
+            case "firstInstructionHalt":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                DeployContract(ParityHalter, [(byte)Instruction.ADD]);
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityHalter), Frame(FrameMode.Default, target: Observer)];
+                break;
             default:
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: Recipient)];
@@ -144,6 +150,7 @@ public partial class FrameTxProcessorTests
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("codelessTarget", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("delegatedCodeless", new[] { 0, 1, 2 }, new[] { 2, 0 })]
+    [TestCase("firstInstructionHalt", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("assertReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
@@ -232,7 +239,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "codelessTarget", "delegatedCodeless", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "codelessTarget", "delegatedCodeless", "firstInstructionHalt", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(mode, ParityScenarioTx(scenario));
         TearDown();
