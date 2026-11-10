@@ -1922,7 +1922,10 @@ public class JsonRpcProcessorTests
 
     public enum QueuedCaller { Plain, Authenticated, Ipc }
 
-    /// <remarks>Each row reaches the module queue from its own dispatch site; the service and the processor log to <c>logger</c>.</remarks>
+    /// <remarks>
+    /// Each row reaches the module queue from its own dispatch site; the service and the processor log to <c>logger</c>
+    /// at Debug, so a cancelled item reported as failed would show.
+    /// </remarks>
     [TestCase(QueuedRoute.Single, RequestTransport.HttpMemory, QueuedCaller.Plain)]
     [TestCase(QueuedRoute.Single, RequestTransport.HttpMemory, QueuedCaller.Authenticated)]
     [TestCase(QueuedRoute.Single, RequestTransport.WsSegmentedPipe, QueuedCaller.Plain)]
@@ -1933,7 +1936,7 @@ public class JsonRpcProcessorTests
     [TestCase(QueuedRoute.ConcurrentWindow, RequestTransport.WsSegmentedPipe, QueuedCaller.Plain)]
     public async Task Aborted_queued_requests_end_unanswered_and_unexecuted(QueuedRoute route, RequestTransport transport, QueuedCaller caller)
     {
-        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        TestLogger logger = new() { IsDebug = true, IsTrace = false };
         OneLoggerLogManager logManager = new(new(logger));
         using QueuedRentalFixture fixture = new(new JsonRpcConfig { EthModuleConcurrentInstances = 4 }, logManager);
         IBatchConcurrencyStrategy strategy = Substitute.For<IBatchConcurrencyStrategy>();
@@ -1968,7 +1971,8 @@ public class JsonRpcProcessorTests
             Assert.That(canceled!.CancellationToken, Is.EqualTo(abort.Token));
             Assert.That(fixture.Invocations, Is.Zero);
             Assert.That(sink.Responses, Is.Empty);
-            Assert.That(logger.LogList, Is.Empty);
+            Assert.That(logger.LogList, Has.All.Matches<string?>(static line => line is not null
+                && (line.StartsWith("JSON RPC request ", StringComparison.Ordinal) || line.StartsWith("JSON RPC batch request ", StringComparison.Ordinal))));
         }
     }
 

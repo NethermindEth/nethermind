@@ -968,6 +968,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
+    /// <summary>Whether <paramref name="exception"/> is the transport abandoning a queued request, the one cancellation <see cref="IJsonRpcService"/> lets escape.</summary>
+    private static bool IsTransportCancellation(OperationCanceledException exception, CancellationToken cancellationToken) =>
+        cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken;
+
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
         $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
 
@@ -1137,6 +1141,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     Task<JsonRpcResult.Entry>? execution = Take(out _);
                     if (execution is not null) (await execution).Dispose();
+                }
+                catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+                {
+                    // Abandoned in the module queue along with its batch: cancelled, not failed.
                 }
                 catch (Exception exception)
                 {
