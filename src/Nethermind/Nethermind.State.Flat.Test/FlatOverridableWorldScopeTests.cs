@@ -346,7 +346,7 @@ public class FlatOverridableWorldScopeTests
         TrieStats Visit(BlockHeader block)
         {
             TrieStatsCollector collector = new(new TestMemDb(), LimboLogs.Instance);
-            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+            overridableScope.GlobalStateReader.RunTreeVisitor(collector, block, new VisitingOptions { MaxDegreeOfParallelism = parallelism }, diagnostics: null);
             return collector.Stats;
         }
 

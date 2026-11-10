@@ -31,8 +31,6 @@ public class CallDelegateCodesHomestead : LegacyStateTestFixture<CallDelegateCod
 
 public class ChainId : LegacyStateTestFixture<ChainId>;
 
-public class ChangedEIP150 : LegacyStateTestFixture<ChangedEIP150>;
-
 public class CodeCopyTest : LegacyStateTestFixture<CodeCopyTest>;
 
 public class CodeSizeLimit : LegacyStateTestFixture<CodeSizeLimit>;
@@ -42,8 +40,6 @@ public class Create2 : LegacyStateTestFixture<Create2>;
 public class CreateTest : LegacyStateTestFixture<CreateTest>;
 
 public class DelegatecallTestHomestead : LegacyStateTestFixture<DelegatecallTestHomestead>;
-
-public class EIP1153 : LegacyStateTestFixture<EIP1153>;
 
 public class EIP1153_transientStorage : LegacyStateTestFixture<EIP1153_transientStorage>;
 
@@ -59,23 +55,13 @@ public class EIP2930 : LegacyStateTestFixture<EIP2930>;
 
 public class EIP3607 : LegacyStateTestFixture<EIP3607>;
 
-public class EIP3651 : LegacyStateTestFixture<EIP3651>;
-
 public class EIP3651_warmcoinbase : LegacyStateTestFixture<EIP3651_warmcoinbase>;
-
-public class EIP3855 : LegacyStateTestFixture<EIP3855>;
 
 public class EIP3855_push0 : LegacyStateTestFixture<EIP3855_push0>;
 
-public class EIP3860 : LegacyStateTestFixture<EIP3860>;
-
 public class EIP3860_limitmeterinitcode : LegacyStateTestFixture<EIP3860_limitmeterinitcode>;
 
-public class EIP4844 : LegacyStateTestFixture<EIP4844>;
-
 public class EIP4844_blobtransactions : LegacyStateTestFixture<EIP4844_blobtransactions>;
-
-public class EIP5656 : LegacyStateTestFixture<EIP5656>;
 
 public class EIP5656_MCOPY : LegacyStateTestFixture<EIP5656_MCOPY>;
 
