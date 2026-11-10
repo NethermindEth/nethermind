@@ -13,6 +13,8 @@ public partial class ModExpPrecompile
 {
     public static Address Address => field ??= Address.FromNumber(5);
 
+    private const uint ZiskModExpMaxOperandLength = 1056;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!TryPrepareInput(
@@ -40,7 +42,9 @@ public partial class ModExpPrecompile
 
         ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
         ReadOnlySpan<byte> exp = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
-        if (ZiskFlag.IsActive)
+        // ZisK's routine takes operands of up to 1056 bytes (ziskasm/zisklib/zkvm/modexp.zisk), which covers
+        // every input EIP-7823 allows; the standard accelerator keeps the longer pre-Osaka ones.
+        if (ZiskFlag.IsActive && baseLength <= ZiskModExpMaxOperandLength && expLength <= ZiskModExpMaxOperandLength && modulusLength <= ZiskModExpMaxOperandLength)
             Accelerators.ZiskModExp(@base, exp, modulus, result);
         else
             Accelerators.ModExp(@base, exp, modulus, result);
