@@ -41,6 +41,9 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// <returns><see langword="true"/> when the cell was cold.</returns>
     public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
 
+    /// <summary>Measurement only: one more probe of the warm storage set, its result kept so it cannot be removed.</summary>
+    public readonly void ProbeWarmStorageSet(in StorageCell storageCell) => _trackingState.ProbeWarmStorageSet(in storageCell);
+
     [SkipLocalsInit]
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -145,6 +148,12 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
+        private int _warmProbeHits;
+
+        public void ProbeWarmStorageSet(in StorageCell storageCell)
+        {
+            if (AccessedStorageCells.Contains(in storageCell)) _warmProbeHits++;
+        }
 
         /// <remarks>
         /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as

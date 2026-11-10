@@ -402,7 +402,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
-        if (accessTracker.WarmUp(in storageCell))
+        bool wasCold = accessTracker.WarmUp(in storageCell);
+        accessTracker.ProbeWarmStorageSet(in storageCell);
+        if (wasCold)
             return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
 
         // EIP-8038 charges the warm-access cost on SSTORE too; the net-metered charge is dropped.
