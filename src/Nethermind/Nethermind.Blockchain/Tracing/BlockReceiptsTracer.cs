@@ -43,6 +43,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
         _currentFrameTxTracer?.ReportFrameEnd(frameIndex, error);
 
+    public void ReportFrameCodelessTarget() =>
+        _currentFrameTxTracer?.ReportFrameCodelessTarget();
+
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
