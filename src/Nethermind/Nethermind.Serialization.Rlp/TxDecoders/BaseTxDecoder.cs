@@ -118,7 +118,8 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         ReadOnlySpan<byte> data = reader.ReadBytes<TCanonicalChecks>();
         if (data.Length > DataLimit) ThrowOverLimit(data.Length, reader.Remaining, _dataRlpLimit);
         if (data.IsEmpty) return ReadOnlyMemory<byte>.Empty;
-        return source.IsEmpty ? data.ToArray() : source.SliceOf(data);
+        if (!source.IsEmpty) return source.SliceOf(data);
+        return data.Length == 1 && data[0] < Rlp.EmptyByteArrayByte ? RlpReaderExtensions.SingleByteArrays[data[0]] : data.ToArray();
     }
 
     /// <summary>Decodes a nonce, reporting one wider than 64 bits as <c>NonceTooWide</c> rather than as a generic

@@ -776,7 +776,7 @@ public static class RlpReaderExtensions
         return Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(span));
     }
 
-    private static byte[][] SingleByteArrays => field ??= CreateSingleByteArrays();
+    internal static byte[][] SingleByteArrays => field ??= CreateSingleByteArrays();
 
     private static byte[][] CreateSingleByteArrays()
     {
