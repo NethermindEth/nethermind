@@ -38,6 +38,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -694,6 +695,100 @@ public partial class DebugRpcModuleTests
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
+
+    [TestCase("{}", false, null, 53000)]
+    [TestCase("""{"to":null}""", true, null, 53000)]
+    [TestCase("""{"input":"0x"}""", true, null, 53000)]
+    [TestCase("""{"to":null,"data":"0x"}""", false, null, 53000)]
+    [TestCase("""{"to":null,"input":"0x"}""", false, "callTracer", 53000)]
+    [TestCase("""{"data":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"accessList":[],"input":"0x"}""", false, null, 53000)]
+    [TestCase("""{"maxFeePerGas":"0x0","input":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"input":"0x00"}""", false, null, 53006)]
+    [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53006)]
+    public async Task Debug_traceCall_executes_contract_creation(string fields, bool streaming, string? tracer, long expectedGas)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["from"] = TestItem.AddressA.ToString();
+        call["gas"] = "0x186a0";
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(json["result"]?["error"], Is.Null, response);
+            if (tracer is null)
+            {
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(expectedGas), response);
+                Assert.That(json["result"]?["structLogs"]?.Count(), Is.EqualTo(expectedGas == 53000 ? 0 : 1), response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"]?["type"], Is.EqualTo("CREATE"), response);
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo($"0x{expectedGas:x}"), response);
+            }
+        }
+    }
+
+    [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
+    [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
+    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
+    [TestCase("""{"authorizationList":[]}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
+    [TestCase("""{"authorizationList":[],"input":"0x00"}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
+    public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["gas"] = "0x186a0";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_contract_creation_does_not_change_original_request([Values] bool derived)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(new TestSpecProvider(Prague.Instance));
+        LegacyTransactionForRpc call = derived ? new EmptyCreationCall() : new LegacyTransactionForRpc();
+        call.From = TestItem.AddressA;
+        call.Gas = 100_000;
+        using ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(call.To, Is.Null);
+            Assert.That(call.Input, Is.Null);
+            Assert.That(call.Gas, Is.EqualTo(100_000UL));
+            Assert.That(call.From, Is.EqualTo(TestItem.AddressA));
+            if (call is EmptyCreationCall custom) Assert.That(custom.Conversions, Is.EqualTo(1));
+            Assert.That(call.ToCallTransaction(Prague.Instance).IsError, Is.False);
+            Assert.That(call.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        }
+    }
+
+    private sealed class EmptyCreationCall : LegacyTransactionForRpc
+    {
+        public int Conversions { get; private set; }
+
+        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+        {
+            Conversions++;
+            return base.ToTransaction(validateUserInput, gasCap, spec);
+        }
+    }
+
 
     [Test]
     public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
