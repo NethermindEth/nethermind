@@ -939,17 +939,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             }
         }
 
-        [TestCase("192.168.1.9", 30303)]
+        [TestCase("192.168.1.9", 30302)]
         [TestCase("192.168.1.2", 30399)]
         [CancelAfter(10000)]
         public async Task Refreshed_record_keeps_the_bonded_endpoint(string enrAddress, int enrUdpPort, CancellationToken token)
         {
+            // The bonded UDP port differs from the TCP port, so the checks below tell the two apart.
+            _receiver = new Node(TestItem.PublicKeyB, "192.168.1.2", 30303, 30302);
             NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
                 2,
                 2,
                 tcpPort: 30304,
                 ipAddress: IPAddress.Parse(enrAddress),
-                configureExtras: record => record.SetEntry(new UdpEntry(enrUdpPort)));
+                configureExtras: record => record.SetEntry(new UdpEntry(enrUdpPort)),
+                responseEndpoint: _receiver.DiscoveryAddress);
 
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
 
