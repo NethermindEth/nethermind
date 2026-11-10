@@ -172,18 +172,21 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public void Search_reports_a_frame_tx_gas_price_matching_its_receipt([Values] bool backwards)
+    public void Search_reports_a_frame_tx_gas_price_matching_its_receipt([Values] bool backwards, [Values] bool carriesBlobs)
     {
         UInt256 baseFee = 1_000_000_000ul;
+        const ulong excessBlobGas = 50_000_000;
         IReleaseSpec spec = Eip8141Prototype.Instance;
         using Fixture f = new(specProvider: new TestSpecProvider(spec));
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas), Is.True);
         Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressE, [FrameTxTestFrames.Secp256k1Signature(TestItem.AddressE)],
             FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Execution());
+        if (carriesBlobs) tx.BlobVersionedHashes = [new byte[32]];
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
-        tx.MaxFee = (UInt256)maxGas * baseFee + (UInt256)maxGas * 3 + maxGas / 2;
+        tx.MaxFee = (UInt256)maxGas * baseFee + (UInt256)maxGas * 3 + maxGas / 2 + (UInt256)tx.GetBlobGas() * feePerBlobGas;
         tx.GasPrice = 100;
         tx.Hash = TestItem.KeccakB;
-        f.AddBlock([tx], baseFee, Call(TestItem.AddressE));
+        f.AddBlock([tx], baseFee, excessBlobGas, Call(TestItem.AddressE));
         Assert.That(tx.CalculateEffectiveGasPrice(true, baseFee), Is.Not.EqualTo(baseFee + 3));
 
         using ResultWrapper<OtsSearchResult> response = backwards
@@ -964,12 +967,12 @@ public class OtsRpcModuleTests
                 .WithNonce(Blocks.Count * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray(), actions);
 
         public void AddBlock(Transaction[] transactions, ParityTraceAction[] actions) =>
-            AddBlock(transactions, UInt256.Zero, actions);
+            AddBlock(transactions, UInt256.Zero, null, actions);
 
-        public void AddBlock(Transaction[] transactions, UInt256 baseFee, params ParityTraceAction[] actions)
+        public void AddBlock(Transaction[] transactions, UInt256 baseFee, ulong? excessBlobGas, params ParityTraceAction[] actions)
         {
             int number = Blocks.Count;
-            Block block = Build.A.Block.WithParent(Blocks[^1]).WithTransactions(transactions).WithBaseFeePerGas(baseFee)
+            Block block = Build.A.Block.WithParent(Blocks[^1]).WithTransactions(transactions).WithBaseFeePerGas(baseFee).WithExcessBlobGas(excessBlobGas)
                 .WithReceiptsRoot(TestItem.KeccakA).WithTimestamp((ulong)number * 12).TestObject;
             Tree.SuggestBlock(block);
             Tree.TryUpdateMainChain(block.Header, true, true, block);
