@@ -167,12 +167,12 @@ public static partial class EvmInstructions
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        // Operands are read in place: slots hold the UInt256 limb layout and the popped slot stays intact
-        // until the next push. The result goes to a local because the Int256 routines behind MUL/DIV/MOD
-        // are not guaranteed alias-safe.
-        ref UInt256 b = ref As<byte, UInt256>(ref topRef);
-        TOpMath.Operation(in Add(ref b, 1), in b, out UInt256 result);
-        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
+        // The Int256 routines behind MUL/DIV/MOD are not guaranteed alias-safe and the result goes to b's slot,
+        // so b is copied to a local and the result is written straight into the slot. The popped slot stays
+        // intact until the next push, so a is read in place. Copying b before the call keeps the copy off the
+        // result's path, where a 32-byte reload of the routine's narrower stores cannot store-forward.
+        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
+        TOpMath.Operation(in As<byte, UInt256>(ref Add(ref topRef, EvmStack.WordSize)), in b, out As<byte, UInt256>(ref topRef));
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
