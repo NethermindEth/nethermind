@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -234,7 +235,7 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc(method, request.RootElement);
         string expected = method == "eth_signTransaction" && !suppliedGas ? "gas not specified"
             : invalidFee ? "gasPrice must be non-zero after london fork"
-            : Nethermind.Facade.Eth.RpcTransaction.RpcTransactionErrors.DataAndInputDiffer;
+            : RpcTransactionErrors.DataAndInputDiffer;
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
