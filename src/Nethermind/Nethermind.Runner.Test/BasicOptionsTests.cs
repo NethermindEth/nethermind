@@ -36,7 +36,8 @@ public class BasicOptionsTests
     }
 
     [TestCase(new[] { "--Init.MemoryHint", "4294967296" }, "Unrecognized option '--Init.MemoryHint'.", ExitCodes.UnrecognizedOption, true)]
-    [TestCase(new[] { "verify-trie", "extra" }, "Unrecognized command or argument 'extra'.", ExitCodes.UnrecognizedOption, true)]
+    [TestCase(new[] { "verify-trie", "--bogus" }, "Unrecognized command or argument '--bogus'.", ExitCodes.UnrecognizedOption, true)]
+    [TestCase(new[] { "verify-trie", "extra" }, "Unrecognized command or argument 'extra'.", ExitCodes.UnrecognizedOption, false)]
     [TestCase(new[] { "--force-resync", "--purge-db" }, "Cannot use --force-resync and --purge-db together. Choose one.", ExitCodes.GeneralError, false)]
     public void Parse_errors_are_reported(string[] args, string firstError, int exitCode, bool releaseNotesHint)
     {

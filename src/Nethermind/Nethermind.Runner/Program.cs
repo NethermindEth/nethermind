@@ -595,8 +595,10 @@ static class BasicOptions
             logger.Error(message);
 
         bool unrecognized = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Count > 0;
+        // A stray argument cannot be an option that was removed.
+        bool unrecognizedOption = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Any(static token => token.StartsWith('-'));
 
-        logger.Error(unrecognized
+        logger.Error(unrecognizedOption
             ? "Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes."
             : "Run with --help to list the available options.");
 
