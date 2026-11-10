@@ -12,9 +12,9 @@ namespace Nethermind.Runner.Test;
 
 public class BasicOptionsTests
 {
-    [TestCase(new[] { "--Init.MemoryHint", "4294967296" }, "--Init.MemoryHint")]
-    [TestCase(new[] { "--Init.MemoryHint=4294967296" }, "--Init.MemoryHint=4294967296")]
-    [TestCase(new[] { "--Db.SkipMemoryHintSetting" }, "--Db.SkipMemoryHintSetting")]
+    [TestCase(new[] { "--Init.Unknown", "123" }, "--Init.Unknown")]
+    [TestCase(new[] { "--Init.Unknown=123" }, "--Init.Unknown=123")]
+    [TestCase(new[] { "--Db.Unknown" }, "--Db.Unknown")]
     [TestCase(new[] { "-x" }, "-x")]
     public void Unrecognized_option_is_not_taken_as_command(string[] args, string option)
     {
@@ -35,7 +35,7 @@ public class BasicOptionsTests
         }
     }
 
-    [TestCase(new[] { "--Init.MemoryHint", "4294967296" }, "Unrecognized option '--Init.MemoryHint'.", ExitCodes.UnrecognizedOption, true)]
+    [TestCase(new[] { "--Init.Unknown", "123" }, "Unrecognized option '--Init.Unknown'.", ExitCodes.UnrecognizedOption, true)]
     [TestCase(new[] { "verify-trie", "--bogus" }, "Unrecognized command or argument '--bogus'.", ExitCodes.UnrecognizedOption, true)]
     [TestCase(new[] { "verify-trie", "extra" }, "Unrecognized command or argument 'extra'.", ExitCodes.UnrecognizedOption, false)]
     [TestCase(new[] { "--force-resync", "--purge-db" }, "Cannot use --force-resync and --purge-db together. Choose one.", ExitCodes.GeneralError, false)]
