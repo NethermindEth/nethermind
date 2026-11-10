@@ -9,7 +9,7 @@ namespace Nethermind.TrustedInput;
 public interface ITrustedInputConfig : IConfig
 {
     /// <summary>Whether to capture inputs and register the RPC module. Defaults to false.</summary>
-    [ConfigItem(Description = "Whether to capture trusted zkVM guest inputs while processing blocks, and serve them over `trustedinput_getInput`. Capture skips blocks while busy; RPC regenerates missing inputs.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to capture trusted zkVM guest inputs while processing blocks, and serve them over `trustedinput_getInput`. A capture runs in the background after the import: it recovers each sender's and ECRECOVER key once more for the hints and encodes the input, and the last `CacheSize` inputs stay in memory, each the size of the block's witness, transactions and codes. Capture skips blocks while busy; RPC regenerates missing inputs.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     /// <summary>The maximum number of completed inputs retained in memory. Defaults to 64.</summary>

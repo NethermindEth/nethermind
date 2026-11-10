@@ -7,3 +7,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 [assembly: InternalsVisibleTo("Nethermind.TrustedInput")]
 [assembly: InternalsVisibleTo("Nethermind.TrustedInput.Test")]
+[assembly: InternalsVisibleTo("nethtest")]
