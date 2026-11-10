@@ -248,9 +248,10 @@ public partial class DebugRpcModuleTests
         };
         request.BlobVersionedHashes[0][0] = 1;
 
+        IReleaseSpec effectiveSpec = chain.SpecProvider.GetSpec(chain.BlockTree.Head!.Header);
         string? error = chain.DebugRpcModule.debug_traceCall(request).Result.Error;
         (bool, ulong?, IReleaseSpec?, UInt256?)[] expectedConversions = beforeFork ? []
-            : [(true, gasCap, spec, blobFeeCap == 0 ? null : (UInt256)blobFeeCap)];
+            : [(true, gasCap, effectiveSpec, blobFeeCap == 0 ? null : (UInt256)blobFeeCap)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error, Is.EqualTo(beforeFork
