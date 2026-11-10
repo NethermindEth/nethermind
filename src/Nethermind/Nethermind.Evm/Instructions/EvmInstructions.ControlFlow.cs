@@ -153,6 +153,44 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => InstructionJumpIf<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
 
+    /// <summary>
+    /// <see cref="InstructionJumpIfAndSkipJumpDest{TGasPolicy}"/> inlined into untraced dispatch, counting the
+    /// landed <c>JUMPDEST</c> in the dispatch counter.
+    /// </summary>
+    /// <remarks>
+    /// Inlined, the handler has no call to save its arguments around, so gas, counter and program counter stay in
+    /// registers and the taken jump does not write the machine's counter through memory.
+    /// </remarks>
+    /// <param name="programCounter">Past <c>JUMPI</c> on entry; the destination, past its <c>JUMPDEST</c>, after a taken jump.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionJumpIfCore<TGasPolicy>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte condition = ref stack.Pop2BytesByRefUnchecked();
+
+        if (!EvmStack.IsSlotZero(ref condition))
+        {
+            nint destination = JumpDestination(ref Unsafe.Add(ref condition, EvmStack.WordSize), ref stack);
+            if (destination < 0) goto InvalidJumpDestination;
+            if (!SkipJumpDest<TGasPolicy, OnFlag, OffFlag>(null!, ref gas, destination, ref jumpOpCodeCount, out programCounter))
+                return EvmExceptionType.OutOfGas;
+            PrefetchCodeAtDestination(ref stack, programCounter);
+        }
+
+        return EvmExceptionType.None;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
+    }
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static OpcodeResult InstructionJumpIf<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
