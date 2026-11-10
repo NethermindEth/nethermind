@@ -56,11 +56,11 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         : TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        codeInfoRepository.InsertCode(code, codeOwner, spec);
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        codeInfoRepository.InsertCode(worldState, code, codeOwner, spec);
 
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        codeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        codeInfoRepository.InsertTransientCode(worldState, code, codeOwner, spec);
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -73,8 +73,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        codeInfoRepository.SetDelegation(codeSource, authority, spec);
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) =>
+        codeInfoRepository.SetDelegation(worldState, codeSource, authority, spec);
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>

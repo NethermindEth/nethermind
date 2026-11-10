@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 namespace Nethermind.Evm;
 
 /// <remarks>
@@ -34,12 +35,17 @@ public interface ICodeInfoRepository
     /// places precompiles at other addresses (a state override moving one) can keep them from running here.
     /// </remarks>
     CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec);
-    void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
+
+    /// <summary>Deposits <paramref name="code"/> into <paramref name="worldState"/> and primes any cache the repository keeps.</summary>
+    /// <remarks>The writes take the world state instead of using the one the repository reads from, so a caller
+    /// that records a transaction into a wrapper of that state, as the EIP-7906 ASSERT diff does, sees them too.</remarks>
+    void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
 
     /// <summary>Installs EIP-8360 <c>TCREATE</c> code, which the world state never writes to the code database.</summary>
     /// <remarks>Goes through the repository, as <see cref="InsertCode"/> does, so a wrapper sees the code change.</remarks>
-    void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
+    void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
+    /// <inheritdoc cref="InsertCode"/>
+    void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 
     /// <remarks>

@@ -79,14 +79,14 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
         _baseCodeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertCode(worldState, code, codeOwner, spec);
 
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertTransientCode(worldState, code, codeOwner, spec);
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        _baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.SetDelegation(worldState, codeSource, authority, spec);
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>

@@ -17,7 +17,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -86,24 +85,26 @@ public class OverridableCodeDirectWriteTests : VirtualMachineTestsBase
     public void DirectWrite_RevertedBySnapshot_RestoresTheOverride([Values] Writer writer, [Values] bool traceAccess)
     {
         BlockAccessListAtIndex accesses = new();
+        IWorldState writtenState = TestState;
         if (traceAccess)
         {
             TracedAccessWorldState tracedState = new(TestState, false);
             tracedState.SetGeneratingBlockAccessList(accesses);
             _repository = new OverridableCodeInfoRepository(CodeInfoRepository, tracedState);
+            writtenState = tracedState;
         }
         byte[] codeBefore = CodeBefore(writer);
         TestState.CreateAccount(Target, 1.Ether);
         Override(Target, codeBefore);
         CodeInfo original = _repository.GetCachedCodeInfoNoDelegation(Target, Spec);
-        Snapshot snapshot = TestState.TakeSnapshot();
+        Snapshot snapshot = writtenState.TakeSnapshot();
 
-        if (writer == Writer.SetCodeFrom) TestState.AdoptCode(Target, ValueKeccak.Compute(SourceCode), SourceCode, Spec);
-        else _repository.SetDelegation(Source, Target, Spec);
+        if (writer == Writer.SetCodeFrom) writtenState.AdoptCode(Target, ValueKeccak.Compute(SourceCode), SourceCode, Spec);
+        else _repository.SetDelegation(writtenState, Source, Target, Spec);
 
         Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec).Code.ToArray(), Is.EqualTo(CodeAfter(writer)), "after the write");
 
-        TestState.Restore(snapshot);
+        writtenState.Restore(snapshot);
 
         Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec), Is.SameAs(original), "after the revert");
         if (traceAccess)

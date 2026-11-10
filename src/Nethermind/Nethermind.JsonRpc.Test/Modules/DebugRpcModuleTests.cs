@@ -1936,9 +1936,9 @@ public partial class DebugRpcModuleTests
             return inner.GetCachedCodeInfo(address, followDelegation, spec, out delegation);
         }
         public CodeInfo GetDelegatedCodeInfo(Address address, IReleaseSpec spec) => inner.GetDelegatedCodeInfo(address, spec);
-        public void InsertCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(code, address, spec);
-        public void InsertTransientCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(code, address, spec);
-        public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(codeSource, authority, spec);
+        public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(worldState, code, address, spec);
+        public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(worldState, code, address, spec);
+        public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(worldState, codeSource, authority, spec);
         public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) => inner.TryGetDelegation(address, spec, out delegatedAddress);
     }
 

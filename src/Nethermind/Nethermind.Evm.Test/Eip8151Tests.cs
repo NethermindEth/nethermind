@@ -32,7 +32,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 

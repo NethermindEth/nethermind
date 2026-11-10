@@ -40,7 +40,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -4402,9 +4401,11 @@ public partial class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    [TestCase(false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
-    [TestCase(true, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges_Parallel")]
-    public void Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges(bool parallel)
+    // The eth_call case deposits the code through the repository into the recorder the processor started itself.
+    [TestCase(false, false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
+    [TestCase(true, false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges_Parallel")]
+    [TestCase(false, true, TestName = "CallAndRestore_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
+    public void Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges(bool parallel, bool simulatesCall)
     {
         byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
@@ -4429,9 +4430,9 @@ public partial class FrameTxProcessorTests
             asserts.Add((Txtrace(0x10, (UInt256)i), To32(1)));
         }
         DeployContract(Recipient, AssertAll([.. asserts]));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient));
 
-        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), parallel);
+        (_, CallOutputTracer tracer) = simulatesCall ? CallSimulated(tx) : ProcessTraced(tx, parallel);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
@@ -4664,20 +4665,23 @@ public partial class FrameTxProcessorTests
         return tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
     }
 
-    /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: an idle recorder and no block-level
-    /// slice, so the transaction must start its own to read its diff.</summary>
+    /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: a plain world state and no block-level
+    /// slice, so the processor must start its own recorder to read the diff.</summary>
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx)
-        => CallSimulated(tx, out _);
+        => CallSimulated(tx, _stateProvider, out _);
 
+    /// <summary>Runs <paramref name="tx"/> over a recorder holding no slice, as a block processing env between slices.</summary>
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder)
-        => CallSimulated(tx, out idleRecorder, out _);
-
-    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder, out EthereumVirtualMachine virtualMachine)
     {
         idleRecorder = new(_stateProvider, parallel: false);
-        EthereumCodeInfoRepository codeInfoRepository = new(idleRecorder);
+        return CallSimulated(tx, idleRecorder, out _);
+    }
+
+    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, IWorldState state, out EthereumVirtualMachine virtualMachine)
+    {
+        EthereumCodeInfoRepository codeInfoRepository = new(state);
         virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, idleRecorder, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, state, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1)
             .WithBeneficiary(Beneficiary)
@@ -4784,7 +4788,7 @@ public partial class FrameTxProcessorTests
         DeployContract(Recipient, AssertAll((Txtrace(0x01, 0), To32(0))));
 
         (_, CallOutputTracer tracer) = CallSimulated(
-            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), out _, out EthereumVirtualMachine vm);
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), _stateProvider, out EthereumVirtualMachine vm);
 
         Assert.That(vm.TxExecutionContext.FrameTxContext, Is.Not.Null,
             "the view is only released, so the context still proves the assertion ran");

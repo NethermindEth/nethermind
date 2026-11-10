@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
@@ -19,6 +20,7 @@ namespace Nethermind.Store.Test.OverridableEnv;
 public class MemoizingCodeInfoRepositoryTests
 {
     private static readonly IReleaseSpec Spec = Substitute.For<IReleaseSpec>();
+    private static readonly IWorldState State = Substitute.For<IWorldState>();
 
     private static (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) Build(byte[] code, Address delegation = null) =>
         Build(() => new CodeInfo(code), delegation);
@@ -57,12 +59,12 @@ public class MemoizingCodeInfoRepositoryTests
     {
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);
         Lookup(repository, TestItem.AddressA, 2);
-        repository.InsertCode(new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
+        repository.InsertCode(State, new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
         Lookup(repository, TestItem.AddressA, 3);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InnerLookups(inner), Is.EqualTo(4));
-            inner.Received(1).InsertCode(Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
+            inner.Received(1).InsertCode(State, Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
         }
     }
 
@@ -71,12 +73,12 @@ public class MemoizingCodeInfoRepositoryTests
     {
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);
         Lookup(repository, TestItem.AddressA, 2);
-        repository.InsertTransientCode(new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
+        repository.InsertTransientCode(State, new byte[] { 0x60, 0x01 }, TestItem.AddressA, Spec);
         Lookup(repository, TestItem.AddressA, 3);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InnerLookups(inner), Is.EqualTo(4));
-            inner.Received(1).InsertTransientCode(Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
+            inner.Received(1).InsertTransientCode(State, Arg.Any<ReadOnlyMemory<byte>>(), TestItem.AddressA, Spec);
         }
     }
 
@@ -85,12 +87,12 @@ public class MemoizingCodeInfoRepositoryTests
     {
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00]);
         Lookup(repository, TestItem.AddressB, 2);
-        repository.SetDelegation(TestItem.AddressC, TestItem.AddressB, Spec);
+        repository.SetDelegation(State, TestItem.AddressC, TestItem.AddressB, Spec);
         Lookup(repository, TestItem.AddressB, 2);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InnerLookups(inner), Is.EqualTo(3));
-            inner.Received(1).SetDelegation(TestItem.AddressC, TestItem.AddressB, Spec);
+            inner.Received(1).SetDelegation(State, TestItem.AddressC, TestItem.AddressB, Spec);
         }
     }
 
@@ -99,7 +101,7 @@ public class MemoizingCodeInfoRepositoryTests
     {
         (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) = Build([0x60, 0x00]);
         Lookup(repository, TestItem.AddressA, 2);
-        repository.InsertCode(new byte[] { 0x60, 0x01 }, TestItem.AddressB, Spec);
+        repository.InsertCode(State, new byte[] { 0x60, 0x01 }, TestItem.AddressB, Spec);
         memo.Clear();
         Lookup(repository, TestItem.AddressA, 2);
         Lookup(repository, TestItem.AddressB, 2);

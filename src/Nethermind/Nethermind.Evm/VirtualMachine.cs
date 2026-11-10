@@ -827,11 +827,11 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (previousState.ExecutionType == ExecutionType.TCREATE)
                 {
                     // EIP-8360: paid no deposit, so the code must not reach the code database.
-                    _codeInfoRepository.InsertTransientCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertTransientCode(_worldState, code, callCodeOwner, spec);
                 }
                 else
                 {
-                    _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
                 }
                 if (IsTracingActions)
                 {

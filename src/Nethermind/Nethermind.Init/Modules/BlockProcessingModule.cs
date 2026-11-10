@@ -104,7 +104,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.
             .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ITxPoolConfig, ILogManager>(
                 (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
-                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 

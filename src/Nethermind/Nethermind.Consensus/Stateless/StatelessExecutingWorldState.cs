@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
