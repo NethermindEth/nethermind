@@ -1105,17 +1105,27 @@ public class DebugRpcModule(
         // Geth checks a nonzero transaction filter before rejecting genesis.
         if (options?.TxHash is { } txHash && txHash != Hash256.Zero)
         {
-            IEnumerable<Block?> blocks = badBlocksOnly ? debugBridge.GetBadBlocks() : [blockFinder.FindBlock(header.Hash!, header.Number)];
-            foreach (Block? block in blocks)
+            if (badBlocksOnly)
             {
-                if (block is null || block.Hash != header.Hash) continue;
-                foreach (Transaction transaction in block.Transactions)
-                    if (transaction.Hash == txHash)
+                foreach (Block block in debugBridge.GetBadBlocks())
+                    if (ContainsTransaction(block, header.Hash!, txHash))
                         return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
+            }
+            else if (ContainsTransaction(blockFinder.FindBlock(header.Hash!, header.Number), header.Hash!, txHash))
+            {
+                return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
             }
             return ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput);
         }
         return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
+
+        static bool ContainsTransaction(Block? block, Hash256 blockHash, Hash256 txHash)
+        {
+            if (block is null || block.Hash != blockHash) return false;
+            foreach (Transaction transaction in block.Transactions)
+                if (transaction.Hash == txHash) return true;
+            return false;
+        }
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
