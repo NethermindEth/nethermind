@@ -420,10 +420,17 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (length.IsUint64 && length.u0 <= size && position.IsUint64 && position.u0 <= size - length.u0)
             return true;
 
+        return ChargeMemoryExpansion(ref gas, in position, in length, ref memory);
+    }
+
+    // Growth is rare next to in-bounds access; keeping it out of line keeps every memory opcode body small.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ChargeMemoryExpansion(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        in UInt256 length, ref EvmPooledMemory memory)
+    {
         ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
-        if (memoryCost == 0L)
-            return !outOfGas;
-        return UpdateGas(ref gas, memoryCost);
+        return memoryCost == 0 ? !outOfGas : UpdateGas(ref gas, memoryCost);
     }
 
     /// <remarks>
@@ -439,10 +446,16 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (length <= size && position.IsUint64 && position.u0 <= size - length)
             return true;
 
+        return ChargeMemoryExpansion(ref gas, in position, length, ref memory);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ChargeMemoryExpansion(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, ref EvmPooledMemory memory)
+    {
         ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
-        if (memoryCost == 0)
-            return !outOfGas;
-        return UpdateGas(ref gas, memoryCost);
+        return memoryCost == 0 ? !outOfGas : UpdateGas(ref gas, memoryCost);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

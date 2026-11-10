@@ -297,6 +297,7 @@ public partial struct EvmPooledMemory
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
     {
         if (length == 0)
@@ -311,6 +312,7 @@ public partial struct EvmPooledMemory
         return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
         if (length.IsZero)
@@ -699,7 +701,7 @@ public partial struct EvmPooledMemory
         CommitOverwrite(preparedInitializedSize);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ulong ComputeMemoryExpansionCost(ulong newSize)
     {
         // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
