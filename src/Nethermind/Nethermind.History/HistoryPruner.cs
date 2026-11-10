@@ -30,7 +30,7 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.History;
 
-public class HistoryPruner : IHistoryPruner
+public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 {
     private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
 
@@ -98,6 +98,12 @@ public class HistoryPruner : IHistoryPruner
     // One-shot: once a blob-reclaiming compaction completes it is persisted and never repeated for the DB's life.
     private bool _blobCompactionDone;
     private bool _blobCompactionOwed;
+    private bool _blobCompactionAttempted;
+    private volatile bool _disposed;
+    private Task? _disposeTask;
+    private readonly CancellationTokenSource _maintenanceCancellation = new();
+    private readonly IBlockProcessingQueue _blockProcessingQueue;
+    internal Task BlobCompactionTask { get; private set; } = Task.CompletedTask;
     private volatile bool _stampsValidated;
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
@@ -134,6 +140,7 @@ public class HistoryPruner : IHistoryPruner
         _blocksDb = dbProvider.BlocksDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
+        _blockProcessingQueue = blockProcessingQueue;
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
@@ -302,7 +309,7 @@ public class HistoryPruner : IHistoryPruner
 
     protected void SchedulePruneHistory(CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _currentlyPruning) == 0)
+        if (!_disposed && Volatile.Read(ref _currentlyPruning) == 0)
         {
             Task.Run(() =>
             {
@@ -346,6 +353,7 @@ public class HistoryPruner : IHistoryPruner
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
     {
+        if (_disposed) return;
         if (_balPruningOnly)
         {
             TryPruneBlockAccessListsOnly(cancellationToken);
@@ -367,6 +375,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (lockTaken)
             {
+                if (_disposed) return;
                 if (!TryLoadDeletePointers())
                 {
                     SkipLocalPruning();
@@ -414,12 +423,12 @@ public class HistoryPruner : IHistoryPruner
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
                 CleanupExpiredSliceRetention(cancellationToken);
-                TryCompactBlocksReclaimingBlobFiles();
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
                 // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
                 // whole timeout every pass and starve them.
                 SweepTransactionIndex(cancellationToken);
+                TryCompactBlocksReclaimingBlobFiles();
             }
             else if (_logger.IsDebug)
             {
@@ -765,6 +774,7 @@ public class HistoryPruner : IHistoryPruner
     private bool IsBlobCompactionOwed() =>
         _compactBlocksOnPrune
         && !_blobCompactionDone
+        && !_blobCompactionAttempted
         && _blobCompactionOwed
         && _blocksReclaimCursor > _minDeletableBlockNumber
         && _blocksReclaimCursor >= (_fastSync ? _syncConfig.AncientBodiesBarrier : _syncConfig.AncientBodiesBarrierCalc);
@@ -775,41 +785,70 @@ public class HistoryPruner : IHistoryPruner
         // Finish pending deletions before rewriting bodies that would immediately become garbage again.
         if (_blocksReclaimCursor < _blocksDeletePointer
             || ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber) < SliceCleanupTarget()) return;
-        CompactBlocksReclaimingBlobFiles();
+        _blobCompactionAttempted = true;
+        BlobCompactionTask = Task.Factory.StartNew(CompactBlocksReclaimingBlobFiles,
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     /// <summary>Runs once, after pruning has reclaimed history, the store-wide blocks-database compaction that
     /// retires the stale RocksDB blob files a plain range reclaim cannot free while a surviving key still
     /// references the oldest blob file. Persists a marker on completion so it never repeats.</summary>
-    /// <remarks>Gated behind <see cref="IHistoryConfig.CompactBlocksOnPrune"/> because it is expensive: it rewrites
-    /// the whole blocks database and can take hours, during which it holds the pruning lock and occupies its
-    /// background worker, so history pruning pauses and background throughput dips for that one-time window. It is
-    /// interruptible by process exit only - never by the per-pass timeout token. A process-exit abort deliberately
-    /// leaves the marker unset, and because the trigger is re-evaluated even once the reclaim cursor has caught up
-    /// to the boundary, an interrupted run is retried on a later pass or the next start.</remarks>
+    /// <remarks>Runs on a dedicated maintenance thread without the pruning lock. Disposal cancels and joins it
+    /// before its database dependencies are released. A failed or declined attempt is retried only after restart.</remarks>
     private void CompactBlocksReclaimingBlobFiles()
     {
-        long startTimestamp = Stopwatch.GetTimestamp();
-        if (_logger.IsInfo) _logger.Info("Compacting the blocks database to reclaim stale blob files left by history pruning. This is a one-time operation that may take hours, during which history pruning is paused.");
-
-        bool ran;
-        using (_processExitSource.Token.Register(static db => ((IDb)db!).InterruptCompactions(), _blocksDb))
+        try
         {
-            ran = _blocksDb.CompactReclaimingBlobFiles();
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _processExitSource.Token, _maintenanceCancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+
+            long startTimestamp = Stopwatch.GetTimestamp();
+            if (_logger.IsInfo) _logger.Info("Compacting the blocks database to reclaim stale blob files left by history pruning. This one-time maintenance operation may take hours.");
+
+            bool completed;
+            using (cancellation.Token.Register(static db => ((IDb)db!).InterruptCompactions(), _blocksDb))
+            {
+                completed = _blocksDb.CompactReclaimingBlobFiles();
+            }
+            if (!completed) return;
+
+            lock (_pruneLock)
+            {
+                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, [1]);
+                _blobCompactionDone = true;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
         }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Blocks database blob-file compaction failed; it will be retried after restart.", e);
+        }
+    }
 
-        // A handle that declined (the default IDb implementation, or a store that did not run it) must not have the
-        // one-shot marked permanently done without having run.
-        if (!ran) return;
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        lock (_pruneLock)
+        {
+            _disposed = true;
+            return new ValueTask(_disposeTask ??= DisposeMaintenanceAsync());
+        }
+    }
 
-        // Only a genuine completion is recorded: a process-exit interrupt aborts the rewrite mid-way, and marking
-        // it done then would skip the reclaim forever.
-        if (_processExitSource.Token.IsCancellationRequested) return;
-
-        _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, [1]);
-        _blobCompactionDone = true;
-
-        if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
+    private async Task DisposeMaintenanceAsync()
+    {
+        _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+        try
+        {
+            await _maintenanceCancellation.CancelAsync();
+        }
+        finally
+        {
+            await BlobCompactionTask;
+            _maintenanceCancellation.Dispose();
+        }
     }
 
     /// <summary>Reclaims <c>[from, to)</c> except the heights still answered for, and returns the
@@ -1257,11 +1296,9 @@ public class HistoryPruner : IHistoryPruner
 
         _blobCompactionDone = _metadataDb.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone);
         byte[]? compactionOwed = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionOwed);
-        // Preserve the recovery path for older pruners, including those that persisted only a delete pointer.
-        // Persist false too, so saving an inferred cursor on a freshly synced database cannot arm it on restart.
-        _blobCompactionOwed = compactionOwed is null
-            ? persistedPointer > _minDeletableBlockNumber
-            : compactionOwed is [1];
+        // Legacy pointers cannot distinguish completed pruning from a database synced directly to the barrier.
+        // Only recorded reclaim work arms the rewrite; an unfinished legacy reclaim will record it as it resumes.
+        _blobCompactionOwed = compactionOwed is [1];
         if (compactionOwed is null && !_frontierFrozen)
             _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [_blobCompactionOwed ? (byte)1 : (byte)0]);
 

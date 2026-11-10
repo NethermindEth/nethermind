@@ -1299,13 +1299,14 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void CompactReclaimingBlobFiles_RestoresConfiguredBlobAndCompactionOptions_NotTheStandardTuneDefaults()
+        public void CompactReclaimingBlobFiles_RestoresConfiguredBlobAndCompactionOptions_NotTheStandardTuneDefaults(
+            [Values("kNoCompression", "kZSTD")] string compression)
         {
             // A blocks database that runs with blob files and auto-compaction disabled: the one-shot must put both
             // back exactly as configured, not reset them to the standard tune defaults.
             DbConfig config = new()
             {
-                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+                AdditionalRocksDbOptions = $"enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type={compression};disable_auto_compactions=true;"
             };
             using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
             using OptionsCapturingDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
@@ -1327,6 +1328,8 @@ namespace Nethermind.Db.Test
                 Assert.That(BlobBytes(DbPath), Is.GreaterThan(blobBeforeWrite),
                     "a post-restore write must still produce blob files - resetting enable_blob_files to the standard default would send it to SST");
                 Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
+                Assert.That(db.AppliedOptions[0]["blob_compression_type"], Is.EqualTo(compression == "kNoCompression" ? "kSnappyCompression" : compression));
+                Assert.That(db.AppliedOptions[^1]["blob_compression_type"], Is.EqualTo(compression));
                 Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("true"),
                     "the restore must put enable_blob_files back to the configured value");
                 Assert.That(db.AppliedOptions.Any(static options => options.TryGetValue("disable_auto_compactions", out string? flag) && flag == "false"), Is.False,
@@ -2709,13 +2712,13 @@ namespace Nethermind.Db.Test
         // compaction - distinct from AppliedOptions, which records every requested change including a withheld one.
         public List<IDictionary<string, string>> LiveAppliedOptions { get; } = [];
 
-        protected override void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+        internal override void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
         {
             AppliedOptions.Add(new Dictionary<string, string>(options));
             base.ApplyOptions(options);
         }
 
-        protected override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
+        internal override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
         {
             LiveAppliedOptions.Add(new Dictionary<string, string>(options));
             base.SetLiveOptions(options);
@@ -2748,7 +2751,7 @@ namespace Nethermind.Db.Test
     {
         private bool _failed;
 
-        protected override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
+        internal override void SetLiveOptions(IEnumerable<KeyValuePair<string, string>> options)
         {
             base.SetLiveOptions(options);
             if (_failed || !options.Any(static option => option is { Key: "enable_blob_garbage_collection", Value: "true" })) return;
