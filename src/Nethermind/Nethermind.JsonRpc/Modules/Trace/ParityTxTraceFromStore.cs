@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>The frame's result, written as null for a halted frame, a suicide and a reward.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public ParityTraceResult Result { get; set; }
+        public ParityTraceResult? Result { get; set; }
 
         public int Subtraces { get; set; }
 
@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>The transaction's hash, written as null for a reward, which belongs to no transaction.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Hash256 TransactionHash { get; set; }
+        public Hash256? TransactionHash { get; set; }
 
         /// <summary>The transaction's position in its block, written as null for a reward.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

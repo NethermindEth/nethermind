@@ -4,10 +4,10 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -74,8 +74,11 @@ namespace Nethermind.Evm.Test
             byte[] expected = Bytes.FromHexString(expectedResult);
 
             Result<byte[]> result = ModExpPrecompile.Instance.Run(input, Osaka.Instance);
-            Assert.That(result.Data, Is.EqualTo(expected));
-            Assert.That(result.Error, isError ? Is.Not.Null : Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data, Is.EqualTo(expected));
+                Assert.That(result.Error, isError ? Is.Not.Null : Is.Null);
+            }
         }
 
         private static (byte[], bool) BigIntegerModExp(byte[] inputData)

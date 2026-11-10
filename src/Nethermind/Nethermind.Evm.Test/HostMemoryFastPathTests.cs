@@ -231,8 +231,11 @@ public class HostMemoryFastPathTests
             {
                 byte[]? backing = memory.BackingArray;
                 Assert.That(backing, Is.Not.Null);
-                Assert.That(backing!.Length, Is.EqualTo(Harness.DirtyArrayLength));
-                Assert.That(backing[^1], Is.EqualTo(Harness.StaleByte), "the frame must spill into the stale array the setup pooled");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(backing!.Length, Is.EqualTo(Harness.DirtyArrayLength));
+                    Assert.That(backing[^1], Is.EqualTo(Harness.StaleByte), "the frame must spill into the stale array the setup pooled");
+                }
             });
 
         using (Assert.EnterMultipleScope())
@@ -258,6 +261,30 @@ public class HostMemoryFastPathTests
             {
                 Assert.That(first.OpCodeCount, Is.EqualTo((nint)4), $"{table} first run");
                 Assert.That(second.OpCodeCount, Is.EqualTo((nint)4), $"{table} second run");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// An unfused taken JUMPI charges and counts the landed JUMPDEST itself in the untraced tables, but dispatches it
+    /// in the traced one. Two pushes and the JUMPI cost 16 gas, and the JUMPDEST 1 more.
+    /// </remarks>
+    [TestCase(AmpleGas, EvmExceptionType.Stop, 8, 5, TestName = "Unfused_taken_JumpI_lands_and_stops")]
+    [TestCase(16UL, EvmExceptionType.OutOfGas, 7, 4, TestName = "Unfused_taken_JumpI_runs_out_of_gas_on_landed_JumpDest")]
+    public void Unfused_taken_jumpi_counts_landed_destination_across_tables(ulong gas, EvmExceptionType exception, int pc, int opCodeCount)
+    {
+        Harness harness = new();
+        byte[] code = [PUSH1, 1, PUSH1, 6, JUMPI, STOP, JUMPDEST, STOP];
+
+        foreach (Table table in Tables)
+        {
+            Outcome outcome = harness.Run(code, gas, table, Setup.Fresh);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(outcome.Exception, Is.EqualTo(exception), $"{table} exception");
+                Assert.That(outcome.Pc, Is.EqualTo((nint)pc), $"{table} program counter");
+                Assert.That(outcome.OpCodeCount, Is.EqualTo((nint)opCodeCount), $"{table} opcode count");
             }
         }
     }
@@ -740,7 +767,9 @@ public class HostMemoryFastPathTests
         {
             ThreadCacheField.SetValue(null, Activator.CreateInstance(ThreadCacheField.FieldType));
             EvmPooledMemory pooled = new(new EvmFrameMemory());
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(pooled.TrySave(UInt256.Zero, Filled(DirtyArrayLength, StaleByte)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(pooled.BackingArray, Has.Length.EqualTo(DirtyArrayLength));
             pooled.Dispose();
         }

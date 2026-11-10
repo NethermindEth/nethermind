@@ -32,6 +32,8 @@ internal static partial class SpecFlags
 
     public static bool Eip3860(IReleaseSpec spec) => spec.IsEip3860Enabled;
 
+    public static bool Eip4758(IReleaseSpec spec) => spec.IsEip4758Enabled;
+
     public static bool Eip6780(IReleaseSpec spec) => spec.SelfdestructOnlyOnSameTransaction;
 
     public static bool Eip8038(IReleaseSpec spec) => spec.IsEip8038Enabled;

@@ -134,6 +134,8 @@ public class FrameTxRecentRootAdmissionTests
         _chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton(_specProvider);
+            // The first simulation runs cold and can overrun the default timeout on CI.
+            builder.AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0 });
             builder.WithGenesisPostProcessor((genesis, worldState, specProvider) =>
             {
                 genesis.Header.SlotNumber = HeadSlot;

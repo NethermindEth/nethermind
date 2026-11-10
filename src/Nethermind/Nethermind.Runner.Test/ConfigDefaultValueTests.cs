@@ -30,9 +30,9 @@ public class ConfigDefaultValueTests
     /// </summary>
     private static readonly HashSet<string> NonDeterministicDefaults =
     [
-        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 2, 1)
-        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 2, 1)
-        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 2, 1)
+        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 4, 1)
+        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 4, 1)
+        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 4, 1)
         "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
         "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
     ];

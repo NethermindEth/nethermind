@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -54,9 +55,36 @@ namespace Nethermind.Trie
         private ref object? DataItem(int i)
         {
             INodeData? nodeData = _nodeData;
-            if (nodeData is BranchData branch) return ref branch[i];
+            if (nodeData is BranchData branch)
+            {
+                MarkChildChanged(i);
+                return ref branch[i];
+            }
             return ref nodeData![i];
         }
+
+        /// <summary>A bit for each branch slot whose child may differ from the one the branch's RLP encodes.</summary>
+        /// <remarks>
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on. A slot is marked each time <see cref="DataItem"/> gives a
+        /// reference to it, which every child write does, and when a write below changes the child in place. Some reads,
+        /// such as <see cref="FindOnlyChild"/>, also take a reference and set a bit they do not need; the hot read path
+        /// resolves a child without a mark. A slot without its bit holds null or the child that the RLP
+        /// encodes, so a re-encode copies that slot from the RLP. A walk that tests the bits first skips the other slots:
+        /// SP1 charges for reading each of them the first time. A bit is never cleared, as a slot with its bit set is only
+        /// encoded again. Kept on the node rather than its <see cref="BranchData"/>, where it fits in the padding after
+        /// <c>_blockAndFlags</c>: a field on the branch data grows every branch the other guests allocate.
+        /// </remarks>
+        private ushort _takenChildren;
+
+        /// <summary>Records that the child in branch slot <paramref name="i"/> may differ from the one this node's RLP encodes.</summary>
+        /// <remarks>For a write that changes the child in place rather than through <see cref="SetChild"/>; see <see cref="_takenChildren"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void MarkChildChanged(int i)
+        {
+            if (FirstTouchMemoryFlag.IsActive) _takenChildren |= (ushort)(1 << i);
+        }
+
+        partial void CopyTakenChildrenFrom(TrieNode node) => _takenChildren = node._takenChildren;
 
         /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
         /// <remarks>Such a node gains nothing from <see cref="SetChild"/> with that child: the slot and hash stay as they are.</remarks>
@@ -243,6 +271,14 @@ namespace Nethermind.Trie
         /// </remarks>
         private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
 
+        /// <summary>Whether a walk over a branch's children skips the slots <see cref="_takenChildren"/> has no bit for.</summary>
+        /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
+        private static bool TracksTakenChildren => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>The slots of <paramref name="item"/>, a branch, whose child may differ from its RLP; see <see cref="_takenChildren"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ushort TakenChildren(TrieNode item) => item._takenChildren;
+
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>
         private static class BranchRlpScratch
@@ -261,10 +297,12 @@ namespace Nethermind.Trie
 
         /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
-        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        internal static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
-            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
-            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            // Read by value: a reference to an element of an array of references costs a covariance check call.
+            byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
+            byte[]? scratch = byDepth[path.Length];
+            if (scratch is null || scratch.Length < length) byDepth[path.Length] = scratch = new byte[Math.Max(length, FullBranchRlpLength)];
             return new CappedArray<byte>(scratch, length);
         }
 
@@ -280,6 +318,10 @@ namespace Nethermind.Trie
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: always.</summary>
+        /// <remarks>Nearly every witness node is a child resolved once, and the call spilled the walk's live registers around it.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.AggressiveInlining;
 
         /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
         /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
@@ -308,16 +350,12 @@ namespace Nethermind.Trie
         /// nibbles back into its hex prefix is most of what encoding it costs. <see cref="OnKeyChanged"/> drops the RLP
         /// of a leaf whose key changes, so any RLP still present carries the current key.
         /// </remarks>
-        /// <returns>Whether the leaf had an RLP to reuse; when not, <paramref name="rlp"/> is not set.</returns>
+        /// <returns>Whether the leaf had an RLP, or else a hex-prefix key, to reuse; when not, <paramref name="rlp"/> is not set.</returns>
         private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
         {
             CappedArray<byte> previous = node.ReadRlp();
             ReadOnlySpan<byte> previousRlp = previous.AsSpan();
-            if (previousRlp.IsEmpty)
-            {
-                rlp = default;
-                return false;
-            }
+            if (previousRlp.IsEmpty) return TryEncodeLeafWithCompactKey(node, pool, out rlp);
 
             int keyStart = previousRlp[0] < 0xf8 ? 1 : 1 + previousRlp[0] - 0xf7;
             // A hex-prefix key is one to thirty-three bytes: a single byte below 0x80, or a short string.
@@ -335,6 +373,72 @@ namespace Nethermind.Trie
             return true;
         }
 
+        /// <summary>Encodes <paramref name="node"/>, a leaf without RLP, from the hex-prefix key its data keeps, as a leaf
+        /// built by a raw-key write does.</summary>
+        /// <returns>Whether the leaf kept such a key; when not, <paramref name="rlp"/> is not set.</returns>
+        private static bool TryEncodeLeafWithCompactKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            if (node._nodeData is not LeafData leaf || !leaf.TryGetCompactKey(out ReadOnlySpan<byte> compactKey))
+            {
+                rlp = default;
+                return false;
+            }
+
+            ReadOnlySpan<byte> value = leaf.Value.AsSpan();
+            int contentLength = Rlp.LengthOf(compactKey) + Rlp.LengthOf(value);
+            rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
+            Span<byte> destination = rlp.AsSpan();
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            position = Rlp.Encode(destination, position, compactKey);
+            Rlp.Encode(destination, position, value);
+            return true;
+        }
+
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
+        /// <remarks>
+        /// Skips the slots before the child knowing only the two item shapes such a branch holds, an empty slot and a hash,
+        /// and hands any other shape, an extension or a node without RLP to <see cref="ResolveChildFromAnyRlp"/>. Every
+        /// call it makes is a tail call, so unlike that general item scan it saves no registers.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp)
+        {
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            if (span.Length == 0 || span[0] < 0xc0 || _nodeData is not BranchData)
+                return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
+            int position = span[0] < 0xf8 ? 1 : 1 + span[0] - 0xf7;
+            for (int skipped = 0; skipped < i; skipped++)
+            {
+                int prefix = span[position];
+                if (prefix == EmptyItem) position++;
+                else if (prefix == HashItem) position += 1 + Hash256.Size;
+                else return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+
+            switch (span[position])
+            {
+                case EmptyItem:
+                    data = _nullNode;
+                    return _nullNode;
+                case HashItem:
+                    return ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size));
+                default:
+                    return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+        }
+
+        private const int EmptyItem = 0x80;
+        private const int HashItem = 0x80 + Hash256.Size;
+
+        /// <summary>Creates the data of a leaf decoded from this node's RLP, with the hex-prefix key <paramref name="compactKey"/>
+        /// ending at <paramref name="compactKeyEnd"/>.</summary>
+        /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
+        /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
+
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>
         /// An encoder reads the path only for its depth, which tells the root, hashed whatever its length, from a child
@@ -347,5 +451,50 @@ namespace Nethermind.Trie
         /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        /// <remarks>
+        /// A 32-bit guest writes the hash into the new object a word at a time, where the JIT reads an unaligned hash a byte
+        /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
+        /// merged. The last word can reach up to three bytes past the RLP when the hash ends it, but no further than the word
+        /// that holds the hash's last byte, so the read stays in the array's allocation; those bytes are shifted out.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
+        {
+            if (IntPtr.Size != sizeof(uint))
+                return new(MemoryMarshal.Read<ValueHash256>(hash));
+
+            nuint address = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
+            int misalignment = (int)(address % sizeof(uint));
+            uint* words = (uint*)(address - (nuint)misalignment);
+            Hash256 keccak = new(default(ValueHash256));
+            // Written in place before anything else can read it: the new object is not yet shared.
+            ref uint merged = ref Unsafe.As<ValueHash256, uint>(ref Unsafe.AsRef(in keccak.ValueHash256));
+            if (misalignment == 0)
+            {
+                merged = words[0];
+                Unsafe.Add(ref merged, 1) = words[1];
+                Unsafe.Add(ref merged, 2) = words[2];
+                Unsafe.Add(ref merged, 3) = words[3];
+                Unsafe.Add(ref merged, 4) = words[4];
+                Unsafe.Add(ref merged, 5) = words[5];
+                Unsafe.Add(ref merged, 6) = words[6];
+                Unsafe.Add(ref merged, 7) = words[7];
+                return keccak;
+            }
+
+            int right = misalignment * 8;
+            int left = 32 - right;
+            merged = (words[0] >> right) | (words[1] << left);
+            Unsafe.Add(ref merged, 1) = (words[1] >> right) | (words[2] << left);
+            Unsafe.Add(ref merged, 2) = (words[2] >> right) | (words[3] << left);
+            Unsafe.Add(ref merged, 3) = (words[3] >> right) | (words[4] << left);
+            Unsafe.Add(ref merged, 4) = (words[4] >> right) | (words[5] << left);
+            Unsafe.Add(ref merged, 5) = (words[5] >> right) | (words[6] << left);
+            Unsafe.Add(ref merged, 6) = (words[6] >> right) | (words[7] << left);
+            Unsafe.Add(ref merged, 7) = (words[7] >> right) | (words[8] << left);
+            return keccak;
+        }
     }
 }

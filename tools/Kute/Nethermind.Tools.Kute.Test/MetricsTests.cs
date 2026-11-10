@@ -54,16 +54,22 @@ public class MetricsTests
 
         MetricsReport report = reporter.Report();
 
-        Assert.That(report.TotalTime, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
-        Assert.That(report.TotalTime, Is.LessThan(TimeSpan.FromMilliseconds(110)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.TotalTime, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+            Assert.That(report.TotalTime, Is.LessThan(TimeSpan.FromMilliseconds(110)));
 
-        Assert.That(report.Singles, Has.Count.EqualTo(1));
+            Assert.That(report.Singles, Has.Count.EqualTo(1));
+        }
         Assert.That(report.Singles, Does.ContainKey("method1"));
-        Assert.That(report.Singles["method1"], Has.Count.EqualTo(1));
-        Assert.That(report.Singles["method1"], Does.ContainKey("42"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.Singles["method1"], Has.Count.EqualTo(1));
+            Assert.That(report.Singles["method1"], Does.ContainKey("42"));
 
-        Assert.That(report.Batches, Has.Count.EqualTo(1));
-        Assert.That(report.Batches, Does.ContainKey("43:45"));
+            Assert.That(report.Batches, Has.Count.EqualTo(1));
+            Assert.That(report.Batches, Does.ContainKey("43:45"));
+        }
     }
 
     [Test]

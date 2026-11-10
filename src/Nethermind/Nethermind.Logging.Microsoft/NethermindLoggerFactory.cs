@@ -62,28 +62,34 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
                 case MsLogLevel.Warning:
                     if (logger.IsWarn)
                     {
-                        logger.Warn(formatter(state, exception));
+                        logger.Warn(FormatMessage(state, exception, formatter));
                     }
                     break;
                 case MsLogLevel.Information:
                     if (logger.IsInfo)
                     {
-                        logger.Info(formatter(state, exception));
+                        logger.Info(FormatMessage(state, exception, formatter));
                     }
                     break;
                 case MsLogLevel.Debug:
                     if (logger.IsDebug)
                     {
-                        logger.Debug(formatter(state, exception));
+                        logger.Debug(FormatMessage(state, exception, formatter));
                     }
                     break;
                 case MsLogLevel.Trace:
                     if (logger.IsTrace)
                     {
-                        logger.Trace(formatter(state, exception));
+                        logger.Trace(FormatMessage(state, exception, formatter));
                     }
                     break;
             }
+        }
+
+        private static string FormatMessage<TState>(TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            string message = formatter(state, exception);
+            return exception is null ? message : string.Concat(message, Environment.NewLine, exception.ToString());
         }
 
         private static MsLogLevel LowerLogLevel(MsLogLevel logLevel, MsLogLevel? maxLogLevel)

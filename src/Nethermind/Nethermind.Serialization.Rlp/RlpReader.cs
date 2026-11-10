@@ -198,6 +198,9 @@ public ref struct RlpReader
         return keccak;
     }
 
+    public void DecodeZeroPrefixKeccakNonNull(scoped Span<byte> keccak) =>
+        Position = RlpHelpers.DecodeZeroPrefixKeccakNonNull(Data, Position, keccak);
+
     public Hash256 DecodeZeroPrefixLogTopic0()
     {
         Position = RlpHelpers.DecodeZeroPrefixLogTopic0(Data, Position, out Hash256 topic);
@@ -697,7 +700,7 @@ public ref struct RlpReader
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         GuardLimit(count, limit);
         T[] result = new T[count];
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
         for (int i = 0; i < result.Length; i++)
         {
             if (PeekByte() == Rlp.EmptyListByte)
@@ -713,7 +716,8 @@ public ref struct RlpReader
             else
             {
                 T? value = decodeItem(ref this);
-                if (value is null)
+                // `default(T) is null` folds at every tier; stored in a local it boxes structs in Debug and Tier0.
+                if (default(T) is null && value is null)
                 {
                     RlpHelpers.ThrowNullArrayElement(i);
                 }
@@ -814,7 +818,7 @@ public ref struct RlpReader
         GuardLimit(count, limit);
         ArrayPoolList<T> result = new(count, count);
         int i = 0;
-        bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
+        bool hasDefaultElement = !typeof(T).IsValueType && defaultElement is not null;
         try
         {
             for (; i < result.Count; i++)
@@ -832,7 +836,7 @@ public ref struct RlpReader
                 else
                 {
                     T? value = decodeItem(ref this);
-                    if (value is null)
+                    if (default(T) is null && value is null)
                     {
                         RlpHelpers.ThrowNullArrayElement(i);
                     }

@@ -124,6 +124,7 @@ namespace Nethermind.Specs.Test
         public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
+        public bool IsEip4758Enabled { get; set; } = spec.IsEip4758Enabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
@@ -138,6 +139,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
+        public IReadOnlyList<Address> Eip8253Accounts { get => IsEip8253Enabled ? field : []; set; } = spec.Eip8253Accounts;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
         public bool IsEip5920Enabled { get; set; } = spec.IsEip5920Enabled;
         public bool IsEip8360Enabled { get; set; } = spec.IsEip8360Enabled;

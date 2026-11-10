@@ -28,4 +28,14 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
         => UInt256.Mod(in a, in b, out result);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        Unsafe.SkipInit(out result);
+        Int256.Divide(
+            in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)),
+            in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+            out Unsafe.As<UInt256, Int256>(ref result));
+    }
 }

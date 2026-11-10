@@ -199,6 +199,7 @@ public static class BaseFlatPersistence
             }
         }
 
+        [SkipLocalsInit]
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], address);
@@ -346,7 +347,19 @@ public static class BaseFlatPersistence
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey, StoragePrefixLength(fullAddressStorageKey));
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey));
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey), flags);
+        }
+
+        [SkipLocalsInit]
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            int prefixLength = StoragePrefixLength(fullAddressStorageKey);
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            toPath.Bytes[..prefixLength].CopyTo(lastKey);
+            lastKey[prefixLength..].Fill(0xff);
+            BasePersistence.DeleteKeysOfAccountRange(storageSnap, storage, fromPath.Bytes[..prefixLength], lastKey,
+                StorageKeyLength, prefixOffset: 0, prefixLength, suffixOffset: prefixLength + StorageSlotKeySize,
+                fromPath.Bytes[..AccountKeyLength], toPath.Bytes[..AccountKeyLength], flags);
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)
@@ -402,7 +415,7 @@ public static class BaseFlatPersistence
             fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
             toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
             lastKey[AccountKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength);
+            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength, flags);
         }
 
         [SkipLocalsInit]
@@ -414,7 +427,7 @@ public static class BaseFlatPersistence
             EncodeStorageKey(lastKey[..StorageKeyLength], addressHash, toPath, fullAddressStorageKey);
             lastKey[StorageKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey));
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey), flags);
         }
     }
 }

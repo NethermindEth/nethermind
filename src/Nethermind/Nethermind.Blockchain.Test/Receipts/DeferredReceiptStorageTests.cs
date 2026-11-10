@@ -97,15 +97,31 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     public void Deferred_insert_is_visible_before_flush()
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
+        receipts[0].TxHash = block.Transactions[0].Hash;
         _storage.InsertDeferred(block, receipts, _specProvider.GetSpec(block.Header));
 
         // Kill the LRU so only the pending overlay can serve.
         _storage.ClearCache();
 
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+        TxReceipt? pending;
+        int txIndex;
+        int logIndexStart;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+            Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out pending, out txIndex, out logIndexStart), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, Is.SameAs(receipts[0]));
+            Assert.That(txIndex, Is.Zero);
+            Assert.That(logIndexStart, Is.Zero);
+        }
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out _), Is.True);
     }
 
@@ -234,14 +250,20 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(blockB));
 
         // The lazy scan must resolve every tx of every pending block to its own block, not just the first.
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[0].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 0");
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 1");
-        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "pending scan, block B tx 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[0].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 0");
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 1");
+            Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "pending scan, block B tx 0");
+        }
 
         _writer.Pump();
 
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "durable index, block A tx 1");
-        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "durable index, block B tx 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "durable index, block A tx 1");
+            Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "durable index, block B tx 0");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -472,7 +494,10 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _writer.Pump();
 
         _storage.ClearCache();
-        Assert.That(_storage.Get(block), Is.Empty);
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.Get(block), Is.Empty);
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.False);
+        }
     }
 }

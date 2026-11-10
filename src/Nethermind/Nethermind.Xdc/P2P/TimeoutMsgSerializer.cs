@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -9,29 +9,24 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
+internal class TimeoutMsgSerializer : IMessageSerializer<TimeoutMsg>
 {
     private static readonly TimeoutDecoder _timeDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message)
+    public int Serialize(Span<byte> destination, TimeoutMsg message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(destination);
         _timeDecoder.Encode(ref writer, message.Timeout);
+        return writer.Position;
     }
 
-    public TimeoutMsg Deserialize(IByteBuffer byteBuffer)
+    public TimeoutMsg Deserialize(ReadOnlySpan<byte> data)
     {
-        RlpReader ctx = new(byteBuffer.AsSpan());
+        RlpReader ctx = new(data);
         Timeout timeout = _timeDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(ctx.Position);
+        ctx.CheckEnd();
         return new() { Timeout = timeout };
     }
 
-    public int GetLength(TimeoutMsg message, out int contentLength)
-    {
-        contentLength = _timeDecoder.GetContentLength(message.Timeout, RlpBehaviors.None);
-        return _timeDecoder.GetLength(message.Timeout, RlpBehaviors.None);
-    }
+    public int GetLength(TimeoutMsg message) => _timeDecoder.GetLength(message.Timeout, RlpBehaviors.None);
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
@@ -49,6 +50,12 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
         _innerReader.TryLoadStorageRlp(address, in path, flags);
 
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStateRlp(in path, flags, action, arg);
+
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        _innerReader.TryLoadStorageRlp(address, in path, flags, action, arg);
+
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
 
@@ -58,12 +65,15 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
         _innerReader.CreateAccountIterator(startKey, endKey);
 
-    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
-        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
+        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
     }
 
     public bool SupportsPrefetch => _innerReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
+
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
+        _innerReader is IPersistence.IPrefetchingReader prefetcher ? prefetcher.PlanPrefetch(accountSamples, slotSamples) : IPersistence.PrefetchColumns.None;
 
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
         _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);

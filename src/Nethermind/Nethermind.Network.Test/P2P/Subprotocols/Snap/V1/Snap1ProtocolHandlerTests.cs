@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -17,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
@@ -265,6 +267,40 @@ public class Snap1ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_discard_expired_undecodable_account_range_before_decoding()
+    {
+        Context ctx = new();
+        ctx.Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap1ProtocolHandler handler = ctx.Snap1ProtocolHandler;
+        GetAccountRangeMessage? request = null;
+        ctx.Session.When(session => session.DeliverMessage(Arg.Any<GetAccountRangeMessage>()))
+            .Do(callInfo => request = (GetAccountRangeMessage)callInfo[0]);
+
+        Task responseTask = handler.GetAccountRange(
+            new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+        Assert.That(SpinWait.SpinUntil(() => request is not null, 1000), Is.True);
+        MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> dictionary = GetAccountRangeDictionary(handler);
+        Expire(dictionary, request!.RequestId);
+
+        using PooledBufferLeakDetector detector = new();
+        HandleUndecodableResponse(handler, detector, request.RequestId);
+        Assert.That(() => HandleUndecodableResponse(handler, detector, request.RequestId), Throws.TypeOf<SubprotocolException>());
+        Assert.That(() => HandleUndecodableResponse(handler, detector, request.RequestId + 1), Throws.TypeOf<SubprotocolException>());
+
+        Exception? responseException = null;
+        try
+        {
+            await responseTask;
+        }
+        catch (Exception exception)
+        {
+            responseException = exception;
+        }
+
+        Assert.That(responseException, Is.TypeOf<TimeoutException>());
+    }
+
+    [Test]
     [Explicit]
     public async Task Test_response_bytes_reset_on_error()
     {
@@ -283,5 +319,27 @@ public class Snap1ProtocolHandlerTests
         ctx.RealTimeStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
+    }
+
+    private static MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> GetAccountRangeDictionary(Snap1ProtocolHandler handler)
+    {
+        FieldInfo field = typeof(Snap1ProtocolHandler).GetField("_getAccountRangeRequests", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        return (MessageDictionary<GetAccountRangeMessage, AccountRangeMessage>)field.GetValue(handler)!;
+    }
+
+    private static void Expire(MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> dictionary, long requestId)
+    {
+        FieldInfo thresholdField = typeof(MessageDictionary<GetAccountRangeMessage, AccountRangeMessage>)
+            .GetField("_oldRequestThreshold", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        thresholdField.SetValue(dictionary, TimeSpan.Zero);
+        Assert.That(SpinWait.SpinUntil(() => dictionary.TryExpireRequest(requestId), TimeSpan.FromSeconds(1)), Is.True);
+    }
+
+    private static void HandleUndecodableResponse(Snap1ProtocolHandler handler, PooledBufferLeakDetector detector, long requestId)
+    {
+        using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
+        using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
+        content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
+        handler.HandleMessage(new ZeroPacket(content) { PacketType = Snap1MessageCode.AccountRange });
     }
 }

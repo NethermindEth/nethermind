@@ -9,9 +9,12 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -21,6 +24,10 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
+using Nethermind.State;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test;
@@ -29,6 +36,137 @@ namespace Nethermind.Consensus.Test.Processing;
 
 public class BranchProcessorVerdictTests
 {
+    [Test]
+    public void Inclusion_list_without_bal_uses_state_before_post_execution_credits([Values] bool fundedBeforeTransactions, [Values] bool withdrawal, [Values(0UL, 1UL)] ulong nonce)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7928Enabled = false };
+        Transaction tx = Build.A.Transaction.WithNonce(nonce).WithGasLimit(100_000).WithGasPrice(1).WithValue(0)
+            .WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithBaseFeePerGas(0)
+            .WithTransactions([])
+            .WithWithdrawals(withdrawal ? [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(1).TestObject] : [])
+            .WithInclusionListTransactions([tx]).TestObject;
+        IExecutionRequestsProcessor requests = Substitute.For<IExecutionRequestsProcessor>();
+        requests.When(processor => processor.ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>()))
+            .Do(call =>
+            {
+                if (!withdrawal) call.Arg<IWorldState>().AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 1.GWei, spec);
+            });
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out Arg.Any<string>()).Returns(true);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(spec))
+            .AddSingleton(validator)
+            .AddSingleton(requests)
+            .Build();
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = context.WorldState.BeginScope(IWorldState.PreGenesis);
+        if (fundedBeforeTransactions || nonce != 0)
+            context.WorldState.CreateAccount(TestItem.AddressA, fundedBeforeTransactions ? 1.GWei : 0, nonce);
+        context.WorldState.Commit(spec);
+        ValidationResult txValidation = container.Resolve<ITxValidator>().IsWellFormed(tx, spec, block.GasLimit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)txValidation, Is.True, txValidation.ToString());
+            Assert.That(InclusionListValidator.IsSatisfied(block, context.WorldState, spec, container.Resolve<ITxValidator>()), Is.EqualTo(!fundedBeforeTransactions), "Before processing");
+        }
+
+        Block[] processed = context.BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed[0].IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(block.IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(context.WorldState.GetBalance(TestItem.AddressA), Is.GreaterThanOrEqualTo(1.GWei));
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_preserves_parallel_execution_options([Values] bool nonemptyList)
+    {
+        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [Build.A.Transaction.TestObject] : []).TestObject;
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        ProcessingOptions actualOptions = ProcessingOptions.None;
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                actualOptions = call.Arg<ProcessingOptions>();
+                processor.TransactionsExecuted += Raise.Event<Action<Block>>(block);
+                return (block, Array.Empty<TxReceipt>());
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddSingleton(processor)
+            .Build();
+
+        container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.False);
+    }
+
+    [Test]
+    public void Inclusion_list_shortcuts_do_not_read_sender_accounts([Values] bool fullBlock)
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithGasUsed(fullBlock ? 30_000_000UL : 0)
+            .WithTransactions(fullBlock ? [] : [tx]).WithInclusionListTransactions([tx]).TestObject;
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                processor.TransactionsExecuted += Raise.Event<Action<Block>>(block);
+                return (block, Array.Empty<TxReceipt>());
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddSingleton(processor)
+            .AddDecorator<IWorldState>((_, state) => new CountingWorldState(state))
+            .Build();
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+
+        context.BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(((CountingWorldState)context.WorldState).AccountReads, Is.Zero);
+    }
+
+    [Test]
+    public void Custom_inclusion_list_checker_can_read_accounts_outside_the_list()
+    {
+        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions([Build.A.Transaction.TestObject]).TestObject;
+        IInclusionListSatisfactionChecker checker = Substitute.For<IInclusionListSatisfactionChecker>();
+        checker.IsSatisfied(Arg.Any<Block>(), Arg.Any<Block>(), Arg.Any<IReadOnlyStateProvider>()).Returns(call =>
+        {
+            IReadOnlyStateProvider state = call.Arg<IReadOnlyStateProvider>();
+            state.TryGetAccount(TestItem.AddressB, out _);
+            state.GetCode(TestItem.AddressB);
+            state.Get(new StorageCell(TestItem.AddressB, 0), out _);
+            return true;
+        });
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                processor.TransactionsExecuted += Raise.Event<Action<Block>>(block);
+                return (block, Array.Empty<TxReceipt>());
+            });
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddSingleton(processor).AddSingleton(checker).Build();
+
+        container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        checker.Received(1).IsSatisfied(Arg.Any<Block>(), Arg.Any<Block>(), Arg.Any<IReadOnlyStateProvider>());
+    }
+
+    private sealed class CountingWorldState(IWorldState inner) : WorldStateDecorator(inner)
+    {
+        public int AccountReads { get; private set; }
+        public override bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            AccountReads++;
+            return base.TryGetAccount(address, out account);
+        }
+    }
+
     [Test]
     public async Task Concurrent_processing_uses_invocation_worker_groups([Values] bool readOnly, [Values] bool ambient)
     {
@@ -210,20 +348,46 @@ public class BranchProcessorVerdictTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
 
-        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
-            .Returns((block, Array.Empty<TxReceipt>()));
-        IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
-            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
-
-        BranchProcessor branchProcessor = new(blockProcessor, Substitute.For<ISpecProvider>(), worldState, Substitute.For<IBlockhashProvider>(),
-            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance);
+        BranchProcessor branchProcessor = CreateBranchProcessor();
         branchProcessor.BlockExecuted += (_, e) => e.Answered = answered;
         branchProcessor.BlockProcessed += (_, _) => throw new InvalidBlockException(block, "failed after the verdict");
 
         Exception thrown = Assert.Catch(() => branchProcessor.Process(parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance));
 
         Assert.That(thrown, Is.TypeOf(expected));
+    }
+
+    [TestCase(0UL, 0, TestName = "Process_BeforeEip7709_PrefetchesEveryBlock")]
+    [TestCase(1UL, 2, TestName = "Process_WithEip7709_SkipsBlockhashPrefetch")]
+    [TestCase(2UL, 1, TestName = "Process_BranchCrossingEip7709_PrefetchesOnlyBeforeTheFork")]
+    public void Process_prefetches_blockhashes_only_while_blockhash_reads_them(ulong eip7709Block, int expectedSkipped)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block first = Build.A.Block.WithParent(parent).TestObject;
+        Block second = Build.A.Block.WithParent(first).TestObject;
+        IReleaseSpec before = Substitute.For<IReleaseSpec>();
+        IReleaseSpec after = Substitute.For<IReleaseSpec>();
+        after.IsEip7709Enabled.Returns(true);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>())
+            .Returns(call => eip7709Block != 0 && call.ArgAt<ForkActivation>(0).BlockNumber >= eip7709Block ? after : before);
+        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+
+        CreateBranchProcessor(specProvider, blockhashProvider).Process(parent, [first, second], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        blockhashProvider.Received(2 - expectedSkipped).Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
+    }
+
+    private static BranchProcessor CreateBranchProcessor(ISpecProvider specProvider = null, IBlockhashProvider blockhashProvider = null)
+    {
+        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(call => (call.ArgAt<Block>(0), Array.Empty<TxReceipt>()));
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
+            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+
+        return new BranchProcessor(blockProcessor, specProvider ?? Substitute.For<ISpecProvider>(), worldState, blockhashProvider ?? Substitute.For<IBlockhashProvider>(),
+            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance, Substitute.For<IWorldStateManager>());
     }
 }

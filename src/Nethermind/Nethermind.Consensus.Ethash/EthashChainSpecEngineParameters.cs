@@ -17,11 +17,13 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     public string EngineName => SealEngineType;
     public string SealEngineType => Core.SealEngineType.Ethash;
 
-    public ulong HomesteadTransition { get; set; } = 0;
+    /// <summary>Homestead activation block; null means Homestead never activates.</summary>
+    public ulong? HomesteadTransition { get; set; } = 0;
     public ulong? DaoHardforkTransition { get; set; }
     public Address DaoHardforkBeneficiary { get; set; }
     public Address[] DaoHardforkAccounts { get; set; } = [];
-    public ulong? Eip100bTransition { get; set; }
+    /// <summary>EIP-100 activation block; null means EIP-100 never activates.</summary>
+    public ulong? Eip100bTransition { get; set; } = 0;
     public ulong? FixedDifficulty { get; set; }
     public ulong DifficultyBoundDivisor { get; set; } = 0x0800;
     public ulong DurationLimit { get; set; } = 13;
@@ -50,7 +52,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
             }
         }
 
-        blockNumbers.Add(HomesteadTransition);
+        if (HomesteadTransition is not null) blockNumbers.Add(HomesteadTransition.Value);
         if (DaoHardforkTransition is not null) blockNumbers.Add(DaoHardforkTransition.Value);
         if (Eip100bTransition is not null) blockNumbers.Add(Eip100bTransition.Value);
     }
@@ -61,7 +63,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
         spec.IsEip2Enabled = HomesteadTransition <= startBlock;
         spec.IsEip7Enabled = HomesteadTransition <= startBlock;
-        spec.IsEip100Enabled = (Eip100bTransition ?? 0) <= startBlock;
+        spec.IsEip100Enabled = Eip100bTransition <= startBlock;
         spec.DifficultyBoundDivisor = DifficultyBoundDivisor;
         spec.FixedDifficulty = FixedDifficulty;
     }

@@ -62,6 +62,29 @@ public class SnapSyncFeedTests
         snapProvider.Received(1).ReleaseRequest(batch, responseHandled: false);
     }
 
+    // A checkpoint taken between the handler and the release would see the response half handled.
+    [Test]
+    public void HoldsTheResponseScopeUntilTheRequestIsReleased()
+    {
+        ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+        IDisposable responseScope = Substitute.For<IDisposable>();
+        snapProvider.BeginResponse().Returns(responseScope);
+        Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+        AccountRange request = new(Keccak.Zero, Keccak.Zero);
+        AccountsAndProofs response = new();
+        using SnapSyncBatch batch = new() { AccountRangeRequest = request, AccountRangeResponse = response };
+
+        feed.HandleResponse(batch, new PeerInfo(Substitute.For<ISyncPeer>()));
+
+        Received.InOrder(() =>
+        {
+            snapProvider.BeginResponse();
+            snapProvider.AddAccountRange(request, response);
+            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            responseScope.Dispose();
+        });
+    }
+
     /// <summary>Short enough to keep these tests quick; production uses five minutes.</summary>
     private static readonly TimeSpan ShortThreshold = TimeSpan.FromMilliseconds(100);
 

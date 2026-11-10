@@ -142,7 +142,9 @@ public class BlockAccessListManagerTests
         }
 
         Task drain = Task.Run(h.Manager.WaitForBalWarmup);
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(drain.Wait(DrainTimeout), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(drain.Exception, Is.Null);
     }
 
@@ -262,8 +264,10 @@ public class BlockAccessListManagerTests
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
             .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = true)
-            .WithGenesisPostProcessor((_, state, specProvider) =>
+            .WithGenesisPostProcessor((genesis, state, specProvider) =>
             {
+                // The transaction count scales with the core count, so the default 4M gas limit can't fit them all on many-core machines.
+                genesis.Header.GasLimit = 1_000_000_000;
                 state.CreateAccount(Counter, UInt256.Zero);
                 state.InsertCode(Counter, ReadAndIncrement, specProvider.GenesisSpec);
                 state.Set(new StorageCell(Counter, UInt256.Zero), InitialCount);

@@ -54,6 +54,18 @@ namespace Nethermind.Evm.State
             && stateProvider.IsContract(sender)
             && (!spec.IsEip7702Enabled
                 || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCodeSpan(sender))));
+
+        /// <summary>
+        /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702,
+        /// resolving the delegation through <paramref name="codeInfoRepository"/> and its code cache.
+        /// </summary>
+        public static bool IsInvalidContractSender(
+            this IWorldState stateProvider,
+            IReleaseSpec spec,
+            Address sender,
+            ICodeInfoRepository codeInfoRepository) => spec.IsEip3607Enabled
+            && stateProvider.IsContract(sender)
+            && (!spec.IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(sender, spec, out _));
     }
 
 }

@@ -1,6 +1,6 @@
 ---
 name: zkevm
-description: Work on Nethermind's zkEVM stateless guests (ZisK, SP1, OpenVM) - layout, building and running guests, the stateless input/output format, guest cost, testing against tests-zkevm fixtures, adopting a new tests-zkevm release, and re-pinning the guests' .ssz inputs. Use for any change to the stateless executor or zkVM guests, or when asked to support a tests-zkevm release.
+description: Work on Nethermind's zkEVM stateless guests (ZisK, SP1, OpenVM) - layout, building and running guests, the stateless input/output format, guest cost, the zkVM bindings in Nethermind.Zkvm.Abstractions, testing against tests-zkevm fixtures, adopting a new tests-zkevm release, and re-pinning the guests' .ssz inputs. Use for any change to the stateless executor or zkVM guests, or when asked to support a tests-zkevm release.
 allowed-tools:
   [
     Bash,
@@ -25,6 +25,7 @@ A guest is Nethermind's stateless block validator, compiled with bflat into a RI
 | `Nethermind.Consensus/Stateless` | Witness decoding, witness-backed state and block tree, replay env. **Shared with the host**, so changes here affect host-side stateless replay too |
 | `Nethermind.Stateless.{Zisk,Sp1,OpenVM}Guest` | Per-zkVM wrappers: `Program.cs` writes the output, the `Makefile` pins toolchain and runner images |
 | `Nethermind.Stateless.Guest/` | Shared `Main`, `ZkvmThrow` failure protocol, `build.mk` compiler settings |
+| `Nethermind.Zkvm.Abstractions` | Bindings to the zkVMs' native interfaces: the [zkVM standards](https://github.com/eth-act/zkvm-standards) accelerators and I/O, plus each zkVM's own precompiles in its `*.zisk.cs` / `*.sp1.cs` / `*.openvm.cs` files |
 | `Nethermind.{Core,Trie,Evm}.ZkEvm.Test` | Unit tests of code compiled under `ZK_EVM` |
 | `tools/StatelessInputGen` | Builds stateless inputs from a live node |
 
@@ -53,6 +54,20 @@ The Makefiles need GNU Make, Docker (linux/amd64), Python 3 (SP1/OpenVM strip th
 
 ZisK emulation is deterministic, so one `make stats` run is an exact measurement and even a small step delta is real. `stateless-benchmarks.yml` does this for every pinned block and compares a PR with master (`scripts/zisk-bench`). For cost work, compare steps on the same inputs before and after the change. The cost model counts precompile and accelerator calls, not just steps.
 
+## zkVM bindings
+
+`Nethermind.Zkvm.Abstractions` holds the standard accelerators and I/O in `Accelerators.cs` and `IO.cs`, and each zkVM's own precompiles in `Accelerators.zisk.cs`, `Accelerators.sp1.cs` and `Accelerators.openvm.cs`. Each `*.bindings*.cs` file holds the imports behind the API file of the same name.
+
+- **Signatures:** imports come from `__Internal` and resolve only when bflat links a guest against its runtime package (`Nethermind.ZiskOS.Runtime`, `Nethermind.Sp1.Runtime`, `Nethermind.OpenVM.Runtime`). Nothing checks a signature at compile time, so a mismatch surfaces only in the guest. Match each import to its C header or runtime routine exactly, keep the native function and parameter names, and recheck the imports when a runtime package is bumped.
+- **GC transition:** mark accelerator imports `[SuppressGCTransition]`. Guests are single-threaded and native routines never call back into managed code.
+- **Checked and unchecked APIs:** span-based methods validate lengths before the native call and document the throw with `<exception>`. Pointer and `ref` overloads are unchecked and for hot paths only; their docs state the caller's contract (sizes, alignment, aliasing).
+- **Failures:** accelerators that fail on invalid input as an expected outcome, such as curve operations and signature recovery, return `Status` and leave the handling to the caller.
+- **Non-standard APIs:** keep each in its zkVM's files, with a `TODO` linking the zkvm-standards issue where one exists, and move it to the standard files once it is standardized.
+- **Linking:** every zkVM's APIs are compiled in, and a guest links only the imports its code reaches. An import of the same name can still differ per zkVM: SP1 and OpenVM both export `zkvm_sha256_compress` with different arguments, so `Sp1Sha256Compress` and `OpenVMSha256Compress` each link on both but work only on their own.
+- **Native AOT:** keep the public API Native AOT compatible.
+- **Host tests:** the host JIT resolves an inlined `SuppressGCTransition` import on entry to its caller, so a test needs a native stub to call even when the import is skipped. `JumpDestBitmapAcceleratorTests` in `Nethermind.Evm.ZkEvm.Test` builds one with GCC.
+- **Proof:** only the guests prove a binding, so run them on the pinned inputs. On ZisK, compare `make stats` steps before and after, since even the call path costs steps: `Merkle.zkevm.cs` keeps its own `syscall_sha256_f` import because calling through `Accelerators.Sha256F` costs more.
+
 ## Testing
 
 - **Unit:** `Nethermind.Consensus.Test` (`Stateless` namespace), `StatelessSchemaTests` in `Ethereum.Blockchain.Pyspec.Test`, and the `*.ZkEvm.Test` projects, which need `-p:EnableZkEvm=true`.
@@ -61,7 +76,7 @@ ZisK emulation is deterministic, so one `make stats` run is an exact measurement
   - **All zeros:** the input failed to decode.
 - **CI-only:** the `ZkEvmBlockchainTests` Pyspec fixtures, which skip unless running on Linux x64. `StatelessExecutorOutputMatchesFixture` compares guest output over `blockchain_tests`, `WitnessMatchesFixture` compares the host-generated witness, and they cover the full fixture tree.
 - **Not covered anywhere:** the guest bytes in `blockchain_tests_engine`. Those fixtures carry `statelessInputBytes`/`statelessOutputBytes` on each `engineNewPayloads[]` entry. Neither `nethtest` nor `StatelessExecutorOutputMatchesFixture` reads them (both read `blocks[]` of `blockchain_tests`). `ZkEvmEngineBlockchainTests` exercises the host's Engine API path (`engine_newPayloadWithWitness*`), not `StatelessExecutor`. The spec recommends guests use these fixtures because they cover more malformed-payload mutations. Until a runner reads them, don't treat a green CI as validating them.
-- **Guests end to end:** `stateless-tests.yml` builds all three guests and runs them on the blocks pinned in `Nethermind.Stateless.ZiskGuest/inputs.json`. Locally, `make run` on one of those inputs must print `<output>0101000000000000000100`.
+- **Guests end to end:** `stateless-tests.yml` builds all three guests and runs them on the blocks pinned in `Nethermind.Stateless.ZiskGuest/inputs.json`. Each entry's `output` is the full 43-byte result, so locally `make run` on one of those inputs must print exactly its `output`.
 - **Benchmark fixtures:** `stateless-benchmark-fixtures.yml` runs weekly, or on dispatch with a release tag and gas values. It feeds every benchmark block of a `tests-zkevm-benchmark` release through the ZisK guest and `nethtest`, and ranks the blocks by cost in the job summary. A matching output does not prove a precompile ran: a benchmark that burns its gas either way reaches the same post-state when the precompile fails. Treat a block whose steps are far below its neighbours' as suspect.
 
 ## Adopting a tests-zkevm release

@@ -17,6 +17,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -24,6 +25,40 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [Parallelizable(ParallelScope.All)]
 public class ChainSpecLoaderTests
 {
+    [Test]
+    [NonParallelizable]
+    public void File_diagnostics_follow_sensitive_masking([Values] bool maskSensitiveData)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"private-chain-spec-{Guid.NewGuid():N}.json");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Specs", "genesis_test.json"), path);
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsInfo.Returns(true);
+            List<string> lines = [];
+            logger.When(log => log.Info(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
+            ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), new OneLoggerLogManager(new(logger)));
+
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
+
+            string displayedPath = maskSensitiveData ? "[redacted]" : path;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainSpec.ChainId, Is.EqualTo(22082));
+                Assert.That(lines, Does.Contain($"Did not find ChainSpec in embedded resources: {displayedPath}"));
+                Assert.That(lines, Does.Contain($"Loading ChainSpec from file: {displayedPath}"));
+                if (maskSensitiveData) Assert.That(lines, Has.None.Contains(path));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+            File.Delete(path);
+        }
+    }
+
     private static ChainSpec LoadChainSpec(string path)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -61,6 +96,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.GrayGlacierBlockNumber, Is.EqualTo(MainnetSpecProvider.GrayGlacierBlockNumber));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.ShanghaiBlockTimestamp));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.Instance.TimestampFork));
+            Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(Eip8253TestData.MainnetAccounts.ToArray()), "EIP-8253 accounts");
         }
     }
 
@@ -373,6 +409,7 @@ public class ChainSpecLoaderTests
         if (underlyingType == typeof(UInt256)) return (UInt256)77777;
         if (underlyingType == typeof(Address)) return new Address("0x1111111111111111111111111111111111111111");
         if (underlyingType == typeof(Hash256)) return new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111");
+        if (type == typeof(Address[])) return new[] { new Address("0x1111111111111111111111111111111111111111") };
         if (type == typeof(List<BlobScheduleSettings>))
             return new List<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
         return null;

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.History;
@@ -62,6 +63,9 @@ namespace Nethermind.Synchronization.Blocks
         // This var is updated as blocks get downloaded.
         private int _estimateTxPerBlock = 100;
 
+        // Downloaded access lists stay in the buffer until suggestion. Their kilobytes per block count as transactions.
+        private int _estimateAccessListKbPerBlock;
+
         // On the off chance that something goes wrong somewhere, request completely hang for example. Retry
         // the request.
         private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
@@ -71,7 +75,7 @@ namespace Nethermind.Synchronization.Blocks
 
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the _maxTxInBuffer
         // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
-        private int HeaderLookupSize => Math.Min(_maxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
+        private int HeaderLookupSize => Math.Min(_maxTxInBuffer / (_estimateTxPerBlock + _estimateAccessListKbPerBlock), MaxHeaderLookup);
 
         private readonly ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
         public int DownloadRequestBufferSize => _downloadRequests.Count;
@@ -230,10 +234,10 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
+                    if (!IsValidDownloadedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
-                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
+                        if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer:hide}, {errorMessage:hide}");
 
                         if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
                         entry.RetryBlockRequest();
@@ -274,6 +278,17 @@ namespace Nethermind.Synchronization.Blocks
 
         public void PruneDownloadBuffer() => _downloadRequests.Clear();
 
+        private bool IsValidDownloadedBlock(Block block, BlockHeader parent, out string? errorMessage)
+        {
+            if (!HeaderValidator.ValidateHash(block.Header, out Hash256 actualHash))
+            {
+                errorMessage = BlockErrorMessages.InvalidHeaderHash(block.Header.Hash!, actualHash);
+                return false;
+            }
+
+            return _blockValidator.ValidateSuggestedBlock(block, parent, out errorMessage, validateHashes: false);
+        }
+
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             ReadOnlySpan<BlockHeader> currentHeadersSpan = currentHeaders.AsSpan();
@@ -303,6 +318,40 @@ namespace Nethermind.Synchronization.Blocks
             return false;
         }
 
+        /// <summary>The highest head of the awake peers that serve block access lists, or <c>null</c> when no such peer is connected.</summary>
+        /// <remarks>
+        /// The access list allocation takes only an awake peer whose head is at or above the requested blocks.
+        /// A peer sleeps for lists after it answers without one, see <see cref="SleepForAccessLists"/>.
+        /// </remarks>
+        private ulong? GetBlockAccessListsPeerHead()
+        {
+            ulong? head = null;
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            {
+                if (peer.SyncPeer.SupportsBlockAccessLists() && !peer.IsAsleep(AllocationContexts.BlockAccessLists)) head = ulong.Max(head ?? 0, peer.HeadNumber);
+            }
+
+            return head;
+        }
+
+        /// <summary>Marks whether no awake eth/71 peer has the block, for a block that executes without its list.</summary>
+        /// <remarks>
+        /// Without such a peer every request for the list fails, so the block executes without waiting for the retries.
+        /// This is checked on each pass, so a peer that connects or wakes later serves the list. The peers are read once per pass.
+        /// </remarks>
+        private void UpdateNoAccessListPeer(BlockEntry entry, ref ulong? peerHead, ref bool peerHeadKnown)
+        {
+            if (!entry.CanExecuteMissingData) return;
+
+            if (!peerHeadKnown)
+            {
+                peerHead = GetBlockAccessListsPeerHead();
+                peerHeadKnown = true;
+            }
+
+            entry.NoAccessListPeer = peerHead is not { } head || entry.Header.Number > head;
+        }
+
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
@@ -316,6 +365,9 @@ namespace Nethermind.Synchronization.Blocks
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
+            ulong? blockAccessListsPeerHead = null;
+            bool blockAccessListsPeerHeadKnown = false;
+            bool accessListsInBuffer = false;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
@@ -339,13 +391,16 @@ namespace Nethermind.Synchronization.Blocks
                         new BlockEntry(
                             parentHeader,
                             blockHeader,
-                            Block: null,
+                            Block: TryGetLocalBlock(blockHeader),
                             Receipts: null,
                             PeerInfo: null,
-                            EncodedAccessList: null));
+                            EncodedAccessList: null)
+                        { AccessListStored = IsAccessListStored(blockHeader) });
                 }
                 entry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                 parentHeader = blockHeader;
+
+                UpdateNoAccessListPeer(entry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
 
                 if ((requestContentType is null or BlocksRequestContentType.Bodies) && entry.NeedBodyDownload)
                 {
@@ -354,7 +409,9 @@ namespace Nethermind.Synchronization.Blocks
                     requestContentType = BlocksRequestContentType.Bodies;
                 }
 
-                if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
+                bool downloadAccessList = ShouldDownloadAccessList(blockHeader, shouldProcess);
+                accessListsInBuffer |= entry.EncodedAccessList is not null || (downloadAccessList && !entry.HasAccessList);
+                if (downloadAccessList && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
                         (HasFreeBlockAccessListsPeer()
@@ -395,6 +452,13 @@ namespace Nethermind.Synchronization.Blocks
                 }
             }
 
+            // When no block in the buffer holds or still needs a list, e.g. all are stored or below the serving window,
+            // the last downloaded list size no longer limits the buffer. A break leaves headers unchecked, so it keeps the estimate.
+            if (!accessListsInBuffer && bodiesToDownload.Count < bodiesRequestSize && receiptsToDownload.Count < receiptsRequestSize)
+            {
+                _estimateAccessListKbPerBlock = 0;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies, {blockAccessListsToDownload.Count} access lists and {receiptsToDownload.Count} receipts.");
 
             if (receiptsToDownload.Count + bodiesToDownload.Count + blockAccessListsToDownload.Count == 0)
@@ -421,14 +485,24 @@ namespace Nethermind.Synchronization.Blocks
             try
             {
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
+                ulong? blockAccessListsPeerHead = null;
+                bool blockAccessListsPeerHeadKnown = false;
                 ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
                 for (int i = 1; i < headersSpan.Length; i++)
                 {
                     BlockHeader? blockHeader = headersSpan[i];
                     if (blockHeader is null) break;
-                    if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
+                    if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry))
+                    {
+                        if (TryGetLocalBlock(blockHeader) is not { } localBlock) break;
+                        blockEntry = _downloadRequests.GetOrAdd(blockHeader.Hash, new BlockEntry(headersSpan[i - 1]!, blockHeader, localBlock, Receipts: null, PeerInfo: null, EncodedAccessList: null)
+                        { AccessListStored = IsAccessListStored(blockHeader) });
+                    }
+
                     blockEntry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                     if (blockEntry.Block is null) break;
+                    // A peer that answered without the list sleeps for lists, so the block need not wait for the next request.
+                    UpdateNoAccessListPeer(blockEntry, ref blockAccessListsPeerHead, ref blockAccessListsPeerHeadKnown);
                     if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
                     if (ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) && !blockEntry.HasReceipt) break;
 
@@ -490,7 +564,7 @@ namespace Nethermind.Synchronization.Blocks
                                       && _blockValidator.ValidateBodyAgainstHeader(header, body, out bodyError);
                 if (!bodyFitsHeader)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Body {bodyIndex} from {peer} does not fit {header.ToString(BlockHeader.Format.Short)}: {bodyError ?? "tx root differs"}");
+                    if (_logger.IsTrace) _logger.Trace($"Body {bodyIndex} from {peer:hide} does not fit {header.ToString(BlockHeader.Format.Short)}: {bodyError ?? "tx root differs"}");
                     rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
                     entry?.RetryBlockRequest();
                     continue;
@@ -517,7 +591,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (bodyIndex < (bodies?.Length ?? 0))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, a body matches none of the requested headers");
+                if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer:hide}, a body matches none of the requested headers");
 
                 if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block received: body matches none of the requested headers");
                 result = SyncResponseHandlingResult.LesserQuality;
@@ -573,7 +647,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_receiptsRecovery.TryRecover(block, receipts, false) == ReceiptsRecoveryResult.Fail)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}");
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
                     result = SyncResponseHandlingResult.LesserQuality;
                     entry.RetryReceiptRequest();
@@ -581,7 +655,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 if (!ValidateReceiptsRoot(block, receipts))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid receipt root from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid receipt root from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}");
 
                     if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -596,24 +670,39 @@ namespace Nethermind.Synchronization.Blocks
                 receiptsCount++;
             }
 
+            long blockAccessListsBytes = 0;
+            // An answer that stores no list is still progress, so the zero-progress rule below does not put the peer to sleep for blocks.
+            int answeredWithoutStoredListCount = 0;
             for (int i = 0; i < response.BlockAccessListsRequests.Count; i++)
             {
                 BlockHeader header = response.BlockAccessListsRequests[i];
                 if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
                 {
+                    // The block left the buffer while the request was in flight, e.g. released without its list.
+                    if (blockAccessLists is not null) answeredWithoutStoredListCount++;
                     continue;
                 }
 
                 if (TryHandleBlockAccessListResponse(header, entry, blockAccessLists, i, unsupportedBlockAccessListsPeer, peer, ref result))
                 {
                     blockAccessListsCount++;
+                    blockAccessListsBytes += entry.EncodedAccessList!.Length;
                 }
+                else if (blockAccessLists is not null && entry.CanExecuteMissingData)
+                {
+                    answeredWithoutStoredListCount++;
+                }
+            }
+
+            if (blockAccessListsCount > 0)
+            {
+                _estimateAccessListKbPerBlock = (int)(blockAccessListsBytes / blockAccessListsCount / 1000);
             }
 
             if (result == SyncResponseHandlingResult.OK)
             {
                 // Request and body does not have the same size so this heuristic is wrong.
-                if (bodiesCount + blockAccessListsCount + receiptsCount == 0)
+                if (bodiesCount + blockAccessListsCount + answeredWithoutStoredListCount + receiptsCount == 0)
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -643,6 +732,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (served == 0) entry.RecordMissingAccessList();
+                if (blockAccessLists is { Count: 0 }) SleepForAccessLists(entry, peer);
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -652,13 +742,15 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
+                SleepForAccessLists(entry, peer);
                 bool mustServe = _balServingWindow.MustServe(header, peer?.HeadNumber ?? 0);
                 // Outside the serving window (e.g. full sync resuming far behind after downtime) a required list may be
                 // pruned on every peer, so the answer is not proof of withholding.
                 if (mustServe || !entry.CanExecuteMissingData)
                 {
-                    result = SyncResponseHandlingResult.LesserQuality;
-                    WarnUnservedAccessList(header, peer, mustServe);
+                    // A weak peer sleeps, so each retry of a list that the block does not need would hold the block back.
+                    if (!entry.CanExecuteMissingData) result = SyncResponseHandlingResult.LesserQuality;
+                    WarnUnservedAccessList(header, peer, mustServe, entry.CanExecuteMissingData);
                     // The peer that served this block's body or receipts has the block, so it is withholding the list.
                     // When processing can go ahead without the list, a peer still backfilling lists is not worth dropping.
                     if (mustServe && !entry.CanExecuteMissingData && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
@@ -671,7 +763,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!BlockAccessListHashValidator.Validate(header, encodedAccessList, out string? errorMessage))
             {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer:hide} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage:hide}");
 
                 if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block access list received: {errorMessage}. Block: {header.ToString(BlockHeader.Format.Short)}");
                 result = SyncResponseHandlingResult.LesserQuality;
@@ -690,9 +782,22 @@ namespace Nethermind.Synchronization.Blocks
             return true;
         }
 
-        /// <summary>Warns, at most once a minute, that a static or trusted peer did not serve a required block access list.</summary>
-        /// <remarks>Only an operator-chosen peer is worth a warning: with it as the sole peer, sync cannot pass the block.</remarks>
-        private void WarnUnservedAccessList(BlockHeader header, PeerInfo? peer, bool insideServingWindow)
+        /// <summary>Puts a peer that answered without the list of a block that executes without it to sleep for lists only.</summary>
+        /// <remarks>
+        /// A retry then goes to another peer. With no other awake list peer that has the block, the block executes at once.
+        /// The pool wakes the peer later, so a peer that was still backfilling lists serves them again.
+        /// </remarks>
+        private static void SleepForAccessLists(BlockEntry entry, PeerInfo? peer)
+        {
+            if (entry.CanExecuteMissingData) peer?.PutToSleep(AllocationContexts.BlockAccessLists, DateTime.UtcNow);
+        }
+
+        /// <summary>Warns, at most once a minute, that a static or trusted peer did not serve a block access list it must serve.</summary>
+        /// <remarks>
+        /// Only an operator-chosen peer is worth a warning: with it as the sole peer, sync cannot pass a block that needs the list,
+        /// and a block that can execute without it executes slower.
+        /// </remarks>
+        private void WarnUnservedAccessList(BlockHeader header, PeerInfo? peer, bool insideServingWindow, bool canExecuteWithoutList)
         {
             if (!_logger.IsWarn || peer?.SyncPeer.Node is not { } node || !(node.IsStatic || node.IsTrusted)) return;
 
@@ -701,7 +806,10 @@ namespace Nethermind.Synchronization.Blocks
             if (now < next || Interlocked.CompareExchange(ref _nextUnservedAccessListWarningMs, now + UnservedAccessListWarningIntervalMs, next) != next) return;
 
             string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
-            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
+            string effect = canExecuteWithoutList
+                ? "another peer serves it, or the block executes without it"
+                : "sync cannot pass this block until another peer serves it";
+            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer:hide} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); {effect}.");
         }
 
         private enum BlocksRequestContentType
@@ -720,8 +828,33 @@ namespace Nethermind.Synchronization.Blocks
         /// <summary>Whether this header requires a BAL before suggestion.</summary>
         protected virtual bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) => !shouldProcess;
 
+        /// <summary>Whether the block access list of this header is already in the store, so that it is not downloaded.</summary>
+        /// <remarks>Checked once, when the block enters the download buffer; processing takes a stored list from the store.</remarks>
+        protected virtual bool IsAccessListStored(BlockHeader header) => false;
+
         /// <summary>Whether this header requires receipts before suggestion.</summary>
         protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
+
+        /// <summary>
+        /// Returns a block already stored locally for <paramref name="header"/>, so that its body is not downloaded again.
+        /// </summary>
+        /// <returns>The stored block, or <c>null</c> when the body has to be downloaded from a peer.</returns>
+        protected virtual Block? FindLocalBlock(BlockHeader header) => null;
+
+        private Block? TryGetLocalBlock(BlockHeader header)
+        {
+            if (FindLocalBlock(header) is not { } localBlock) return null;
+
+            // Only check binding a stored body to its header: IsValidDownloadedBlock skips the roots (validateHashes: false),
+            // and a beacon body can mismatch its header, e.g. a Taiko payload with null Transactions/Withdrawals stored under the wire roots.
+            if (!_blockValidator.ValidateBodyAgainstHeader(header, localBlock.Body, out string? errorMessage))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Stored body of {header.ToString(BlockHeader.Format.Short)} does not match its header, downloading it instead: {errorMessage}");
+                return null;
+            }
+
+            return new Block(header, localBlock.Body);
+        }
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) =>
             shouldProcess
@@ -808,6 +941,7 @@ namespace Nethermind.Synchronization.Blocks
                     peer.SyncPeer.HeadHash = header.Hash;
                 }
             }
+            string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo?.ToString() ?? string.Empty;
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before
@@ -816,21 +950,21 @@ namespace Nethermind.Synchronization.Blocks
                         if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
                         string blockId = $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         string message = isFirstInBatch
-                            ? $"Peer {peerInfo} sent orphaned blocks/headers inside the batch: {blockId}"
-                            : $"Peer {peerInfo} sent an inconsistent batch of blocks/headers: {blockId}";
+                            ? $"Peer {DescribePeer()} sent orphaned blocks/headers inside the batch: {blockId}"
+                            : $"Peer {DescribePeer()} sent an inconsistent batch of blocks/headers: {blockId}";
                         _logger.Error(message);
                         throw new EthSyncException(message);
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {DescribePeer()}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {
                         // Validator-level reason (e.g. InvalidReceiptsRoot, BAL hash mismatch) is logged
                         // separately via InvalidBlockException by the validator/processor; see preceding
                         // 'Rejected invalid block' log lines and the RLP dump at /tmp/block_<hash>.rlp.
-                        string message = $"Peer {peerInfo} sent an invalid block/header: " +
+                        string message = $"Peer {DescribePeer()} sent an invalid block/header: " +
                                          $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
                         throw new EthSyncException(message);
                     }
@@ -859,17 +993,17 @@ namespace Nethermind.Synchronization.Blocks
                     string reason;
                     if (t.HasTimeoutException())
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} timed out. {t.Exception?.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo:hide} timed out. {t.Exception?.Message:hide}");
                         reason = "timeout";
                     }
                     else if (t.HasCanceledException())
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo} was canceled.");
+                        if (_logger.IsDebug) _logger.Debug($"Block download from {peerInfo:hide} was canceled.");
                         reason = "cancel";
                     }
                     else
                     {
-                        _logger.DebugError($"Block download from {peerInfo} failed. {t.Exception}");
+                        _logger.DebugError($"Block download from {peerInfo:hide} failed. {t.Exception:hide}");
                         // ReSharper disable once RedundantAssignment
                         reason = $"sync fault";
 #if DEBUG
@@ -886,11 +1020,11 @@ namespace Nethermind.Synchronization.Blocks
 
                     break;
                 case { IsCanceled: true }:
-                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo} canceled. Removing node from sync peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Blocks download from {peerInfo:hide} canceled. Removing node from sync peers.");
 
                     break;
                 case { IsCompletedSuccessfully: true } t:
-                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo} completed.");
+                    if (_logger.IsDebug) _logger.Debug($"Blocks download from {peerInfo:hide} completed.");
                     if (peerInfo is not null) // fix this for node data sync
                     {
                         InvokeEvent(new SyncEventArgs(peerInfo.SyncPeer, Synchronization.SyncEvent.Completed));
@@ -924,9 +1058,11 @@ namespace Nethermind.Synchronization.Blocks
             public void ResetMissingReceipt() { _missingReceipts = 0; SkipReceiptDownload = false; }
             public bool CanExecuteMissingData { get; set; }
             public bool SkipAccessListDownload { get; set; }
+            public bool NoAccessListPeer { get; set; }
+            public bool AccessListStored { get; init; }
             public bool SkipReceiptDownload { get; set; }
-            public bool HasAccessList => (CanExecuteMissingData && SkipAccessListDownload) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
-            public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload)) || !Header.HasTransactions || Receipts?.Length > 0;
+            public bool HasAccessList => AccessListStored || (CanExecuteMissingData && (SkipAccessListDownload || NoAccessListPeer)) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
+            public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload || (NoAccessListPeer && !AccessListStored && EncodedAccessList is null))) || !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
             public void MarkBlockRequestSent() => _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;

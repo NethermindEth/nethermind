@@ -75,8 +75,11 @@ public class ProofRpcModuleCallTests
             param);
         CallResultWithProof result = wrapper.Data!;
 
-        Assert.That(result.Witness.State, Is.Not.Empty, "a call touching state must record state-trie nodes");
-        Assert.That(result.Witness.Headers, Is.Not.Empty, "the executed-against header is always included");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Witness.State, Is.Not.Empty, "a call touching state must record state-trie nodes");
+            Assert.That(result.Witness.Headers, Is.Not.Empty, "the executed-against header is always included");
+        }
     }
 
     [Test]
@@ -88,8 +91,11 @@ public class ProofRpcModuleCallTests
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressA },
             new BlockParameter(0UL));
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "genesis has no parent header for the witness walk");
-        Assert.That(result.Result.Error, Does.Contain("genesis"), "the error message should explain the genesis rejection");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "genesis has no parent header for the witness walk");
+            Assert.That(result.Result.Error, Does.Contain("genesis"), "the error message should explain the genesis rejection");
+        }
     }
 
     [Test]
@@ -124,12 +130,15 @@ public class ProofRpcModuleCallTests
 
         // Return data: SLOAD(0) returned as 32 bytes big-endian — the trailing byte holds 0x42.
         Assert.That(result.Result, Is.Not.Null.And.Not.Empty);
-        Assert.That(result.Result![^1], Is.EqualTo(0x42));
-        Assert.That(result.Error, Is.Null, "clean success must not surface an in-payload error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result![^1], Is.EqualTo(0x42));
+            Assert.That(result.Error, Is.Null, "clean success must not surface an in-payload error");
 
-        Assert.That(result.Witness.Codes, Is.Not.Empty, "the called contract bytecode must be captured");
-        Assert.That(result.Witness.State, Is.Not.Empty, "account + storage trie nodes must be captured");
-        Assert.That(result.Witness.Keys, Is.Not.Empty, "accessed addresses and slots must be recorded");
+            Assert.That(result.Witness.Codes, Is.Not.Empty, "the called contract bytecode must be captured");
+            Assert.That(result.Witness.State, Is.Not.Empty, "account + storage trie nodes must be captured");
+            Assert.That(result.Witness.Keys, Is.Not.Empty, "accessed addresses and slots must be recorded");
+        }
     }
 
     [Test]
@@ -198,13 +207,19 @@ public class ProofRpcModuleCallTests
         CallResultWithProof result = wrapper.Data!;
 
         // Revert surfaces no top-level Result; the payload lives in error.data (hex), mirroring eth_call.
-        Assert.That(result.Result, Is.Null, "the success-path Result field is unused on revert");
-        Assert.That(result.Error, Is.Not.Null);
-        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
-        Assert.That(result.Error.Message, Is.EqualTo(expectedMessage));
-        Assert.That(((string)result.Error.Data!), Does.StartWith(expectedDataPrefix));
-        Assert.That(result.Witness.State, Is.Not.Empty);
-        Assert.That(result.Witness.Codes, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Null, "the success-path Result field is unused on revert");
+            Assert.That(result.Error, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
+            Assert.That(result.Error.Message, Is.EqualTo(expectedMessage));
+            Assert.That(((string)result.Error.Data!), Does.StartWith(expectedDataPrefix));
+            Assert.That(result.Witness.State, Is.Not.Empty);
+            Assert.That(result.Witness.Codes, Is.Not.Empty);
+        }
     }
 
     /// <summary>
@@ -257,11 +272,17 @@ public class ProofRpcModuleCallTests
         CallResultWithProof result = wrapper.Data!;
 
         // REVERT surfaces an in-payload error but the witness is still returned.
-        Assert.That(result.Result, Is.Null, "REVERT must null out the success-path Result");
-        Assert.That(result.Error, Is.Not.Null);
-        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
-        Assert.That(result.Witness.State, Is.Not.Empty,
-            "the witness must include storage trie nodes for the SSTORE'd-then-reverted slot");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Null, "REVERT must null out the success-path Result");
+            Assert.That(result.Error, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
+            Assert.That(result.Witness.State, Is.Not.Empty,
+                "the witness must include storage trie nodes for the SSTORE'd-then-reverted slot");
+        }
 
         // Compute the expected storage proof by walking the parent state's storage trie directly.
         AccountProofCollector expectedCollector = new(contractAddress, [UInt256.Zero]);
@@ -314,23 +335,32 @@ public class ProofRpcModuleCallTests
             },
             new BlockParameter(blockNumber));
 
-        Assert.That(withGas.Data, Is.Not.Null);
-        Assert.That(withoutGas.Data, Is.Not.Null);
-        Assert.That(withoutGas.Data!.Error, Is.Null,
-            "omitting gas must not be treated as an error");
-        Assert.That(withoutGas.Data.Result, Is.Not.Null.And.Not.Empty,
-            "omitting gas must still execute the call to completion");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withGas.Data, Is.Not.Null);
+            Assert.That(withoutGas.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutGas.Data!.Error, Is.Null,
+                "omitting gas must not be treated as an error");
+            Assert.That(withoutGas.Data.Result, Is.Not.Null.And.Not.Empty,
+                "omitting gas must still execute the call to completion");
 
-        Assert.That(withoutGas.Data.Witness.State, Is.Not.Empty,
-            "omitting gas must not empty the state node set");
-        Assert.That(withoutGas.Data.Witness.Codes, Is.Not.Empty,
-            "omitting gas must still capture called-contract bytecode");
-        Assert.That(withoutGas.Data.Witness.State.Count, Is.EqualTo(withGas.Data.Witness.State.Count),
-            "state-node count should match between with-gas and without-gas calls");
-        Assert.That(withoutGas.Data.Witness.Codes.Count, Is.EqualTo(withGas.Data.Witness.Codes.Count),
-            "code count should match between with-gas and without-gas calls");
-        Assert.That(withoutGas.Data.Witness.Keys.Count, Is.EqualTo(withGas.Data.Witness.Keys.Count),
-            "key count should match between with-gas and without-gas calls");
+            Assert.That(withoutGas.Data.Witness.State, Is.Not.Empty,
+                "omitting gas must not empty the state node set");
+            Assert.That(withoutGas.Data.Witness.Codes, Is.Not.Empty,
+                "omitting gas must still capture called-contract bytecode");
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutGas.Data.Witness.State.Count, Is.EqualTo(withGas.Data.Witness.State.Count),
+                "state-node count should match between with-gas and without-gas calls");
+            Assert.That(withoutGas.Data.Witness.Codes.Count, Is.EqualTo(withGas.Data.Witness.Codes.Count),
+                "code count should match between with-gas and without-gas calls");
+            Assert.That(withoutGas.Data.Witness.Keys.Count, Is.EqualTo(withGas.Data.Witness.Keys.Count),
+                "key count should match between with-gas and without-gas calls");
+        }
     }
 
     [Test]
@@ -357,11 +387,14 @@ public class ProofRpcModuleCallTests
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Error, Is.Not.Null, "OOG must surface an in-payload error so callers can act on it");
-        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionError), "OOG is a non-revert in-VM error");
-        Assert.That(result.Error.Message, Is.Not.Null.And.Not.Empty);
-        Assert.That(result.Result, Is.Null, "OOG produces no return data");
-        Assert.That(result.Witness.State, Is.Not.Empty, "the witness covering the OOG'd execution must be returned");
-        Assert.That(result.Witness.Codes, Is.Not.Empty, "the executed contract bytecode must be captured");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionError), "OOG is a non-revert in-VM error");
+            Assert.That(result.Error.Message, Is.Not.Null.And.Not.Empty);
+            Assert.That(result.Result, Is.Null, "OOG produces no return data");
+            Assert.That(result.Witness.State, Is.Not.Empty, "the witness covering the OOG'd execution must be returned");
+            Assert.That(result.Witness.Codes, Is.Not.Empty, "the executed contract bytecode must be captured");
+        }
     }
 
     /// <summary>
@@ -418,8 +451,11 @@ public class ProofRpcModuleCallTests
         // The executed-against header must be present (used by the verifier to bind state root → block).
         RlpReader lastHeaderReader = new(proof.Witness.Headers[^1]);
         BlockHeader witnessHeader = _headerDecoder.Decode(ref lastHeaderReader)!;
-        Assert.That(witnessHeader.Hash, Is.EqualTo(sourceHeader.Hash!));
-        Assert.That(witnessHeader.StateRoot, Is.EqualTo(sourceHeader.StateRoot!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(witnessHeader.Hash, Is.EqualTo(sourceHeader.Hash!));
+            Assert.That(witnessHeader.StateRoot, Is.EqualTo(sourceHeader.StateRoot!));
+        }
 
         // Build a fresh world state from the witness contents and verify the contract is reachable.
         IWorldState statelessWorld = new WorldState(
@@ -501,9 +537,12 @@ public class ProofRpcModuleCallTests
             new BlockParameter(head.Number));
 
         Assert.That(wrapper.Data, Is.Not.Null);
-        Assert.That(wrapper.Data!.Error, Is.Null,
-            "legacy call with no GasPrice must zero BaseFeePerGas (mirroring eth_call), not surface MaxFeePerGasBelowBaseFee");
-        Assert.That(wrapper.Data.Witness.State, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Data!.Error, Is.Null,
+                "legacy call with no GasPrice must zero BaseFeePerGas (mirroring eth_call), not surface MaxFeePerGasBelowBaseFee");
+            Assert.That(wrapper.Data.Witness.State, Is.Not.Empty);
+        }
     }
 
     /// <summary>
@@ -524,9 +563,12 @@ public class ProofRpcModuleCallTests
 
         // Touched accounts: sender (AddressA) and the contract. The witness must record both
         // accounts and at least one slot key.
-        Assert.That(result.Witness.Keys.Count, Is.GreaterThanOrEqualTo(3),
-            "witness should record the sender, the contract, and at least one slot key");
-        Assert.That(result.Witness.State, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Witness.Keys.Count, Is.GreaterThanOrEqualTo(3),
+                "witness should record the sender, the contract, and at least one slot key");
+            Assert.That(result.Witness.State, Is.Not.Empty);
+        }
     }
 
     /// <summary>
@@ -597,8 +639,11 @@ public class ProofRpcModuleCallTests
             new BlockParameter(blockchain.BlockTree.Head!.Number));
         CallResultWithProof result = wrapper.Data!;
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.Witness.Codes.Any(code => code.AsSpan().SequenceEqual(targetCode)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Witness.Codes.Any(code => code.AsSpan().SequenceEqual(targetCode)), Is.True);
+        }
     }
 
 
@@ -629,8 +674,11 @@ public class ProofRpcModuleCallTests
                 new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
                 new BlockParameter(laterBlock));
 
-            Assert.That(atDeploy.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: deploy-block call");
-            Assert.That(atLater.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: later-block call");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(atDeploy.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: deploy-block call");
+                Assert.That(atLater.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: later-block call");
+            }
 
             // Each witness must reference its own block (a stale state root or scope leak would mismatch).
             RlpReader deployReader = new(atDeploy.Data.Witness.Headers[^1]);
@@ -795,7 +843,9 @@ public class ProofRpcModuleCallTests
         CallResultWithProof result = wrapper.Data!;
 
         Assert.That(result.Error, Is.Not.Null);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
+#pragma warning restore NUnit2045
         Assert.That(result.Error.Data, Is.Not.Null, "empty REVERT payload must still set data — matches eth_call");
         Assert.That((string)result.Error.Data!, Is.EqualTo("0x"));
     }

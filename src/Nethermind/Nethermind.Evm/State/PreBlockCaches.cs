@@ -186,7 +186,7 @@ public class PreBlockCaches
     {
         _storageCache.Clear();
         _stateCache.Clear();
-        _precompileCaches.ClearBlockCache();
+        _precompileCaches.ClearBlockCache(publishMetrics: false);
         _storageBypass.Clear();
         _validFor = null;
     }

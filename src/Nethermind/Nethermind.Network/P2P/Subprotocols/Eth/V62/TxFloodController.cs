@@ -84,7 +84,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 disconnectRequest = ResetIfElapsed();
 
-                if (!accepted)
+                // A peer may relay valid work within its own, higher validation headroom.
+                // A budget mismatch alone cannot establish abuse, so it neither throttles nor
+                // disconnects the peer. Rejections for hard limits still count below.
+                if (!accepted && accepted != AcceptTxResult.FrameTxVerifyGasTooHigh)
                 {
                     if (accepted == AcceptTxResult.Invalid)
                     {

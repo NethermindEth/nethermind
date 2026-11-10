@@ -62,7 +62,7 @@ Migrating from Geth? Nethermind supports the same JSON-RPC API. See the [migrati
   On Windows, Nethermind can be installed via Windows Package Manager:
 
   ```powershell
-  winget install --id Nethermind.Nethermind
+  winget install --id Nethermind.Nethermind -e
   ```
 
 - **macOS**

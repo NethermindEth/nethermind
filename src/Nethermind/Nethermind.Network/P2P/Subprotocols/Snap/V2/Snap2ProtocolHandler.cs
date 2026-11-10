@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,8 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
     public override int MessageIdSpaceSize => 10;
 
     private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _getBlockAccessListsRequests;
+    private static readonly Func<BlockAccessListsMessage, int, BlockAccessListsMessage> SelectBlockAccessLists =
+        static (message, _) => message;
 
     public Snap2ProtocolHandler(ISession session,
         INodeStatsManager nodeStats,
@@ -53,17 +56,12 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
                     HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
-                _getBlockAccessListsRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content);
-                ReportIn(blockAccessListsMessage, size);
-                Handle(blockAccessListsMessage, size);
+                HandleCorrelatedResponse(_getBlockAccessListsRequests, message.Content, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(BlockAccessListsMessage msg, long size) => _getBlockAccessListsRequests.Handle(msg.RequestId, msg, size);
 
     private ValueTask<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage getBlockAccessListsMessage, CancellationToken cancellationToken)
     {

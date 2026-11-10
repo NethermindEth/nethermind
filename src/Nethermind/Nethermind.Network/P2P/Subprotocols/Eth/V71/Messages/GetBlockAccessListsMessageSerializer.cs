@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -15,9 +14,8 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
     private static readonly RlpLimit RlpLimit = RlpLimit.For<GetBlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(GetBlockAccessListsMessage.Hashes));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
+    protected override void SerializeInternal(ref RlpWriter writer, GetBlockAccessListsMessage message)
     {
-        ByteBufferRlpWriter writer = new(byteBuffer);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
         writer.StartSequence(hashesContentLength);
 

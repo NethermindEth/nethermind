@@ -39,6 +39,7 @@ using Nethermind.State;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -83,6 +84,31 @@ public class StatelessInputGeneratorTests
                 Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation is "valid" or "requests"));
                 encoded = Reencode(encoded, input);
             }
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_input_holds_its_witness_offset_where_the_decoder_reads_it([Values] bool amsterdam)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            ReadOnlySpan<byte> data = encoded.AsSpan(sizeof(ushort));
+            int offset = BinaryPrimitives.ReadInt32LittleEndian(data[InputDecoder.WitnessOffsetPosition..]);
+            ExecutionWitness decoded = amsterdam ? DecodeWitness<SszExecutionPayloadAmsterdam>(data) : DecodeWitness<SszExecutionPayload>(data);
+
+            Assert.That(data[offset..].ToArray(), Is.EqualTo(ExecutionWitness.Encode(decoded)));
+            int stateList = offset + BinaryPrimitives.ReadInt32LittleEndian(data[offset..]);
+            int firstNode = stateList + BinaryPrimitives.ReadInt32LittleEndian(data[stateList..]);
+            Assert.That(data[firstNode..].StartsWith(decoded.State[0].Node.AsSpan()), Is.True);
+        }
+
+        static ExecutionWitness DecodeWitness<TPayload>(ReadOnlySpan<byte> data) where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+        {
+            StatelessInput<TPayload>.Decode(data, out StatelessInput<TPayload> input);
+            return input.Witness;
         }
     }
 
@@ -214,7 +240,9 @@ public class StatelessInputGeneratorTests
 
             Block restored;
             byte[]? encoded = await InputGenerator.EncodeInput(rawBlock, witness, specProvider);
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded),
                 Is.EqualTo((amsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId()));
             if (amsterdam)
@@ -238,6 +266,28 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Raw_block_input_recovers_the_access_list_without_requests()
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: true, currentChainActivation: true, requests: false);
+        using (witness)
+        {
+            Block rawBlock = Rlp.Decode<Block>(Rlp.Encode(block))!;
+            Assert.That(rawBlock.EncodedBlockAccessList, Is.Null);
+
+            byte[] encoded = (await InputGenerator.EncodeInput(rawBlock, witness, specProvider))!;
+            StatelessInput<SszExecutionPayloadAmsterdam>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayloadAmsterdam> input);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled: true)!.Header.CalculateHash(), Is.EqualTo(block.Hash));
+                Assert.That(result.IsSuccess, Is.True);
+            }
+        }
+    }
+
+    [Test]
     public async Task Empty_or_pre_request_block_needs_no_replay([Values] bool requestsEnabled)
     {
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).TestObject;
@@ -246,7 +296,9 @@ public class StatelessInputGeneratorTests
 
         byte[]? encoded = await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(requestsEnabled ? Osaka.Instance : Cancun.Instance));
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(encoded, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
@@ -302,7 +354,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false)
+    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -320,8 +372,9 @@ public class StatelessInputGeneratorTests
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether);
-            byte[] depositLog = AbiEncoder.Instance.Encode(AbiEncodingStyle.None,
-                ExecutionRequestsProcessor.DepositEventAbi, TestItem.ExecutionRequestA.RequestDataParts!);
+            byte[][] parts = TestItem.ExecutionRequestA.RequestDataParts!;
+            byte[] depositLog = AbiCodec.Encode(new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+                (parts[0], parts[1], parts[2], parts[3], parts[4]));
             AddCode(spec.DepositContractAddress!, Prepare.EvmCode.StoreDataInMemory(0, depositLog)
                 .Log(depositLog.Length, 0, [ExecutionRequestsProcessor.DepositEventAbi.Hash])
                 .Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done);
@@ -340,16 +393,18 @@ public class StatelessInputGeneratorTests
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
         IDbProvider dbProvider = container.Resolve<IDbProvider>();
+        TrieNodeRlpCollector stateNodes = new();
+        new PatriciaTree(new RawScopedTrieStore(container.Resolve<INodeStorage>()), NullLogManager.Instance).Accept(stateNodes, parent.StateRoot!);
         Witness witness = new()
         {
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
-            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllValues()]),
+            State = stateNodes.Nodes,
             Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
         };
         try
         {
-            Transaction tx = Build.A.Transaction.WithTo(spec.DepositContractAddress!).WithGasLimit(1_000_000)
+            Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
             Block suggested = Build.A.Block.WithParent(parent).WithPostMergeRules()
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
@@ -359,7 +414,7 @@ public class StatelessInputGeneratorTests
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
-            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(amsterdam ? 5 : 3));
+            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
             return (block, witness, specProvider);
         }
         catch
@@ -368,8 +423,11 @@ public class StatelessInputGeneratorTests
             throw;
         }
 
-        void AddRequestsCode(Address address, byte[] requests) =>
-            AddCode(address, Prepare.EvmCode.StoreDataInMemory(0, requests).Return(requests.Length, 0).Done);
+        void AddRequestsCode(Address address, byte[] data)
+        {
+            if (!requests) data = [];
+            AddCode(address, Prepare.EvmCode.StoreDataInMemory(0, data).Return(data.Length, 0).Done);
+        }
 
         void AddCode(Address address, byte[] code)
         {
@@ -395,4 +453,29 @@ public class StatelessInputGeneratorTests
         Keys = ArrayPoolList<byte[]>.Empty(),
         Headers = new ArrayPoolList<byte[]>(headers ?? [])
     };
+
+    private sealed class TrieNodeRlpCollector : ITreeVisitor<TreePathContextWithStorage>
+    {
+        public ArrayPoolList<byte[]> Nodes { get; } = new(0);
+
+        public bool IsFullDbScan => true;
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash)
+        {
+        }
+
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
+            Assert.Fail($"Missing trie node {nodeHash} at {nodeContext.Path}.");
+
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node) => Nodes.Add(node.FullRlp.AsSpan().ToArray());
+
+        public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account)
+        {
+        }
+    }
 }

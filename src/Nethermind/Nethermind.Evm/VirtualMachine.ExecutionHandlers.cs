@@ -59,6 +59,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         };
 
     /// <returns><see langword="false"/> when the frame cannot pay its EIP-8360 balance-change charges.</returns>
+    [SkipLocalsInit]
     private static bool InitializeFrameCore<Eip158, Eip8360>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
         where Eip8360 : struct, IFlag

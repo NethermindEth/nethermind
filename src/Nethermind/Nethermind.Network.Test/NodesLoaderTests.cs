@@ -93,8 +93,11 @@ public class NodesLoaderTests
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
         {
-            Assert.That(node.IsBootnode, Is.False);
-            Assert.That(node.IsStatic, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.IsBootnode, Is.False);
+                Assert.That(node.IsStatic, Is.False);
+            }
         }
     }
 

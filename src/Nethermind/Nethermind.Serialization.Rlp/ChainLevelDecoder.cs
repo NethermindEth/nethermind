@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -28,10 +28,9 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
-            writer.Encode(item.HasBlockOnMainChain);
             int infoLength = GetBlockInfoLength(item.BlockInfos);
+            writer.StartSequence(GetContentLength(item, infoLength));
+            writer.Encode(item.HasBlockOnMainChain);
             writer.StartSequence(infoLength);
             BlockInfoDecoder blockInfoDecoder = BlockInfoDecoder.Instance;
             foreach (BlockInfo? blockInfo in item.BlockInfos)
@@ -54,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
             rlp.ReadSequenceLength(ref position, out _);
             decoderContext.Position = position;
 
-            List<BlockInfo> blockInfos = [];
+            using ArrayPoolListRef<BlockInfo> blockInfos = new(0);
             while (decoderContext.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)
@@ -74,17 +73,8 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList.Length;
-            }
-            int contentLength = 0;
-            contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
-            contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
-            return contentLength;
-        }
+        private static int GetContentLength(ChainLevelInfo item, int infoLength)
+            => Rlp.LengthOf(item.HasBlockOnMainChain) + Rlp.LengthOfSequence(infoLength);
 
         public override int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
         {
@@ -93,8 +83,7 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList.Length;
             }
 
-            int contLength = GetContentLength(item, rlpBehaviors);
-            return Rlp.LengthOfSequence(contLength);
+            return Rlp.LengthOfSequence(GetContentLength(item, GetBlockInfoLength(item.BlockInfos)));
         }
 
         private static int GetBlockInfoLength(BlockInfo[] item)

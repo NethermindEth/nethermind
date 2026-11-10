@@ -123,6 +123,9 @@ public partial class BlockAccessListManager(
     private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
     private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
 
+    /// <summary>Told which executor runs each block; null in a node.</summary>
+    internal IBlockAccessListExecutionObserver? ExecutionObserver { get; set; }
+
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         DisposableExtensions.DisposeAndNull(ref _readPlan);
@@ -138,6 +141,11 @@ public partial class BlockAccessListManager(
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
             && _hasParentReaderPool;
+
+        if (ExecutionObserver is not null && !suggestedBlock.IsGenesis)
+        {
+            ExecutionObserver.OnExecutionPathChosen(suggestedBlock, ParallelExecutionEnabled ? null : SequentialExecutionReason(suggestedBlock, options));
+        }
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.
@@ -159,18 +167,24 @@ public partial class BlockAccessListManager(
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
-                ulong suggestedReads = 0;
-                foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
-                {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
-                }
-                _suggestedChargeableStorageReads = suggestedReads;
+                _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
             }
             _gasRemaining = suggestedBlock.GasUsed;
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
     }
+
+    /// <summary>Names the first condition of <see cref="ParallelExecutionEnabled"/> that fails, in the order <see cref="PrepareForProcessing"/> checks them.</summary>
+    private string SequentialExecutionReason(Block suggestedBlock, ProcessingOptions options) =>
+        ZkEvmFlag.IsActive ? "single-threaded"
+        : !_blockAccessListsEnabled ? "pre-amsterdam"
+        : !blocksConfig.ParallelExecution ? "disabled"
+        : options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList) ? "forced"
+        : _isBuilding ? "building"
+        : suggestedBlock.BlockAccessList is null ? "no-access-list"
+        : !stateProvider.IsInScope ? "no-scope"
+        : "no-reader-pool";
 
     // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
     private Task? StartBalReadWarmup(Block suggestedBlock)
