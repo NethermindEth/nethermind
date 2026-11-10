@@ -25,6 +25,10 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
         _frameTx?.ReportFrameEnd(frameIndex, error);
 
     /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameCodelessTarget() =>
+        _frameTx?.ReportFrameCodelessTarget();
+
+    /// <inheritdoc/>
     void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) =>
         _frameTx?.ReportFrameTxReceipt(frameReceipts);
 
@@ -53,6 +57,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
         private EvmExceptionType?[]? _frameErrors;
         private TxFrameReceipt[]? _frameReceipts;
         private bool _framesOrdered;
+        private bool _targetCodeless;
 
         public void EnsureRoot()
         {
@@ -110,8 +115,9 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             // A frame is not an operation of its caller, so no call's gas carries over to the next frame's first one.
             tracer._treatGasParityStyle = false;
-            if (RanNoCode(action))
+            if (_targetCodeless)
             {
+                _targetCodeless = false;
                 DropLastFrameOperation();
                 return;
             }
@@ -123,10 +129,9 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         private bool IsFrame(ParityTraceAction action) => _root is not null && action.TraceAddress.Length == 1;
 
-        /// <summary>A frame whose target has no code runs no instruction, so it has no operation; a precompile frame
-        /// dispatches, so it keeps its operation.</summary>
-        private bool RanNoCode(ParityTraceAction frame) =>
-            !frame.IsPrecompiled && _lastFrameOperation?.Sub?.Operations is { Count: 0 };
+        /// <summary>A frame whose target has no code has no operation; one that delegates to an account without code
+        /// or halts on its first instruction keeps it.</summary>
+        public void ReportFrameCodelessTarget() => _targetCodeless = true;
 
         private void DropLastFrameOperation()
         {
@@ -145,6 +150,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         public void ReportFrameEnd(int frameIndex, EvmExceptionType? error)
         {
+            _targetCodeless = false;
             if ((uint)frameIndex >= (uint)_frames.Length) return;
 
             _frameActions ??= new ParityTraceAction?[_frames.Length];

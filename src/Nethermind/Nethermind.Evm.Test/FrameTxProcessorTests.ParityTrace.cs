@@ -36,6 +36,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParityReverter = TestItem.AddressF;
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
     private static readonly Address ParityCodeless = new("0x000000000000000000000000000000000000beef");
+    private static readonly Address ParityDelegator = new("0x000000000000000000000000000000000000d313");
     private const string RevertOutput = "0x00";
 
     /// <summary>Reverts with one byte of untouched memory, so its output is not empty.</summary>
@@ -109,6 +110,11 @@ public partial class FrameTxProcessorTests
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityCodeless, value: 7), Frame(FrameMode.Default, target: Observer)];
                 break;
+            case "delegatedCodeless":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                DeployContract(ParityDelegator, [0xef, 0x01, 0x00, .. ParityCodeless.Bytes]);
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityDelegator), Frame(FrameMode.Default, target: Observer)];
+                break;
             default:
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: Recipient)];
@@ -137,6 +143,7 @@ public partial class FrameTxProcessorTests
     [TestCase("skipped", new[] { 0, 1, 3 }, new[] { 3, 0 })]
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("codelessTarget", new[] { 0, 2 }, new[] { 2, 0 })]
+    [TestCase("delegatedCodeless", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("assertReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
@@ -225,7 +232,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "codelessTarget", "delegatedCodeless", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(mode, ParityScenarioTx(scenario));
         TearDown();
@@ -458,7 +465,7 @@ public partial class FrameTxProcessorTests
     public void ParityVmTrace_FrameTxWithoutReceipts_KeepsTheFrameLimitAndTheGasTheVmLeft()
     {
         DeploySmartSender(RevertingWithOutput);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction tx = FrameTx(nonce: 0, KeyedSelfVerifyFrame(freshKeyCount: 1));
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithBeneficiary(Beneficiary)
             .WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
         ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, Spec);
