@@ -167,7 +167,11 @@ async Task<int> ConfigureAsync(string[] args)
 
         // The default error action follows the errors with the help for every config option, which buries them.
         if (parseResult.Action is ParseErrorAction)
+        {
+            // Flushed first so that the errors are the last lines logged.
+            pluginLoader.LogDiagnostics();
             return BasicOptions.ReportParseErrors(parseResult, logger);
+        }
 
         return await parseResult.InvokeAsync();
     }
