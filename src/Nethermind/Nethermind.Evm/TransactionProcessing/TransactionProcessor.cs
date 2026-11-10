@@ -369,7 +369,6 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <summary>
         /// Determines whether a transaction may use the empty-account simple-transfer optimization.
         /// </summary>
-        /// <param name="tx">The transaction being prepared.</param>
         /// <returns><c>true</c> when the optimization may be considered.</returns>
         /// <remarks>
         /// Specialized transaction processors can disable the optimization when their execution rules

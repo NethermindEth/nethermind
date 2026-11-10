@@ -680,7 +680,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// caller, so the nonce and the address warmth are unchanged. Unlike <see cref="OnValueTransferCallPrecheck"/>,
     /// the hook reports no consumed gas: it runs before any gas is reserved for the creation, so a rejection has no
     /// reservation to charge and costs the caller the operation's own gas only. State and access-list changes made by
-    /// the hook persist whether the creation is then rejected, fails a later check or proceeds. The default continues.
+    /// the hook persist whether the creation is then rejected, fails a later check or proceeds. The hook must not
+    /// change the creator's nonce: the address and the nonce-limit check use the nonce read before the hook. The
+    /// default continues.
     /// </remarks>
     protected internal virtual byte[]? OnValueTransferCreatePrecheck(Address creator, Address contractAddress, in UInt256 value) => null;
 
