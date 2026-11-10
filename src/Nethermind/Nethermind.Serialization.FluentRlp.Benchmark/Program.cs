@@ -49,10 +49,10 @@ public class NestedCollectionsBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        List<List<int>> values = new(Count);
+        List<List<int>> values = [with(Count)];
         for (int i = 0; i < Count; i++)
         {
-            List<int> items = new(Count);
+            List<int> items = [with(Count)];
             for (int j = 0; j < Count; j++) items.Add(j);
             values.Add(items);
         }
@@ -188,12 +188,12 @@ public class CurrentFluentBenchmark
 
     private AccessList BuildFluent(Random rnd)
     {
-        List<AccessListItem> items = new(AddressCount);
+        List<AccessListItem> items = [with(AddressCount)];
         for (int i = 0; i < AddressCount; i++)
         {
             CoreAddress address = BuildAddress(rnd);
             int keyCount = rnd.Next(10);
-            List<StorageKey> keys = new(keyCount);
+            List<StorageKey> keys = [with(keyCount)];
             for (int j = 0; j < keyCount; j++)
             {
                 keys.Add(new StorageKey(BuildStorageKey(rnd)));
