@@ -332,13 +332,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
-                // Convert operands to signed integers and perform the modulo operation.
-                As<UInt256, Int256>(ref AsRef(in a))
-                    .Mod(
-                        in As<UInt256, Int256>(ref AsRef(in b)),
-                        out As<UInt256, Int256>(ref result));
+                SignedMod256(in a, in b, out result);
             }
         }
     }

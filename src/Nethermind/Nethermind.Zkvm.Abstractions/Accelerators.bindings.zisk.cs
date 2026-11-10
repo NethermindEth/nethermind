@@ -74,6 +74,14 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
+    private static unsafe partial Status zkvm_u256_le_sdiv(ulong* a, ulong* b, ulong* q);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static unsafe partial Status zkvm_u256_le_smod(ulong* a, ulong* b, ulong* r);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
     private static unsafe partial Status zisklib_keccak256(byte* data, nuint len, byte* output);
 
     [LibraryImport("__Internal")]

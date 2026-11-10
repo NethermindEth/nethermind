@@ -262,6 +262,20 @@ public static partial class Accelerators
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void Div256(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_div(a, b, quotient);
 
+    /// <summary>
+    /// Computes the signed, truncating <c>a / b</c> for 256-bit two's-complement integers.
+    /// </summary>
+    /// <remarks>EVM semantics: a zero divisor gives zero and <c>-2^255 / -1</c> gives <c>-2^255</c>. Otherwise as <see cref="Div256"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void SDiv256(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_sdiv(a, b, quotient);
+
+    /// <summary>
+    /// Computes the signed <c>a mod b</c> for 256-bit two's-complement integers, with the sign of <paramref name="a"/>.
+    /// </summary>
+    /// <remarks>EVM semantics: a zero divisor gives zero. Otherwise as <see cref="Div256"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void SMod256(ulong* a, ulong* b, ulong* remainder) => zkvm_u256_le_smod(a, b, remainder);
+
     /// <inheritdoc cref="Sha256"/>
     /// <remarks>Runs ZisK's own SHA-256 library routine, which always succeeds.</remarks>
     public static void ZiskSha256(ReadOnlySpan<byte> data, Span<byte> output)

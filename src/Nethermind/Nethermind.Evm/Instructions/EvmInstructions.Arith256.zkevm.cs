@@ -142,6 +142,14 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Unsafe.SkipInit(out result);
+            fixed (UInt256* pa = &a, pb = &b, pq = &result)
+                Accelerators.SDiv256((ulong*)pa, (ulong*)pb, (ulong*)pq);
+            return;
+        }
+
         if (!AirbenderFlag.IsActive)
         {
             Unsafe.SkipInit(out result);
@@ -160,6 +168,22 @@ public static unsafe partial class EvmInstructions
         WordDivision.DivRem(in dividend, in divisor, out result, out _);
         if (negativeDividend != negativeDivisor)
             result = Negate(in result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedMod256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        Unsafe.SkipInit(out result);
+        if (ZiskFlag.IsActive)
+        {
+            fixed (UInt256* pa = &a, pb = &b, pr = &result)
+                Accelerators.SMod256((ulong*)pa, (ulong*)pb, (ulong*)pr);
+            return;
+        }
+
+        Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)).Mod(
+            in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+            out Unsafe.As<UInt256, Int256>(ref result));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

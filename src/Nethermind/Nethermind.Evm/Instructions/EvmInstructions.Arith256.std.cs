@@ -38,4 +38,13 @@ public static partial class EvmInstructions
             in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
             out Unsafe.As<UInt256, Int256>(ref result));
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedMod256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        Unsafe.SkipInit(out result);
+        Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)).Mod(
+            in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+            out Unsafe.As<UInt256, Int256>(ref result));
+    }
 }
