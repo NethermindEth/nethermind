@@ -2597,14 +2597,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_call_rejects_differing_data_and_input(
+    public async Task Trace_call_prefers_input_when_data_differs(
         [ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata,
         [Values("trace_call", "trace_callMany")] string method)
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
         using TestRpcBlockchain blockchain = context.Blockchain;
-        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",{calldata}}}");
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",\"to\":\"{TestItem.AddressB}\",{calldata}}}");
         string[] traceTypes = ["trace"];
         object[] parameters = method == "trace_call"
             ? [call.RootElement, traceTypes, "latest"]
@@ -2612,11 +2612,13 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
 
-        JToken? error = JToken.Parse(response)["error"];
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JToken result = method == "trace_call" ? json["result"]! : json["result"]![0]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), response);
-            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), response);
+            Assert.That((string?)result["trace"]?[0]?["action"]?["input"], Is.EqualTo(call.RootElement.GetProperty("input").GetString()));
+            Assert.That((string?)result["output"], Is.EqualTo("0x"));
         }
     }
 

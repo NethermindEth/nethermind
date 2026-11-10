@@ -139,6 +139,50 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> SharedCallCalldataCases()
+    {
+        foreach (TestCaseData row in TraceCallCalldataRows())
+            foreach (string method in new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "trace_call" })
+                yield return new TestCaseData(row.Arguments[0], row.Arguments[1], method);
+    }
+
+    [TestCaseSource(nameof(SharedCallCalldataCases))]
+    public async Task Shared_call_defaults_prefer_input_over_data(string calldata, string? expected, string method)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        string fields = $"\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressD}\",\"gas\":\"0x186a0\"";
+        using JsonDocument call = JsonDocument.Parse($"{{{fields},{calldata}}}");
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressD.ToString()] = new { code = "0x366000600037366000f3" }
+        };
+        Task<string> Request(JsonElement transaction) => method == "trace_call"
+            ? RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, transaction, new[] { "trace" }, "latest", stateOverrides)
+            : chain.TestEthRpc(method, transaction, "latest", stateOverrides);
+
+        string response = await Request(call.RootElement);
+        JToken json = JToken.Parse(response);
+        if (expected is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            return;
+        }
+        Assert.That(json["error"], Is.Null, response);
+        using JsonDocument reference = JsonDocument.Parse($"{{{fields},\"input\":\"0x{expected}\"}}");
+        JToken referenceResponse = JToken.Parse(await Request(reference.RootElement));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(referenceResponse["error"], Is.Null);
+            Assert.That(JToken.DeepEquals(json["result"], referenceResponse["result"]), Is.True, response);
+            if (method == "eth_call") Assert.That((string?)json["result"], Is.EqualTo("0x" + expected));
+            if (method == "trace_call") Assert.That((string?)json["result"]?["output"], Is.EqualTo("0x" + expected));
+        }
+    }
+
     private static IEnumerable<TestCaseData> TransactionIndexingCases()
     {
         foreach (string scenario in new[]

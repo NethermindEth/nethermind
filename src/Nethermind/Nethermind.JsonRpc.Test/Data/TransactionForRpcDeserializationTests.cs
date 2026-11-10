@@ -225,6 +225,10 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":"0x602a","input":"0x602a"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"input":"0x602a","data":"0x602a","gasPrice":"0x1"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"data":"0x","input":""}""", ExpectedResult = "0x")]
+    [TestCase("""{"input":"0x6001","input":null,"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","data":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","INPUT":"0x6001","input":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","DATA":"0x6001"}""", ExpectedResult = "0x6001")]
     public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
 
@@ -239,9 +243,22 @@ public class TransactionForRpcDeserializationTests
     ];
 
     [Test]
-    public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
-        Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
-            Throws.TypeOf<DataAndInputDifferException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+    public void Test_DifferingInputAndData_UsesInputForCallsAndRejectsSubmission([ValueSource(nameof(DifferingInputAndData))] string txJson)
+    {
+        using JsonDocument input = JsonDocument.Parse(txJson);
+        string expected = input.RootElement.GetProperty("input").GetString()!;
+        if (expected.Length == 0) expected = "0x";
+        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(txJson[..^1] + ",\"to\":\"0x0000000000000000000000000000000000000010\"}")!;
+        Result<Transaction> call = rpc.ToCallTransaction(Prague.Instance);
+        Result<Transaction> submission = rpc.ToValidatedTransaction();
+
+        Assert.That(call.IsError, Is.False, call.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Data!.Data.ToArray().ToHexString(true), Is.EqualTo(expected));
+            Assert.That(submission.Error, Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+        }
+    }
 
     [Test]
     public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
