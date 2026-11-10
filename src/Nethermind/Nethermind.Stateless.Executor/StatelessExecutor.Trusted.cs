@@ -99,16 +99,20 @@ public static partial class StatelessExecutor
     }
 
     /// <summary>Records the input of every call to the ECRECOVER precompile.</summary>
-    internal sealed class EcRecoverInputCollector : TxTracer, IBlockTracer
+    internal sealed class EcRecoverInputCollector : TxTracer, IParallelSafeBlockTracer
     {
-        public EcRecoverInputCollector() => IsTracingActions = true;
+        public EcRecoverInputCollector() => IsTracing = IsTracingActions = true;
 
         public List<byte[]> Inputs { get; } = [];
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType, bool isPrecompileCall = false)
         {
-            if (isPrecompileCall && to == ECRecoverPrecompile.Address) Inputs.Add(input[..Math.Min(input.Length, 128)].ToArray());
+            if (isPrecompileCall && to == ECRecoverPrecompile.Address)
+            {
+                byte[] recovery = input[..Math.Min(input.Length, 128)].ToArray();
+                lock (Inputs) Inputs.Add(recovery);
+            }
         }
 
         public bool IsTracingRewards => false;

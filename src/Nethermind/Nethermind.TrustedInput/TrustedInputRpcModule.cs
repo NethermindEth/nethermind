@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
@@ -17,6 +21,8 @@ public sealed class TrustedInputRpcModule(
     IBlockchainBridge blockchainBridge,
     ISpecProvider specProvider) : ITrustedInputRpcModule
 {
+    private readonly ConcurrentDictionary<Hash256, Lazy<ResultWrapper<byte[]>>> _pending = new();
+
     /// <inheritdoc/>
     public ResultWrapper<byte[]> trustedinput_getInput(BlockParameter blockParameter)
     {
@@ -34,9 +40,26 @@ public sealed class TrustedInputRpcModule(
         if (parent is null)
             return ResultWrapper<byte[]>.Fail($"Unable to find the parent of block {blockParameter}", ErrorCodes.ResourceNotFound);
 
-        using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block);
-        input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, witness);
-        store.Add(block.Number, block.Hash, input);
+        Lazy<ResultWrapper<byte[]>> pending = _pending.GetOrAdd(block.Hash,
+            _ => new Lazy<ResultWrapper<byte[]>>(() => Generate(parent, block)));
+        try
+        {
+            return pending.Value;
+        }
+        finally
+        {
+            _pending.TryRemove(new KeyValuePair<Hash256, Lazy<ResultWrapper<byte[]>>>(block.Hash, pending));
+        }
+    }
+
+    private ResultWrapper<byte[]> Generate(BlockHeader parent, Block block)
+    {
+        if (!store.TryGet(block.Hash!, out byte[] input))
+        {
+            using Witness witness = blockchainBridge.GenerateExecutionWitness(parent, block);
+            input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, witness);
+            store.Add(block.Number, block.Hash!, input);
+        }
         return ResultWrapper<byte[]>.Success(input);
     }
 }

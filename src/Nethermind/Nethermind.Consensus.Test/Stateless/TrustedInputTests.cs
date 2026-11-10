@@ -7,8 +7,10 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Tracing;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
@@ -65,6 +68,20 @@ public class TrustedInputTests
         collector.ReportAction(3000, default, TestItem.AddressA, ECRecoverPrecompile.Address, input, ExecutionType.CALL, true);
         Assert.That(collector.Inputs, Has.Count.EqualTo(1));
         Assert.That(collector.Inputs[0], Is.EqualTo(input.AsSpan(0, Math.Min(length, 128)).ToArray()));
+    }
+
+    [Test]
+    public void Collector_preserves_parallel_recoveries()
+    {
+        StatelessExecutor.EcRecoverInputCollector collector = new();
+        CompositeBlockTracer tracer = new();
+        tracer.Add(collector);
+        IBlockTracer parallelTracer = tracer.GetParallelSafeTracer();
+        Parallel.For(0, 10_000, i => parallelTracer.StartNewTxTrace(null).ReportAction(3000, default, TestItem.AddressA,
+            ECRecoverPrecompile.Address, BitConverter.GetBytes(i), ExecutionType.CALL, true));
+
+        Assert.That(collector.Inputs, Has.Count.EqualTo(10_000));
+        Assert.That(collector.Inputs.ConvertAll(input => BitConverter.ToInt32(input)), Is.EquivalentTo(Enumerable.Range(0, 10_000)));
     }
 
     private const int SenderHintsSection = 48;

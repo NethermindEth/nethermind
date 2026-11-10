@@ -95,12 +95,18 @@ public static partial class TrustedInput
     /// <summary>Encodes <paramref name="block"/> and <paramref name="witness"/> as a trusted input under the chain's own
     /// fork schedule.</summary>
     public static byte[] Write(ulong chainId, Block block, Witness witness)
+        => Write(chainId, block, witness, null);
+
+    internal static byte[] Write(ulong chainId, Block block, Witness witness, IReadOnlyList<byte[]>? precompileInputs)
     {
         byte[][] encodedTransactions = new byte[block.Transactions.Length][];
         for (int i = 0; i < encodedTransactions.Length; i++)
             encodedTransactions[i] = Rlp.Encode(block.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        return Write(chainId, ProtocolFork.Current, block, encodedTransactions, witness);
+        return precompileInputs is null
+            ? Write(chainId, ProtocolFork.Current, block, encodedTransactions, witness)
+            : Write(chainId, ProtocolFork.Current, block, encodedTransactions, witness,
+                SenderHints(chainId, ProtocolFork.Current, block, encodedTransactions), RecoveryHints(chainId, block, precompileInputs));
     }
 
     /// <summary>Encodes <paramref name="block"/> and <paramref name="witness"/> as a trusted input.</summary>

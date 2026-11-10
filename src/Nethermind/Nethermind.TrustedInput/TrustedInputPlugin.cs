@@ -35,8 +35,6 @@ public class TrustedInputModule : Module
 
         builder
             .AddSingleton<TrustedInputStore>()
-            .AddDecorator<IMainProcessingModule>((_, module) => module is WitnessCapturingMainProcessingModule
-                ? new WitnessCapturingMainProcessingModule(true) : module)
             .AddSingleton<IMainProcessingModule, TrustedInputMainProcessingModule>()
             .RegisterSingletonJsonRpcModule<ITrustedInputRpcModule, TrustedInputRpcModule>();
     }
@@ -45,6 +43,9 @@ public class TrustedInputModule : Module
 /// <summary>Wraps the main pipeline's block processor in <see cref="TrustedInputCapturingBlockProcessor"/>.</summary>
 public sealed class TrustedInputMainProcessingModule : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder) =>
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder.RegisterModule(new WitnessCapturingMainProcessingModule(true));
         builder.AddDecorator<IBlockProcessor, TrustedInputCapturingBlockProcessor>();
+    }
 }

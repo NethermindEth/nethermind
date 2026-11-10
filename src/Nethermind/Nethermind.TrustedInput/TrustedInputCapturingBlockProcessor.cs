@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Stateless.Execution;
 
 [assembly: InternalsVisibleTo("Nethermind.TrustedInput.Test")]
 
@@ -63,9 +66,13 @@ public sealed class TrustedInputCapturingBlockProcessor(
         bool scheduled = TryScheduleCapture(() =>
         {
             using WitnessRequest request = rendezvous.RequestWitness(suggestedBlock.Hash);
+            StatelessExecutor.EcRecoverInputCollector collector = new();
+            CompositeBlockTracer tracer = new();
+            tracer.Add(blockTracer);
+            tracer.Add(collector);
             try
             {
-                result = Process(inner, suggestedBlock, options, blockTracer, spec, token);
+                result = Process(inner, suggestedBlock, options, tracer, spec, token);
             }
             catch
             {
@@ -78,7 +85,7 @@ public sealed class TrustedInputCapturingBlockProcessor(
             // The import frees the block's access list (BlockAccessListStore) while the capture still reads it.
             Block block = suggestedBlock.WithReplacedBody(suggestedBlock.Body);
             block.EncodedBlockAccessList = suggestedBlock.EncodedBlockAccessList;
-            return () => Capture(block, captured);
+            return () => Capture(block, captured, collector.Inputs);
         });
 
         return scheduled ? result : Process(inner, suggestedBlock, options, blockTracer, spec, token);
@@ -120,13 +127,13 @@ public sealed class TrustedInputCapturingBlockProcessor(
         }
     }
 
-    private void Capture(Block block, Witness blockWitness)
+    private void Capture(Block block, Witness blockWitness, IReadOnlyList<byte[]> precompileInputs)
     {
         using (blockWitness)
         {
             try
             {
-                byte[] input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, blockWitness);
+                byte[] input = Stateless.Execution.IO.TrustedInput.Write(specProvider.ChainId, block, blockWitness, precompileInputs);
                 store.Add(block.Number, block.Hash!, input);
             }
             catch (Exception ex)
