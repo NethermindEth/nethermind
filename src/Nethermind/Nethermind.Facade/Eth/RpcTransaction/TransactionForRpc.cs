@@ -94,7 +94,8 @@ public abstract class TransactionForRpc
     /// </summary>
     /// <remarks>
     /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
-    /// so the first failing check still names the request.
+    /// so the first failing check still names the request. Differing non-null input and data are then rejected,
+    /// as in Geth's setDefaults, before a missing contract data error; calls instead prefer input over data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
