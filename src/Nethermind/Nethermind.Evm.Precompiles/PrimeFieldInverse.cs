@@ -24,8 +24,7 @@ internal static class PrimeFieldInverse
     public const int Size = 32;
 
     private const int LimbBits = 62;
-    private const ulong LimbMask = ulong.MaxValue >> (64 - LimbBits);
-    private const long SignedLimbMask = (long)LimbMask;
+    private const long LimbMask = (1L << LimbBits) - 1;
 
     private static readonly Prime[] Primes =
     [
@@ -71,49 +70,13 @@ internal static class PrimeFieldInverse
         return false;
     }
 
-    private static UInt256Limbs ReadBigEndian(ReadOnlySpan<byte> value)
-    {
-        Span<byte> padded = stackalloc byte[Size];
-        padded[..(Size - value.Length)].Clear();
-        value.CopyTo(padded[(Size - value.Length)..]);
-        return new UInt256Limbs(
-            BinaryPrimitives.ReadUInt64BigEndian(padded[24..]),
-            BinaryPrimitives.ReadUInt64BigEndian(padded[16..]),
-            BinaryPrimitives.ReadUInt64BigEndian(padded[8..]),
-            BinaryPrimitives.ReadUInt64BigEndian(padded));
-    }
-
-    private readonly record struct UInt256Limbs(ulong U0, ulong U1, ulong U2, ulong U3)
-    {
-        public bool IsZero => (U0 | U1 | U2 | U3) == 0;
-
-        public static bool operator >=(in UInt256Limbs a, in UInt256Limbs b) =>
-            a.U3 != b.U3 ? a.U3 > b.U3 :
-            a.U2 != b.U2 ? a.U2 > b.U2 :
-            a.U1 != b.U1 ? a.U1 > b.U1 :
-            a.U0 >= b.U0;
-
-        public static bool operator <=(in UInt256Limbs a, in UInt256Limbs b) => b >= a;
-
-        public static UInt256Limbs operator -(in UInt256Limbs a, in UInt256Limbs b)
-        {
-            ulong r0 = a.U0 - b.U0;
-            ulong borrow = a.U0 < b.U0 ? 1UL : 0UL;
-            ulong r1 = a.U1 - b.U1 - borrow;
-            borrow = a.U1 < b.U1 || (a.U1 == b.U1 && borrow != 0) ? 1UL : 0UL;
-            ulong r2 = a.U2 - b.U2 - borrow;
-            borrow = a.U2 < b.U2 || (a.U2 == b.U2 && borrow != 0) ? 1UL : 0UL;
-            ulong r3 = a.U3 - b.U3 - borrow;
-            return new UInt256Limbs(r0, r1, r2, r3);
-        }
-
-        public Signed62 ToSigned62() => new(
-            (long)(U0 & LimbMask),
-            (long)(((U0 >> 62) | (U1 << 2)) & LimbMask),
-            (long)(((U1 >> 60) | (U2 << 4)) & LimbMask),
-            (long)(((U2 >> 58) | (U3 << 6)) & LimbMask),
-            (long)(U3 >> 56));
-    }
+    /// <summary>The low 64 bits of an accumulator, which the limb arithmetic keeps exact or masks afterwards.</summary>
+    /// <remarks>
+    /// The only cast in the inversion: Int128 has no member that returns its low half, and the generic
+    /// <c>long.CreateTruncating</c> measured about 10% slower on the inversion benchmark.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long Low(Int128 value) => (long)value;
 
     /// <summary>A signed integer as v0 + v1·2^62 + v2·2^124 + v3·2^186 + v4·2^248.</summary>
     private struct Signed62(long v0, long v1, long v2, long v3, long v4)
@@ -122,17 +85,44 @@ internal static class PrimeFieldInverse
 
         public readonly bool IsZero => (V0 | V1 | V2 | V3 | V4) == 0;
 
+        /// <summary>Reads an unsigned big-endian value of at most 32 bytes.</summary>
+        public static Signed62 ReadBigEndian(ReadOnlySpan<byte> value)
+        {
+            Span<byte> padded = stackalloc byte[Size];
+            padded[..(Size - value.Length)].Clear();
+            value.CopyTo(padded[(Size - value.Length)..]);
+            long w0 = BinaryPrimitives.ReadInt64BigEndian(padded[24..]);
+            long w1 = BinaryPrimitives.ReadInt64BigEndian(padded[16..]);
+            long w2 = BinaryPrimitives.ReadInt64BigEndian(padded[8..]);
+            long w3 = BinaryPrimitives.ReadInt64BigEndian(padded);
+            return new Signed62(
+                w0 & LimbMask,
+                ((w0 >>> 62) | (w1 << 2)) & LimbMask,
+                ((w1 >>> 60) | (w2 << 4)) & LimbMask,
+                ((w2 >>> 58) | (w3 << 6)) & LimbMask,
+                w3 >>> 56);
+        }
+
+        /// <summary>Writes a value in [0, 2^256) as 32 big-endian bytes.</summary>
+        public readonly void WriteBigEndian(Span<byte> output)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(output, (V3 >> 6) | (V4 << 56));
+            BinaryPrimitives.WriteInt64BigEndian(output[8..], (V2 >> 4) | (V3 << 58));
+            BinaryPrimitives.WriteInt64BigEndian(output[16..], (V1 >> 2) | (V2 << 60));
+            BinaryPrimitives.WriteInt64BigEndian(output[24..], V0 | (V1 << 62));
+        }
+
         /// <summary>Moves the bits above 62 of the lower limbs up, leaving them in [0, 2^62) and the sign in the top limb.</summary>
         public void Carry()
         {
             V1 += V0 >> LimbBits;
-            V0 &= SignedLimbMask;
+            V0 &= LimbMask;
             V2 += V1 >> LimbBits;
-            V1 &= SignedLimbMask;
+            V1 &= LimbMask;
             V3 += V2 >> LimbBits;
-            V2 &= SignedLimbMask;
+            V2 &= LimbMask;
             V4 += V3 >> LimbBits;
-            V3 &= SignedLimbMask;
+            V3 &= LimbMask;
         }
 
         public void Add(in Signed62 other)
@@ -145,6 +135,16 @@ internal static class PrimeFieldInverse
             Carry();
         }
 
+        public void Subtract(in Signed62 other)
+        {
+            V0 -= other.V0;
+            V1 -= other.V1;
+            V2 -= other.V2;
+            V3 -= other.V3;
+            V4 -= other.V4;
+            Carry();
+        }
+
         public void Negate()
         {
             V0 = -V0;
@@ -153,19 +153,6 @@ internal static class PrimeFieldInverse
             V3 = -V3;
             V4 = -V4;
             Carry();
-        }
-
-        /// <summary>Writes a value in [0, 2^256) as 32 big-endian bytes.</summary>
-        public readonly void WriteBigEndian(Span<byte> output)
-        {
-            ulong u0 = (ulong)V0 | ((ulong)V1 << 62);
-            ulong u1 = ((ulong)V1 >> 2) | ((ulong)V2 << 60);
-            ulong u2 = ((ulong)V2 >> 4) | ((ulong)V3 << 58);
-            ulong u3 = ((ulong)V3 >> 6) | ((ulong)V4 << 56);
-            BinaryPrimitives.WriteUInt64BigEndian(output, u3);
-            BinaryPrimitives.WriteUInt64BigEndian(output[8..], u2);
-            BinaryPrimitives.WriteUInt64BigEndian(output[16..], u1);
-            BinaryPrimitives.WriteUInt64BigEndian(output[24..], u0);
         }
     }
 
@@ -176,39 +163,41 @@ internal static class PrimeFieldInverse
     {
         public readonly byte[] Modulus;
         public readonly byte[] Exponent;
-        private readonly UInt256Limbs _value;
-        private readonly Signed62 _signed;
+        private readonly Signed62 _value;
         // modulus^-1 mod 2^62
-        private readonly ulong _inverse62;
+        private readonly long _inverse62;
 
         public Prime(string hex)
         {
             Modulus = Convert.FromHexString(hex);
-            _value = ReadBigEndian(Modulus);
-            _signed = _value.ToSigned62();
+            _value = Signed62.ReadBigEndian(Modulus);
 
+            Signed62 exponent = _value;
+            exponent.Subtract(new Signed62(2, 0, 0, 0, 0));
             Exponent = new byte[Size];
-            UInt256Limbs exponent = _value - new UInt256Limbs(2, 0, 0, 0);
-            BinaryPrimitives.WriteUInt64BigEndian(Exponent, exponent.U3);
-            BinaryPrimitives.WriteUInt64BigEndian(Exponent.AsSpan(8), exponent.U2);
-            BinaryPrimitives.WriteUInt64BigEndian(Exponent.AsSpan(16), exponent.U1);
-            BinaryPrimitives.WriteUInt64BigEndian(Exponent.AsSpan(24), exponent.U0);
+            exponent.WriteBigEndian(Exponent);
 
             // Newton's iteration doubles the correct low bits each step; an odd m is its own inverse mod 8
-            ulong inverse = _value.U0;
+            long inverse = _value.V0;
             for (int i = 0; i < 5; i++)
-                inverse *= 2 - _value.U0 * inverse;
+                inverse *= 2 - _value.V0 * inverse;
             _inverse62 = inverse & LimbMask;
         }
 
         public void Invert(ReadOnlySpan<byte> @base, Span<byte> result)
         {
-            UInt256Limbs x = ReadBigEndian(@base);
+            Signed62 g = Signed62.ReadBigEndian(@base);
             // Every prime exceeds 2^253, so a 256-bit base is below 6p and at most five subtractions reduce it
-            while (x >= _value)
-                x -= _value;
+            while (true)
+            {
+                Signed62 reduced = g;
+                reduced.Subtract(_value);
+                if (reduced.V4 < 0)
+                    break;
+                g = reduced;
+            }
 
-            if (x.IsZero)
+            if (g.IsZero)
             {
                 result.Clear();
                 return;
@@ -216,40 +205,40 @@ internal static class PrimeFieldInverse
 
             Signed62 d = default;
             Signed62 e = new(1, 0, 0, 0, 0);
-            Signed62 f = _signed;
-            Signed62 g = x.ToSigned62();
-            long eta = -1;
+            Signed62 f = _value;
+            int eta = -1;
 
             while (!g.IsZero)
             {
-                eta = DivSteps(eta, (ulong)f.V0, (ulong)g.V0, out Transition t);
+                eta = DivSteps(eta, f.V0, g.V0, out Transition t);
                 UpdateFg(ref f, ref g, t);
                 UpdateDe(ref d, ref e, t);
             }
 
             // f is ±1 here and d·x ≡ f (mod p) with d in (-2p, p)
             if (d.V4 < 0)
-                d.Add(_signed);
+                d.Add(_value);
             if (f.V4 < 0)
                 d.Negate();
             if (d.V4 < 0)
-                d.Add(_signed);
+                d.Add(_value);
 
             d.WriteBigEndian(result);
         }
 
         /// <summary>Runs 62 divsteps on the low bits of f and g, skipping runs of zero bits of g at once.</summary>
+        /// <remarks>Only the low bits of f and g matter, so the wrapping 64-bit arithmetic is exact where it is used.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long DivSteps(long eta, ulong f, ulong g, out Transition t)
+        private static int DivSteps(int eta, long f, long g, out Transition t)
         {
-            ulong u = 1, v = 0, q = 0, r = 1;
+            long u = 1, v = 0, q = 0, r = 1;
             int i = LimbBits;
 
             while (true)
             {
                 // The sentinel bit at position i caps the count at the steps left
-                int zeros = BitOperations.TrailingZeroCount(g | (ulong.MaxValue << i));
-                g >>= zeros;
+                int zeros = BitOperations.TrailingZeroCount(g | (-1L << i));
+                g >>>= zeros;
                 u <<= zeros;
                 v <<= zeros;
                 eta -= zeros;
@@ -260,67 +249,69 @@ internal static class PrimeFieldInverse
                 if (eta < 0)
                 {
                     eta = -eta;
-                    ulong tmp = f;
+                    long tmp = f;
                     f = g;
-                    g = 0 - tmp;
+                    g = -tmp;
                     tmp = u;
                     u = q;
-                    q = 0 - tmp;
+                    q = -tmp;
                     tmp = v;
                     v = r;
-                    r = 0 - tmp;
+                    r = -tmp;
                 }
 
                 // Cancel up to six low bits of g at once: w = -g/f mod 2^limit, using f·(f·f - 2) ≡ -1/f (mod 64)
-                int limit = (int)Math.Min(Math.Min(eta + 1, i), 6);
-                ulong w = f * g * (f * f - 2) & (ulong.MaxValue >> (64 - limit));
+                int limit = Math.Min(Math.Min(eta + 1, i), 6);
+                long w = f * g * (f * f - 2) & (-1L >>> (64 - limit));
                 g += f * w;
                 q += u * w;
                 r += v * w;
             }
 
-            t = new Transition((long)u, (long)v, (long)q, (long)r);
+            t = new Transition(u, v, q, r);
             return eta;
         }
 
         /// <summary>Sets (f, g) to t·(f, g) / 2^62, which is exact.</summary>
         private static void UpdateFg(ref Signed62 f, ref Signed62 g, in Transition t)
         {
-            Int128 cf = (Int128)t.U * f.V0 + (Int128)t.V * g.V0;
-            Int128 cg = (Int128)t.Q * f.V0 + (Int128)t.R * g.V0;
+            Int128 u = t.U, v = t.V, q = t.Q, r = t.R;
+
+            Int128 cf = u * f.V0 + v * g.V0;
+            Int128 cg = q * f.V0 + r * g.V0;
             cf >>= LimbBits;
             cg >>= LimbBits;
 
-            cf += (Int128)t.U * f.V1 + (Int128)t.V * g.V1;
-            cg += (Int128)t.Q * f.V1 + (Int128)t.R * g.V1;
-            f.V0 = (long)cf & SignedLimbMask;
-            g.V0 = (long)cg & SignedLimbMask;
+            cf += u * f.V1 + v * g.V1;
+            cg += q * f.V1 + r * g.V1;
+            f.V0 = Low(cf) & LimbMask;
+            g.V0 = Low(cg) & LimbMask;
             cf >>= LimbBits;
             cg >>= LimbBits;
 
-            cf += (Int128)t.U * f.V2 + (Int128)t.V * g.V2;
-            cg += (Int128)t.Q * f.V2 + (Int128)t.R * g.V2;
-            f.V1 = (long)cf & SignedLimbMask;
-            g.V1 = (long)cg & SignedLimbMask;
+            cf += u * f.V2 + v * g.V2;
+            cg += q * f.V2 + r * g.V2;
+            f.V1 = Low(cf) & LimbMask;
+            g.V1 = Low(cg) & LimbMask;
             cf >>= LimbBits;
             cg >>= LimbBits;
 
-            cf += (Int128)t.U * f.V3 + (Int128)t.V * g.V3;
-            cg += (Int128)t.Q * f.V3 + (Int128)t.R * g.V3;
-            f.V2 = (long)cf & SignedLimbMask;
-            g.V2 = (long)cg & SignedLimbMask;
+            cf += u * f.V3 + v * g.V3;
+            cg += q * f.V3 + r * g.V3;
+            f.V2 = Low(cf) & LimbMask;
+            g.V2 = Low(cg) & LimbMask;
             cf >>= LimbBits;
             cg >>= LimbBits;
 
-            cf += (Int128)t.U * f.V4 + (Int128)t.V * g.V4;
-            cg += (Int128)t.Q * f.V4 + (Int128)t.R * g.V4;
-            f.V3 = (long)cf & SignedLimbMask;
-            g.V3 = (long)cg & SignedLimbMask;
+            cf += u * f.V4 + v * g.V4;
+            cg += q * f.V4 + r * g.V4;
+            f.V3 = Low(cf) & LimbMask;
+            g.V3 = Low(cg) & LimbMask;
             cf >>= LimbBits;
             cg >>= LimbBits;
 
-            f.V4 = (long)cf;
-            g.V4 = (long)cg;
+            f.V4 = Low(cf);
+            g.V4 = Low(cg);
         }
 
         /// <summary>
@@ -334,48 +325,51 @@ internal static class PrimeFieldInverse
             long md = (t.U & sd) + (t.V & se);
             long me = (t.Q & sd) + (t.R & se);
 
-            Int128 cd = (Int128)t.U * d.V0 + (Int128)t.V * e.V0;
-            Int128 ce = (Int128)t.Q * d.V0 + (Int128)t.R * e.V0;
+            Int128 u = t.U, v = t.V, q = t.Q, r = t.R;
 
-            md -= (long)((_inverse62 * (ulong)cd + (ulong)md) & LimbMask);
-            me -= (long)((_inverse62 * (ulong)ce + (ulong)me) & LimbMask);
+            Int128 cd = u * d.V0 + v * e.V0;
+            Int128 ce = q * d.V0 + r * e.V0;
 
-            Signed62 p = _signed;
-            cd += (Int128)p.V0 * md;
-            ce += (Int128)p.V0 * me;
+            md -= (_inverse62 * Low(cd) + md) & LimbMask;
+            me -= (_inverse62 * Low(ce) + me) & LimbMask;
+
+            Signed62 p = _value;
+            Int128 m = md, n = me;
+            cd += m * p.V0;
+            ce += n * p.V0;
             cd >>= LimbBits;
             ce >>= LimbBits;
 
-            cd += (Int128)t.U * d.V1 + (Int128)t.V * e.V1 + (Int128)p.V1 * md;
-            ce += (Int128)t.Q * d.V1 + (Int128)t.R * e.V1 + (Int128)p.V1 * me;
-            d.V0 = (long)cd & SignedLimbMask;
-            e.V0 = (long)ce & SignedLimbMask;
+            cd += u * d.V1 + v * e.V1 + m * p.V1;
+            ce += q * d.V1 + r * e.V1 + n * p.V1;
+            d.V0 = Low(cd) & LimbMask;
+            e.V0 = Low(ce) & LimbMask;
             cd >>= LimbBits;
             ce >>= LimbBits;
 
-            cd += (Int128)t.U * d.V2 + (Int128)t.V * e.V2 + (Int128)p.V2 * md;
-            ce += (Int128)t.Q * d.V2 + (Int128)t.R * e.V2 + (Int128)p.V2 * me;
-            d.V1 = (long)cd & SignedLimbMask;
-            e.V1 = (long)ce & SignedLimbMask;
+            cd += u * d.V2 + v * e.V2 + m * p.V2;
+            ce += q * d.V2 + r * e.V2 + n * p.V2;
+            d.V1 = Low(cd) & LimbMask;
+            e.V1 = Low(ce) & LimbMask;
             cd >>= LimbBits;
             ce >>= LimbBits;
 
-            cd += (Int128)t.U * d.V3 + (Int128)t.V * e.V3 + (Int128)p.V3 * md;
-            ce += (Int128)t.Q * d.V3 + (Int128)t.R * e.V3 + (Int128)p.V3 * me;
-            d.V2 = (long)cd & SignedLimbMask;
-            e.V2 = (long)ce & SignedLimbMask;
+            cd += u * d.V3 + v * e.V3 + m * p.V3;
+            ce += q * d.V3 + r * e.V3 + n * p.V3;
+            d.V2 = Low(cd) & LimbMask;
+            e.V2 = Low(ce) & LimbMask;
             cd >>= LimbBits;
             ce >>= LimbBits;
 
-            cd += (Int128)t.U * d.V4 + (Int128)t.V * e.V4 + (Int128)p.V4 * md;
-            ce += (Int128)t.Q * d.V4 + (Int128)t.R * e.V4 + (Int128)p.V4 * me;
-            d.V3 = (long)cd & SignedLimbMask;
-            e.V3 = (long)ce & SignedLimbMask;
+            cd += u * d.V4 + v * e.V4 + m * p.V4;
+            ce += q * d.V4 + r * e.V4 + n * p.V4;
+            d.V3 = Low(cd) & LimbMask;
+            e.V3 = Low(ce) & LimbMask;
             cd >>= LimbBits;
             ce >>= LimbBits;
 
-            d.V4 = (long)cd;
-            e.V4 = (long)ce;
+            d.V4 = Low(cd);
+            e.V4 = Low(ce);
         }
     }
 }
