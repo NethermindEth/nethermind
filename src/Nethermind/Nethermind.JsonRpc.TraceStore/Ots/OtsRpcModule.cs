@@ -5,11 +5,13 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
@@ -29,6 +31,8 @@ public sealed partial class OtsRpcModule(
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     IStateReader stateReader,
+    IBlockForRpcFactory blockForRpcFactory,
+    IRewardCalculator rewardCalculator,
     ITraceStoreConfig traceStoreConfig,
     IJsonRpcConfig rpcConfig,
     TraceAddressIndex? addressIndex = null) : IOtsRpcModule
