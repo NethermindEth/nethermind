@@ -227,7 +227,8 @@ public partial class FrameTxProcessorTests
             Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
             using JsonDocument vmTrace = JsonDocument.Parse(JsonSerializer.Serialize(trace.VmTrace, EthereumJsonSerializer.JsonOptions));
             JsonElement[] rootOperations = [.. vmTrace.RootElement.GetProperty("ops").EnumerateArray()];
-            Assert.That(rootOperations.Select(static o => o.TryGetProperty("op", out _)), Is.All.False, "a root operation runs no opcode");
+            Assert.That(rootOperations.Select(static o => o.GetProperty("op").GetString()),
+                Is.EqualTo(framesInVm.Select(i => frames[i].Mode is FrameMode.Verify or FrameMode.Assert ? "STATICCALL" : "CALL")), "a root operation names its frame's call");
             Assert.That(rootOperations.Select(static o => o.GetProperty("ex").GetProperty("push").GetRawText()), Is.All.EqualTo("[]"), "a root operation pushes nothing");
             Assert.That(rootOperations.SelectMany(static o => o.GetProperty("sub").GetProperty("ops").EnumerateArray()).Select(static o => o.TryGetProperty("op", out _)),
                 Is.All.True, "a frame operation names its opcode");

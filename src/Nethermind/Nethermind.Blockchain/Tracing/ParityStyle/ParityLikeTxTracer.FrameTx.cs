@@ -162,6 +162,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             {
                 _lastFrameOperation.Pc = frameIndex;
                 _lastFrameOperation.Cost = _frames[frameIndex].ExecutionGasLimit;
+                _lastFrameOperation.Op = _frames[frameIndex].Mode is FrameMode.Verify or FrameMode.Assert ? Instruction.STATICCALL : Instruction.CALL;
                 _frameOperations ??= new ParityVmOperationTrace?[_frames.Length];
                 _frameOperations[frameIndex] = _lastFrameOperation;
                 _lastFrameOperation = null;
