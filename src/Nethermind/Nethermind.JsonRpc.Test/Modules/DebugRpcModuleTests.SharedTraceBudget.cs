@@ -8,10 +8,12 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +25,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -52,7 +55,12 @@ public partial class DebugRpcModuleTests
     public Task Buffered_deadline_runs_through_seeded_parallel_and_filtered_execution_by_hash(bool indexed, bool filtered, string expiry) =>
         AssertBufferedDeadlineRoute(indexed, filtered, expiry, byHash: true);
 
-    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash)
+    [Test]
+    public Task Buffered_deadline_raw_block_resets_per_transaction_and_stops_on_expiry(
+        [Values] bool filtered, [Values("reset", "before", "after")] string expiry) =>
+        AssertBufferedDeadlineRoute(indexed: false, filtered, expiry, byHash: false, raw: true);
+
+    private static async Task AssertBufferedDeadlineRoute(bool indexed, bool filtered, string expiry, bool byHash, bool raw = false)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -85,8 +93,9 @@ public partial class DebugRpcModuleTests
             DeadlineClock = clock,
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
-        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => byHash
-            ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
+        ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => raw
+            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes, options)
+            : byHash ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
             : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
         budget.Wait(CancellationToken.None);
@@ -110,7 +119,7 @@ public partial class DebugRpcModuleTests
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = result;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(probe.Attempts, Is.EqualTo(filtered ? 0 : 1), "the full-block RPC must reach the production parallel route");
+            Assert.That(probe.Attempts, Is.EqualTo(raw || filtered ? 0 : 1), "only retained full-block RPCs take the production parallel route");
             Assert.That(probe.Completed, Is.EqualTo(indexed && !filtered && expiry == "reset" ? 1 : 0), "a successful seeded trace must not silently fall back");
             if (expiry == "reset")
             {
@@ -122,17 +131,104 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
                 Assert.That(response.Result.Error, Is.EqualTo("execution timeout"));
+                Assert.That(response.Data, Is.Null, "an expired buffered trace must not expose partial results");
                 Assert.That(clock.Calls, indexed && !filtered ? Is.InRange(2, 3) : Is.EqualTo(filtered ? indexed ? 1 : 3 : 2),
                     "indexed workers may acquire the execution permit out of transaction order");
             }
+            if (raw)
+                Assert.That(clock.Timers, Has.Count.EqualTo(filtered ? 1 : expiry == "reset" ? 3 : 2),
+                    "each traced transaction owns a fresh budget; expiry prevents later transactions from starting");
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public Task Named_block_registered_native_errors_include_null_results(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool streamMode, [Values] bool indexed) => AssertNativeErrorResult(method, streamMode, indexed);
+
+    [Test]
+    [NonParallelizable]
+    public Task Raw_block_registered_native_errors_omit_results(
+        [Values("debug_traceBlock", "debug_traceBadBlock")] string method, [Values] bool streamMode) =>
+        AssertNativeErrorResult(method, streamMode, indexed: false);
+
+    private static async Task AssertNativeErrorResult(string method, bool streamMode, bool indexed)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        ParallelDeadlineProbe probe = new();
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<IParallelBlockTracer>((_, inner) => new DeadlineParallelTracer(inner, probe)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        if (indexed) IndexThroughTheCapture(chain, index, block, parent);
+        if (method == "debug_traceBadBlock") chain.Container.Resolve<IBadBlockStore>().Insert(block);
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            _ => block.Hash!
+        };
+        bool named = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
+        string name = $"native-error-result-{Guid.NewGuid():N}";
+        System.Reflection.FieldInfo? registrationsField = typeof(GethLikeNativeTracerFactory)
+            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.That(registrationsField, Is.Not.Null, "the native tracer registry is required to remove the test registration");
+        System.Collections.IDictionary registrations = (System.Collections.IDictionary)registrationsField!.GetValue(null)!;
+        GethLikeNativeTracerFactory.RegisterTracer(name, static (options, _, transaction, _) => new ErrorResultNativeTracer(options, transaction.Hash!));
+        try
+        {
+            string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, selector, new { tracer = name, streamMode });
+            JObject json = JObject.Parse(response);
+            Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+            JArray entries = (JArray)json["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(entries, Has.Count.EqualTo(block.Transactions.Length), response);
+                Assert.That(probe.Attempts, Is.EqualTo(named && !streamMode ? 1 : 0));
+                Assert.That(probe.Completed, Is.EqualTo(named && !streamMode && indexed ? 1 : 0));
+                Assert.That(probe.StreamAttempts, Is.EqualTo(named && streamMode ? 1 : 0));
+                Assert.That(probe.StreamCompleted, Is.EqualTo(named && streamMode && indexed ? 1 : 0), "indexed streaming must not silently replay");
+            }
+            for (int i = 0; i < entries.Count; i++)
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((string?)entries[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                    Assert.That((string?)entries[i]["error"], Is.EqualTo("native plugin trace failure"), response);
+                    if (named) Assert.That(entries[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
+                    else Assert.That(((JObject)entries[i]).Property("result"), Is.Null, response);
+                }
+        }
+        finally
+        {
+            registrations.Remove(name);
+        }
+        Assert.That(GethLikeNativeTracerFactory.IsNativeTracer(name), Is.False);
+    }
+
+    private sealed class ErrorResultNativeTracer(GethTraceOptions options, Hash256 hash) : GethLikeNativeTxTracer(options)
+    {
+        public override GethLikeTxTrace BuildResult() => new() { TxHash = hash, TraceError = "native plugin trace failure" };
     }
 
     private sealed class ParallelDeadlineProbe
     {
         internal int Attempts;
         internal int Completed;
+        internal int StreamAttempts;
+        internal int StreamCompleted;
         internal Action? Cancel;
     }
 
@@ -149,8 +245,13 @@ public partial class DebugRpcModuleTests
             return completed;
         }
         public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
-            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token) =>
-            inner.TryStream(block, parent, forTransaction, afterTransactions, stream, token);
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token)
+        {
+            probe.StreamAttempts++;
+            bool completed = inner.TryStream(block, parent, forTransaction, afterTransactions, stream, token);
+            if (completed) probe.StreamCompleted++;
+            return completed;
+        }
     }
 
     private sealed class DeadlineAdapter(ITransactionProcessorAdapter inner, DeadlineExecution clock) : ITransactionProcessorAdapter

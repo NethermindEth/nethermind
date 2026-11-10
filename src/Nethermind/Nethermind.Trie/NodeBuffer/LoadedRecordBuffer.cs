@@ -31,6 +31,10 @@ internal sealed class LoadedRecordBuffer : IDisposable
         return store.TryLoad(path, hash, Write, new Target(this, in hash, ref record));
     }
 
+    /// <summary>Writes the record of a node embedded in its parent, which has no hash of its own, into this buffer.</summary>
+    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
+    public NodeRecord AddEmbedded(ReadOnlySpan<byte> rlp) => Add(rlp, default);
+
     /// <summary>Releases every record, which must no longer be read.</summary>
     public void Clear()
     {

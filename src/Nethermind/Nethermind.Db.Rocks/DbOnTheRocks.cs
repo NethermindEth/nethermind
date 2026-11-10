@@ -318,6 +318,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
+    bool IReadOnlyKeyValueStore.TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) => _reader.TryGet(key, flags, action, arg);
+
     MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
     {
         Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
@@ -334,24 +336,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ThrowIfDisposing();
 
-        success = true;
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
+        success = TrySeekWithIterator(wrapper.Iterator, key, iteratorManager.SequentialKeys, out bool found);
+        return found ? wrapper.Iterator.Value() : null;
+    }
+
+    /// <summary>Span variant of <see cref="GetWithIterator"/>, passing the value to <paramref name="action"/> without copying it.</summary>
+    /// <param name="found">Whether a non-empty value was passed to <paramref name="action"/>.</param>
+    /// <returns>False when the iterator could not settle the read and the caller must fall back to a point read.</returns>
+    internal bool TryGetWithIterator<TArg>(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool found)
+        where TArg : allows ref struct
+    {
+        ThrowIfDisposing();
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
-        Iterator iterator = wrapper.Iterator;
+        if (!TrySeekWithIterator(wrapper.Iterator, key, iteratorManager.SequentialKeys, out found)) return false;
 
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
+        ReadOnlySpan<byte> value = found ? wrapper.Iterator.GetValueSpan() : default;
+        found = !value.IsEmpty;
+        if (found) action(value, arg);
+        return true;
+    }
+
+    /// <summary>Positions <paramref name="iterator"/> on <paramref name="key"/> when it is stored.</summary>
+    /// <returns>False when the iterator could not settle the read and the caller must fall back to a point read.</returns>
+    private static bool TrySeekWithIterator(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
+    {
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, sequentialKeys, out found))
         {
-            return closeRes;
+            return true;
         }
 
         iterator.Seek(key);
-        if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
-        {
-            return iterator.Value();
-        }
-
-        success = false;
-        return null;
+        found = iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key);
+        return found;
     }
 
     // Uses a pool of tailing seek iterators: each one reads a live sequence,
@@ -412,14 +430,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </summary>
     /// <param name="iterator"></param>
     /// <param name="key"></param>
-    /// <param name="result"></param>
+    /// <param name="found">Whether the iterator was left on <paramref name="key"/>.</param>
     /// <returns></returns>
-    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
+    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out bool found)
     {
         // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
         if (!sequentialKeys && key.Length <= 32)
         {
-            result = null;
+            found = false;
             return false;
         }
 
@@ -427,7 +445,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // Next() can exhaust the iterator; key()/Next() on an invalid iterator is undefined per the RocksDB API.
         if (!iterator.Valid())
         {
-            result = null;
+            found = false;
             return false;
         }
 
@@ -435,11 +453,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         int compareResult = currentKey.SequenceCompareTo(key);
         if (compareResult == 0)
         {
-            result = iterator.Value();
+            found = true;
             return true; // This happens A LOT.
         }
 
-        result = null;
+        found = false;
         if (compareResult > 0)
         {
             return false;
@@ -473,14 +491,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (compareResult == 0)
         {
-            result = iterator.Value();
+            found = true;
             return true;
         }
 
         if (compareResult > 0)
         {
             // We've skipped it somehow
-            result = null;
             return true;
         }
 
@@ -779,8 +796,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             ObjectDisposedException.ThrowIf(_isDisposing, this);
-            UpdateReadMetrics();
-
             UpdateReadMetrics();
 
             ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;

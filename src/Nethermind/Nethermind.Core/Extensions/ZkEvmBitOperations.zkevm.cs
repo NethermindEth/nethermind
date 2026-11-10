@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -92,6 +93,30 @@ public static partial class ZkEvmBitOperations
         Unsafe.Add(ref destination, 6) = (byte)(value >> 8);
         Unsafe.Add(ref destination, 7) = (byte)value;
     }
+
+    /// <summary>Whether the <paramref name="length"/> bytes at <paramref name="bytes"/>, 4 or 20 of them, are all 0xff.</summary>
+    /// <remarks>
+    /// The bytes are ANDed one at a time, for the zkVMs that reject misaligned loads. The ANDs are written out, as the
+    /// JIT keeps a loop over the bytes, which costs five instructions a byte.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool AreAllOnes(ref byte bytes, int length)
+    {
+        Debug.Assert(length is 4 or 20);
+        uint bits = AndOfFourBytes(ref bytes, 0);
+        if (length == 20)
+        {
+            bits &= AndOfFourBytes(ref bytes, 4) & AndOfFourBytes(ref bytes, 8) &
+                AndOfFourBytes(ref bytes, 12) & AndOfFourBytes(ref bytes, 16);
+        }
+
+        return bits == byte.MaxValue;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint AndOfFourBytes(ref byte bytes, nint offset) =>
+        (uint)(Unsafe.Add(ref bytes, offset) & Unsafe.Add(ref bytes, offset + 1) &
+            Unsafe.Add(ref bytes, offset + 2) & Unsafe.Add(ref bytes, offset + 3));
 
     /// <summary>Loads the swap masks into locals, so a run of <see cref="Swap"/> calls shares them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
