@@ -238,7 +238,7 @@ public partial class DebugRpcModuleTests
         IReleaseSpec spec = beforeFork ? Istanbul.Instance : Cancun.Instance;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { GasCap = gasCap })
-            .Build(new TestSpecProvider(spec));
+            .Build(new TestSpecProvider(spec) { AllowTestChainOverride = false });
         TraceCallConversionProbe request = new()
         {
             To = TestItem.AddressC,
@@ -248,10 +248,9 @@ public partial class DebugRpcModuleTests
         };
         request.BlobVersionedHashes[0][0] = 1;
 
-        IReleaseSpec effectiveSpec = chain.SpecProvider.GetSpec(chain.BlockTree.Head!.Header);
         string? error = chain.DebugRpcModule.debug_traceCall(request).Result.Error;
         (bool, ulong?, IReleaseSpec?, UInt256?)[] expectedConversions = beforeFork ? []
-            : [(true, gasCap, effectiveSpec, blobFeeCap == 0 ? null : (UInt256)blobFeeCap)];
+            : [(true, gasCap, spec, blobFeeCap == 0 ? null : (UInt256)blobFeeCap)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error, Is.EqualTo(beforeFork
