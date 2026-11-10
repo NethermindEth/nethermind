@@ -955,15 +955,27 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
-            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);
+            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime, cancellationToken);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
             JsonRpcRequest request,
             JsonRpcContext context,
-            long startTime)
+            long startTime,
+            CancellationToken cancellationToken)
         {
-            JsonRpcResponse response = await responseTask;
+            JsonRpcResponse response;
+            try
+            {
+                response = await responseTask;
+            }
+            catch (OperationCanceledException exception) when (IsTransportCancellation(exception, cancellationToken))
+            {
+                // Counted as requested but never answered, so it is neither a success nor an error.
+                Metrics.IncrementJsonRpcAbandonedRequests();
+                throw;
+            }
+
             return CreateSingleRequestEntry(request, response, context, startTime);
         }
     }

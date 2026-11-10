@@ -1959,6 +1959,8 @@ public class JsonRpcProcessorTests
         QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
         using CancellationTokenSource abort = new();
         CollectingJsonRpcResponseSink sink = new();
+        long abandoned = Metrics.JsonRpcAbandonedRequests;
+        long errors = Metrics.JsonRpcErrors;
 
         Task processing = ProcessAsync(processor, Encoding.UTF8.GetBytes(body), transport, sink, context, abort.Token).AsTask();
         await fixture.WaitUntilQueued(queued);
@@ -1971,6 +1973,9 @@ public class JsonRpcProcessorTests
             Assert.That(canceled!.CancellationToken, Is.EqualTo(abort.Token));
             Assert.That(fixture.Invocations, Is.Zero);
             Assert.That(sink.Responses, Is.Empty);
+            // Each queued request is counted once, by the dispatch that saw it abandoned, and not as an error.
+            Assert.That(Metrics.JsonRpcAbandonedRequests - abandoned, Is.EqualTo(queued));
+            Assert.That(Metrics.JsonRpcErrors - errors, Is.Zero);
             Assert.That(logger.LogList, Has.All.Matches<string?>(static line => line is not null
                 && (line.StartsWith("JSON RPC request ", StringComparison.Ordinal) || line.StartsWith("JSON RPC batch request ", StringComparison.Ordinal))));
         }
