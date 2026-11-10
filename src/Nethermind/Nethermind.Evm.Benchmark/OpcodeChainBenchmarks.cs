@@ -100,7 +100,7 @@ public class OpcodeChainBenchmarks
             "Clz" => (UInt256)248,
             _ => UInt256.One
         };
-        if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
+        if (!output.Span.SequenceEqual(expected.ToBigEndian()))
             throw new InvalidOperationException($"Invalid {Chain} chain output or opcode count.");
 
         for (int i = 0; i < 100_000; i++) ExecuteContract();

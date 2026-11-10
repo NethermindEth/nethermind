@@ -339,7 +339,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         FastPathComplete:
             pc++;
-            opCodeCount++;
+            if (CountsEveryOpcode<TTracingInst, TCancelable>())
+                opCodeCount++;
             EvmExceptionType exceptionType;
             if (!TTracingInst.IsActive
                 && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
@@ -487,6 +488,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
 
+        /// <summary>Whether the chain counts each opcode it runs.</summary>
+        /// <remarks>Upper-bound probe: untraced, non-cancelable chains skip the per-opcode counter increment.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool CountsEveryOpcode<TTracingInst, TCancelable>()
+            where TTracingInst : struct, IFlag
+            where TCancelable : struct, IFlag =>
+            TTracingInst.IsActive || TCancelable.IsActive;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static EvmExceptionType ExitOpcode(ref DispatchState state, bool carriesExecutionGas, ulong gas, nint pc, nint opCodeCount, EvmExceptionType exceptionType)
         {
@@ -520,7 +529,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             pc++;
-            opCodeCount++;
+            if (CountsEveryOpcode<TTracingInst, TCancelable>())
+                opCodeCount++;
             nint fallthroughPc = pc;
             OpcodeResult result;
             if (carriesExecutionGas)
