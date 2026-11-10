@@ -101,7 +101,8 @@ public class PrewarmerTxAdapter(
         // The pre-execution checks a warm run skips: the gas left in the block, and a sender with code (EIP-3607).
         if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!, codeInfoRepository)) return false;
 
-        if (!footprint.Matches(worldState))
+        // A mempool run is adopted by hash, so it may have run as another sender than the one the block's transaction recovers.
+        if (footprint.Sender != tx.SenderAddress || !footprint.Matches(worldState))
         {
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;

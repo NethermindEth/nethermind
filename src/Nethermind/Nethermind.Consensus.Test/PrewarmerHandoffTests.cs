@@ -2084,6 +2084,48 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
         }
     }
 
+    /// <summary>
+    /// A mempool run is adopted by the block's transaction of the same hash, which runs as the account its signature
+    /// recovers; a run the pool made as another sender is executed instead of replayed.
+    /// </summary>
+    [Test]
+    public void Mempool_run_is_not_replayed_for_another_sender()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressD, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated());
+        Run executed = Process(block, adapter: null);
+        // The pool holds the first transaction, signed by A, with C as its sender.
+        Block predicted = Predicted(block, null);
+        predicted.Transactions[0].SenderAddress = TestItem.AddressC;
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, predicted, () => PreWarmer.SpeculativeMarkerPublished);
+
+        using ManualResetEventSlim seeded = new(initialState: false);
+        bool seededFirst = false;
+        PreWarmer.Seeded = seeded.Set;
+        PreWarmer.BeforeTransactionWorkers = () => seededFirst = seeded.Wait(TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeTransactionWorkers = null;
+        TransactionFootprint? first = PreWarmer.Footprints?.Get(0);
+        bool changesC = false;
+        if (first is not null)
+        {
+            foreach (StateEffect effect in first.Effects) changesC |= effect.Address == TestItem.AddressC;
+        }
+
+        Run run = Process(block, ProductionAdapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seededFirst, Is.True, "precondition: the runs were taken over before the transaction workers started");
+            Assert.That(first?.FromMempool, Is.True, "precondition: the run made as C was taken over for the transaction signed by A");
+            Assert.That(changesC, Is.True, "precondition: the run changed C");
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot), "the block ends in the state of executing it");
+            Assert.That(run.Tally.Replayed, Is.EqualTo(2), "only the runs made as the transactions' signers are replayed");
+        }
+    }
+
     /// <summary>A recovery in flight whose one sender lands only once a warm worker waits for it, after the block's jobs were taken.</summary>
     private sealed class LateSender(Transaction tx, Address sender) : ISenderRecoveryTracker, ISenderRecoveryProgress
     {
