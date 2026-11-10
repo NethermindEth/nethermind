@@ -46,7 +46,7 @@ public static partial class HexPrefix
     public static (byte[] key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
     {
         bool isEven = (bytes[0] & 16) == 0;
-        bool isLeaf = bytes[0] >= 32;
+        bool isLeaf = (bytes[0] & 32) != 0;
         int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
         // Return cached arrays for small paths
         switch (nibblesCount)

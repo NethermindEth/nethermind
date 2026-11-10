@@ -295,7 +295,9 @@ public partial class PatriciaTree
     }
 
     /// <remarks>Only after a delete from a secured trie. The child sits one level below the branch, whose depth the frames of
-    /// its ancestors add up to, and is checked if the collapse is the first operation to reach it.</remarks>
+    /// its ancestors add up to, and is checked if the collapse is the first operation to reach it. The frames start at the root
+    /// because every guest write walks from it (<see cref="TrySetByRawKey"/>); <c>BulkSet</c>, which starts mid-trie and
+    /// collapses on its own, stays off in the guest.</remarks>
     partial void ValidateCollapsingChild(TraverseStack ancestors, TrieNode branch)
     {
         if (!_deletedFromSecuredTrie || branch.FindOnlyChild() is not (>= 0 and var index)) return;

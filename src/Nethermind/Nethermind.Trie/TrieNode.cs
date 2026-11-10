@@ -513,7 +513,7 @@ namespace Nethermind.Trie
             LiteRlpReader reader = new(data);
             reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
             int keyEnd = position;
-            if (keySpan[0] >= 0x20)
+            if ((keySpan[0] & 0x20) != 0)
             {
                 reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);

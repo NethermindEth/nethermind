@@ -53,7 +53,10 @@ public class WitnessTrieValidationTests
         ExtensionToLeaf,
         ExtensionToNothing,
         OversizedEmbeddedChild,
+        MalformedEmbeddedChild,
         HashReferenceToShortNode,
+        NonCanonicalListHeader,
+        NonCanonicalLeafValue,
     }
 
     /// <remarks>The malformed node sits in the root's slot that the account's path leaves through, so the read reaches it.</remarks>
@@ -64,6 +67,7 @@ public class WitnessTrieValidationTests
         byte[] leaf = Leaf(AccountKey[2..], account);
         byte[] sibling = Leaf(new byte[KeyNibbles - 2], account);
         byte[] tinyLeaf = Leaf([1], StorageValue);
+        byte[] smallLeaf = Leaf(AccountKey[1..], StorageValue);
         (Rlp slotReference, byte[][] nodes) = malformation switch
         {
             Malformation.None => (Reference(AccountLeaf(0)), [AccountLeaf(0)]),
@@ -75,6 +79,11 @@ public class WitnessTrieValidationTests
             Malformation.ExtensionToLeaf => Hashed(Extension(AccountKey[1..2], leaf), leaf),
             Malformation.ExtensionToNothing => (new Rlp(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), Rlp.OfEmptyByteArray).Bytes), []),
             Malformation.OversizedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], new Rlp(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), sibling),
+            // In a slot the read does not take: the spec decodes the whole branch.
+            Malformation.MalformedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, new Rlp([0xc1, 0x81]))), leaf),
+            // A leaf short enough for a one-byte list header, given a long one.
+            Malformation.NonCanonicalListHeader => Hashed([0xf8, (byte)(smallLeaf.Length - 1), .. smallLeaf.AsSpan(1)]),
+            Malformation.NonCanonicalLeafValue => Hashed(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), new Rlp([0x81, 0x01])).Bytes),
             _ => Hashed(Branch((0, tinyLeaf), (1, tinyLeaf))),
         };
         byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[0], slotReference), (AccountKey[0] ^ 1, Reference(sibling)));
@@ -85,6 +94,23 @@ public class WitnessTrieValidationTests
             Malformation.InvalidRlp => Throws.Exception,
             _ => Throws.TypeOf<TrieException>(),
         });
+    }
+
+    /// <remarks>The spec reads only the two low bits of a hex-prefix flag nibble, so 5 marks an extension of an odd path.</remarks>
+    [Test]
+    public void Extension_flag_takes_only_its_two_low_bits()
+    {
+        byte[] account = Rlp.Encode(new Account(UInt256.One)).Bytes;
+        byte[] leaf = Leaf(AccountKey[3..], account);
+        byte[] sibling = Leaf(new byte[KeyNibbles - 3], account);
+        byte[] branch = Branch((AccountKey[2], leaf), (AccountKey[2] ^ 1, sibling));
+        byte[] path = HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false);
+        path[0] |= 0x40;
+        byte[] extension = Rlp.Encode(Rlp.Encode(path), Reference(branch)).Bytes;
+        byte[] rootSibling = Leaf(new byte[KeyNibbles - 1], account);
+        byte[] root = Branch((AccountKey[0], extension), (AccountKey[0] ^ 1, rootSibling));
+
+        Assert.That(() => ReadBalance(root, extension, branch, leaf, sibling, rootSibling), Throws.Nothing);
     }
 
     /// <remarks>The merged extension takes the sibling's reference to its child, so the child, absent from the witness, is

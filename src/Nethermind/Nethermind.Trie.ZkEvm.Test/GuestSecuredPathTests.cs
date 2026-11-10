@@ -60,7 +60,10 @@ public class GuestSecuredPathTests
         ExtensionToLeaf,
         ExtensionToNothing,
         OversizedEmbeddedChild,
+        MalformedEmbeddedChild,
         HashReferenceToShortNode,
+        NonCanonicalListHeader,
+        NonCanonicalLeafValue,
     }
 
     /// <remarks>The malformed node sits in the root's slot that the key leads through, so every read and write reaches it.</remarks>
@@ -82,17 +85,36 @@ public class GuestSecuredPathTests
             Malformation.ExtensionToNothing => witness.ExtensionOfReference(KeyPath[1..2], Rlp.OfEmptyByteArray),
             Malformation.OversizedEmbeddedChild => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
                 (KeyPath[1], new Rlp(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, witness.Reference(witness.Leaf(new byte[KeyNibbles - 2])))),
+            // In a slot the walk does not take: the spec decodes the whole branch.
+            Malformation.MalformedEmbeddedChild => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
+                (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, new Rlp([0xc1, 0x81]))),
+            Malformation.NonCanonicalListHeader => LongListHeader(witness.Leaf(LeafPath(0))),
+            Malformation.NonCanonicalLeafValue => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), new Rlp([0x81, 0x01])).Bytes,
             _ => witness.Hashed(witness.Branch((0, witness.Leaf([1])), (1, witness.Leaf([1])))),
         };
         PatriciaTree tree = witness.Tree(witness.Branch((KeyPath[0], slotChild), (KeyPath[0] ^ 1, witness.Leaf(new byte[KeyNibbles - 1]))));
 
-        // The RLP decoder rejects invalid RLP before the check does.
+        // The RLP decoder rejects invalid and non-canonical RLP before the check does.
         Assert.That(() => ReadOrWrite(tree, write), malformation switch
         {
             Malformation.None => Throws.Nothing,
-            Malformation.InvalidRlp => Throws.Exception,
+            Malformation.InvalidRlp or Malformation.NonCanonicalListHeader or Malformation.NonCanonicalLeafValue => Throws.Exception,
             _ => Throws.TypeOf<TrieException>(),
         });
+    }
+
+    /// <remarks>The spec reads only the two low bits of a hex-prefix flag nibble, so 5 marks an extension of an odd path.</remarks>
+    [Test]
+    public void Extension_flag_takes_only_its_two_low_bits()
+    {
+        Witness witness = new();
+        byte[] path = HexPrefix.ToBytes(KeyPath[1..2], isLeaf: false);
+        path[0] |= 0x40;
+        byte[] branch = witness.Branch((KeyPath[2], witness.Leaf(KeyPath[3..])), (KeyPath[2] ^ 1, witness.Leaf(new byte[KeyNibbles - 3])));
+        byte[] extension = Rlp.Encode(Rlp.Encode(path), witness.Reference(branch)).Bytes;
+        PatriciaTree tree = witness.Tree(witness.Branch((KeyPath[0], extension), (KeyPath[0] ^ 1, witness.Leaf(new byte[KeyNibbles - 1]))));
+
+        Assert.That(tree.Get(Key).ToArray(), Is.EqualTo(new byte[] { 1 }));
     }
 
     [Test]
@@ -183,6 +205,9 @@ public class GuestSecuredPathTests
         KeyPath.AsSpan(1, Math.Min(path.Length, KeyNibbles - 1)).CopyTo(path);
         return path;
     }
+
+    /// <summary>The same node with its short list header in the long form, which RLP does not allow for under 56 bytes.</summary>
+    private static byte[] LongListHeader(byte[] node) => [0xf8, (byte)(node.Length - 1), .. node.AsSpan(1)];
 
     /// <summary>A sealed leaf decoded from RLP.</summary>
     private static TrieNode DecodedLeaf(byte[] key)
