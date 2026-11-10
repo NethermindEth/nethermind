@@ -440,8 +440,11 @@ public class RpcModuleProviderTests
             .Build();
 
         IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
-        Assert.That(container.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), Is.SameAs(factory));
-        Assert.That(createdModules, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), Is.SameAs(factory));
+            Assert.That(createdModules, Is.Empty);
+        }
 
         int expectedCapacity = configuredCapacity ?? Environment.ProcessorCount;
         List<IRpcModule> rentedModules = [];

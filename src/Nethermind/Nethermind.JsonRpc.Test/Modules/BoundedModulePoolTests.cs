@@ -232,8 +232,11 @@ public class BoundedModulePoolTests
         Assert.That(created, Has.Count.EqualTo(2));
 
         IEthRpcModule[] rented = await Task.WhenAll(Enumerable.Range(0, capacity).Select(_ => Task.Run(() => pool.GetModule(false))));
-        Assert.That(rented, Is.Unique);
-        Assert.That(created, Has.Count.EqualTo(capacity + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented, Is.Unique);
+            Assert.That(created, Has.Count.EqualTo(capacity + 1));
+        }
 
         await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => pool.GetModule(false));
         Assert.That(created, Has.Count.EqualTo(capacity + 1));
