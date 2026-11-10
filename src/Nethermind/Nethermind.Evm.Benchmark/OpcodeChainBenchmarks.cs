@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
@@ -40,7 +41,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "MemoryByteDisjoint", "MemoryByteCarried", "MemoryByteDisjointCarried", "MemoryByteRun")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -98,6 +99,7 @@ public class OpcodeChainBenchmarks
             "JumpTaken" => UInt256.Zero,
             "Byte" or "Shift" or "Sar" => UInt256.Zero,
             "Clz" => (UInt256)248,
+            "MemoryByteDisjointCarried" => UInt256.Zero,
             _ => UInt256.One
         };
         if (_vm.OpCodeCount != ExecutedOpcodeCount || !output.Span.SequenceEqual(expected.ToBigEndian()))
@@ -248,6 +250,14 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP,
                     (byte)Instruction.DUP1, (byte)Instruction.PUSH1, 64, (byte)Instruction.MSTORE8,
                     (byte)Instruction.PUSH1, 48, (byte)Instruction.MLOAD, (byte)Instruction.POP], 12),
+                // Same opcodes as MemoryByte; the load reads a word the byte store did not touch.
+                "MemoryByteDisjoint" => ([(byte)Instruction.DUP1, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE8,
+                    (byte)Instruction.PUSH1, 32, (byte)Instruction.MLOAD, (byte)Instruction.POP], 6),
+                // The loaded word supplies the next stored byte, so a load that waits for the store delays the chain.
+                "MemoryByteCarried" or "MemoryByteDisjointCarried" => ([(byte)Instruction.PUSH1, 31, (byte)Instruction.MSTORE8,
+                    (byte)Instruction.PUSH1, Chain == "MemoryByteCarried" ? (byte)0 : (byte)32, (byte)Instruction.MLOAD], 4),
+                "MemoryByteRun" => ([.. Enumerable.Range(0, 31).SelectMany(static k => new[] { (byte)Instruction.DUP1, (byte)Instruction.PUSH1, (byte)k, (byte)Instruction.MSTORE8 }),
+                    (byte)Instruction.PUSH0, (byte)Instruction.MLOAD, (byte)Instruction.POP], 96),
                 "StaticIdentity" => ([(byte)Instruction.PUSH1, 32, (byte)Instruction.PUSH1, 32,
                     (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
                     (byte)Instruction.PUSH1, 4, (byte)Instruction.PUSH2, 0xff, 0xff,

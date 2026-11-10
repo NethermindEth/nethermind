@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -427,6 +429,20 @@ public partial struct EvmPooledMemory
     internal void StoreByteAfterGas(in UInt256 location, byte value)
     {
         Debug.Assert(location.IsUint64);
+        if (Avx2.IsSupported)
+        {
+            // A 32-byte load is forwarded only from one store that covers it, so a byte store makes a following
+            // MLOAD wait. Rewriting the aligned word keeps that load, and the next byte store into the word, forwardable.
+            ulong wordStart = location.u0 & ~(WordSize - 1UL);
+            if (wordStart + WordSize <= _initializedSize)
+            {
+                ref byte word = ref Unsafe.Add(ref GetBackingReference(), TruncateToInt32(wordStart));
+                Vector256<byte> isTarget = Vector256.Equals(Vector256<byte>.Indices, Vector256.Create((byte)(location.u0 & (WordSize - 1UL))));
+                Vector256.ConditionalSelect(isTarget, Vector256.Create(value), Vector256.LoadUnsafe(ref word)).StoreUnsafe(ref word);
+                return;
+            }
+        }
+
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
         byte[]? memory = _memory;

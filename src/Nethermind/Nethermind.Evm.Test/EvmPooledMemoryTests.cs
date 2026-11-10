@@ -1197,6 +1197,40 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [Test]
+    public void StoreByteAfterGas_changes_only_its_byte_in_initialized_words([Values(0, 2048)] int start)
+    {
+        const int length = 3 * EvmPooledMemory.WordSize;
+        byte[] pattern = CreatePattern(length, 0x31);
+        byte[] expected = new byte[start + length];
+        pattern.CopyTo(expected, start);
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            for (int i = 0; i < length; i += EvmPooledMemory.WordSize)
+            {
+                UInt256 wordLocation = (UInt256)(start + i);
+                memory.CalculateMemoryCost(in wordLocation, (ulong)EvmPooledMemory.WordSize, out bool outOfGas);
+                Assert.That(outOfGas, Is.False);
+                StoreWord(ref memory, in wordLocation, pattern[i..(i + EvmPooledMemory.WordSize)], nativeWord: false);
+            }
+
+            for (int i = 0; i < length; i++)
+            {
+                UInt256 location = (UInt256)(start + i);
+                byte value = (byte)~expected[start + i];
+                expected[start + i] = value;
+                memory.StoreByteAfterGas(in location, value);
+                Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected), $"byte {i}");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [TestCase(0, TestName = "SaveAfterGas_contiguous_overwrite_leaves_later_memory_lazy")]
     [TestCase(5000, TestName = "SaveAfterGas_jump_clears_only_the_gap")]
     public void Full_overwrite_materializes_only_gap_and_written_range_on_dirty_reuse(int offset)
