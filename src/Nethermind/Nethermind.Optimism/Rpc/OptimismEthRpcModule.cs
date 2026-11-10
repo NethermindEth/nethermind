@@ -90,7 +90,7 @@ public class OptimismEthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
+            return GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult);
         }
 
         Block? block = searchResult.Object!;

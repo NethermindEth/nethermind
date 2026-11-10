@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
@@ -63,6 +64,10 @@ namespace Nethermind.State
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
             => _state.Accept(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, visitingOptions, diagnostics: diagnostics);
+
+        /// <inheritdoc/>
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? header, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+            => RunTreeVisitor(new NodeRecordVisitorAdapter<TCtx>(visitor), header, visitingOptions, diagnostics);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, baseBlock?.Number ?? 0);
 
