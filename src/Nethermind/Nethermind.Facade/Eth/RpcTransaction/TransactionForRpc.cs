@@ -95,13 +95,22 @@ public abstract class TransactionForRpc
     /// <remarks>
     /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
     /// so the first failing check still names the request. Differing non-null input and data are then rejected,
-    /// as in Geth's setDefaults, before a missing contract data error; calls instead prefer input over data.
+    /// as in Geth's setDefaults, before a missing contract data error or empty blob hashes / missing blob recipient
+    /// when no sidecar was supplied; calls instead prefer input over data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+        if (GetSubmissionDataError() is not { } error) return result;
+        if (this is BlobTransactionForRpc { Blobs: null } blob
+            && result.Error is RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx)
+        {
+            Result<Transaction> preceding = CheckFeeCapOrder(blob.ToTransactionBeforeBlobFields(gasCap, spec));
+            if (preceding.IsError && preceding.Error != RpcTransactionErrors.ContractCreationWithoutData) return preceding;
+            return Result<Transaction>.Fail(error);
+        }
         if (result.IsError && result.Error != RpcTransactionErrors.ContractCreationWithoutData) return result;
-        return GetSubmissionDataError() is { } error ? Result<Transaction>.Fail(error) : result;
+        return Result<Transaction>.Fail(error);
     }
 
     internal virtual string? GetSubmissionDataError() => null;

@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Config;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -143,6 +142,27 @@ public class TransactionForRpcTests
                 if (method == "eth_call") Assert.That((string?)json["result"], Is.EqualTo("0x" + expected));
                 if (method == "trace_call") Assert.That((string?)json["result"]?["output"], Is.EqualTo("0x" + expected));
             }
+        }
+    }
+
+    [Test]
+    public void Blob_submission_alias_checks_preserve_fee_sidecar_and_call_precedence(
+        [Values] bool suppliedBlobs, [Values] bool invalidFee)
+    {
+        string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
+        TransactionForRpc request = DeserializeTransactionForRpc($$"""
+            { {{sidecar}}"blobVersionedHashes":[],"maxFeePerBlobGas":"0x1",
+              "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
+              "input":"0x01","data":"0x2a" }
+            """);
+        string expected = suppliedBlobs ? RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
+            : invalidFee ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)
+            : RpcTransactionErrors.DataAndInputDiffer;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.ToValidatedTransaction().Error, Is.EqualTo(expected));
+            Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
         }
     }
 

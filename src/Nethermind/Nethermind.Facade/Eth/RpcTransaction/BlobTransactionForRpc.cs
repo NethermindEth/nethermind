@@ -100,6 +100,12 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
+    /// <summary>Checks the conversion rules that precede blob fields when validating conflicting submission aliases.</summary>
+    internal Result<Transaction> ToTransactionBeforeBlobFields(ulong? gasCap, IReleaseSpec? spec) =>
+        MaxFeePerBlobGas?.IsZero == true
+            ? RpcTransactionErrors.ZeroMaxFeePerBlobGas
+            : base.ToTransaction(validateUserInput: true, gasCap, spec);
+
     public override Result FillDefaults(in TxFillContext context)
     {
         Result baseResult = base.FillDefaults(context);

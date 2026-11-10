@@ -546,13 +546,13 @@ public partial class EthRpcModule(
         if (rpcTx is not BlobTransactionForRpc { Blobs: not null } && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
             return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
-        if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
-            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
-
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
         if (await FillFeesAndGas(rpcTx, head, spec) is { } fillError)
             return ResultWrapper<FillTransactionResult>.Fail(fillError.Error, fillError.ErrorCode);
+
+        if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
         legacyTx.ChainId ??= chainId;
 
