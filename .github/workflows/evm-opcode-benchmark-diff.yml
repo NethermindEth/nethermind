@@ -121,7 +121,7 @@ jobs:
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
 
       - name: Set up .NET for base
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.BASE_WORKTREE }}/global.json
 
