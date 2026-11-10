@@ -255,9 +255,18 @@ public class HistoryPruner : IHistoryPruner
 
             ulong head = _blockTree.Head?.Number ?? 0;
             ulong durable = _stateBoundary.BestPersistedState ?? 0;
-            ulong finality = _blockTree.FinalizedHash is { } finalizedHash
-                ? _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical)?.Number ?? 0
-                : head.SaturatingSub(Reorganization.MaxDepth);
+            ulong finality;
+            if (_blockTree.FinalizedHash is { } finalizedHash)
+            {
+                BlockHeader? finalized = _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical);
+                if (finalized is null && _logger.IsDebug) _logger.Debug($"History pruning is paused: the finalized block {finalizedHash} is not on the canonical chain.");
+                finality = finalized?.Number ?? 0;
+            }
+            else
+            {
+                finality = head.SaturatingSub(Reorganization.MaxDepth);
+            }
+
             return ulong.Min(ulong.Min(head, durable), finality);
         }
     }
@@ -325,10 +334,12 @@ public class HistoryPruner : IHistoryPruner
             return;
         }
 
-        SchedulePruneHistory(
-            _processExitSource.Token,
-            () => Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, previousBucket, triggerBucket));
+        SchedulePruneHistory(_processExitSource.Token, CreateTriggerBucketRollback(previousBucket, triggerBucket));
     }
+
+    // Kept out of the head handler so the capture is allocated only for a head that schedules a pass.
+    private Action CreateTriggerBucketRollback(ulong previousBucket, ulong triggerBucket) =>
+        () => Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, previousBucket, triggerBucket);
 
     /// <summary>
     /// Schedules a pruning operation if one is not already running. The first eligible pruning pass bypasses the
