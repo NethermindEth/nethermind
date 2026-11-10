@@ -12,6 +12,7 @@ using Nethermind.BlockProfiler;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
@@ -27,6 +28,8 @@ public class BlockProfilerPluginTests
     private static readonly Type CounterType = typeof(CountingBranchProcessor).Assembly.GetType("Nethermind.BlockProfiler.ThreadInstructionCounter")!;
     private static readonly FieldInfo CountersField = CounterType.GetField("t_counters", BindingFlags.Static | BindingFlags.NonPublic)!;
     private static readonly FieldInfo ErrorField = CounterType.GetField("s_error", BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo ArmedLoggedField = typeof(CountingBranchProcessor).GetField("s_armedLogged", BindingFlags.Static | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo ErrorLoggedField = typeof(CountingBranchProcessor).GetField("s_errorLogged", BindingFlags.Static | BindingFlags.NonPublic)!;
 
     [TearDown]
     public void TearDown()
@@ -35,6 +38,8 @@ public class BlockProfilerPluginTests
         Environment.SetEnvironmentVariable("NETHERMIND_COUNT_INSTRUCTIONS", null);
         CountersField.SetValue(null, null);
         ErrorField.SetValue(null, null);
+        ArmedLoggedField.SetValue(null, 0);
+        ErrorLoggedField.SetValue(null, 0);
     }
 
     [TestCase("", false)]
@@ -186,8 +191,54 @@ public class BlockProfilerPluginTests
         }
     }
 
-    private static SafeFileHandle OpenTestHandle() =>
-        File.OpenHandle(Path.GetTempFileName(), FileMode.Open, FileAccess.Read, FileShare.ReadWrite, FileOptions.DeleteOnClose);
+    [Test]
+    [Platform("Linux")]
+    public void Counting_warns_once_when_a_counter_read_fails_mid_run()
+    {
+        TestLogger testLogger = new();
+        IBranchProcessor inner = Substitute.For<IBranchProcessor>();
+        using CountingBranchProcessor counting = new(inner, new OneLoggerLogManager(new ILogger(testLogger)));
+        // Two readings per counter: the block's window opens, then a read before it closes finds the file exhausted.
+        using SafeFileHandle instructions = OpenTestHandle(readings: 2);
+        using SafeFileHandle cycles = OpenTestHandle(readings: 2);
+        InstallCounters(instructions, cycles);
+        Block[] blocks = [Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject];
+
+        inner.Process(Arg.Any<BlockHeader>(), Arg.Any<IReadOnlyList<Block>>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                inner.BlocksProcessing += Raise.EventWith(inner, new BlocksProcessingEventArgs(blocks));
+                foreach (Block block in blocks)
+                {
+                    inner.BlockProcessing += Raise.EventWith(inner, new BlockEventArgs(block));
+                    inner.BlockExecuted += Raise.EventWith(inner, new BlockExecutedEventArgs(block));
+                    inner.BlockProcessed += Raise.EventWith(inner, new BlockProcessedEventArgs(block, []));
+                }
+                inner.BranchProcessingCompleted += Raise.EventWith(inner, new BranchProcessingCompletedEventArgs(blocks, blocks.Length));
+                return blocks;
+            });
+
+        bool wasProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            counting.Process(null, blocks, ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = wasProcessingThread;
+        }
+
+        Assert.That(testLogger.LogList.FindAll(static line => line.StartsWith("EXPB-COUNT stopped", StringComparison.Ordinal)), Has.Count.EqualTo(1));
+    }
+
+    private static SafeFileHandle OpenTestHandle(int readings = 0)
+    {
+        string path = Path.GetTempFileName();
+        // A reading is the value, the time enabled and the time running.
+        File.WriteAllBytes(path, new byte[readings * 3 * sizeof(ulong)]);
+        return File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, FileOptions.DeleteOnClose);
+    }
 
     private static void InstallCounters(SafeHandle instructions, SafeHandle cycles)
     {

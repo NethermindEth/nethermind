@@ -48,6 +48,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 {
     private static readonly int s_pinCpu = int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_COUNT_PIN_CPU"), out int cpu) ? cpu : -1;
     private static int s_armedLogged;
+    private static int s_errorLogged;
     private static int s_pinned;
 
     private readonly IBranchProcessor _inner;
@@ -97,7 +98,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             {
                 if (_logger.IsInfo) _logger.Info("EXPB-COUNT armed: user-space instructions and cycles per block");
             }
-            else if (_logger.IsWarn)
+            else if (Interlocked.Exchange(ref s_errorLogged, 1) == 0 && _logger.IsWarn)
             {
                 _logger.Warn($"EXPB-COUNT unavailable: {ThreadInstructionCounter.Error}");
             }
@@ -130,7 +131,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _block = Window.Open();
     }
 
-    private void OnTransactionsExecuted() =>
+    private void OnTransactionsExecuted(Block _) =>
         _executedRead = _counting && _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _executed);
 
     private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e)
@@ -147,7 +148,14 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_counting || !_block.TryStop(out ThreadInstructionCounter.Sample total, out string counts)) return;
+        if (!_counting) return;
+        if (!_block.TryStop(out ThreadInstructionCounter.Sample total, out string counts))
+        {
+            // A failed read turns counting off for the rest of the run; say so once instead of going quiet.
+            if (ThreadInstructionCounter.Error is { } error && Interlocked.Exchange(ref s_errorLogged, 1) == 0 && _logger.IsWarn)
+                _logger.Warn($"EXPB-COUNT stopped: {error}");
+            return;
+        }
         if (!_logger.IsInfo) return;
 
         ThreadInstructionCounter.Sample start = _block.Start;

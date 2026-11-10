@@ -204,8 +204,8 @@ public class ResourcePool : IResourcePool
         public TransientResource GetCachedResource()
         {
             // A deterministic benchmark gives every block a new resource of the initial size: a pooled one keeps the
-            // capacity earlier blocks grew it to, which the trie node cache walks, and which one a block gets depends
-            // on when earlier holders released theirs.
+            // capacity earlier blocks grew it to, and which one a block gets depends on when earlier holders released
+            // theirs.
             if (!DeterministicBenchmark.Enabled && _cachedResourcePool.TryGet(out TransientResource? cachedResource))
             {
                 _cachedResourceMetrics.OnRented(_cachedResourcePool.PooledItemCount);
