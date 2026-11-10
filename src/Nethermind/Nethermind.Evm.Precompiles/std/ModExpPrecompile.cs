@@ -33,9 +33,15 @@ public unsafe partial class ModExpPrecompile
         uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
         uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
 
-        using mpz_t modulusInt = mpz_t.Create();
-
         ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);
+        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
+        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
+
+        // Contracts invert field elements as base^(p - 2) mod p; for well-known primes an inversion gives the same result far faster
+        if (PrimeFieldInverse.TryInvert(baseDataSpan, expDataSpan, modulusDataSpan, out byte[]? inverse))
+            return inverse;
+
+        using mpz_t modulusInt = mpz_t.Create();
 
         if (modulusDataSpan.Length > 0)
         {
@@ -50,15 +56,11 @@ public unsafe partial class ModExpPrecompile
         using mpz_t expInt = mpz_t.Create();
         using mpz_t powmResult = mpz_t.Create();
 
-        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
-
         if (baseDataSpan.Length > 0)
         {
             fixed (byte* baseData = &MemoryMarshal.GetReference(baseDataSpan))
                 Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, baseData);
         }
-
-        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
 
         if (expDataSpan.Length > 0)
         {
