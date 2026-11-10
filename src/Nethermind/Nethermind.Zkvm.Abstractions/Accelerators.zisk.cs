@@ -296,6 +296,15 @@ public static partial class Accelerators
         ThrowIfFailed(status, nameof(zisklib_modexp));
     }
 
+    /// <inheritdoc cref="Ripemd160"/>
+    /// <remarks>Runs ZisK's own RIPEMD-160 library routine, which always succeeds.</remarks>
+    public static void ZiskRipemd160(ReadOnlySpan<byte> data, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
+
+        zisklib_ripemd160(data, (nuint)data.Length, output);
+    }
+
     /// <summary>
     /// Computes the Keccak-256 hash of <paramref name="length"/> bytes at <paramref name="data"/> into the 32 bytes at
     /// <paramref name="output"/>.
