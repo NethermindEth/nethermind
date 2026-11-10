@@ -91,16 +91,19 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("0x9", null)]
-    [TestCase(null, "0x0")]
-    public async Task Debug_traceCall_blob_fee_override_keeps_prevrandao_of_header_without_post_merge_flag(string? blobBaseFee, string? maxFeePerBlobGas)
+    [TestCase("0x9", null, 0, false, true)]
+    [TestCase(null, "0x0", 0, false, true)]
+    [TestCase("0x9", null, 5, false, false)]
+    [TestCase("0x9", null, 5, true, true)]
+    public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
         BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
         head.ExcessBlobGas = 0;
-        head.Difficulty = 0;
+        head.Difficulty = (UInt256)difficulty;
         head.MixHash = TestItem.KeccakH;
-        head.IsPostMerge = false;
+        head.IsPostMerge = isPostMerge;
         const string address = "0xc200000000000000000000000000000000000000";
         Dictionary<string, object> transaction = new() { ["to"] = address, ["gas"] = "0x186a0" };
         Dictionary<string, object> options = new()
@@ -119,7 +122,8 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
-            Assert.That(ParseReturnValue(response), Is.EqualTo(TestItem.KeccakH.Bytes.ToArray()));
+            Assert.That(ParseReturnValue(response),
+                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
         }
     }
 

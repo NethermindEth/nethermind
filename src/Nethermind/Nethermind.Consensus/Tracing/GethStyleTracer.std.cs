@@ -130,8 +130,9 @@ public class GethStyleTracer(
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
     {
         BlockHeader header = block.Header.Clone();
-        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry.
-        header.IsPostMerge = header.Difficulty == 0;
+        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry. Only ever set it:
+        // a chain such as Taiko keeps post-merge headers with a nonzero difficulty.
+        if (header.Difficulty == 0) header.IsPostMerge = true;
         options.BlockOverrides?.ApplyOverrides(header);
         if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
         return (header, specProvider.GetSpec(header));
