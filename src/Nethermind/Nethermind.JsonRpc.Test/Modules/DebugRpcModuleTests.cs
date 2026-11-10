@@ -1773,7 +1773,7 @@ public partial class DebugRpcModuleTests
         }
         string expected = scenario switch
         {
-            "source-before-destination" => $"account {source} is not a precompile",
+            "source-before-destination" => "account 0x0000000000000000000000000000000000000000 is not a precompile",
             "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
             _ => $"account {destination} is already overridden"
         };
