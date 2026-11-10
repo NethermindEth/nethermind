@@ -22,7 +22,8 @@ public static class EthereumEcdsaExtensions
     /// Cross-context cache of recovered senders: a transaction recovered on mempool ingress becomes a
     /// lookup on block arrival. The key is derived from exactly what recovery reads, the signing hash
     /// and the signature (<see cref="CalculateSenderCacheKey"/>), so an entry is correct for every transaction
-    /// that maps to it. The cache keeps its scope: legacy transactions are not cached.
+    /// that maps to it. Legacy transactions are left uncached, as before: that is a matter of scope, not a
+    /// requirement of the key, which is just as valid for them.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
