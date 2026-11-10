@@ -769,13 +769,7 @@ public class DebugModuleTests
     public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable, [Values] bool bodyStored)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
-        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
-        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        BlockHeader header = SetUpIntermediateRootsBlock(blockHash, bodyStored);
         _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
 
         Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
@@ -793,27 +787,34 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsStateUnavailable()
+    public async Task DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsStateUnavailable()
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockFinder.HasBlock(header.Number, blockHash).Returns(true);
-        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        SetUpIntermediateRootsBlock(blockHash, bodyStored: true);
+        StateNotRetainedException refusal = new("trie-less");
         _debugBridge
             .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
-            .Returns(_ => throw new StateNotRetainedException("trie-less"));
+            .Returns(_ => throw refusal);
 
-        ResultWrapper<IReadOnlyCollection<Hash256>> actual = CreateModule().debug_intermediateRoots(blockHash);
+        JsonRpcErrorResponse actual = (JsonRpcErrorResponse)await Request("debug_intermediateRoots", blockHash);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-            Assert.That(actual.Result.Error, Is.EqualTo($"No state available for block {parent.ToString(BlockHeader.Format.FullHashAndNumber)}"));
+            Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Error.Message, Is.EqualTo(refusal.Message));
         }
+    }
+
+    private BlockHeader SetUpIntermediateRootsBlock(Hash256 blockHash, bool bodyStored)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
+        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        return header;
     }
 
     [TestCaseSource(nameof(IntermediateRootsErrorCases))]
