@@ -262,6 +262,26 @@ public static partial class Accelerators
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void Div256(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_div(a, b, quotient);
 
+    /// <inheritdoc cref="Sha256"/>
+    /// <remarks>Runs ZisK's own SHA-256 library routine, which always succeeds.</remarks>
+    public static void ZiskSha256(ReadOnlySpan<byte> data, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
+
+        zisklib_sha256(data, (nuint)data.Length, output);
+    }
+
+    /// <inheritdoc cref="ModExp"/>
+    /// <remarks>Runs ZisK's own modular exponentiation library routine.</remarks>
+    public static void ZiskModExp(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> exp, ReadOnlySpan<byte> modulus, Span<byte> output)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, modulus.Length, nameof(output));
+
+        Status status = zisklib_modexp(@base, (nuint)@base.Length, exp, (nuint)exp.Length, modulus, (nuint)modulus.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_modexp));
+    }
+
     /// <summary>
     /// Computes the Keccak-256 hash of <paramref name="length"/> bytes at <paramref name="data"/> into the 32 bytes at
     /// <paramref name="output"/>.

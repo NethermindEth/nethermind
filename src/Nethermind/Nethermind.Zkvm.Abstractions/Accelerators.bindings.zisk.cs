@@ -78,6 +78,22 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
+    private static partial Status zisklib_sha256(ReadOnlySpan<byte> data, nuint len, Span<byte> output);
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
+    private static partial Status zisklib_modexp(
+        ReadOnlySpan<byte> @base,
+        nuint base_len,
+        ReadOnlySpan<byte> exp,
+        nuint exp_len,
+        ReadOnlySpan<byte> modulus,
+        nuint mod_len,
+        Span<byte> output
+    );
+
+    [LibraryImport("__Internal")]
+    [SuppressGCTransition]
     private static partial Status zisklib_secp256k1_ecrecover(
         ReadOnlySpan<byte> msg,
         ReadOnlySpan<byte> sig,

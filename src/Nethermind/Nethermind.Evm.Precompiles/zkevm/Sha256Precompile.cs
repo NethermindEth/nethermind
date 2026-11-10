@@ -18,7 +18,10 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Accelerators.Sha256(inputData.Span, _output);
+        if (ZiskFlag.IsActive)
+            Accelerators.ZiskSha256(inputData.Span, _output);
+        else
+            Accelerators.Sha256(inputData.Span, _output);
 
         return _output;
     }

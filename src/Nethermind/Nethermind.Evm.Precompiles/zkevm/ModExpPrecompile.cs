@@ -40,7 +40,10 @@ public partial class ModExpPrecompile
 
         ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
         ReadOnlySpan<byte> exp = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
-        Accelerators.ModExp(@base, exp, modulus, result);
+        if (ZiskFlag.IsActive)
+            Accelerators.ZiskModExp(@base, exp, modulus, result);
+        else
+            Accelerators.ModExp(@base, exp, modulus, result);
 
         return result;
     }
