@@ -291,8 +291,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TContinuable : struct, IFlag
         {
             bool carriesExecutionGas = CarriesExecutionGas<TTracingInst>();
-            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody
-                && TOpcode.StackInputs > 0 && state.Vm.IsTracingActions ? stack.Head : 0;
+            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 ? stack.Head : 0;
 
             // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
@@ -491,13 +490,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         Exit:
             if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
-                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
+                exceptionType == EvmExceptionType.StackUnderflow)
+            {
+                // Reported through a tail call for the same reason as a failed check: the trace string is the only
+                // call site in an otherwise leaf unchecked handler such as JUMP.
+                ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+                nint underflow = (nint)(delegate*<ref EvmStack, ref DispatchState, nint, nint, EvmExceptionType>)&ReportUncheckedUnderflow<TOpcode>;
+                IL.EnsureLocal(in underflow);
+                IL.EnsureLocal(in traceStackHead);
+
+                IL.Emit.Ldarg(nameof(stack));
+                IL.Emit.Ldarg(nameof(state));
+                IL.Push(traceStackHead);
+                IL.Emit.Ldarg(nameof(pc));
+                IL.Push(underflow);
+                IL.Emit.Tail();
+                IL.Emit.Calli(new StandAloneMethodSig(
+                    CallingConventions.Standard,
+                    TypeRef.Type<EvmExceptionType>(),
+                    TypeRef.Type<EvmStack>().MakeByRefType(),
+                    TypeRef.Type<DispatchState>().MakeByRefType(),
+                    TypeRef.Type<nint>(),
+                    TypeRef.Type<nint>()));
+                IL.Emit.Ret();
+                throw IL.Unreachable();
+            }
+            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+        }
+
+        /// <summary>
+        /// Emits the action-trace detail for an unchecked opcode that underflowed the stack, after the chain has
+        /// already recorded its exit, and returns the underflow status.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ReportUncheckedUnderflow<TOpcode>(
+            ref EvmStack stack,
+            ref DispatchState state,
+            nint traceStackHead,
+            nint pc)
+            where TOpcode : struct, IOpcodeBody
+        {
+            if (state.Vm.IsTracingActions)
             {
                 Instruction opcode = (Instruction)Unsafe.Add(ref stack.Code, pc - 1);
                 if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
                     state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
             }
-            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+            return EvmExceptionType.StackUnderflow;
         }
 
         /// <summary>
