@@ -120,6 +120,11 @@ jobs:
           git worktree add --detach -f "${base_dir}" "${base_sha}"
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
 
+      - name: Set up .NET for base
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: ${{ env.BASE_WORKTREE }}/global.json
+
       - name: Use PR opcode benchmark harness for base (probe, fall back to base harness)
         shell: bash
         run: |
