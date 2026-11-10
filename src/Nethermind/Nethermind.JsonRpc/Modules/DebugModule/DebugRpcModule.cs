@@ -1061,7 +1061,7 @@ public class DebugRpcModule(
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
         if (headerError is null && header!.IsGenesis)
-            return GetFileTraceGenesisError(header, options);
+            return GetGenesisFileTraceFailure(header, options);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1082,7 +1082,7 @@ public class DebugRpcModule(
     {
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, badBlocksOnly: true);
         if (headerError is null && header!.IsGenesis)
-            return GetFileTraceGenesisError(header, options, badBlocksOnly: true);
+            return GetGenesisFileTraceFailure(header, options, badBlocksOnly: true);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1099,9 +1099,8 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    private ResultWrapper<IEnumerable<string>> GetFileTraceGenesisError(BlockHeader header, GethTraceOptions? options, bool badBlocksOnly = false)
+    private ResultWrapper<IEnumerable<string>> GetGenesisFileTraceFailure(BlockHeader header, GethTraceOptions? options, bool badBlocksOnly = false)
     {
-        const string genesisError = "genesis is not traceable";
         // Geth checks a nonzero transaction filter before rejecting genesis.
         if (options?.TxHash is { } txHash && txHash != Hash256.Zero)
         {
@@ -1109,15 +1108,15 @@ public class DebugRpcModule(
             {
                 foreach (Block block in debugBridge.GetBadBlocks())
                     if (ContainsTransaction(block, header.Hash!, txHash))
-                        return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
+                        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
             }
             else if (ContainsTransaction(blockFinder.FindBlock(header.Hash!, header.Number), header.Hash!, txHash))
             {
-                return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
+                return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
             }
             return ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput);
         }
-        return ResultWrapper<IEnumerable<string>>.Fail(genesisError, ErrorCodes.InvalidInput);
+        return ResultWrapper<IEnumerable<string>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
 
         static bool ContainsTransaction(Block? block, Hash256 blockHash, Hash256 txHash)
         {
