@@ -16,6 +16,18 @@ COPY global.json nuget.config Directory.Build.props Directory.Build.targets Dire
 COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
 
+# Benchmark only: replace the restored Int256 1.12.0 assembly with the same library built from
+# NethermindEth/int256 6ff523e (v1.12.0 plus the MULMOD/ADDMOD changes in UInt256.divmod.cs).
+ARG INT256_COMMIT=6ff523ecb4be6c2f4671e79b4ce97884a27231bf
+RUN git clone https://github.com/NethermindEth/int256 /int256 && \
+  cd /int256 && git checkout --detach $INT256_COMMIT && \
+  git diff --quiet v1.12.0 $INT256_COMMIT -- src/Nethermind.Int256 ':!src/Nethermind.Int256/UInt256.divmod.cs' && \
+  dotnet build src/Nethermind.Int256/Nethermind.Int256.csproj -c Release -p:TreatWarningsAsErrors=false && \
+  target=/root/.nuget/packages/nethermind.numerics.int256/1.12.0/impl/std/net10.0/Nethermind.Int256.dll && \
+  test -f $target && \
+  cp artifacts/bin/Nethermind.Int256/release/Nethermind.Int256.dll $target && \
+  sha256sum $target
+
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
