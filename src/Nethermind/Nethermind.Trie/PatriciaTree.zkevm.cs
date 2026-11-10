@@ -279,7 +279,7 @@ public partial class PatriciaTree
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ResolveReachedNode(TrieNode node, in TreePath path, int depth, bool isSecured)
     {
-        if (node.NodeType != NodeType.Unknown) return;
+        if (node.NodeData is not null) return;
 
         node.ResolveNode(TrieStore, path);
         if (isSecured) SecuredTrieNodeValidator.Validate(node.FullRlp.AsSpan(), depth, isHashed: node.Keccak is not null);
