@@ -40,7 +40,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     /// <summary>Sets calldata through the legacy alias for <see cref="Input"/>.</summary>
     /// <remarks>
     /// Accepted during deserialization for compatibility with clients such as Prysm, but never serialized.
-    /// When JSON supplies both aliases, their non-null values must be equal; assignments in code update <see cref="Input"/> directly.
+    /// JSON retains both aliases for submission validation; calls prefer <see cref="Input"/>. Assignments in code update <see cref="Input"/> directly.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
@@ -49,7 +49,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         private get => null;
         set
         {
-            if (_isDeserializing) _data = value ?? _data;
+            if (_isDeserializing) _data = value;
             else Input = value;
         }
     }
@@ -58,27 +58,30 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     private bool _isDeserializing;
 
     /// <remarks>
-    /// <see cref="Data"/> is an alias when deserializing: a request may set either or both, but both must be equal.
-    /// An explicit JSON null for either is the same as omitting it.
+    /// The last JSON assignment sets each alias, including null. A non-null input takes precedence over data;
+    /// submissions additionally require both non-null aliases to agree, as in Geth's setDefaults.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get => _input; set => _input = value ?? _input; }
+    public byte[]? Input
+    {
+        get => _input ?? _data;
+        set
+        {
+            if (!_isDeserializing) _data = null;
+            _input = value;
+        }
+    }
 
     private byte[]? _input;
 
     void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
 
-    void IJsonOnDeserialized.OnDeserialized()
-    {
-        _isDeserializing = false;
-        if (_data is null) return;
-        if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
-            throw new DataAndInputDifferException();
+    void IJsonOnDeserialized.OnDeserialized() => _isDeserializing = false;
 
-        Input = _data;
-        _data = null;
-    }
+    internal override string? GetSubmissionDataError() =>
+        _data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data)
+            ? RpcTransactionErrors.DataAndInputDiffer : null;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }

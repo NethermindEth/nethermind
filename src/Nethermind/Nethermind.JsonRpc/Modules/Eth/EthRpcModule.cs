@@ -610,6 +610,9 @@ public partial class EthRpcModule(
             return (orderError, ErrorCodes.InvalidInput);
         }
 
+        if (rpcTx.GetSubmissionDataError() is { } dataError)
+            return (dataError, ErrorCodes.InvalidInput);
+
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using RentedTimeout timeout = _rpcConfig.RentTimeout();

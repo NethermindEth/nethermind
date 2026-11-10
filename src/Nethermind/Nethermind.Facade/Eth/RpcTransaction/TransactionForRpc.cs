@@ -97,7 +97,13 @@ public abstract class TransactionForRpc
     /// so the first failing check still names the request.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
-        => CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+    {
+        Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+        if (result.IsError && result.Error != RpcTransactionErrors.ContractCreationWithoutData) return result;
+        return GetSubmissionDataError() is { } error ? Result<Transaction>.Fail(error) : result;
+    }
+
+    internal virtual string? GetSubmissionDataError() => null;
 
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
