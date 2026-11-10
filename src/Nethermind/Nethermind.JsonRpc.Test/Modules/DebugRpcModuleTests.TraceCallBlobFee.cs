@@ -258,11 +258,10 @@ public partial class DebugRpcModuleTests
                 : TraceCallConversionProbe.ConversionError));
             Assert.That(request.Conversions, Is.EqualTo(expectedConversions), "trace conversion must retain virtual dispatch, flags and zero-cap omission");
             Assert.That(request.MaxFeePerBlobGas, Is.EqualTo((UInt256)blobFeeCap), "the request must not be mutated");
+            Assert.That(request.ToCallTransaction(spec, gasCap).Error, Is.EqualTo(TraceCallConversionProbe.ConversionError));
+            Assert.That(request.Conversions[^1], Is.EqualTo((true, (ulong?)gasCap, spec, (UInt256?)blobFeeCap)),
+                "sibling calls must not apply trace-only blob defaults");
         }
-
-        Assert.That(request.ToCallTransaction(spec, gasCap).Error, Is.EqualTo(TraceCallConversionProbe.ConversionError));
-        Assert.That(request.Conversions[^1], Is.EqualTo((true, (ulong?)gasCap, spec, (UInt256?)blobFeeCap)),
-            "sibling calls must not apply trace-only blob defaults");
     }
 
     private sealed class TraceCallConversionProbe : BlobTransactionForRpc
