@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.Rlpx;
 
@@ -15,7 +14,14 @@ namespace Nethermind.Network
         /// </summary>
         /// <returns>The serialized message, which the caller disposes to return it to the pool.</returns>
         ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase;
-        IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase;
+
+        /// <summary>Returns the length of a message serialized by <see cref="Serialize{T}(T, Span{byte})"/>.</summary>
+        int GetLength<T>(T message) where T : MessageBase;
+
+        /// <summary>Serializes a message into <paramref name="destination"/>, which is exactly its length.</summary>
+        /// <exception cref="InvalidOperationException">The serializer wrote other than the length it reported.</exception>
+        void Serialize<T>(T message, Span<byte> destination) where T : MessageBase;
+
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
 
         /// <summary>Deserializes a received message from the content of <paramref name="packet"/>.</summary>

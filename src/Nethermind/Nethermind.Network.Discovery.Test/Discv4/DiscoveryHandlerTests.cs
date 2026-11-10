@@ -554,8 +554,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase
                 => innerService.Serialize(message);
 
-            public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-                => innerService.ZeroSerialize(message, allocator);
+            public int GetLength<T>(T message) where T : MessageBase => innerService.GetLength(message);
+
+            public void Serialize<T>(T message, Span<byte> destination) where T : MessageBase
+                => innerService.Serialize(message, destination);
 
             public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
             {

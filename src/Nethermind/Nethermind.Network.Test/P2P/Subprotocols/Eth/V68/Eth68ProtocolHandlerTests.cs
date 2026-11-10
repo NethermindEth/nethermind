@@ -1197,7 +1197,7 @@ public class Eth68ProtocolHandlerTests
     private long LastPooledRequestId() => _session.ReceivedCalls()
         .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).Last().RequestId;
 
-    private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, byte messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();

@@ -23,18 +23,13 @@ namespace Nethermind.Network.Test;
 public class MessageSerializationServiceTests
 {
     [Test]
-    public void Serialize_rejects_a_write_of_other_than_the_reported_length([Values(-1, 1)] int lengthError, [Values] bool toByteBuffer)
+    public void Serialize_rejects_a_write_of_other_than_the_reported_length([Values(-1, 1)] int lengthError, [Values] bool intoSpan)
     {
         MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer { LengthError = lengthError }));
         SpanMessage message = new();
-        IByteBuffer? rented = null;
-        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
-        allocator.Buffer(Arg.Any<int>()).Returns(c => rented = UnpooledByteBufferAllocator.Default.Buffer(c.Arg<int>()));
 
-        Action serialize = toByteBuffer ? () => service.ZeroSerialize(message, allocator) : () => service.Serialize(message);
+        Action serialize = intoSpan ? () => service.Serialize(message, new byte[service.GetLength(message)]) : () => service.Serialize(message);
         Assert.That(serialize, Throws.InvalidOperationException.With.Message.Contains("wrote"));
-        if (toByteBuffer)
-            Assert.That(rented!.ReferenceCount, Is.Zero);
     }
 
     [Test]
@@ -55,7 +50,7 @@ public class MessageSerializationServiceTests
     {
         MessageSerializationService service = new();
 
-        Action use = serialize ? () => service.ZeroSerialize(new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
+        Action use = serialize ? () => service.GetLength(new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
         Assert.That(use, Throws.InvalidOperationException.With.Message.EqualTo($"No serializer registered for {nameof(SpanMessage)}."));
     }
 
@@ -63,39 +58,6 @@ public class MessageSerializationServiceTests
     public void Rejects_a_serializer_of_another_message_type() =>
         Assert.That(() => new MessageSerializationService(new SerializerInfo(typeof(PingMessage), new SpanSerializer())),
             Throws.ArgumentException.With.Message.EqualTo($"Serializer of type {nameof(SpanSerializer)} must implement IMessageSerializer<{nameof(PingMessage)}>."));
-
-    [TestCaseSource(nameof(P2PMessages))]
-    public void ZeroSerialize_writes_the_packet_type_then_the_message(Func<IMessageSerializationService, IByteBuffer> zeroSerialize, string expected)
-    {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-
-        using DisposableByteBuffer packet = zeroSerialize(container.Resolve<IMessageSerializationService>()).AsDisposable();
-
-        Assert.That(packet.ReadAllHex(), Is.EqualTo(expected));
-    }
-
-    private static IEnumerable<TestCaseData> P2PMessages()
-    {
-        yield return Case("Hello", new HelloMessage
-        {
-            P2PVersion = 5,
-            ClientId = "Nethermind",
-            ListenPort = 30303,
-            NodeId = TestItem.PublicKeyA,
-            Capabilities = new ArrayPoolList<Capability>(2) { new("ETH", 68), new("snap", 1) }
-        }, "80f85f058a4e65746865726d696e64cdc58365746844c684736e61700182765fb840a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92");
-        yield return Case("AddCapability", new AddCapabilityMessage(new Capability("Snap", 1)), "04c684736e617001");
-        yield return Case("Disconnect", new DisconnectMessage(EthDisconnectReason.TooManyPeers), "01c104");
-        yield return Case("Ping", PingMessage.Instance, "02c0");
-        yield return Case("Pong", PongMessage.Instance, "03c0");
-
-        static TestCaseData Case<T>(string name, T message, string expected) where T : P2PMessage
-        {
-            message.AdaptivePacketType = message.PacketType;
-            Func<IMessageSerializationService, IByteBuffer> zeroSerialize = service => service.ZeroSerialize(message);
-            return new TestCaseData(zeroSerialize, expected).SetArgDisplayNames(name);
-        }
-    }
 
     [Test]
     public void AddMessageSerializer_registers_the_serializer_as_its_interface()

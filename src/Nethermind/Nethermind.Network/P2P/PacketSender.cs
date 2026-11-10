@@ -6,9 +6,11 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P;
 
@@ -35,13 +37,37 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             return 0;
         }
 
-        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+        IByteBuffer buffer = Serialize(_messageSerializationService, message, _context.Allocator);
         int length = buffer.ReadableBytes;
 
         // Running in background
         SendBuffer(buffer);
 
         return length;
+    }
+
+    /// <summary>Serializes a message into a new buffer as its packet type followed by its content.</summary>
+    internal static IByteBuffer Serialize<T>(IMessageSerializationService serializationService, T message, IByteBufferAllocator allocator)
+        where T : P2PMessage
+    {
+        int packetTypeLength = Rlp.LengthOf(message.AdaptivePacketType);
+        int length = packetTypeLength + serializationService.GetLength(message);
+        IByteBuffer buffer = allocator.Buffer(length);
+        try
+        {
+            // DotNetty allocators return array-backed buffers, the direct ones included.
+            Span<byte> packet = buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, length);
+            RlpWriter writer = new(packet);
+            writer.Encode(message.AdaptivePacketType);
+            serializationService.Serialize(message, packet[packetTypeLength..]);
+            buffer.SetWriterIndex(buffer.WriterIndex + length);
+            return buffer;
+        }
+        catch
+        {
+            buffer.SafeRelease();
+            throw;
+        }
     }
 
     private void SendBuffer(IByteBuffer buffer)
