@@ -50,11 +50,13 @@ public class GcPacerTests
     [TestCase(10_000, false, ExpectedResult = 10_000)]
     [TestCase(10_000, true, ExpectedResult = 5_000)]
     [TestCase(1_500, true, ExpectedResult = 1_000)]
+    [TestCase(500, true, ExpectedResult = 500)]
     public long Gen1IntervalMs(long gen1IntervalMs, bool warmup) => GcPacer.Gen1IntervalMs(gen1IntervalMs, warmup);
 
     [TestCase(60_000, false, ExpectedResult = 60_000)]
     [TestCase(60_000, true, ExpectedResult = 15_000)]
     [TestCase(8_000, true, ExpectedResult = 5_000)]
+    [TestCase(2_000, true, ExpectedResult = 2_000)]
     public long Gen2IntervalMs(long gen2IntervalMs, bool warmup) => GcPacer.Gen2IntervalMs(gen2IntervalMs, warmup);
 
     [TestCase(-5, ExpectedResult = 1)]

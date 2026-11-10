@@ -119,13 +119,13 @@ public sealed class GcPacer : IDisposable
     /// <summary>Bounds a configured interval to what <see cref="WaitHandle.WaitOne(TimeSpan)"/> accepts.</summary>
     internal static long ClampIntervalMs(long intervalMs) => Math.Clamp(intervalMs, 1, int.MaxValue);
 
-    /// <summary>Returns the gen1 wait, halved during warm-up but never below one second.</summary>
+    /// <summary>Returns the gen1 wait, halved during warm-up but not to below one second; a shorter interval is kept.</summary>
     internal static long Gen1IntervalMs(long gen1IntervalMs, bool warmup) =>
-        warmup ? Math.Max(MinWarmupGen1IntervalMs, gen1IntervalMs / 2) : gen1IntervalMs;
+        warmup ? Math.Min(gen1IntervalMs, Math.Max(MinWarmupGen1IntervalMs, gen1IntervalMs / 2)) : gen1IntervalMs;
 
-    /// <summary>Returns the gen2 cadence, quartered during warm-up but never below five seconds.</summary>
+    /// <summary>Returns the gen2 cadence, quartered during warm-up but not to below five seconds; a shorter interval is kept.</summary>
     internal static long Gen2IntervalMs(long gen2IntervalMs, bool warmup) =>
-        warmup ? Math.Max(MinWarmupGen2IntervalMs, gen2IntervalMs / 4) : gen2IntervalMs;
+        warmup ? Math.Min(gen2IntervalMs, Math.Max(MinWarmupGen2IntervalMs, gen2IntervalMs / 4)) : gen2IntervalMs;
 
     /// <summary>Whether a gen0 tick should collect: only when the runtime did not and enough was allocated to be worth a pause.</summary>
     internal static bool IsGen0Due(bool collectedSinceLastTick, long allocatedSinceLastTick) =>
