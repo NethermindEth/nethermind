@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
@@ -101,7 +102,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.WorldState;
-        parent = GetParent(parent, payload, blockTree);
+        parent = GetParent(parent, blockTree);
 
         env.SimulateRequestState.TotalGasLeft = gasCapLimit;
 
@@ -142,6 +143,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
+                if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
+                {
+                    EncodeZeroBaseFee(processedBlock);
+                }
+
                 stateProvider.CommitTree(processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
                 blockTree.UpdateHeadBlock(processedBlock.Hash!);
@@ -160,6 +166,20 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
+    }
+
+    /// <summary>
+    /// Hashes and sizes a block with the zero base fee in its header, as EIP-1559 requires from London.
+    /// </summary>
+    /// <remarks>
+    /// The block processor and the RPC block model use the default encoding, which drops a zero base fee when no later
+    /// field follows. This runs before the block joins the simulated chain, so BLOCKHASH and the parent hash of the next
+    /// simulated block see the same hash.
+    /// </remarks>
+    private static void EncodeZeroBaseFee(Block block)
+    {
+        block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
+        block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
     }
 
     private BlockBody AssembleBody(
@@ -181,7 +201,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return body;
     }
 
-    private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+    private static BlockHeader GetParent(BlockHeader parent, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
         ulong latestBlockNumber = latestBlock?.Number ?? 0;
@@ -189,21 +209,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         if (latestBlockNumber < parent.Number)
         {
             parent = latestBlock?.Header ?? blockTree.Head!.Header;
-        }
-
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock =
-            payload.BlockStateCalls is { Count: > 0 } blockStateCalls
-                ? blockStateCalls[0]
-                : null;
-
-        ulong lastKnown = latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
-        {
-            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
-            if (searchResult is not null)
-            {
-                parent = searchResult.Header;
-            }
         }
 
         return parent;
@@ -264,7 +269,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = GetWithdrawalsRoot(block.BlockOverrides?.Withdrawals);
-        if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
+        if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = block.BlockOverrides?.BeaconRoot ?? Hash256.Zero;
         result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
         // In non-validation mode base fee is set to 0 if it is not overridden.

@@ -298,10 +298,13 @@ public class ZkGasTxTracerTests
     public void TracerFlags_AreEnabled()
     {
         (ZkGasTxTracer tracer, ZkGasMeter _) = Make();
-        Assert.That(tracer.IsTracingActions, Is.True);
-        Assert.That(tracer.IsTracingInstructions, Is.True);
-        Assert.That(tracer.IsTracingStack, Is.True);
-        Assert.That(tracer.IsTracingMemory, Is.True);
-        Assert.That(tracer.IsTracingReturnData, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingActions, Is.True);
+            Assert.That(tracer.IsTracingInstructions, Is.True);
+            Assert.That(tracer.IsTracingStack, Is.True);
+            Assert.That(tracer.IsTracingMemory, Is.True);
+            Assert.That(tracer.IsTracingReturnData, Is.True);
+        }
     }
 }

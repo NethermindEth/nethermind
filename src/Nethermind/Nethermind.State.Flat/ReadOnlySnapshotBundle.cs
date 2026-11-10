@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -11,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 
@@ -20,6 +20,8 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A read-only bundle of <see cref="Snapshot"/>s backed by a persistence reader.
 /// </summary>
+/// <param name="bufferPin">A <see cref="INodeRecordBuffer.PinAll"/> keeping every trie node buffer record the bundle's readers may
+/// look up readable, released with the bundle; null when nothing reads the buffer through this bundle.</param>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="GetSlotFiltered"/> builds over the
 /// in-memory snapshots' slots; 0 never builds one.</param>
 public sealed class ReadOnlySnapshotBundle(
@@ -27,6 +29,7 @@ public sealed class ReadOnlySnapshotBundle(
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
     PersistedSnapshotStack persistedSnapshots,
+    IDisposable? bufferPin,
     bool isHistorical = false,
     double slotFilterBitsPerKey = 0)
     : RefCountingDisposable
@@ -45,6 +48,9 @@ public sealed class ReadOnlySnapshotBundle(
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
+    /// <summary>The in-memory snapshot of this bundle's state, which resolves its tries' roots; null when the state is persisted.</summary>
+    internal Snapshot? StateSnapshot => snapshots.Count > 0 ? snapshots[^1] : null;
+
     /// <summary>
     /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
     /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
@@ -59,22 +65,31 @@ public sealed class ReadOnlySnapshotBundle(
         ? SlotFilterNotBuilt
         : SlotFilterSkipped;
 
-    private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
-    private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
-    private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
-    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
-    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
-    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
-    private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
-    private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
-    private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
+    private static readonly StableStringLabel _readAccountSnapshotLabel = StableStringLabel.Get("account_snapshot");
+    private static readonly StableStringLabel _readAccountPersistenceLabel = StableStringLabel.Get("account_persistence");
+    private static readonly StableStringLabel _readAccountPersistenceNullLabel = StableStringLabel.Get("account_persistence_null");
+    private static readonly StableStringLabel _readStorageSnapshotLabel = StableStringLabel.Get("storage_snapshot");
+    private static readonly StableStringLabel _readStoragePersistenceLabel = StableStringLabel.Get("storage_persistence");
+    private static readonly StableStringLabel _readStoragePersistenceNullLabel = StableStringLabel.Get("storage_persistence_null");
+    private static readonly StableStringLabel _readStateNodeSnapshotLabel = StableStringLabel.Get("state_node_snapshot");
+    private static readonly StableStringLabel _readStorageNodeSnapshotLabel = StableStringLabel.Get("storage_node_snapshot");
+    private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
+    private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
-    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+    public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
         GuardDispose();
-        if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
+        if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(columns, accounts, slots, cancellationToken);
+    }
+
+    /// <summary>Which columns of a block are worth prefetching, decided from sampled keys; see <see cref="IPersistence.IPrefetchingReader.PlanPrefetch"/>.</summary>
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+    {
+        GuardDispose();
+        return persistenceReader is IPersistence.IPrefetchingReader prefetcher
+            ? prefetcher.PlanPrefetch(accountSamples, slotSamples)
+            : IPersistence.PrefetchColumns.None;
     }
 
     /// <summary>Whether <see cref="Prefetch"/> reads anything ahead from the persistence below.</summary>
@@ -238,19 +253,23 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 
+    /// <remarks>
+    /// Only the newest snapshot is probed. Its root reaches every buffer record of this state: a block that rewrites a node
+    /// carries the pointers to the records of its unchanged children over from the record it replaces, and the snapshots' pins
+    /// keep those records readable. A node no buffer record holds is unchanged since the persisted state, as block
+    /// processing, which reads the same records and falls back to persistence, relies on. An older snapshot's root reaches
+    /// only the records of that older state, so probing it after a miss finds nothing newer.
+    /// </remarks>
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
+        if (snapshots.Count > 0 && snapshots[^1].TryGetStateNode(key, out node))
         {
-            if (snapshots[i].TryGetStateNode(key, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
-                return true;
-            }
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
+            return true;
         }
 
         node = null;
@@ -262,6 +281,10 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStorageNodes((address, path), out node);
 
+    /// <remarks>
+    /// Only the newest snapshot holding a storage root entry for the account (0 when the storage was cleared) is probed, as <see cref="TryFindStateNodes(HashedKey{TreePath}, out TrieNode?)"/>
+    /// probes only the newest one: it holds the root of the current storage trie, and older snapshots hold older versions of it.
+    /// </remarks>
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
@@ -269,12 +292,16 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(key, out node))
+            if (!snapshots[i].TryGetStorageRoot(key.Key.Item1, out ulong root)) continue;
+
+            if (snapshots[i].TryGetStorageNode(root, key.Key.Item2, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
             }
+
+            break;
         }
 
         node = null;
@@ -309,6 +336,27 @@ public sealed class ReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
+    }
+
+    /// <summary>Passes the persisted RLP of a trie node to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>Whether the node was found and passed.</returns>
+    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && (address is null
+                ? persistedSnapshots.TryLoadStateRlp(in path, action, arg)
+                : persistedSnapshots.TryLoadStorageRlp(address, in path, action, arg))) return true;
+
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        bool found = address is null
+            ? persistenceReader.TryLoadStateRlp(path, flags, action, arg)
+            : persistenceReader.TryLoadStorageRlp(address, path, flags, action, arg);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, address is null ? _readStateRlpLabel : _readStorageRlpLabel);
+
+        return found;
     }
 
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
@@ -380,5 +428,6 @@ public sealed class ReadOnlySnapshotBundle(
 
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
+        bufferPin?.Dispose();
     }
 }

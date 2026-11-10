@@ -68,7 +68,7 @@ jobs:
           dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore -p:RunAnalyzersDuringBuild=false ${{ matrix.build_args }}
 
       - name: Prune foreign-RID native assets
-        run: bash scripts/ci/prune-runtimes.sh "${{ matrix.rid }}"
+        run: dotnet run --file scripts/ci/prune-runtimes.cs -- "${{ matrix.rid }}"
 
       - name: Deduplicate build output
         # Hardlink duplicate files so tar stores each once. Best-effort.

@@ -29,20 +29,26 @@ public class HelloMessageSerializerTests
         helloMessage.ListenPort = 8002;
         helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
 
-        byte[] serialized = _serializer.Serialize(helloMessage);
+        byte[] serialized = _serializer.SerializeToArray(helloMessage);
         byte[] expectedBytes = Bytes.FromHexString("f85e01904e65746865726d696e642f616c706861c6c58365746801821f42b840fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877");
 
         Assert.That(Bytes.AreEqual(serialized, expectedBytes), Is.True, "bytes");
 
         using HelloMessage deserialized = _serializer.Deserialize(serialized);
 
-        Assert.That(deserialized.P2PVersion, Is.EqualTo(helloMessage.P2PVersion));
-        Assert.That(deserialized.ClientId, Is.EqualTo(helloMessage.ClientId));
-        Assert.That(deserialized.NodeId, Is.EqualTo(helloMessage.NodeId));
-        Assert.That(deserialized.ListenPort, Is.EqualTo(helloMessage.ListenPort));
-        Assert.That(deserialized.Capabilities.Count, Is.EqualTo(helloMessage.Capabilities.Count));
-        Assert.That(deserialized.Capabilities[0].ProtocolCode, Is.EqualTo(helloMessage.Capabilities[0].ProtocolCode));
-        Assert.That(deserialized.Capabilities[0].Version, Is.EqualTo(helloMessage.Capabilities[0].Version));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.P2PVersion, Is.EqualTo(helloMessage.P2PVersion));
+            Assert.That(deserialized.ClientId, Is.EqualTo(helloMessage.ClientId));
+            Assert.That(deserialized.NodeId, Is.EqualTo(helloMessage.NodeId));
+            Assert.That(deserialized.ListenPort, Is.EqualTo(helloMessage.ListenPort));
+            Assert.That(deserialized.Capabilities.Count, Is.EqualTo(helloMessage.Capabilities.Count));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Capabilities[0].ProtocolCode, Is.EqualTo(helloMessage.Capabilities[0].ProtocolCode));
+            Assert.That(deserialized.Capabilities[0].Version, Is.EqualTo(helloMessage.Capabilities[0].Version));
+        }
     }
 
     [Test]
@@ -117,7 +123,7 @@ public class HelloMessageSerializerTests
             Capabilities = CreateCapabilities(capCount),
         };
 
-        byte[] serialized = _serializer.Serialize(original);
+        byte[] serialized = _serializer.SerializeToArray(original);
 
         if (shouldThrow)
         {
@@ -162,7 +168,7 @@ public class HelloMessageSerializerTests
             NodeId = NetTestVectors.StaticKeyA.PublicKey,
             Capabilities = new ArrayPoolList<Capability>(1) { new(protocolCode, 1) },
         };
-        return _serializer.Serialize(message);
+        return _serializer.SerializeToArray(message);
     }
 
     [Test]
@@ -192,6 +198,6 @@ public class HelloMessageSerializerTests
             NodeId = NetTestVectors.StaticKeyA.PublicKey,
             Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
         };
-        return _serializer.Serialize(message);
+        return _serializer.SerializeToArray(message);
     }
 }

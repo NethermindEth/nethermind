@@ -28,8 +28,10 @@ public static partial class StatelessExecutor
         {
             // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
-            // Nothing reads the input again but the witness codes, which move to its front; the rest is free to reuse.
-            KeccakHash.DonateConsumedInput(data[WitnessCode.PlaceInConsumedInput(payload.Witness.Codes, data)..]);
+            // Nothing reads the input again but the state nodes kept at its front and the witness codes, which move to
+            // just past them; the rest is free to reuse.
+            ReadOnlySpan<byte> consumed = data[WitnessNode.EndPlacement(data)..];
+            KeccakHash.DonateConsumedInput(consumed[WitnessCode.PlaceInConsumedInput(payload.Witness.Codes, consumed)..]);
         }
         catch (Exception ex)
         {
@@ -171,6 +173,11 @@ public static partial class StatelessExecutor
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)
     {
+        bool? recoveredInBatch = null;
+        TryRecoverSendersInBatch(transactions, encodedTransactions, specProvider, spec, ref recoveredInBatch);
+        if (recoveredInBatch is { } recoveredAll)
+            return recoveredAll;
+
         EthereumEcdsa ecdsa = new(specProvider.ChainId);
         Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
 
@@ -186,6 +193,10 @@ public static partial class StatelessExecutor
 
         return true;
     }
+
+    /// <summary>Recovers every sender in one call where the guest can, setting <paramref name="recovered"/> to the outcome.</summary>
+    static partial void TryRecoverSendersInBatch(
+        Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec, ref bool? recovered);
 
     /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
     internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)

@@ -37,14 +37,17 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` lifts the static admission limit. The validation-prefix simulation budget is this value, and never less than `Eip8141Constants.MaxVerifyGas`. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "The node's execution-gas budget for a frame transaction's validation prefix plus signature verification. Positive values below the shared EIP-8141 `MAX_VERIFY_GAS` floor are raised to that floor. Higher values allow local headroom on any network. `0` lifts the static prefix admission limit while signature verification and prefix simulation retain the default 300,000-gas node budget. This setting does not affect block validity.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
 
-    [ConfigItem(DefaultValue = "16", Description = "EIP-8298: the max pending frame transactions whose validation prefix relies on the same account, when that account's code can change through `DELEGATECALL` or `CALLCODE`. `0` to reject all such transactions.")]
+    [ConfigItem(DefaultValue = "16", Description = "EIP-8298: the max pending frame transactions whose validation prefix relies on the same account, when that account's code can change through `DELEGATECALL` or `CALLCODE`, or when EIP-8151 `ecRecover` returned that account. An account relied on only in the pay frame of a code-carrying paymaster other than the sender takes one slot per paymaster instead, in a separate set of this many slots, as that paymaster's own pending limit bounds its transactions. `0` to reject all such transactions.")]
     int FrameTxMaxPendingPerDelegatingCode { get; set; }
+
+    [ConfigItem(DefaultValue = "8", Description = "EIP-8298: the max distinct accounts one frame transaction's validation prefix may rely on, counting accounts whose code can change through `DELEGATECALL` or `CALLCODE` and accounts EIP-8151 `ecRecover` returned. A prefix relying on more is rejected. `0` to reject all such transactions.")]
+    int FrameTxMaxCodeDependencies { get; set; }
 
     [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A local submission may also wait this long for a busy simulator, so its ceiling is twice this value. `0` to lift the limit.")]
     int FrameTxSimulationTimeoutMs { get; set; }
@@ -82,8 +85,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender or a paymaster may hold. Newly finalized gas earns width only up to this cap; lowering it never shrinks width already earned. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
     ulong FrameTxWidthCap { get; set; }
 
-    [ConfigItem(DefaultValue = "524288",
-        Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]
+    [ConfigItem(DefaultValue = "131072",
+        Description = "The max number of cached hashes of already known transactions.")]
     int HashCacheSize { get; set; }
 
     [ConfigItem(DefaultValue = "null",

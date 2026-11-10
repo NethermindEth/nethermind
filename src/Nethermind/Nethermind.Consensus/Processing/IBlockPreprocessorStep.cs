@@ -36,5 +36,15 @@ namespace Nethermind.Consensus.Processing
         /// </para>
         /// </remarks>
         void RecoverDataForQueuedProcessing(Block block) => RecoverData(block);
+
+        /// <summary>
+        /// <see cref="RecoverData"/> for a traced replay bounded at one transaction, whose executor recovers the
+        /// senders of the transactions it runs just before it runs them.
+        /// </summary>
+        /// <remarks>
+        /// The replay stops after its target and may stand in a seeded state for the transactions before it, so a
+        /// sender recovered here for any other transaction is never read.
+        /// </remarks>
+        void RecoverDataForTransactionTrace(Block block) => RecoverData(block);
     }
 }

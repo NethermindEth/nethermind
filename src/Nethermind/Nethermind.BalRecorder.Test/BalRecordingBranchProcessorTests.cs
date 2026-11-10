@@ -44,9 +44,12 @@ public class BalRecordingBranchProcessorTests
 
         Block[] result = sut.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(switchDuringProcess, Is.EqualTo(expectedSwitchDuringProcess), "the prewarmer reads the spec switch inside inner.Process");
-        Assert.That(balSwitch.Enabled, Is.False, "the switch must be reset once the branch is processed");
-        Assert.That(observedBlock, Is.SameAs(block));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(switchDuringProcess, Is.EqualTo(expectedSwitchDuringProcess), "the prewarmer reads the spec switch inside inner.Process");
+            Assert.That(balSwitch.Enabled, Is.False, "the switch must be reset once the branch is processed");
+            Assert.That(observedBlock, Is.SameAs(block));
+        }
         if (seedBal)
             Assert.That(block.BlockAccessList, Is.SameAs(seeded), "the replayed BAL must be attached before the prewarmer runs");
         else
@@ -141,12 +144,15 @@ public class BalRecordingBranchProcessorTests
         inner.RaiseBranchProcessingCompleted([block]);
         inner.RaiseBlockProcessing(block);
 
-        Assert.That(processed, Is.SameAs(block));
-        Assert.That(processing, Is.SameAs(block));
-        Assert.That(batch, Is.EqualTo(new[] { block }));
-        Assert.That(completed?.SuggestedBlocks, Is.EqualTo(new[] { block }));
-        Assert.That(completed?.ProcessedBlocksCount, Is.EqualTo(1));
-        Assert.That(completed?.Succeeded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.SameAs(block));
+            Assert.That(processing, Is.SameAs(block));
+            Assert.That(batch, Is.EqualTo(new[] { block }));
+            Assert.That(completed?.SuggestedBlocks, Is.EqualTo(new[] { block }));
+            Assert.That(completed?.ProcessedBlocksCount, Is.EqualTo(1));
+            Assert.That(completed?.Succeeded, Is.True);
+        }
     }
 
     private sealed class StubBranchProcessor : IBranchProcessor

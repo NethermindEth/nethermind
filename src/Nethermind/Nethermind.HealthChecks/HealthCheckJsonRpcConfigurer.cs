@@ -7,9 +7,9 @@ using HealthChecks.UI.Core.HostedService;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Monitoring;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Network;
 
 namespace Nethermind.HealthChecks;

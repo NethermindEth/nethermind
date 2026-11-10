@@ -13,14 +13,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Hive;
 using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -34,8 +32,8 @@ using Nethermind.Specs.ChainSpecStyle;
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper,
-    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IRpcAuthentication? authentication = null) : IStep
+public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, Lazy<IJsonRpcService> lazyJsonRpcService,
+    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IBatchConcurrencyStrategy[] batchConcurrencyStrategies, IRpcAuthentication? authentication = null) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -56,16 +54,14 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IJsonRpcUrlCollection jsonRpcUrlCollection =
             new JsonRpcUrlCollection(api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
 
-        IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
-
-        JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig, gcKeeper);
+        IJsonRpcService jsonRpcService = lazyJsonRpcService.Value;
         IRpcAuthentication auth = authentication ??
             (jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
                 : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
         // Added before the warmup, whose own RPC host would otherwise claim this entry.
-        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls), sensitive: true);
         if (GetPipelineWarmupSkipReason(api) is { } skipReason)
         {
             if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");
@@ -83,7 +79,8 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             jsonRpcConfig,
             api.FileSystem,
             api.LogManager,
-            api.ProcessExit);
+            api.ProcessExit,
+            batchConcurrencyStrategies);
 
         if (initConfig.WebSocketsEnabled)
         {
@@ -115,7 +112,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.ConfigProvider,
             auth,
             api.LogManager,
-            serviceConfigurers,
+            serviceConfigurers.Value,
             api.TxPool,
             api.SpecProvider,
             api.ReceiptFinder,
@@ -177,14 +174,19 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             {
                 File.Move(oldPath, newPath);
 
-                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath:hide} to {newPath:hide}");
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath:hide}.", SensitiveLogMasking.Enabled ? null : ex);
 
                 jsonRpcConfig.JwtSecretFile = oldPath;
             }
+        }
+        // Existing secrets keep their working-directory paths, which consensus clients are configured with.
+        else if (!File.Exists(newPath))
+        {
+            jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreConfig.KeyStoreDirectory));
         }
     }
 }

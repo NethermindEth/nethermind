@@ -52,6 +52,6 @@
     <Project Path="../../src/Nethermind/Nethermind.TxPool/Nethermind.TxPool.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />
   </Folder>
-  <Project Path="Evm.csproj" />
-  <Project Path="../Evm.Test/Evm.Test.csproj" />
+  <Project Path="Evm/Evm.csproj" />
+  <Project Path="Evm.Test/Evm.Test.csproj" />
 </Solution>

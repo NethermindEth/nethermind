@@ -157,9 +157,21 @@ namespace Nethermind.JsonRpc.Modules
         /// <summary>
         /// Searches the canonical headers of a block range, failing as <see cref="SearchForBlock"/> would for a block whose body is unavailable.
         /// </summary>
-        /// <param name="unknownBlockErrorCode">The code for a block that is not known, as for <see cref="SearchForBlock"/>.</param>
+        /// <param name="unknownBlockErrorCode">
+        /// The code for a block that is not known, as for <see cref="SearchForBlock"/>, and for a block selected by hash that is
+        /// not canonical or not processed.
+        /// </param>
         public static IEnumerable<SearchResult<BlockHeader>> SearchForHeadersOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock, int? unknownBlockErrorCode = null)
         {
+            // A block hash names one block that must be canonical and executed; failing that, it is unavailable like an unknown one.
+            int? hashSelectionErrorCode = toBlock.BlockHash is null ? null : unknownBlockErrorCode;
+            // Checked before the body, which a side-chain block may lack.
+            if (hashSelectionErrorCode is not null && blockFinder.FindHeader(toBlock) is { } selected && !blockFinder.IsMainChain(selected))
+            {
+                yield return new SearchResult<BlockHeader>($"{selected.Hash} block is not canonical", hashSelectionErrorCode.Value);
+                yield break;
+            }
+
             SearchResult<BlockHeader> startingBlock = SearchForHeaderWithBody(blockFinder, fromBlock, unknownBlockErrorCode);
             if (startingBlock.IsError || startingBlock.Object is null)
                 yield return startingBlock;
@@ -178,12 +190,12 @@ namespace Nethermind.JsonRpc.Modules
                     Hash256? notCanonicalBlockHash = isFinalBlockOnMainChain
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
-                    yield return new SearchResult<BlockHeader>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                    yield return new SearchResult<BlockHeader>($"{notCanonicalBlockHash} block is not canonical", hashSelectionErrorCode ?? ErrorCodes.InvalidInput);
                 }
                 // During sync a block past the processed head can be canonical without having been executed or validated.
                 else if (finalBlockHeader.Object.Number > blockFinder.Head!.Number)
                 {
-                    yield return new SearchResult<BlockHeader>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
+                    yield return new SearchResult<BlockHeader>($"{finalBlockHeader.Object.Hash} block is not processed", hashSelectionErrorCode ?? ErrorCodes.ResourceUnavailable);
                 }
                 else
                 {

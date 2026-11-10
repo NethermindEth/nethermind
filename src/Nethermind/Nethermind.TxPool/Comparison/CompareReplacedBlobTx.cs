@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Comparison;
 
@@ -33,7 +34,8 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
         if (oldTx.BlobVersionedHashes is null || newTx.BlobVersionedHashes is null) return TxComparisonResult.KeepOld;
         if (oldTx.BlobVersionedHashes.Length > newTx.BlobVersionedHashes.Length) return TxComparisonResult.KeepOld;
 
-        if (oldTx.MaxFeePerGas * 2 > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
+        (UInt256 oldFeeCap, UInt256 newFeeCap) = CompareReplacedTxByFee.GetFeeCaps(newTx, oldTx);
+        if (oldFeeCap * 2 > newFeeCap) return TxComparisonResult.KeepOld;
         if (oldTx.MaxPriorityFeePerGas * 2 > newTx.MaxPriorityFeePerGas) return TxComparisonResult.KeepOld;
         if (oldTx.MaxFeePerBlobGas * 2 > newTx.MaxFeePerBlobGas) return TxComparisonResult.KeepOld;
 

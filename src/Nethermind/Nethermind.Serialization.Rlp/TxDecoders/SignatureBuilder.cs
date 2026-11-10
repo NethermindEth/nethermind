@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
@@ -29,11 +28,6 @@ public static class SignatureBuilder
         {
             isSignatureOk = false;
             signatureError = "R and S lengths expected to be less or equal 32";
-        }
-        else if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
-        {
-            isSignatureOk = false;
-            signatureError = "Both 'r' and 's' are zero when decoding a transaction";
         }
 
         if (isSignatureOk && v < Signature.VOffset)

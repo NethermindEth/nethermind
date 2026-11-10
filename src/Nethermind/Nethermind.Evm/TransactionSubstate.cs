@@ -64,8 +64,7 @@ public readonly ref struct TransactionSubstate
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = null;
-        // Real list, not a shared empty sentinel: EIP-7708 SELFDESTRUCT appends a transfer log and this readonly struct can't reassign later.
-        _logs = [];
+        _logs = null;
         ShouldRevert = false;
     }
 
@@ -104,7 +103,7 @@ public readonly ref struct TransactionSubstate
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList is { Count: > 0 } destroyList && destroyList.Contains(address);
 
     public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
 

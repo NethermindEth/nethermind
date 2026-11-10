@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -97,12 +98,18 @@ public abstract class TransactionForRpc
     /// so the first failing check still names the request.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
-        => CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+    {
+        Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+        if (result.IsError) return result;
+        return GetSubmissionDataError() is { } error ? Result<Transaction>.Fail(error) : result;
+    }
+
+    internal virtual string? GetSubmissionDataError() => null;
 
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
-        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+        && !result.IsError
             ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
             : result;
 
@@ -122,6 +129,9 @@ public abstract class TransactionForRpc
     public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        if (result.Success(out Transaction? call, out _) && call.SupportsAuthorizationList
+            && SetCodeTxValidation.ValidateNoContractCreation(call) is { Error: { } createError })
+            return createError;
         Result<Transaction> ordered = CheckFeeCapOrder(result);
         if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
@@ -139,10 +149,11 @@ public abstract class TransactionForRpc
     /// Validates fields required for signing (gas, fee, nonce) and returns the resulting <see cref="Transaction"/>.
     /// </summary>
     /// <remarks>As in geth, the fields pick the envelope: a request priced with <c>gasPrice</c> alone signs as legacy.</remarks>
-    public Result<Transaction> ToSignableTransaction() =>
+    /// <param name="spec">The fork a frame transaction priced per gas buys its <c>max_gas</c> in, as in <see cref="ToValidatedTransaction"/>.</param>
+    public Result<Transaction> ToSignableTransaction(IReleaseSpec? spec = null) =>
         MissingSigningField() is { } missing
             ? Result<Transaction>.Fail(missing)
-            : ToValidatedTransaction();
+            : ToValidatedTransaction(spec: spec);
 
     /// <summary>The first field signing needs that the request leaves out, or null when gas, fees and nonce are set.</summary>
     internal string? MissingSigningField() =>
@@ -154,6 +165,7 @@ public abstract class TransactionForRpc
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
         rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: not null, MaxPriorityFeePerGas: not null }
+            or FrameTransactionForRpc { MaxFee: not null, MaxPriorityFeePerGas: not null }
             or LegacyTransactionForRpc { GasPrice: not null };
 
     /// <summary>

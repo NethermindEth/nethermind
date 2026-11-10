@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -159,7 +160,8 @@ public class HistoryBackedPersistenceReaderTests
         HistoryReader historyReader = new(db, historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         HistoryBackedPersistenceReader baselineReader = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), new HistoryScopeGate());
-        long baselineAllocated = MeasureAllocatedBytes(() => baselineReader.GetAccount(Address));
+        baselineReader.GetAccount(Address);
+        long baselineAllocated = AllocationWindows.AllocatedBytes(() => baselineReader.GetAccount(Address));
 
         for (int i = 0; i < 200; i++)
         {
@@ -169,7 +171,8 @@ public class HistoryBackedPersistenceReaderTests
         }
 
         HistoryBackedPersistenceReader readerWithScopesConfigured = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), new HistoryScopeGate());
-        long allocatedWithScopesConfigured = MeasureAllocatedBytes(() => readerWithScopesConfigured.GetAccount(Address));
+        readerWithScopesConfigured.GetAccount(Address);
+        long allocatedWithScopesConfigured = AllocationWindows.AllocatedBytes(() => readerWithScopesConfigured.GetAccount(Address));
 
         Assert.That(allocatedWithScopesConfigured, Is.EqualTo(baselineAllocated),
             "a Normal-mode reader must never consult the scope list at all - its per-call allocation must be identical whether zero or many scopes are configured");
@@ -194,43 +197,81 @@ public class HistoryBackedPersistenceReaderTests
     public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesLessThanAContract()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
-        HistoryBackedPersistenceReader reader = Reader(10);
+        // A reader per block over one warmed history reader, so every measured read misses the read cache and decodes its row.
+        HistoryReader history = WarmedHistoryReader();
+        HistoryBackedPersistenceReader[] eoaReaders = ReadersFrom(history, 5);
+        HistoryBackedPersistenceReader[] contractReaders = ReadersFrom(history, 5);
+        int eoaRead = 0;
+        int contractRead = 0;
 
-        long eoaAllocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
-        long contractAllocated = MeasureAllocatedBytes(() => reader.GetAccount(ContractAddress));
+        long eoaAllocated = AllocationWindows.AllocatedBytes(() => eoaReaders[eoaRead++].GetAccount(Address));
+        long contractAllocated = AllocationWindows.MinAllocatedBytes(() => contractReaders[contractRead++].GetAccount(ContractAddress));
+        Dispose(eoaReaders);
+        Dispose(contractReaders);
 
         Assert.That(eoaAllocated, Is.LessThan(contractAllocated),
             "an account without storage or code takes the shared empty-hash instances; only a contract materializes its two hashes");
     }
 
     [Test]
+    public void GetAccount_ReadAgainAtTheSameBlock_ReturnsTheCachedAccountWithoutAllocating()
+    {
+        using HistoryBackedPersistenceReader reader = Reader(10);
+        Account? first = reader.GetAccount(Address);
+
+        long allocated = AllocationWindows.AllocatedBytes(() => reader.GetAccount(Address));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccount(Address), Is.SameAs(first));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
     public void StorageClearsScopeCache_BeforeAnyStorageRead_AllocatesNoMemo()
     {
-        long allocated = MeasureAllocatedBytes(static () => _ = new StorageClearsScopeCache());
+        long allocated = AllocationWindows.AllocatedBytes(static () => _ = new StorageClearsScopeCache());
 
         Assert.That(allocated, Is.LessThan(MaxEmptyClearsCacheBytes),
             "a scope that reads no storage must not build the per-account clears memos");
     }
 
-    private static long MeasureAllocatedBytes(Action action)
-    {
-        action();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
-    }
-
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
 
-    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
+    // One reader per allocation window.
+    private static HistoryBackedPersistenceReader[] ReadersFrom(HistoryReader history, ulong firstBlock)
+    {
+        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[AllocationWindows.Count];
+        for (int i = 0; i < readers.Length; i++)
+            readers[i] = new HistoryBackedPersistenceReader(history, new StateId(firstBlock + (ulong)i, Keccak.EmptyTreeHash), new HistoryScopeGate());
+        return readers;
+    }
 
-    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate, Hash256 stateRoot)
+    private static void Dispose(HistoryBackedPersistenceReader[] readers)
+    {
+        foreach (HistoryBackedPersistenceReader reader in readers) reader.Dispose();
+    }
+
+    // The read cache is created on the first stored answer, so a read at an unrelated block keeps that out of a measurement.
+    private HistoryReader WarmedHistoryReader()
+    {
+        HistoryReader history = CreateHistoryReader();
+        history.GetAccount(1, ContractAddress, null);
+        return history;
+    }
+
+    private HistoryReader CreateHistoryReader()
     {
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
-        return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot), scopeGate);
+        return new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate, Hash256 stateRoot) =>
+        new(CreateHistoryReader(), new StateId(block, stateRoot), scopeGate);
 }
 
 public class RestrictedModeHistoryBackedPersistenceReaderTests
@@ -292,8 +333,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        }
     }
 
     [Test]

@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -47,6 +48,20 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
         private readonly IReportingValidator _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
         private readonly IAuraConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+        {
+            try
+            {
+                return base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
+            }
+            // Preparing the block can call the block gas limit contract on the parent state before the target state check.
+            catch (StateUnavailableException e)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Skipping block production on top of {parentHeader?.ToString(BlockHeader.Format.Short)}: {e.Message}");
+                return Task.FromResult<Block?>(null);
+            }
+        }
 
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {

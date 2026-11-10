@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.Json.Nodes;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -49,12 +50,13 @@ public class GethGenesisParityTests
     /// </summary>
     private static readonly HashSet<string> ForksWithoutBlobScheduleKey =
     [
-        // Single-EIP prototypes riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
+        // Prototypes and devnet forks riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
         nameof(Eip8141Prototype),
         nameof(Eip8250Prototype),
         nameof(Eip8272Prototype),
         nameof(Eip7906Prototype),
         nameof(Eip4758Prototype),
+        nameof(BogotaDevnet2),
     ];
 
     /// <summary>Parity <c>*TransitionTimestamp</c> fields a geth genesis cannot set, with the reason.</summary>
@@ -74,10 +76,7 @@ public class GethGenesisParityTests
         [nameof(ChainSpecParamsJson.Eip7979TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8116TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8131TransitionTimestamp)] = StandaloneEip,
-        [nameof(ChainSpecParamsJson.Eip8151TransitionTimestamp)] = StandaloneEip,
-        [nameof(ChainSpecParamsJson.Eip8253TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8279TransitionTimestamp)] = StandaloneEip,
-        [nameof(ChainSpecParamsJson.Eip8298TransitionTimestamp)] = StandaloneEip,
         [nameof(ChainSpecParamsJson.Eip8360TransitionTimestamp)] = StandaloneEip,
     };
 
@@ -185,6 +184,18 @@ public class GethGenesisParityTests
         Assert.That(IsBlobScheduleKeyHonoured(fork), Is.EqualTo(expectHonoured), expectHonoured
             ? $"blobSchedule.{key} was ignored; map {fork.GetType().Name} in GethGenesisLoader, or list it in {nameof(ForksWithoutBlobScheduleKey)} with a reason"
             : $"blobSchedule.{key} is honoured now; remove {fork.GetType().Name} from {nameof(ForksWithoutBlobScheduleKey)}");
+    }
+
+    [Test]
+    public void Bogota_blob_schedule_wins_over_bpo5_at_the_same_timestamp()
+    {
+        JsonNode genesis = JsonNode.Parse(BuildGethGenesis(Bogota.Instance, ("bogota", 7, 11, 222)))!;
+        genesis["config"]!["bpo5Time"] = ForkTime;
+        genesis["config"]!["blobSchedule"]!["bpo5"] = JsonNode.Parse("""{ "target": 3, "max": 6, "baseFeeUpdateFraction": 111 }""");
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(LoadGeth(genesis.ToJsonString())).GetSpec(new ForkActivation(1, ForkTime));
+
+        Assert.That((spec.TargetBlobCount, spec.MaxBlobCount, spec.BlobBaseFeeUpdateFraction),
+            Is.EqualTo((7UL, 11UL, 222UL)));
     }
 
     /// <summary>Whether a <c>blobSchedule</c> entry keyed by <paramref name="fork"/>'s geth label changes the spec at that fork.</summary>

@@ -997,7 +997,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         JsonElement sstoreEntry = doc.RootElement.GetProperty("structLogs")[4];
         JsonElement storage = sstoreEntry.GetProperty("storage");
         const string zero32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+#pragma warning disable NUnit2045 // Check the storage shape before reading its slot.
         Assert.That(storage.EnumerateObject().Count(), Is.EqualTo(1), "SSTORE storage has one slot");
+#pragma warning restore NUnit2045
         Assert.That(storage.GetProperty(zero32).GetString(), Is.EqualTo(zero32), "SSTORE storage[0x0]=0x0");
     }
 
@@ -2551,7 +2553,9 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         tracker.WarmUp(Probe);
         VmState<EthereumGasPolicy> broken = RentChild(frames, envs, in tracker);
         UInt256 location = 0x40;
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(broken.Memory.TrySaveWord(in location, DirtyWord), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(broken.Memory.Size, Is.EqualTo(0x60));
 
         // Clearing the journals the frame snapshotted makes its restore throw inside Dispose.
