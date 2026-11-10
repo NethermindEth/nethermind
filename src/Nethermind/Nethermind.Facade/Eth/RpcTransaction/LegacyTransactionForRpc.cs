@@ -133,31 +133,13 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         }
     }
 
-    private bool _allowEmptyCreation;
-
-    /// <summary>Allows empty creation on a copy of an ordinary built-in call request.</summary>
-    /// <remarks>
-    /// Geth's CallDefaults permits empty initcode. Exact types keep blob, set-code, frame and plugin-specific
-    /// creation validation unchanged.
-    /// </remarks>
-    internal static TransactionForRpc WithEmptyCreationAllowed(TransactionForRpc call)
-    {
-        if (call is not LegacyTransactionForRpc { To: null, Input: null or { Length: 0 } } creation
-            || (call.GetType() != typeof(LegacyTransactionForRpc)
-                && call.GetType() != typeof(AccessListTransactionForRpc)
-                && call.GetType() != typeof(EIP1559TransactionForRpc)))
-            return call;
-
-        LegacyTransactionForRpc copy = (LegacyTransactionForRpc)creation.MemberwiseClone();
-        copy._allowEmptyCreation = true;
-        return copy;
-    }
+    internal override string? GetSubmissionDataError() =>
+        Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 }
+            ? RpcTransactionErrors.ContractCreationWithoutData
+            : null;
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && !_allowEmptyCreation && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
-            return RpcTransactionErrors.ContractCreationWithoutData;
-
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
