@@ -33,6 +33,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -48,10 +49,13 @@ public class GethStyleTracer(
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
+    ILogManager logManager,
     IParallelBlockTracer? parallelTracer = null,
     GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<GethStyleTracer>();
+
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
@@ -314,9 +318,10 @@ public class GethStyleTracer(
         {
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
         }
-        catch (InvalidTransactionException)
+        catch (InvalidTransactionException e)
         {
             // Mirror geth: a rejected transaction ends the replay, returning the roots of the transactions before it.
+            if (_logger.IsDebug) _logger.Debug($"Intermediate roots replay of block {block.ToString(Block.Format.FullHashAndNumber)} stopped: {e.Message}");
         }
         return tracer.BuildResult();
     }
