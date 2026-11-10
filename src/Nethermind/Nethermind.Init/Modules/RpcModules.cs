@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -126,11 +127,12 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Each instance holds two full block-processing scopes for the life of the process, and they are built on
             // demand and never released, so the default stays where it was: parallel tracing shares one pool across
             // instances and does not need more of them. Operators who want more ask for them.
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? 2, jsonRpcConfig.Timeout)
+            .AddSingleton<IBatchConcurrencyStrategy, TraceTransactionBatchConcurrency>()
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.GetTraceModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceCallBatchConcurrency>()
+            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
@@ -167,7 +169,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IStaticNodesManager>(),
             ctx.Resolve<IStateReader>(),
             ctx.Resolve<IEnode>(),
-            ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
+            // Resolved like the paths Program.ResolveDataDirectory rebases: relative to the executable directory, not the working directory
+            Path.GetFullPath(string.Empty.GetApplicationResourcePath(ctx.Resolve<IInitConfig>().DataDir)),
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>(),

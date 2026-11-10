@@ -103,7 +103,7 @@ public readonly ref struct TransactionSubstate
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList is { Count: > 0 } destroyList && destroyList.Contains(address);
 
     public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
 

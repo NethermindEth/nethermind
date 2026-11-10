@@ -35,7 +35,7 @@ namespace Nethermind.State.Pbt.Test;
 public class MigrationLifecycleE2ETests
 {
     [Test]
-    public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable, [Values] FlatLayout layout)
+    public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable, [Values(FlatLayout.Flat, FlatLayout.FlatInTrie, FlatLayout.PreimageFlatV1, FlatLayout.PreimageFlat)] FlatLayout layout)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, layout);

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -9,10 +8,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 {
     public class GetBlockAccessListsMessageSerializer : SnapSerializerBase<GetBlockAccessListsMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
+        protected override void Serialize(ref RlpWriter writer, GetBlockAccessListsMessage message)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
-
             writer.Encode(message.RequestId);
             writer.Encode(message.BlockHashes);
             writer.Encode(message.Bytes);
@@ -30,13 +27,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             return message;
         }
 
-        public override int GetLength(GetBlockAccessListsMessage message, out int contentLength)
+        protected override int GetContentLength(GetBlockAccessListsMessage message)
         {
-            contentLength = Rlp.LengthOf(message.RequestId);
+            int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.BlockHashes, true);
             contentLength += Rlp.LengthOf(message.Bytes);
 
-            return Rlp.LengthOfSequence(contentLength);
+            return contentLength;
         }
     }
 }

@@ -27,6 +27,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Threading;
+using Nethermind.Core.Utils;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -41,6 +42,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -1804,6 +1806,9 @@ public partial class EngineModuleTests
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> => Inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
 
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> => Inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
+
         private static bool Matches(BlockHeader? header, Hash256? hash) => hash is not null && header?.Hash == hash;
     }
 
@@ -1995,6 +2000,9 @@ public partial class EngineModuleTests
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 
     /// <summary>Builds an empty block on <paramref name="parent"/>, inserts it and makes it the head.</summary>
@@ -2032,33 +2040,40 @@ public partial class EngineModuleTests
     /// The forkchoice update's commit budget is cut to <see cref="CommitGatedBlockchain.CommitBudgetMs"/>, and the
     /// commit of the helper's block is held after its verdict. With <paramref name="waitReachesCommit"/> the hold ends
     /// when the helper awaits the block with <see cref="MergeTestBlockchain.WaitForCommitted"/>; without it that wait
-    /// returns at once, as it does for a block not in the processing queue, and the hold outlasts the head update.
+    /// returns on the verdict while the hold outlasts the head update.
     /// A head update sent while the commit is held gets SYNCING once the budget runs out and leaves the head on the
-    /// parent.
+    /// parent. Queuing the payload before its verdict also checks that the helper calls the gated wait when newPayload
+    /// exhausts its processing budget before execution starts.
     /// </remarks>
     [Test]
-    public async Task BuildAndInsertEmptyBlock_makes_its_block_the_head_when_its_commit_lags_its_verdict([Values] bool waitReachesCommit)
+    public async Task BuildAndInsertEmptyBlock_makes_its_block_the_head_when_its_commit_lags_its_verdict(
+        [Values] bool waitReachesCommit, [Values] bool queueBeforeVerdict)
     {
         using CommitGatedBlockchain chain = (CommitGatedBlockchain)await new CommitGatedBlockchain(waitReachesCommit) { ParallelExecutionOverride = Parallel }
             .Build(new Nethermind.Specs.TestSingleReleaseSpecProvider(Bogota.Instance));
-        BlockHeader parent = chain.BlockTree.Head!.Header;
-        chain.HoldCommitOf(parent.Number + 1);
+        Block parent = chain.BlockTree.Head!;
+        TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Hash256? helperBlock = null;
+        bool? verdictWaitPending = null;
         try
         {
+            if (queueBeforeVerdict) OccupyBlockProcessor(chain, parent, processingRelease.Task);
+            chain.HoldCommitOf(parent.Header);
             if (waitReachesCommit)
             {
-                helperBlock = (await BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2)).BlockHash;
+                helperBlock = (await RunHelper()).BlockHash;
             }
             else
             {
-                AssertionException? failure = await Assert.ThrowsAsync<AssertionException>(() => BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2));
+                // Starting the helper inside ThrowsAsync isolates its expected assertion from the test's result.
+                AssertionException? failure = await Assert.ThrowsAsync<AssertionException>(RunHelper);
                 Assert.That(failure!.Message, Does.Contain("must become the head"));
             }
         }
         finally
         {
+            processingRelease.TrySetResult();
             chain.ReleaseCommit();
         }
 
@@ -2066,6 +2081,10 @@ public partial class EngineModuleTests
         await chain.WaitForCommitted(held);
         using (Assert.EnterMultipleScope())
         {
+            if (queueBeforeVerdict)
+            {
+                Assert.That(verdictWaitPending, Is.True, "the gated wait must still be pending on the queued block's verdict");
+            }
             if (waitReachesCommit)
             {
                 Assert.That(helperBlock, Is.EqualTo(held), "the helper's block must be the one held");
@@ -2079,6 +2098,18 @@ public partial class EngineModuleTests
                 Assert.That(chain.BlockTree.FinalizedHash, Is.Not.EqualTo(held));
             }
         }
+
+        async Task<ExecutionPayloadV4> RunHelper()
+        {
+            Task<ExecutionPayloadV4> helper = BuildAndInsertEmptyBlock(chain, parent.Hash!, slot: 2);
+            if (queueBeforeVerdict)
+            {
+                Task wait = await chain.WaitForCommitWait(helper);
+                verdictWaitPending = !wait.IsCompleted;
+                processingRelease.TrySetResult();
+            }
+            return await helper;
+        }
     }
 
     /// <summary>
@@ -2086,8 +2117,8 @@ public partial class EngineModuleTests
     /// commit after its verdict.
     /// </summary>
     /// <param name="waitReleasesCommit">
-    /// Whether <see cref="WaitForCommitted"/> for the held block ends the hold and waits for the commit, or returns at
-    /// once while the hold lasts.
+    /// Whether <see cref="WaitForCommitted"/> for the held block ends the hold and waits for the commit, or returns on
+    /// the verdict while the hold lasts.
     /// </param>
     private sealed class CommitGatedBlockchain(bool waitReleasesCommit)
         : MergeTestBlockchain(new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = CommitBudgetMs })
@@ -2096,16 +2127,33 @@ public partial class EngineModuleTests
         public const int CommitBudgetMs = 250;
 
         private readonly ManualResetEventSlim _commitRelease = new();
+        private readonly TaskCompletionSource _verdict = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<Task> _commitWaitStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private ulong? _heldNumber;
+        private Hash256? _heldParent;
+        private Hash256? _requestedBlock;
         private Hash256? _heldBlock;
 
         /// <summary>The block whose commit was held, once its verdict was given.</summary>
         public Hash256? HeldBlock => Volatile.Read(ref _heldBlock);
 
-        /// <summary>Holds the commit of the first block executed at <paramref name="number"/> after its verdict.</summary>
-        public void HoldCommitOf(ulong number)
+        /// <summary>Reports the helper's wait task without hiding a helper failure behind the verdict wait.</summary>
+        public async Task<Task> WaitForCommitWait(Task helper)
         {
-            _heldNumber = number;
+            using AutoCancelTokenSource cts = CreateCancellationSource();
+            if (await Task.WhenAny(helper, _commitWaitStarted.Task).WaitAsync(cts.Token) == helper)
+            {
+                await helper;
+                Assert.Fail("the helper completed without waiting for its queued verdict");
+            }
+            return await _commitWaitStarted.Task;
+        }
+
+        /// <summary>Holds the next block's commit after its verdict.</summary>
+        public void HoldCommitOf(BlockHeader parent)
+        {
+            _heldNumber = parent.Number + 1;
+            _heldParent = parent.Hash;
             // Subscribed after the processing queue, so the verdict goes out before the hold.
             BranchProcessor.BlockExecuted += HoldAfterVerdict;
         }
@@ -2114,24 +2162,39 @@ public partial class EngineModuleTests
 
         public override Task WaitForCommitted(Hash256 blockHash)
         {
-            if (!_commitRelease.IsSet && _heldNumber is { } held
-                && BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Number == held)
+            if (!_commitRelease.IsSet && _heldParent is { } parent && blockHash != parent)
             {
-                if (!waitReleasesCommit) return Task.CompletedTask;
-                ReleaseCommit();
+                Volatile.Write(ref _requestedBlock, blockHash);
+                Task wait = WaitForHeldCommit(blockHash);
+                _commitWaitStarted.TrySetResult(wait);
+                return wait;
             }
 
             return base.WaitForCommitted(blockHash);
         }
 
+        private async Task WaitForHeldCommit(Hash256 blockHash)
+        {
+            using AutoCancelTokenSource cts = CreateCancellationSource();
+            await _verdict.Task.WaitAsync(cts.Token);
+            if (!waitReleasesCommit) return;
+            ReleaseCommit();
+            await base.WaitForCommitted(blockHash);
+        }
+
         private void HoldAfterVerdict(object? sender, BlockExecutedEventArgs e)
         {
-            if (e.Block.Number != _heldNumber || Interlocked.CompareExchange(ref _heldBlock, e.Block.Hash, null) is not null) return;
+            if (e.Block.Number != _heldNumber
+                || (Volatile.Read(ref _requestedBlock) is { } requested && e.Block.Hash != requested)
+                || Interlocked.CompareExchange(ref _heldBlock, e.Block.Hash, null) is not null) return;
+            _verdict.TrySetResult();
             _commitRelease.Wait(TimeSpan.FromMilliseconds(TestTimeout));
         }
 
         public override void Dispose()
         {
+            _verdict.TrySetCanceled();
+            _commitWaitStarted.TrySetCanceled();
             ReleaseCommit();
             base.Dispose();
         }

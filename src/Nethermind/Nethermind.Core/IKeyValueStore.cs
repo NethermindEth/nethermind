@@ -33,6 +33,32 @@ namespace Nethermind.Core
         Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
         /// <summary>
+        /// Passes the value of <paramref name="key"/> to <paramref name="action"/>, borrowed for the duration of the call.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="GetSpan"/>, implementations honor <see cref="ReadFlags.HintReadAhead"/> as <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/> does.
+        /// </remarks>
+        /// <param name="key">Key whose associated value should be read.</param>
+        /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
+        /// <param name="action">Receives the value; it must not keep the span past the call.</param>
+        /// <param name="arg">Passed to <paramref name="action"/>.</param>
+        /// <returns>Whether the key holds a non-empty value, which was passed to <paramref name="action"/>.</returns>
+        bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Span<byte> value = GetSpan(key, flags);
+            try
+            {
+                if (value.IsEmpty) return false;
+                action(value, arg);
+                return true;
+            }
+            finally
+            {
+                DangerousReleaseMemory(value);
+            }
+        }
+
+        /// <summary>
         /// Get, C-style. Write the output to <paramref name="output" /> span and return the length of written data.
         /// Cannot differentiate if the data is missing or does not exist. Throws if <paramref name="output" /> is not large enough.
         /// </summary>
@@ -255,6 +281,14 @@ namespace Nethermind.Core
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
         public ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
+    /// <summary>A sorted view that can traverse preceding keys within the same view.</summary>
+    public interface IReverseSortedView : ISortedView
+    {
+        /// <summary>Moves from a valid current key to the preceding key within the view's bounds.</summary>
+        /// <returns>False when no preceding key remains.</returns>
+        public bool MovePrevious();
     }
 
     /// <summary>A sorted view that can reposition within its bounds.</summary>

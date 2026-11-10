@@ -87,6 +87,32 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Depth_rejected_frame_preserves_call_type_and_value(
+        [Values(ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL)] ExecutionType callType,
+        [Values(null, OnlyTopCall)] string? config)
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(config));
+        tracer.ReportAction(79000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportRejectedAction(10000, 10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.CallDepthExceeded);
+        tracer.ReportActionEnd(70000, ReadOnlyMemory<byte>.Empty);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        Assert.That(root.Calls, Has.Count.EqualTo(config == OnlyTopCall ? 0 : 1));
+        if (config == OnlyTopCall) return;
+
+        NativeCallTracerCallFrame child = root.Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Type, Is.EqualTo(callType.ToInstruction()));
+            Assert.That(child.Error, Is.EqualTo("max call depth exceeded"));
+            Assert.That(child.GasUsed, Is.Zero);
+            Assert.That(child.Gas, Is.EqualTo(10000));
+            Assert.That(child.Value, callType == ExecutionType.STATICCALL ? Is.Null : Is.EqualTo((UInt256)1));
+        }
+    }
+
+    [Test]
     public void Call_tracer_records_depth_rejection(
         [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode)
     {
@@ -421,7 +447,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
             JsonElement storageEntry = json.RootElement.GetProperty("structLogs")[result.Entries.IndexOf(lastStorage)];
             bool hasStorage = storageEntry.TryGetProperty("storage", out JsonElement storage);
-            Assert.That(hasStorage, Is.True);
+            Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
             Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));

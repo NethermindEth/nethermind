@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -55,5 +56,8 @@ public sealed class MigrationOverridableWorldScope(FlatOverridableWorldScope fla
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock,
             VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
             Select(baseBlock).RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
+            Select(baseBlock).RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 }

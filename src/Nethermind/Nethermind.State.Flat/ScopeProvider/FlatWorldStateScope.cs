@@ -702,8 +702,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
-        _bufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
+        // Taken after the roots were published, so the next block's pin also bounds this snapshot's root lookups.
+        INodeRecordBufferPin? nextBufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.PinHead();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(
+            _currentStateId, newStateId, _bufferPin, shouldAddSnapshot, nextBufferPin?.WriteBoundary ?? ulong.MaxValue);
+        _bufferPin = nextBufferPin;
 
         if (shouldAddSnapshot)
         {
@@ -777,7 +780,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             });
     }
 
-    // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
+    // Largely same logic as the one for TrieStoreScopeProvider, but more confusing when deduplicated.
     // So I just leave it here.
     private class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
@@ -836,7 +839,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
-                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = _scope.Get(key);
+                    ref Account? slot = ref CollectionsMarshal.GetValueRefOrNullRef(_dirtyAccounts, key);
+                    bool isDirty = !Unsafe.IsNullRef(ref slot);
+                    Account? account = isDirty ? slot : _scope.Get(key);
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
@@ -845,7 +850,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         continue;
                     }
                     account = account.WithChangedStorageRoot(storageRoot);
-                    _dirtyAccounts[key] = account;
+                    if (isDirty) slot = account;
+                    else _dirtyAccounts[key] = account;
 
                     _scope._snapshotBundle.SetAccount(key, account);
 

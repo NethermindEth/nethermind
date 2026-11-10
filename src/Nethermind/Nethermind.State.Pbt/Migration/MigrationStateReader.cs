@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -40,5 +41,11 @@ public sealed class MigrationStateReader(FlatStateReader flat, PbtStateReader pb
     {
         if (!flat.HasStateForBlock(baseBlock)) throw new NotSupportedException("MPT proofs are not available for the PBT state backend");
         flat.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+    }
+
+    public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+    {
+        if (!flat.HasStateForBlock(baseBlock)) throw new NotSupportedException("MPT proofs are not available for the PBT state backend");
+        flat.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 }

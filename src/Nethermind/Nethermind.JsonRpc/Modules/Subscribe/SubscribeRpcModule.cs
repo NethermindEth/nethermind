@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             catch (ArgumentException e)
             {
-                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+                return ResultWrapper<string>.Fail(e.Message, ErrorCodes.InvalidParams);
             }
             catch (Exception e) when (e is IExceptionWithSafePublicMessage safe)
             {

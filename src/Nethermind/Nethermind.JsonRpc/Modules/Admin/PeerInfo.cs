@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
@@ -43,14 +44,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
         }
 
-        public PeerInfo(Peer peer, bool includeDetails = false)
+        public PeerInfo(Peer peer, bool includeDetails = false, IPAddress? localIp = null)
         {
             ValidatePeer(peer);
 
             IReadOnlyList<Capability> capabilities = ExtractCapabilities(peer);
 
             SetBasicInfo(peer, capabilities);
-            SetNetworkInfo(peer);
+            SetNetworkInfo(peer, localIp);
             SetProtocols(peer, capabilities);
 
             if (includeDetails)
@@ -68,10 +69,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Enr = peer.Node.Enr?.ToString();
         }
 
-        private void SetNetworkInfo(Peer peer)
+        private void SetNetworkInfo(Peer peer, IPAddress? localIp)
         {
             bool isInbound = peer.InSession is not null;
-            Network = NetworkInfoBuilder.Build(peer, isInbound);
+            Network = NetworkInfoBuilder.Build(peer, isInbound, localIp);
         }
 
         private void SetProtocols(Peer peer, IReadOnlyList<Capability> capabilities)

@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -66,7 +67,7 @@ public class LocalDbContext(
         {
             Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
             TrieStatsCollector collector = new(CodeDb, LimboLogs.Instance);
-            StateTree.Accept(collector, StateTree.RootHash);
+            StateTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), StateTree.RootHash);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));

@@ -15,7 +15,7 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
-    private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
+    private readonly INodeStorage _nodeStorage = new EOACompressingNodeStorage(new NodeStorage(keyValueStore));
 
     public void Dispose() => baseStore.Dispose();
 

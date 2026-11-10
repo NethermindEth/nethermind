@@ -113,6 +113,27 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
     }
 
+    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null
+            && _mainDb.TryGetWithIterator(key, _iteratorManager.Value, flags, action, arg, out bool found))
+        {
+            return found;
+        }
+
+        Span<byte> value = GetSpan(key, flags);
+        try
+        {
+            if (value.IsEmpty) return false;
+            action(value, arg);
+            return true;
+        }
+        finally
+        {
+            DangerousReleaseMemory(value);
+        }
+    }
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
     /// <inheritdoc/>
@@ -120,7 +141,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
         where TArg : allows ref struct
     {
-        _mainDb.UpdateReadMetrics();
         ReadOnlySpan<byte> value = _mainDb.GetNativeSlice(key, _columnFamily, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options, out nint handle);
         if (value.IsNull()) return false;
 

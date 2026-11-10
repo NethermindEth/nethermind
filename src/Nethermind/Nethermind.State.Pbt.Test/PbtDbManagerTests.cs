@@ -1521,6 +1521,7 @@ public class PbtDbManagerTests
         FlatDbConfig flatConfig = new()
         {
             Enabled = true,
+            Layout = FlatLayout.Flat,
             EnableLongFinality = longFinality,
             CompactSize = 4,
             CompactionOffset = offset,

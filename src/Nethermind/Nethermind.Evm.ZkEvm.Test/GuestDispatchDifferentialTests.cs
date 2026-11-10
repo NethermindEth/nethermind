@@ -381,6 +381,55 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Each destination has the bits of a JUMPDEST below 2^32 and a set bit above, which a 32-bit guest must not drop.
+    /// </remarks>
+    [TestCase("640100000007565B00", TestName = "JUMP")]
+    [TestCase("6001640100000009575B00", TestName = "JUMPI")]
+    [TestCase("64010000000A600090565B00", TestName = "SWAP1 JUMP")]
+    [TestCase("64010000000A600050565B00", TestName = "POP JUMP")]
+    public void Jumps_to_a_destination_above_32_bits_fault_in_every_table(string hex)
+    {
+        CodeInfo codeInfo = new(Convert.FromHexString(hex));
+        Outcome traced = Run(100_000, [], 0, codeInfo, Table.Traced, ReleaseSpec);
+        Outcome untraced = Run(100_000, [], 0, codeInfo, Table.Untraced, ReleaseSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced.Exception, Is.EqualTo(EvmExceptionType.InvalidJumpDestination));
+            Assert.That(Matches(untraced, traced), Is.True, $"untraced {untraced}\n traced   {traced}");
+        }
+    }
+
+    /// <remarks>
+    /// The guest charges the fixed cost of a plain stack opcode without testing it, and the next test of the gas halts
+    /// the frame. Every amount of gas up to the program's need ends the gas on each opcode before that test, which each
+    /// case makes a different one.
+    /// </remarks>
+    [TestCase("60016002016003025000", TestName = "STOP")]
+    [TestCase("60016002016008565B00", TestName = "JUMP")]
+    [TestCase("6001600201600957005B00", TestName = "JUMPI")]
+    [TestCase("600160020160005200", TestName = "MSTORE")]
+    [TestCase("60016002015A00", TestName = "GAS")]
+    [TestCase("600160020160006000F3", TestName = "RETURN")]
+    [TestCase("60018090505000", TestName = "DUP1 SWAP1 POP POP")]
+    public void Gas_shortfalls_of_untested_charges_halt_at_the_next_test(string hex)
+    {
+        byte[] code = Convert.FromHexString(hex);
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, ReleaseSpec);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
     /// stored to memory, and the gas each program leaves tells a charge that differs.
     /// </remarks>
@@ -410,24 +459,27 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
-    /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
-    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
-    /// above the modulus takes the general path.
+    /// Addends below the modulus take the guest's ADDMOD: the inline one when both top limbs are below the modulus's,
+    /// and the full compare otherwise, as for the largest addend or any modulus below 2^192. Their sums fall on both
+    /// sides of the modulus, and above 2^256 for a modulus above 2^255; the largest addend and one sum to the modulus
+    /// exactly. An addend at or above the modulus takes the shared handler.
     /// </remarks>
     [Test]
     public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
     {
         UInt256 bn254 = UInt256.Parse("21888242871839275222246405745257275088696311169201772083599007584476017209221");
+        UInt256 goldilocks = ulong.MaxValue - uint.MaxValue + 1;
         List<string> mismatches = [];
         Random random = new(seed * 7883);
         for (int i = 0; i < 400 && mismatches.Count < 5; i++)
         {
-            UInt256 modulus = random.Next(5) switch
+            UInt256 modulus = random.Next(6) switch
             {
                 0 => bn254,
                 1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
                 2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
                 3 => UInt256.Zero,
+                4 => goldilocks,
                 _ => RandomWord(random) | UInt256.One,
             };
 
@@ -698,8 +750,8 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Two calls reach an account with no code, first cold and then warm, and a third reaches the target: an account
-    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code the
-    /// chain leaves to enter its frame; a precompile runs inline, and the chain goes on. The calls expand memory over their input or output, or need no expansion. Every amount
+    /// with no code, one with code, one that delegates to code under EIP-7702, or the identity precompile. At code its
+    /// frame runs nested in the chain; a precompile runs inline; the chain goes on either way. The calls expand memory over their input or output, or need no expansion. Every amount
     /// of gas up to the program's need puts the end of the gas inside each charge.
     /// The calls move no value, except in a static frame, where each CALL moves value and faults.
     /// The reference is the cancelable table: a traced call enters a frame even at no code, so that the tracer sees it.
@@ -757,8 +809,7 @@ public class GuestDispatchDifferentialTests
             Assert.That(mismatches, Is.Empty);
             Assert.That(complete.Exception, Is.EqualTo(
                 isStatic && op == Instruction.CALL ? EvmExceptionType.StaticCallViolation
-                : target is CallTarget.NoCode or CallTarget.Precompile ? EvmExceptionType.Stop
-                : EvmExceptionType.Suspend));
+                : EvmExceptionType.Stop));
         }
 
         static byte[] Call(Instruction op, Address to, byte inputOffset, byte inputLength, byte outputOffset, byte outputLength, byte value) =>
