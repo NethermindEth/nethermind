@@ -580,10 +580,12 @@ public partial class DebugRpcModuleTests
             "safe" or "finalized" => selectorKind,
             _ => new { blockHash = TestItem.KeccakA.ToString(), requireCanonical = true }
         };
+        bool unknownTaggedBody = txIndex is not null && (selectorKind is "safe" or "finalized");
+        int expectedCode = unknownTaggedBody ? ErrorCodes.UnknownBlockError : ErrorCodes.ResourceNotFound;
         string expected = selectorKind switch
         {
             "number" or "number-object" => "block #400 not found",
-            "safe" or "finalized" => "header not found",
+            "safe" or "finalized" => unknownTaggedBody ? "Unknown block error" : "header not found",
             _ => $"block {TestItem.KeccakA} not found"
         };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
@@ -600,7 +602,7 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
             Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
             Assert.That(json["result"], Is.Null, response);
         }
