@@ -202,8 +202,10 @@ public partial class GossipRouterTests
         int inFlightWhilePromoted = fixture.Validation.PendingVotes;
         forgeries[0].Raised!.Complete(MessageValidity.Rejected);
         await forgeries[0].Validation.WaitAsync(TimeSpan.FromSeconds(5));
+        ulong refusedBefore = Metrics.BeaconChainGossipVotesRefusedAfterRejection;
 
         MessageValidity[] sameSlot = [.. Enumerable.Range(10, 3).Select(index => fixture.Validation.Verify(fixture.Sender, DeferredFixture.Vote((ulong)index)))];
+        ulong refusedForSlot = Metrics.BeaconChainGossipVotesRefusedAfterRejection - refusedBefore;
         bool queuedCompletedByRejection = forgeries[1..].Any(static forgery => forgery.Raised!.IsCompleted);
         foreach ((GossipVerdict? raised, Task validation) in forgeries[1..])
         {
@@ -217,6 +219,7 @@ public partial class GossipRouterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(inFlightWhilePromoted, Is.EqualTo(4), "fixture: the promoted peer has more votes in flight than a new peer may");
         Assert.That(sameSlot, Is.All.EqualTo(MessageValidity.Throttled), "after its first rejected vote the peer's votes are refused for the slot");
+        Assert.That(refusedForSlot, Is.EqualTo((ulong)sameSlot.Length), "each is refused at admission, not throttled by a new peer's share");
         Assert.That(queuedCompletedByRejection, Is.False, "its votes deferred before the rejection are still checked");
         Assert.That(nextSlot, Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Deferred, MessageValidity.Throttled }), "in the next slot it is held to a new peer's two votes");
         Assert.That(rejected, Has.Count.EqualTo(4).And.All.EqualTo(fixture.Sender));
