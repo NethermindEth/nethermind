@@ -48,6 +48,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
@@ -654,6 +655,8 @@ public partial class EthRpcModuleTests
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
             inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
         public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
     }
 
@@ -3451,8 +3454,9 @@ public partial class EthRpcModuleTests
 
 
     [Test]
-    public async Task Eth_get_block_by_number_pruned()
+    public async Task Eth_get_block_by_number_above_the_ancient_barriers_returns_null()
     {
+        // Block 1,000,000 is above both the head and the served floor: an unknown block, not pruned history.
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "0xF4240", "false");
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
@@ -3463,7 +3467,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByNumber", "0x64");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 100"},"id":67}"""));
     }
 
     [Test]
@@ -3471,7 +3475,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockNumber", "0x64");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 100"},"id":67}"""));
     }
 
     [Test]
@@ -3479,7 +3483,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", "0x100", "1");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 256"},"id":67}"""));
     }
 
     [Test]
@@ -3488,7 +3492,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "true");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3497,7 +3501,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockTransactionCountByHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3506,7 +3510,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleCountByBlockHash", ctx.Test.BlockTree.Genesis!.Hash!.ToString());
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3515,7 +3519,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         ctx.Test.Container.Resolve<IBlockStore>().Delete(ctx.Test.BlockTree.Genesis!.Number, ctx.Test.BlockTree.Genesis!.Hash!);
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByBlockHashAndIndex", ctx.Test.BlockTree.Genesis!.Hash!.ToString(), "1");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{ctx.Test.BlockTree.Genesis!.Hash}}"},"id":67}"""));
     }
 
     [Test]
@@ -3523,7 +3527,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAncientBarriers(10000);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "0x100");
-        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block 256"},"id":67}"""));
     }
 
 

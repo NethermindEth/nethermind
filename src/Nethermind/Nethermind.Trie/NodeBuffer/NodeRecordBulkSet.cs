@@ -478,7 +478,8 @@ internal static class NodeRecordBulkSet
                 case ChildRefKind.Empty:
                     return default;
                 case ChildRefKind.Inline:
-                    return Source.ForInline(child);
+                    // An embedded branch or extension, only theoretically possible (see NodeRecordCodec.IsInlineLeaf), is walked as a decoded record.
+                    return NodeRecordCodec.IsInlineLeaf(child.InlineRlp) ? Source.ForInline(child) : Source.ForRecord(_workingState.Loaded.AddEmbedded(child.InlineRlp), 0);
             }
 
             Debug.Assert(child.Kind == ChildRefKind.Hash, "Only children of nodes read are loaded.");
