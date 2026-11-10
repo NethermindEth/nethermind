@@ -2463,7 +2463,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         const int levels = VirtualMachineStatics.MaxCachedFrameDepth + 5;
         byte[] code = Prepare.EvmCode
             .MSTORE(0, ((UInt256)levels).ToBigEndian()).MSTORE(32, ((UInt256)RevertEvery).ToBigEndian())
-            .CALL(CallGas * 10, Recursive, 0, 0, 64, 0x20, 32)
+            .CALL(CallGas * 30, Recursive, 0, 0, 64, 0x20, 32)
             .PushData(0x40).Op(Instruction.MSTORE)
             .RETURN(0x20, 64)
             .Done;
