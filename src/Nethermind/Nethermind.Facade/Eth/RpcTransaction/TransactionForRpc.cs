@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -128,8 +129,9 @@ public abstract class TransactionForRpc
     public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
-        if (result.Success(out Transaction? call, out _) && call.SupportsAuthorizationList && call.IsContractCreation)
-            return TxErrorMessages.NotAllowedCreateTransaction;
+        if (result.Success(out Transaction? call, out _) && call.SupportsAuthorizationList
+            && SetCodeTxValidation.ValidateNoContractCreation(call) is { Error: { } createError })
+            return createError;
         Result<Transaction> ordered = CheckFeeCapOrder(result);
         if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
