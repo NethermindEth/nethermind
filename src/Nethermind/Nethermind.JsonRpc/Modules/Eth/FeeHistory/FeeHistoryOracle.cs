@@ -95,11 +95,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                                      BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
             Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
+            headerFound = hash is not null;
             if (hash is not null && _feeHistoryCache.TryGetValue(hash, out BlockFeeHistorySearchInfo i))
             {
                 return i;
@@ -118,7 +119,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
             else if (!uncachedRequestSlot.TryAcquire())
             {
-                // A block whose header is not found has no body to read, so at the limit it is reported as not found.
+                // A newest block whose header is not found is looked up only with a free slot; at the limit it is reported
+                // as not found.
                 return null;
             }
 
@@ -217,14 +219,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             ref UncachedRequestSlot uncachedRequestSlot)
         {
             bool withRewards = rewardPercentiles.Length > 0;
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards, ref uncachedRequestSlot);
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards, ref uncachedRequestSlot, out bool headerFound);
 
             if (historyInfo is null)
             {
-                BlockHeader? header = _blockTree.FindHeader(newestBlock);
-                return header is null
-                    ? ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound)
-                    : ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+                return headerFound && _blockTree.FindHeader(newestBlock) is not null
+                    ? ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                    : ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
             }
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
@@ -304,7 +305,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         /// Building the fee data of a block not in the cache reads its body, and its receipts when rewards are asked for,
         /// which costs far more than serving cached data, so the number of such requests running at once is capped.
         /// The slot is taken right before the first such read and held until the request ends, so requests served
-        /// entirely from the cache take no slot. That includes the reward data of a cached block: it is filled once and
+        /// entirely from the cache take no slot. That includes the reward data of a cached block: one successful fill is
         /// shared by the requests that ask for it.
         /// </remarks>
         private struct UncachedRequestSlot(FeeHistoryOracle oracle) : IDisposable
