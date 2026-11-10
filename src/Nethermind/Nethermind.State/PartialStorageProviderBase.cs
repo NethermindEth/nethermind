@@ -19,6 +19,9 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
+        /// <summary>Below one journal entry per this many map entries, removing the entries beats zeroing every bucket.</summary>
+        internal const int SparseClearCapacityDivisor = 256;
+
         protected readonly OptimizedDictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
@@ -27,6 +30,9 @@ namespace Nethermind.State
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
+
+        // A restore that drops a cell frees its map entry out of journal order, see ClearIntraBlockCache.
+        private bool _intraBlockCacheReordered;
 
         /// <summary>
         /// Get the storage value at the specified storage cell
@@ -111,6 +117,7 @@ namespace Nethermind.State
                 else
                 {
                     _intraBlockCache.Remove(change.StorageCell);
+                    _intraBlockCacheReordered = true;
                 }
             }
 
@@ -155,10 +162,44 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            ClearIntraBlockCache();
             _changes.Clear();
             _protectedPosition = Resettable.EmptyPosition;
-            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
+        }
+
+        /// <summary>Empties <see cref="_intraBlockCache"/> before the journal is cleared.</summary>
+        /// <remarks>
+        /// The map keeps the capacity of the largest transaction the provider has run, and clearing it zeroes every
+        /// bucket, so each small transaction after a large one would pay for the large one again at its commit. While
+        /// the journal is short against that capacity, removing its cells is cheaper. The cells entered the map in
+        /// journal order, so removing them newest first frees their entries for reuse in the order a cleared map
+        /// would append them, and later transactions enumerate their cells in the same order either way. A restore
+        /// that dropped a cell breaks that order, so the map is then cleared.
+        /// </remarks>
+        private void ClearIntraBlockCache()
+        {
+            OptimizedDictionary<StorageCell, HeadChange> cache = _intraBlockCache;
+            if (!ZkEvmFlag.IsActive && !_intraBlockCacheReordered
+                && cache.Capacity <= Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
+                && _changes.Count <= cache.Capacity / SparseClearCapacityDivisor)
+            {
+                ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+                for (int i = changes.Length - 1; i >= 0; i--)
+                {
+                    ref readonly Change change = ref changes[i];
+                    if (change.ChangeType == StorageChangeType.Update && change.PrevIdx == -1)
+                    {
+                        cache.Remove(change.StorageCell);
+                    }
+                }
+
+                // Any cell the walk missed falls back to the clear.
+                if (cache.Count == 0) return;
+            }
+
+            cache.ClearAndTrim();
+            _intraBlockCacheReordered = false;
         }
 
         /// <summary>

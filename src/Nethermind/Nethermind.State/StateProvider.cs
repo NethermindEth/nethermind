@@ -34,6 +34,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     // Address -> index of its newest change in _changes; older changes reachable via Change.PrevIdx.
     private readonly OptimizedDictionary<AddressAsKey, int> _intraTxCache = [];
+    // A restore frees or re-appends entries out of journal order, see ClearIntraTxCache.
+    private bool _intraTxCacheReordered;
     private readonly OptimizedHashSet<AddressAsKey> _committedThisRound = [];
     private readonly OptimizedHashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
@@ -493,6 +495,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
+        _intraTxCacheReordered = true;
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -688,12 +691,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         InvalidateFrontCache();
+        ClearIntraTxCache();
         _changes.Clear();
         _transactionChangesSnapshots.Clear();
         _protectedPosition = Resettable.EmptyPosition;
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
-        _intraTxCache.ClearAndTrim();
         // A commit ends the transaction, which has finalized its TCREATE accounts by then.
         ResetTransientCode();
 
@@ -1222,7 +1225,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _codeBatch?.Clear();
         }
         ResetTransientCode();
-        _intraTxCache.ClearAndTrim();
+        ClearIntraTxCache();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
@@ -1233,6 +1236,36 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace() => _logger.Trace("Clearing state provider caches");
+    }
+
+    /// <summary>Empties <see cref="_intraTxCache"/> before the journal is cleared.</summary>
+    /// <remarks>
+    /// The map keeps the capacity of the largest transaction the provider has run, and clearing it zeroes every bucket,
+    /// so each small transaction after a large one would pay for the large one again at its commit. While the journal
+    /// is short against that capacity, removing its accounts is cheaper. An account enters the map with the first
+    /// change of its chain, so removing those newest first frees the entries for reuse in the order a cleared map would
+    /// append them, and later transactions enumerate their accounts in the same order either way. A restore breaks that
+    /// order, so the map is then cleared.
+    /// </remarks>
+    private void ClearIntraTxCache()
+    {
+        if (!ZkEvmFlag.IsActive && !_intraTxCacheReordered
+            && _intraTxCache.Capacity <= Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
+            && _changes.Count <= _intraTxCache.Capacity / PartialStorageProviderBase.SparseClearCapacityDivisor)
+        {
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            for (int i = changes.Length - 1; i >= 0; i--)
+            {
+                ref readonly Change change = ref changes[i];
+                if (change.PrevIdx == -1) _intraTxCache.Remove(change.Address);
+            }
+
+            // Any account the walk missed falls back to the clear.
+            if (_intraTxCache.Count == 0) return;
+        }
+
+        _intraTxCache.ClearAndTrim();
+        _intraTxCacheReordered = false;
     }
 
     public void UpdateStateRootIfNeeded()

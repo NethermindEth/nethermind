@@ -395,6 +395,97 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Commit_after_large_transaction_empties_storage_journal_and_keeps_insertion_order([Values] bool restoreInSmallTransaction)
+    {
+        const int LargeTransactionCells = 2_000;
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        for (int i = 0; i < LargeTransactionCells; i++) provider.Set(new StorageCell(ctx.Address1, (UInt256)i), (UInt256)(i + 1));
+        provider.Commit(Frontier.Instance);
+
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell second = new(ctx.Address2, 2);
+        StorageCell restored = new(ctx.Address2, 3);
+        provider.Set(in first, 100);
+        if (restoreInSmallTransaction)
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.Set(in restored, 300);
+            provider.Restore(snapshot);
+        }
+
+        provider.Set(in second, 200);
+        provider.Commit(Frontier.Instance);
+
+        IDictionary journal = (IDictionary)GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache");
+        Assert.That(journal.Count, Is.Zero);
+
+        StorageCell third = new(ctx.Address1, 5);
+        provider.Set(in third, 500);
+        provider.Set(in first, 101);
+        provider.Set(in second, 201);
+        Assert.That(journal.Keys.Cast<StorageCell>(), Is.EqualTo(new[] { third, first, second }));
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(in first, out UInt256 firstValue);
+        provider.Get(in second, out UInt256 secondValue);
+        provider.Get(in third, out UInt256 thirdValue);
+        provider.Get(in restored, out UInt256 restoredValue);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstValue, Is.EqualTo((UInt256)101));
+            Assert.That(secondValue, Is.EqualTo((UInt256)201));
+            Assert.That(thirdValue, Is.EqualTo((UInt256)500));
+            Assert.That(restoredValue, Is.EqualTo(UInt256.Zero));
+            Assert.That(journal.Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Commit_after_large_transaction_empties_account_journal_and_keeps_insertion_order([Values] bool restoreInSmallTransaction)
+    {
+        const int LargeTransactionAccounts = 2_000;
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        Address[] accounts = new Address[LargeTransactionAccounts];
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            accounts[i] = Address.FromNumber((UInt256)(0x10000 + i));
+            provider.CreateAccount(accounts[i], 1);
+        }
+
+        provider.Commit(Frontier.Instance);
+
+        provider.AddToBalance(ctx.Address1, 10, Frontier.Instance);
+        if (restoreInSmallTransaction)
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.AddToBalance(accounts[7], 5, Frontier.Instance);
+            provider.Restore(snapshot);
+        }
+
+        provider.AddToBalance(ctx.Address2, 20, Frontier.Instance);
+        provider.Commit(Frontier.Instance);
+
+        IDictionary journal = (IDictionary)GetPrivateField(provider._stateProvider, "_intraTxCache");
+        Assert.That(journal.Count, Is.Zero);
+
+        provider.AddToBalance(accounts[3], 3, Frontier.Instance);
+        provider.AddToBalance(ctx.Address1, 1, Frontier.Instance);
+        provider.AddToBalance(ctx.Address2, 2, Frontier.Instance);
+        Assert.That(journal.Keys.Cast<AddressAsKey>().Select(static key => key.Value), Is.EqualTo(new[] { accounts[3], ctx.Address1, ctx.Address2 }));
+        provider.Commit(Frontier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(ctx.Address1), Is.EqualTo((UInt256)11));
+            Assert.That(provider.GetBalance(ctx.Address2), Is.EqualTo((UInt256)22));
+            Assert.That(provider.GetBalance(accounts[3]), Is.EqualTo((UInt256)4));
+            Assert.That(provider.GetBalance(accounts[7]), Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [Test]
     public void Heavy_rounds_keep_the_originals_map_below_the_trim_limit()
     {
         const int SlotCount = CoreCollectionExtensions.DefaultTrimAboveCapacity * 2;
