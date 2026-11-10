@@ -539,11 +539,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task TransactionReceiptsSubscription_with_too_many_hashes_returns_invalid_params_with_reason()
+        {
+            string hashes = string.Join(",", Enumerable.Repeat($"\"{TestItem.KeccakA}\"", 201));
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "transactionReceipts", $$"""{"transactionHashes":[{{hashes}}]}""");
+
+            Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"Cannot subscribe to more than 200 transaction hashes at once."},"id":67}"""));
+        }
+
+        [Test]
         public async Task LogsSubscription_with_too_long_string_arguments_returns_invalid_params()
         {
             string args = new('a', 1_000_001);
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"subscription args string length 1000001 exceeds maximum allowed length of 1000000\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized), "oversized string args should be rejected before subscription creation");
         }
 

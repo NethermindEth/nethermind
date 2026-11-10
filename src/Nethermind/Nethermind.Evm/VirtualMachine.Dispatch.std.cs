@@ -531,26 +531,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             opCodeCount++;
             nint fallthroughPc = pc;
-            OpcodeResult result;
+            EvmExceptionType exceptionType;
             if (carriesExecutionGas)
             {
                 LoadFixedGas(out TGasPolicy localGas, gas);
-                result = TTracingInst.IsActive
-                    ? EvmInstructions.InstructionJumpIf(ref stack, ref localGas, vm, pc)
-                    : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref localGas, vm, pc);
+                exceptionType = EvmInstructions.InstructionJumpIfCore(ref stack, ref localGas, ref pc, ref opCodeCount);
                 gas = GetExecutionGas(ref localGas);
-                if (result.Exception != EvmExceptionType.None)
+                if (exceptionType != EvmExceptionType.None)
                     KeepHaltGas(ref state.Gas, ref localGas);
             }
             else
             {
-                result = TTracingInst.IsActive
+                OpcodeResult result = TTracingInst.IsActive
                     ? EvmInstructions.InstructionJumpIf(ref stack, ref state.Gas, vm, pc)
                     : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref state.Gas, vm, pc);
+                pc = result.ProgramCounter;
+                exceptionType = result.Exception;
             }
-            pc = result.ProgramCounter;
 
-            if (result.Exception != EvmExceptionType.None)
+            if (exceptionType != EvmExceptionType.None)
                 goto Exit;
 
             Debug.Assert(vm.ReturnData is null,
@@ -619,7 +618,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             throw IL.Unreachable();
 
         Exit:
-            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, result.Exception);
+            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
     }
 }

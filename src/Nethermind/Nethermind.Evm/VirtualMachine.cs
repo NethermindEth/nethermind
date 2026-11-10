@@ -65,10 +65,10 @@ public static class VirtualMachineStatics
 
     /// <summary>Deepest child call frame a VM keeps for reuse; deeper frames and the top-level frame use the pools.</summary>
     /// <remarks>A kept frame holds its data stack (32 KiB, pinned), its 1 KiB inline memory and its environment, about
-    /// 34 KiB in all, so a VM that has reached this depth retains about 270 KiB until it is disposed, which hands the
+    /// 34 KiB in all, so a VM that has reached this depth retains about 550 KiB until it is disposed, which hands the
     /// data stacks back to the pool. Like the ID scratch above, that is multiplied by the pooled VMs, so the depth is
     /// kept to where most calls end.</remarks>
-    internal const int MaxCachedFrameDepth = 8;
+    internal const int MaxCachedFrameDepth = 16;
 
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;

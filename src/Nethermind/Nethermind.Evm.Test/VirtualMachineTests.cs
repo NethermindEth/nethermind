@@ -2464,7 +2464,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         const int levels = VirtualMachineStatics.MaxCachedFrameDepth + 5;
         byte[] code = Prepare.EvmCode
             .MSTORE(0, ((UInt256)levels).ToBigEndian()).MSTORE(32, ((UInt256)RevertEvery).ToBigEndian())
-            .CALL(CallGas * 10, Recursive, 0, 0, 64, 0x20, 32)
+            .CALL(CallGas * 30, Recursive, 0, 0, 64, 0x20, 32)
             .PushData(0x40).Op(Instruction.MSTORE)
             .RETURN(0x20, 64)
             .Done;
@@ -2613,6 +2613,14 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(Machine.FrameCache[1], Is.Not.Null, "the cached path was exercised");
             Assert.That(Machine.FrameCache[2], Is.Not.Null, "the cached path was exercised");
         }
+
+        if (name == "recursion")
+        {
+            RecordingTracer depths = new(Machine);
+            _processor.CallAndRestore(transaction, context, depths);
+            // Both deep chains must cross from the cached slots into pooled frames, or the program does not cover the boundary.
+            Assert.That(depths.Frames.Count(static f => f.Depth == VirtualMachineStatics.MaxCachedFrameDepth + 3), Is.EqualTo(2));
+        }
     }
 
     private static IEnumerable<TestCaseData> DifferentialPrograms()
@@ -2640,10 +2648,10 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
                 }
                 break;
             case "recursion":
-                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 15);
                 driver.Call(Instruction.CALL, Probe);
                 driver.Call(Instruction.CALL, Recursive, levels: 3);
-                driver.Call(Instruction.CALL, Recursive, levels: 10, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 2, gas: CallGas * 12);
                 driver.Call(Instruction.STATICCALL, Recursive, levels: 2);
                 driver.Call(Instruction.CALL, ProbeCaller);
                 break;

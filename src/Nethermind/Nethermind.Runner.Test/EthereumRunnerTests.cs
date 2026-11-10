@@ -765,7 +765,7 @@ public class EthereumRunnerTests
             resultQueue.Enqueue(($"{name}.json", configProvider));
         });
 
-        // Sort so that is is consistent so that its easy to run via Rider.
+        // Sort so that it is consistent so that its easy to run via Rider.
         List<(string, ConfigProvider)> result = [.. resultQueue];
         result.Sort();
 

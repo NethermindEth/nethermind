@@ -1056,7 +1056,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.NonceOverflow;
             }
 
-            if (tx.IsAboveInitCode(spec))
+            if (IsAboveInitCode(tx, spec))
             {
                 if (Logger.IsTrace) TraceLogInvalidTx(tx, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {tx.DataLength} > {spec.MaxInitCodeSize}");
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
@@ -1118,6 +1118,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return ValidateGas(tx, header, spec, in standard, minGasRequired, validate);
         }
+
+        protected virtual bool IsAboveInitCode(Transaction tx, IReleaseSpec spec) => tx.IsAboveInitCode(spec);
 
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, ulong minGasRequired, bool validate)
         {
