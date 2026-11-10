@@ -142,11 +142,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     public void Revert_fault_record_shows_popped_operands_and_expanded_memory([Values] bool enableMemory)
     {
         byte[] code = Prepare.EvmCode.PushData(7).PushData(32).PushData(64).Op(Instruction.REVERT).Done;
-        MockFileSystem fileSystem = new();
-        fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = enableMemory }, fileSystem, Spec);
-        ExecuteBlock(tracer, code);
-        string[] records = fileSystem.File.ReadAllLines(tracer.FileNames.Single());
+        string[] records = TraceFile(code, enableMemory: enableMemory).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         using JsonDocument step = JsonDocument.Parse(records[3]);
         using JsonDocument fault = JsonDocument.Parse(records[4]);
         using (Assert.EnterMultipleScope())
@@ -615,11 +611,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
     }
 
-    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false)
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false, bool enableMemory = false)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData }, fileSystem, Spec);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData, EnableMemory = enableMemory }, fileSystem, Spec);
         ExecuteBlock(tracer, code);
         return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }
