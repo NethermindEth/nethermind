@@ -416,10 +416,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     }
 
     /// <inheritdoc/>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         base.ReportActionError(error);
         InvokeExit(gasLeft, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }

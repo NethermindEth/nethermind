@@ -421,10 +421,10 @@ public class Eip5920Tests : VirtualMachineTestsBase
         public LogEntry[] Logs { get; private set; } = [];
         public EvmExceptionType RejectedActionError { get; private set; }
 
-        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
         {
-            ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+            ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
             RejectedActionError = error;
         }
 
