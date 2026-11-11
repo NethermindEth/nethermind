@@ -338,6 +338,44 @@ public class ImporterTests
         Assert.That(cursor!.Value.IsCopied(address, path), Is.False, "not past the missing node");
     }
 
+    [Test]
+    public async Task Migration_leaves_nothing_of_a_chunk_after_a_wipe_during_it([Values] bool duringCommit)
+    {
+        NodeStorage halfPath = new(_trieDb);
+        (Hash256 root, _) = BuildState(halfPath);
+        TaskCompletionSource committing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim commit = new();
+        // A snap sync starting wipes flat from another thread, here while the chunk walks or while it commits.
+        MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), chunkNodes: 1_000, rejectedWrites: 0)
+        {
+            AfterLease = duringCommit ? null : static persistence => persistence.Clear(),
+            BeforeCommit = duringCommit ? () => { committing.SetResult(); commit.Wait(); } : null,
+        };
+
+        bool wipedFirst = false;
+        Task run = Task.Run(migration.Run);
+        if (duringCommit)
+        {
+            await committing.Task;
+            Task wipe = Task.Run(migration.Persistence.Clear);
+            wipedFirst = await Task.WhenAny(wipe, Task.Delay(TimeSpan.FromMilliseconds(200))) == wipe;
+            commit.Set();
+            await wipe;
+        }
+        await run;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wipedFirst, Is.False, "the wipe waits for the chunk being committed");
+            Assert.That(migration.Cursor.Current, Is.Null, "a wipe ends the migration");
+            Assert.That(BasePersistence.ReadMigrationCursor(_columnsDb.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>().Where(static column => column != FlatDbColumns.Metadata))
+            {
+                Assert.That(Contents(_columnsDb, column), Is.Empty, column.ToString());
+            }
+        }
+    }
+
     private static InterfaceLogger CreateInfoLogger()
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
@@ -510,23 +548,38 @@ public class ImporterTests
 
         public HalfPathMigrationCursor Cursor { get; }
 
+        /// <summary>The flat persistence the migration reads and writes, with the HalfPath fallback.</summary>
+        public IPersistence Persistence { get; }
+
+        /// <summary>Runs once a chunk has leased the reader it walks.</summary>
+        public Action<IPersistence>? AfterLease { get; init; }
+
+        /// <summary>Runs once a chunk is written to its batch, before the batch is committed.</summary>
+        public Action? BeforeCommit { get; init; }
+
         public MigrationRun(INodeStorage halfPath, IPersistence flat, IColumnsDb<FlatDbColumns> flatDb, StateId state, int chunkNodes, int rejectedWrites)
         {
             flat.CreateWriteBatch(StateId.PreGenesis, state).Dispose();
             _metadata = flatDb.GetColumnDb(FlatDbColumns.Metadata);
             BasePersistence.WriteMigrationCursor(_metadata, MigrationCursor.Start);
             Cursor = new HalfPathMigrationCursor(flatDb);
-            IPersistence persistence = new HalfPathFallbackPersistence(flat, halfPath, Cursor);
+            IPersistence persistence = Persistence = new HalfPathFallbackPersistence(flat, halfPath, Cursor);
             _rejectedWrites = rejectedWrites;
 
             // Rejects the first writes as a persist holding the lock or moving the state would.
             IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
-            persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(call => persistence.CreateReader(call.Arg<ReaderFlags>()));
+            persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(call =>
+            {
+                IPersistence.IPersistenceReader reader = persistence.CreateReader(call.Arg<ReaderFlags>());
+                AfterLease?.Invoke(persistence);
+                return reader;
+            });
             persistenceManager.TryWriteOnPersistedState(Arg.Any<StateId>(), Arg.Any<Action<IPersistence.IWriteBatch>>()).Returns(call =>
             {
                 if (_rejectedWrites-- > 0) return false;
                 using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(state, state);
                 call.Arg<Action<IPersistence.IWriteBatch>>()(batch);
+                BeforeCommit?.Invoke();
                 return true;
             });
 

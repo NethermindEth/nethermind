@@ -10,6 +10,9 @@ namespace Nethermind.State.Flat.Migration;
 /// <summary>The <see cref="MigrationCursor"/> of the HalfPath to flat migration in progress, shared by the readers that route by it and the copier that advances it.</summary>
 public sealed class HalfPathMigrationCursor(IColumnsDb<FlatDbColumns> db)
 {
+    // Held from a chunk's check of the cursor to its publication, so an abandonment waits for a chunk being committed.
+    private readonly Lock _lock = new();
+
     // MigrationCursor is too large to read and write atomically, so it is published boxed.
     private StrongBox<MigrationCursor>? _current =
         BasePersistence.ReadMigrationCursor(db.GetColumnDb(FlatDbColumns.Metadata)) is { } stored ? new(stored) : null;
@@ -18,10 +21,25 @@ public sealed class HalfPathMigrationCursor(IColumnsDb<FlatDbColumns> db)
     /// <remarks>Read before a reader takes its snapshot, it never covers data the snapshot lacks: it moves only after the data is committed.</remarks>
     public MigrationCursor? Current => Volatile.Read(ref _current)?.Value;
 
-    /// <summary>Publishes <paramref name="cursor"/> once the batch that saved it with the data it covers is committed; <c>null</c> once everything is copied, so reads stop falling back.</summary>
-    public void Advance(in MigrationCursor? cursor) =>
-        Volatile.Write(ref _current, cursor is { } position ? new StrongBox<MigrationCursor>(position) : null);
+    /// <summary>Commits a chunk copied from <paramref name="from"/> and publishes <paramref name="next"/>, unless the cursor is no longer <paramref name="from"/>.</summary>
+    /// <param name="from">The cursor the chunk was copied from.</param>
+    /// <param name="next">The cursor the chunk saves with the data it covers; <c>null</c> once everything is copied, so reads stop falling back.</param>
+    /// <param name="commit">Writes and commits the chunk, returning whether it did.</param>
+    /// <returns>Whether the chunk was committed.</returns>
+    public bool TryAdvance(in MigrationCursor from, in MigrationCursor? next, Func<bool> commit)
+    {
+        using Lock.Scope _ = _lock.EnterScope();
+        if (Current != from || !commit()) return false;
 
-    /// <summary>Stops routing reads by the cursor after a wipe has deleted it.</summary>
-    public void Abandon() => Volatile.Write(ref _current, null);
+        Volatile.Write(ref _current, next is { } position ? new StrongBox<MigrationCursor>(position) : null);
+        return true;
+    }
+
+    /// <summary>Stops routing reads by the cursor and advancing it, ahead of a wipe that deletes it.</summary>
+    /// <remarks>Waits for a chunk being committed, so the wipe deletes that chunk too.</remarks>
+    public void Abandon()
+    {
+        using Lock.Scope _ = _lock.EnterScope();
+        Volatile.Write(ref _current, null);
+    }
 }

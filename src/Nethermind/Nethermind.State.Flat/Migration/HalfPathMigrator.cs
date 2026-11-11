@@ -25,7 +25,8 @@ namespace Nethermind.State.Flat.Migration;
 /// A chunk walks the trie of the persisted state in path order from the cursor, through a persistence reader that serves what is not
 /// copied yet from the HalfPath DB, collecting about <see cref="IFlatDbConfig.MigrationChunkNodes"/> nodes outside any write batch. It writes them,
 /// in one batch with the cursor past them, only if the persisted state is still the one it walked, see <see cref="IPersistenceManager.TryWriteOnPersistedState"/>, so the copied values
-/// are those readers of that state already see.
+/// are those readers of that state already see. It commits through <see cref="HalfPathMigrationCursor.TryAdvance"/>, so nothing of a chunk
+/// outlives a wipe: the wipe waits for a chunk being committed, and drops one walked before it.
 /// </para>
 /// <para>
 /// Chunks run on <see cref="IBackgroundTaskScheduler"/>, which cancels them when block processing starts, except while the node is
@@ -136,24 +137,18 @@ public sealed class HalfPathMigrator(
             _chunk.Walk(reader, state.StateRoot, from, flatDbConfig.MigrationChunkNodes, token);
         }
 
-        MigrationCursor walkedFrom = from;
         MigrationCursor? next = _chunk.IsComplete ? null : _chunk.Next;
-        bool written = false;
-        if (token.IsCancellationRequested || !persistenceManager.TryWriteOnPersistedState(state, batch =>
+        if (token.IsCancellationRequested || !cursor.TryAdvance(from, next, () => persistenceManager.TryWriteOnPersistedState(state, batch =>
             {
-                // A wipe meanwhile abandons the migration.
-                if (cursor.Current != walkedFrom) return;
                 _chunk.Write(batch);
                 batch.SetMigrationCursor(next);
-                written = true;
-            }))
+            })))
         {
-            return true;
+            // Tried again, unless a wipe abandoned the migration meanwhile.
+            return cursor.Current is not null;
         }
 
-        if (!written) return false;
         Metrics.HalfPathMigratedNodes += _chunk.Count;
-        cursor.Advance(next);
 
         if (next is not { } copied)
         {

@@ -64,8 +64,8 @@ public class HalfPathFallbackReadBenchmark
         _flatDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         IPersistence flat = new RocksDbPersistence(_flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         flat.CreateWriteBatch(StateId.PreGenesis, new StateId(1, stateTree.RootHash)).Dispose();
+        BasePersistence.WriteMigrationCursor(_flatDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         HalfPathMigrationCursor cursor = new(_flatDb);
-        cursor.Advance(MigrationCursor.Start);
         _bundle = new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new HalfPathFallbackPersistence(flat, halfPath, cursor).CreateReader(),
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
     }

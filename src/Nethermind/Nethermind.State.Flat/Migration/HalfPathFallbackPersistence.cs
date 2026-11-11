@@ -45,8 +45,9 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
     /// <remarks>The wipe deletes the cursor too, so the migration is over.</remarks>
     public void Clear()
     {
-        inner.Clear();
+        // Abandoned first: a chunk committed after the wipe would bring back data and a cursor the wipe deleted.
         cursor.Abandon();
+        inner.Clear();
     }
 
     private sealed class Reader(IPersistence.IPersistenceReader inner, INodeStorage halfPath, MigrationCursor copied)
