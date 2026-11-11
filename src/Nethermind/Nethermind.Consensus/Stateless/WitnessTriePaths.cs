@@ -18,8 +18,10 @@ namespace Nethermind.Consensus.Stateless;
 /// its old storage is read, or written without being cleared first. Here these are the scope opening and the first load
 /// of a storage tree's root, which a cleared storage tree never loads. A trie operation visits only nodes reachable from
 /// that root, which the walk has checked by then. A child the witness lacks is left unchecked, as the spec leaves it hashed.
+/// The walks run where <see cref="Walks"/> says: on the host and the Airbender guest. The other guests skip them, as the
+/// walk decodes every witness node once more and costs a third of a mainnet block's steps on ZisK.
 /// </remarks>
-internal sealed class WitnessTriePaths
+internal sealed partial class WitnessTriePaths
 {
     private const int BranchChildren = 16;
 
@@ -42,6 +44,8 @@ internal sealed class WitnessTriePaths
     public WitnessTriePaths(INodeStorage nodes, ReadOnlySpan<byte[]> state)
     {
         _nodes = nodes;
+        if (!Walks) return;
+
         foreach (byte[] node in state) _bytesBeforeMemo += 2 * node.Length;
     }
 
@@ -49,13 +53,15 @@ internal sealed class WitnessTriePaths
     /// <exception cref="TrieException">A node's path does not end at the key, or its list does not fill its bytes.</exception>
     public void ValidateStateTrie(Hash256 root)
     {
+        if (!Walks) return;
+
         lock (_lock) Validate(root.ValueHash256);
     }
 
     /// <summary>Notes the root of a storage tree the block opened, to walk once the tree loads it.</summary>
     public void AddStorageRoot(Hash256 root)
     {
-        if (root == Keccak.EmptyTreeHash) return;
+        if (!Walks || root == Keccak.EmptyTreeHash) return;
 
         lock (_lock)
         {
@@ -69,7 +75,7 @@ internal sealed class WitnessTriePaths
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnStorageNodeLoading(in ValueHash256 keccak)
     {
-        if (_pendingStorageRoots.Count != 0) OnPendingStorageNodeLoading(keccak);
+        if (Walks && _pendingStorageRoots.Count != 0) OnPendingStorageNodeLoading(keccak);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -12,7 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.ZkEvm.Test.Stateless;
 
-/// <summary>Tests that the guest's witness trie store walks a storage trie as its root loads.</summary>
+/// <summary>Tests that the guest's witness trie store leaves the storage trie walk to the Airbender guest: elsewhere a
+/// storage root loads unchecked, an overlong path included.</summary>
 /// <remarks>Without hashing: in a ZK_EVM build the Keccak permutation is a zkVM precompile that throws outside the guest, so
 /// the root is committed under a hash of the test's choosing rather than listed by the witness.</remarks>
 [Parallelizable(ParallelScope.All)]
@@ -23,7 +24,7 @@ public class GuestWitnessTriePathsTests
     private static readonly Hash256 Root = new("0x0000000000000000000000000000000000000000000000000000000000000002");
 
     [Test]
-    public void Storage_root_is_walked_as_it_loads([Values] bool overlong)
+    public void Storage_root_loads_unwalked_off_airbender([Values] bool overlong)
     {
         ITrieStore store = WitnessNodeStorage.CreateTrieStore(ArrayPoolList<byte[]>.Empty(), out WitnessTriePaths paths);
         byte[] leaf = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(new byte[KeyNibbles + (overlong ? 1 : 0)], isLeaf: true)), Rlp.Encode([0x01])).Bytes;
@@ -35,6 +36,6 @@ public class GuestWitnessTriePathsTests
 
         paths.AddStorageRoot(Root);
 
-        Assert.That(() => store.TryLoadRlp(Address, path, Root), overlong ? Throws.TypeOf<TrieException>() : Is.EqualTo(leaf));
+        Assert.That(store.TryLoadRlp(Address, path, Root), Is.EqualTo(leaf));
     }
 }
