@@ -34,13 +34,16 @@ namespace Nethermind.State.Flat.Test;
 /// The container builds lazily on first resolve; building runs <see cref="IPersistedSnapshotLoader.Load"/>,
 /// and disposal tears down the loader before the temp dir is removed. Reopen/restart tests build a second
 /// <see cref="FlatTestContainer"/> over the same <see cref="BaseDbPath"/> and the same
-/// <see cref="CatalogDb"/> instance to verify data survives a restart.
+/// <see cref="CatalogDb"/> instance to verify data survives a restart. A test that starts the
+/// <see cref="FlatDbManager"/> itself passes <c>loadPersistedTier: false</c>, so that the manager's
+/// constructor is the only load, as on a node start.
 /// </remarks>
 public sealed class FlatTestContainer : IDisposable
 {
     private readonly ContainerBuilder _builder;
     private readonly CancellationTokenSource _cts = new();
     private readonly TempPath? _ownedTempDir;
+    private readonly bool _loadPersistedTier;
     private IContainer? _container;
 
     public FlatDbConfig Config { get; }
@@ -59,8 +62,10 @@ public sealed class FlatTestContainer : IDisposable
         string? baseDbPath = null,
         IDb? catalogDb = null,
         Action<ContainerBuilder>? configure = null,
-        IStateHeaderProvider? finalizedStateProvider = null)
+        IStateHeaderProvider? finalizedStateProvider = null,
+        bool loadPersistedTier = true)
     {
+        _loadPersistedTier = loadPersistedTier;
         Config = config ?? new FlatDbConfig();
         // Resolving Auto needs the hardware info and records the layout on disk.
         if (Config.Layout == FlatLayout.Auto) Config.Layout = FlatLayout.Flat;
@@ -117,7 +122,7 @@ public sealed class FlatTestContainer : IDisposable
     private IContainer BuildAndLoad()
     {
         IContainer container = _builder.Build();
-        container.Resolve<PersistedSnapshotLoader>().Load();
+        if (_loadPersistedTier) container.Resolve<PersistedSnapshotLoader>().Load();
         return container;
     }
 
