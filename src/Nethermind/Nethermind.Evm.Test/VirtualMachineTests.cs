@@ -771,11 +771,18 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Modular_arithmetic_preserves_full_width_operands(
         [Values(Instruction.ADDMOD, Instruction.MULMOD)] Instruction opcode,
-        [Values(0, 1, 251, -1)] int modulusValue, [Values] bool traced)
+        [Values(0, 1, 251, -1, -2, -3)] int modulusValue, [Values] bool traced)
     {
         BigInteger a = (BigInteger.One << 256) - 1;
         BigInteger b = a - 1;
-        BigInteger modulus = modulusValue == -1 ? a - 2 : modulusValue;
+        // -2 and -3 make the modulus, whose slot receives the result, equal to an operand.
+        BigInteger modulus = modulusValue switch
+        {
+            -1 => a - 2,
+            -2 => b,
+            -3 => a,
+            _ => modulusValue
+        };
         BigInteger expected = modulus.IsZero ? BigInteger.Zero
             : (opcode == Instruction.ADDMOD ? a + b : a * b) % modulus;
         byte[] code = [(byte)Instruction.PUSH32, .. ((UInt256)modulus).ToBigEndian(),
