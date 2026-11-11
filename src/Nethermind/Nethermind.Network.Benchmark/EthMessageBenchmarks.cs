@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Eth62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -29,7 +30,7 @@ namespace Nethermind.Network.Benchmarks;
 
 /// <summary>
 /// Measures serializing eth messages into a packet the way the packet sender does, and
-/// deserializing them from a DotNetty buffer the way the eth protocol handlers do.
+/// deserializing them from a received packet the way the eth protocol handlers do.
 /// </summary>
 [MemoryDiagnoser]
 public class EthMessageBenchmarks
@@ -64,8 +65,8 @@ public class EthMessageBenchmarks
 
     private IContainer _container = null!;
     private Func<int> _serialize = null!;
-    private Func<IByteBuffer, P2PMessage> _deserialize = null!;
-    private IByteBuffer _body = null!;
+    private Func<ZeroPacket, P2PMessage> _deserialize = null!;
+    private NettyBufferPacket _body = null!;
 
     [ParamsAllValues]
     public Message Type { get; set; }
@@ -188,7 +189,6 @@ public class EthMessageBenchmarks
     [Benchmark]
     public int Deserialize()
     {
-        _body.SetReaderIndex(0);
         using P2PMessage message = _deserialize(_body);
         ReturnTransactions(message);
         return message.PacketType;
@@ -225,7 +225,7 @@ public class EthMessageBenchmarks
 
         IByteBuffer packet = service.ZeroSerialize(message);
         packet.SkipBytes(Rlp.LengthOf(message.AdaptivePacketType));
-        _body = Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray());
+        _body = new NettyBufferPacket(Unpooled.WrappedBuffer(packet.ReadAllBytesAsArray()));
         packet.Release();
     }
 

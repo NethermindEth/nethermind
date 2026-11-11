@@ -8,9 +8,9 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -57,22 +57,13 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase => GetSerializer<T>().Deserialize(bytes);
 
-    public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+    public T Deserialize<T>(ZeroPacket packet) where T : MessageBase
     {
         IMessageSerializer<T> serializer = GetSerializer<T>();
-        T message = serializer is IOwningMessageSerializer<T> owningSerializer
-            ? DeserializeOwned(owningSerializer, buffer)
-            : serializer.Deserialize(buffer.AsSpan());
-        // The serializer does not report how much it read, so the whole message counts as read.
-        buffer.SetReaderIndex(buffer.WriterIndex);
-        return message;
-    }
-
-    private static T DeserializeOwned<T>(IOwningMessageSerializer<T> serializer, IByteBuffer buffer) where T : MessageBase
-    {
-        NettyBufferMemoryOwner owner = new(buffer);
-        // The owner's memory follows the reader index, which moves once the message is read.
-        return serializer.Deserialize(owner, owner.Memory);
+        Memory<byte> content = packet.Content;
+        return serializer is IOwningMessageSerializer<T> owningSerializer
+            ? owningSerializer.Deserialize(packet.LeaseContent(), content)
+            : serializer.Deserialize(content.Span);
     }
 
     public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase

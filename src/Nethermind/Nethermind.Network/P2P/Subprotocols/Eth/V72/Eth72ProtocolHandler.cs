@@ -158,7 +158,7 @@ public class Eth72ProtocolHandler(
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth72MessageCode.NewPooledTransactionHashes:
@@ -166,7 +166,7 @@ public class Eth72ProtocolHandler(
                 {
                     if (IsTransactionGossipAllowed())
                     {
-                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -189,7 +189,7 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.PooledTransactions:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
                     }
@@ -228,7 +228,7 @@ public class Eth72ProtocolHandler(
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(CellsMessage72)}.");
                     }
@@ -260,7 +260,7 @@ public class Eth72ProtocolHandler(
                     CellsMessage72 cellsMessage;
                     try
                     {
-                        cellsMessage = Deserialize<CellsMessage72>(message.Content);
+                        cellsMessage = Deserialize<CellsMessage72>(message);
                     }
                     catch (RlpReaderException)
                     {

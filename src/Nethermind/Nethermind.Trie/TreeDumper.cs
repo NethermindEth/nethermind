@@ -21,6 +21,8 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan { get; init; } = true;
 
+        public bool IsRangeScan => IsFullDbScan;
+
         public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode) => true;
 
         public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash)

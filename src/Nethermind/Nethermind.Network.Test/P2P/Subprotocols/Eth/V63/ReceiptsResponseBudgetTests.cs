@@ -14,6 +14,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
 using ReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage;
@@ -33,7 +34,7 @@ public class ReceiptsResponseBudgetTests
     {
         using DisposableByteBuffer content = envelope.Encode(BuildBlocks(scenario.ReceiptsPerBlock)).AsDisposable();
 
-        Action check = () => ReceiptsResponseBudget.ThrowIfExceeded(content, envelope.FieldsBeforeReceipts, scenario.RequestedBlocks, scenario.MaxReceiptsPerBlock);
+        Action check = () => ReceiptsResponseBudget.ThrowIfExceeded(content.AsSpan(), envelope.FieldsBeforeReceipts, scenario.RequestedBlocks, scenario.MaxReceiptsPerBlock);
 
         Assert.That(check, scenario.Rejected
             ? Throws.TypeOf<SubprotocolException>().With.Message.Contains("exceeds the request")
@@ -62,7 +63,7 @@ public class ReceiptsResponseBudgetTests
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
 
-        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content.AsSpan(), fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpReaderException>());
     }
 
     private static ArrayPoolList<TxReceipt[]> BuildBlocks(int[] receiptsPerBlock) =>

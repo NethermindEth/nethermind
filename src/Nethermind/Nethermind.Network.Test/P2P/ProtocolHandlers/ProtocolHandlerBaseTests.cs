@@ -70,7 +70,7 @@ public class ProtocolHandlerBaseTests
         public void HandleProjectionFailure(MessageDictionary<ProjectionRequestMessage, int> requests, IByteBuffer content) =>
             HandleCorrelatedResponse<ProjectionRequestMessage, ProjectionResponseMessage, int>(
                 requests,
-                content,
+                new NettyBufferPacket(content),
                 content.ReadableBytes,
                 static (_, _) => throw new InvalidOperationException("projection failed"));
         public override void Init() { }
@@ -419,12 +419,7 @@ public class ProtocolHandlerBaseTests
     {
         IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
         ProjectionResponseMessage response = new(111);
-        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<IByteBuffer>()).Returns(callInfo =>
-        {
-            IByteBuffer content = (IByteBuffer)callInfo[0];
-            content.SkipBytes(content.ReadableBytes);
-            return response;
-        });
+        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<ZeroPacket>()).Returns(response);
         TestProtocolHandler handler = new(
             Substitute.For<ISession>(),
             TimeSpan.FromMilliseconds(50),

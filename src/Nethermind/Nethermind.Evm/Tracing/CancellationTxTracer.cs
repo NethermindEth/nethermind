@@ -47,6 +47,10 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     /// <inheritdoc/>
+    public void ReportFrameCodelessTarget() =>
+        _frameTxTracer?.ReportFrameCodelessTarget();
+
+    /// <inheritdoc/>
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 

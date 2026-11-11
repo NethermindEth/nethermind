@@ -404,8 +404,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 // Uniform across dispatched and undispatched frames, where the VM's own figures would be the
                 // execution dimension net of the pre-dispatch charges.
-                frameCallFrame.Gas = _frames[i].GasLimit;
-                frameCallFrame.GasUsed = frameReceipt.GasUsed;
+                frameCallFrame.Gas = _frames[i].ExecutionGasLimit;
+                frameCallFrame.GasUsed = frameReceipt.ExecutionGasUsed;
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {

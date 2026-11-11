@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -38,9 +37,9 @@ internal static class ReceiptsResponseBudget
     /// </param>
     /// <exception cref="SubprotocolException">The response holds more blocks or receipts than allowed.</exception>
     /// <exception cref="RlpReaderException">The response is not well-formed RLP.</exception>
-    public static void ThrowIfExceeded(IByteBuffer content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
+    public static void ThrowIfExceeded(ReadOnlySpan<byte> content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
     {
-        RlpReader ctx = new(content.AsSpan());
+        RlpReader ctx = new(content);
         if (fieldsBeforeReceipts is int fields)
         {
             ctx = ctx.EnterSequence(out _);

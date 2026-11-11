@@ -887,6 +887,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
+        if (delegation is null && codeInfo.IsEmpty && TTracing.IsActive)
+        {
+            (tracer as IFrameTxReceiptTracer)?.ReportFrameCodelessTarget();
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
 
         // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;

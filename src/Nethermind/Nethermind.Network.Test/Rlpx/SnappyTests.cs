@@ -64,17 +64,17 @@ public class SnappyTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
 
-        ZeroPacket received = null;
-        session.When(static s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
+        NettyBufferPacket received = null;
+        session.When(static s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>()))
             .Do(call =>
             {
-                received = call.Arg<ZeroPacket>();
+                received = call.Arg<NettyBufferPacket>();
                 received.Retain();
             });
 
         IByteBuffer content = Unpooled.Buffer(compressed.Length);
         content.WriteBytes(compressed);
-        ZeroPacket packet = new(content)
+        NettyBufferPacket packet = new(content)
         {
             PacketType = packetType
         };
@@ -90,7 +90,7 @@ public class SnappyTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(received.PacketType, Is.EqualTo(packetType));
-                Assert.That(received.Content.ReadAllBytesAsArray(), Is.EqualTo(expectedUncompressed));
+                Assert.That(received.Buffer.ReadAllBytesAsArray(), Is.EqualTo(expectedUncompressed));
             }
         }
         finally

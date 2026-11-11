@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -13,10 +13,10 @@ internal static class Eth66RequestId
     /// Reads the request id that leads an eth/66-style <c>[request-id, ...]</c> message without decoding the rest.
     /// </summary>
     /// <returns><see langword="false"/> when the payload does not start with a list holding a request id.</returns>
-    public static bool TryPeek(IByteBuffer content, out long requestId)
+    public static bool TryPeek(ReadOnlySpan<byte> content, out long requestId)
     {
         requestId = 0;
-        RlpReader ctx = new(content.AsSpan());
+        RlpReader ctx = new(content);
         try
         {
             RlpReader fields = ctx.EnterSequence(out _);

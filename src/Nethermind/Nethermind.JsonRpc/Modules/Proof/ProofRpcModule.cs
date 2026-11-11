@@ -55,6 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
 
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
             TransactionForRpcWithProof txWithProof = new();
             TransactionForRpcContext extraData = new(
                 chainId: specProvider.ChainId,
@@ -62,9 +63,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 blockNumber: block.Number,
                 txIndex: txIndex,
                 blockTimestamp: block.Timestamp,
-                baseFee: block.BaseFeePerGas);
+                baseFee: block.BaseFeePerGas,
+                spec: spec);
             txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
-            txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
+            txWithProof.TxProof = BuildTxProofs(txs, spec, txIndex);
             if (includeHeader)
             {
                 txWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
