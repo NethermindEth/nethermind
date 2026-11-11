@@ -22,6 +22,12 @@ public interface IFrameTxReceiptTracer
     /// <param name="error">The EVM error that ended the frame, or <c>null</c> when it succeeded.</param>
     void ReportFrameEnd(int frameIndex, EvmExceptionType? error) { }
 
+    /// <summary>Reports that the frame about to dispatch targets an account whose own code hash is empty and that
+    /// is no precompile, so it enters the VM with no code to run.</summary>
+    /// <remarks>A target delegating to an account without code is not reported: its code hash is the delegation
+    /// designator's, so the frame runs code as far as the profile is concerned.</remarks>
+    void ReportFrameCodelessTarget() { }
+
     /// <summary>Reports that the frames from <paramref name="fromFrameIndex"/> up to the failed frame at
     /// <paramref name="toFrameIndex"/> had their state and logs rolled back, by an atomic batch unroll or a failed
     /// <c>ASSERT</c> frame.</summary>
