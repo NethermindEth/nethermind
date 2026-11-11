@@ -15,20 +15,21 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.All)]
 public class ModExpPrimeInverseTests
 {
-    private static readonly string[] Primes =
+    private static readonly (string Name, string Hex)[] Primes =
     [
-        "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-        "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
-        "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
-        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
-        "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
-        "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+        ("Bn254ScalarField", "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"),
+        ("Bn254BaseField", "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"),
+        ("Secp256k1BaseField", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
+        ("Secp256k1GroupOrder", "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"),
+        ("Secp256r1BaseField", "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff"),
+        ("Secp256r1GroupOrder", "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"),
     ];
 
+    // Display names keep the method name in each case, so every case stays unique
     private static IEnumerable<TestCaseData> PrimeCases()
     {
-        foreach (string prime in Primes)
-            yield return new TestCaseData(prime) { TestName = $"Prime {prime[..8]}" };
+        foreach ((string name, string hex) in Primes)
+            yield return new TestCaseData(hex).SetArgDisplayNames(name);
     }
 
     [TestCaseSource(nameof(PrimeCases))]
