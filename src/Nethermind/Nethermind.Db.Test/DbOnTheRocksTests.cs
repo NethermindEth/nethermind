@@ -1264,14 +1264,10 @@ namespace Nethermind.Db.Test
 
             const int heights = 500;
             const int retained = 50; // the pinned bottom region; height 1 references the oldest blob file
-            byte[] value = new byte[4096];
-            Random.Shared.NextBytes(value);
-            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
+            SeedBlobValues(db, heights);
 
             long sstBefore = SstBytes(DbPath);
             long blobBefore = BlobBytes(DbPath);
-            Assert.That(blobBefore, Is.GreaterThan(0), "blob mode must actually be engaged - values of 4096 bytes belong in blob files, not SST");
 
             db.RemoveRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
             db.ReclaimRange(BlockKey((ulong)retained, 0x00), BlockKey(heights, 0x00));
@@ -1456,10 +1452,7 @@ namespace Nethermind.Db.Test
             using RocksDbInstance instance = OpenBlocksInstance(config, out IRocksDbConfig tableConfig);
             using FailingBlobGcApplyDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance);
 
-            byte[] value = new byte[4096];
-            for (ulong number = 1; number <= 100; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
-            db.Flush();
-            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must be engaged so the rewrite is not skipped");
+            SeedBlobValues(db, 100);
 
             Assert.That(db.CompactReclaimingBlobFiles, Throws.InstanceOf<RocksDbException>());
 
