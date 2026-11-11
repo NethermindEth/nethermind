@@ -402,7 +402,7 @@ public partial class EthRpcModule(
             : null;
     }
 
-    /// <returns>The result, and whether the transaction was sent under the signature the request brought.</returns>
+    /// <returns>The result, and whether the request keeps the signature it brought.</returns>
     private async Task<(ResultWrapper<Hash256> Result, bool SignatureKept)> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)

@@ -50,6 +50,23 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Signed_request_whose_signature_recovers_no_address_is_rejected(bool fromGiven)
+    {
+        using TestRpcBlockchain test = await SignedSendChain(NullWallet.Instance);
+        LegacyTransactionForRpc request = SignedRequest(SignedTransfer(test, TxType.Legacy), fromGiven ? TestItem.AddressB : null);
+        request.R = UInt256.MaxValue; // not below the curve order
+
+        string response = await test.TestEthRpc("eth_sendTransaction", request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.TransactionRejected}},"message":"failed to recover sender"},"id":67}"""));
+            Assert.That(test.TxPool.GetPendingTransactionsCount(), Is.Zero, "the request left the pool unchanged");
+        }
+    }
+
     public enum TypedV { YParity, V27Or28, YParityFieldOnly }
 
     [TestCase(TxType.Legacy, false, TypedV.YParity)]
