@@ -306,7 +306,7 @@ public class TransactionForRpcTests
     /// <remarks>
     /// A typed transaction's signature carries its y-parity offset by 27, as a decoded one does, so a <c>v</c> of 0 or 1, or a
     /// <c>yParity</c> when <c>v</c> is left out, is that y-parity. A legacy y-parity <c>v</c> is protected for its chain id
-    /// (EIP-155), and any other <c>v</c> is taken as given.
+    /// (EIP-155), and so is one of a request whose fields select no type; any other <c>v</c> is taken as given.
     /// </remarks>
     [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x0\"", 27UL)]
     [TestCase("\"accessList\":[],\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 28UL)]
@@ -316,6 +316,7 @@ public class TransactionForRpcTests
     [TestCase("\"maxFeePerGas\":\"0x2\",\"maxPriorityFeePerGas\":\"0x1\",\"v\":\"0x1c\",\"yParity\":\"0x0\"", 28UL)]
     [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1\"", 38UL)]
     [TestCase("\"gasPrice\":\"0x1\",\"v\":\"0x1c\"", 28UL)]
+    [TestCase("\"type\":\"0x0\",\"v\":\"0x1\"", 38UL)]
     public void Signature_v_is_read_as_the_transaction_type_carries_it(string fields, ulong expectedV) =>
         Assert.That(ToTransaction($$"""{"chainId":"0x1","r":"0x1","s":"0x2",{{fields}}}""").Signature?.V, Is.EqualTo(expectedV));
 

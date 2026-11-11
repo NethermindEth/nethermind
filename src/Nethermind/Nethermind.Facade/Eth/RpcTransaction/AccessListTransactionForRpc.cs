@@ -62,11 +62,12 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     /// <remarks>
     /// A typed transaction signs with a y-parity, which its signature carries offset by 27, as a decoded one does: a
     /// <c>v</c> of 0 or 1 is that y-parity, and so is a <see cref="YParity"/> of 0 or 1 when <c>v</c> is left out. Any other
-    /// <c>v</c> is taken as given.
+    /// <c>v</c> is taken as given. A request whose fields select no typed envelope, and so got this type by default, keeps
+    /// the legacy reading.
     /// </remarks>
     internal override bool TryGetSignatureV(out ulong v)
     {
-        if ((V ?? YParity) is { } yParity && yParity <= UInt256.One)
+        if (!IsTypeDefaulted && (V ?? YParity) is { } yParity && yParity <= UInt256.One)
         {
             v = Signature.VOffset + yParity.ToUInt64(null);
             return true;
