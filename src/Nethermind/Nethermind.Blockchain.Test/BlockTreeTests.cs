@@ -3383,7 +3383,7 @@ public class BlockTreeTests
     }
 
     [Test]
-    public void On_restart_loads_already_processed_genesis_block()
+    public void On_restart_loads_genesis_only_if_processed([Values] bool wasProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -3462,7 +3462,7 @@ public class BlockTreeTests
             tree.SuggestBlock(genesis);
             Assert.That(tree.Genesis, Is.Not.Null);
 
-            tree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: [genesis]);
+            tree.TryUpdateMainChain(genesis.Header, wasProcessed, preloadedBlocks: [genesis]);
 
             tree.SuggestBlock(second);
             tree.SuggestBlock(third);
@@ -3478,7 +3478,7 @@ public class BlockTreeTests
                 .WithoutSettingHead
                 .TestObject;
 
-            Assert.That(tree.Genesis, Is.Not.Null);
+            Assert.That(tree.Genesis, wasProcessed ? Is.Not.Null : Is.Null);
         }
     }
 

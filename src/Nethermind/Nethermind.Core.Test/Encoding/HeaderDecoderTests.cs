@@ -43,7 +43,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Exclude_hashes_leaves_the_hash_unset([Values] bool excludeHashes)
+    public void Exclude_hashes_controls_whether_the_hash_is_set([Values] bool excludeHashes)
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         HeaderDecoder decoder = new();
