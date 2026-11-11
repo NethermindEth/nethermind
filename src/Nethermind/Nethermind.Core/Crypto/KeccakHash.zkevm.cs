@@ -1078,9 +1078,20 @@ public sealed partial class KeccakHash
             Accelerators.KeccakXorin((ulong*)Unsafe.AsPointer(ref lane), data, length);
     }
 
+    /// <remarks>On ZisK a direct DMA call: the struct copy the JIT emits reaches the same precompile through a wrapper
+    /// and corelib's copy routine, which spill registers around it. The refs are not pinned: no GC can run before the
+    /// call returns, as it suppresses the GC transition.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CopyState(ref ulong lane, ref ulong source) =>
+    private static unsafe void CopyState(ref ulong lane, ref ulong source)
+    {
+        if (ZiskFlag.IsActive)
+        {
+            Accelerators.Memmove(Unsafe.AsPointer(ref lane), Unsafe.AsPointer(ref source), (nuint)sizeof(KeccakState));
+            return;
+        }
+
         Unsafe.As<ulong, KeccakState>(ref lane) = Unsafe.As<ulong, KeccakState>(ref source);
+    }
 
     /// <summary>Absorbs the first <paramref name="count"/> whole lanes of <paramref name="data"/>, at most sixteen.</summary>
     /// <param name="intoZeroState">Whether those state lanes are still zero, so the lanes are written rather than XORed.</param>
