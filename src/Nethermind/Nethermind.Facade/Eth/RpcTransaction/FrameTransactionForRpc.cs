@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -66,6 +67,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // The per-gas cap the base reported is derived, not signed.
         MaxFee = transaction.MaxFee;
         MaxFeePerGas = null;
+        UInt256 feePerBlobGas = UInt256.Zero;
+        if (extraData is { BaseFee: { } baseFee, Spec: { } spec }
+            && (!transaction.CarriesBlobs
+                || extraData.ExcessBlobGas is { } excessBlobGas && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas))
+            && FrameTxValidation.TryCalculateGasPrice(transaction, spec, in baseFee, in feePerBlobGas, out UInt256 gasPrice))
+        {
+            GasPrice = gasPrice;
+        }
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
 
         if (extraData.Spec is not null && FrameTxValidation.TryCalculateGasBudget(transaction, extraData.Spec, out _, out _, out ulong maxGas))
