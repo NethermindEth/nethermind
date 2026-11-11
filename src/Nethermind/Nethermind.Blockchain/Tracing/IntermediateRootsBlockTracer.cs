@@ -17,7 +17,8 @@ namespace Nethermind.Blockchain.Tracing;
 /// </summary>
 /// <remarks>
 /// Roots are produced per transaction in execution order; a failed transaction still
-/// produces its post-execution root (matching geth's partial-result semantics).
+/// produces its post-execution root (matching geth's partial-result semantics), while a transaction
+/// rejected before execution ends the replay without an entry.
 /// System-level calls (EIP-4788, EIP-2935) and withdrawals do not produce entries
 /// because <see cref="BlockTracerBase{TTrace,TTracer}"/> only dispatches on user transactions.
 /// A trie-less world state (e.g. history-backed flat state) cannot produce roots, so tracing a transaction
