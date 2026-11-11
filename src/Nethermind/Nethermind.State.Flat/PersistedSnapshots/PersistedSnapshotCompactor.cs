@@ -51,12 +51,13 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
 
-    // Batches the queue holds. With the in-memory tail it bounds what one run can leave uncompacted.
+    // Batches the queue holds.
     private const int CompactQueueCapacity = 16;
 
-    // The newest blocks CompactReloaded looks at: the in-memory tail a clean shutdown converts, plus the batches still
-    // queued here when the run stopped.
-    private readonly long _reloadCompactionDepth = config.MaxInMemoryBaseSnapshotCount + CompactQueueCapacity * (long)config.CompactSize;
+    // The newest blocks CompactReloaded looks at: the in-memory tail a clean shutdown converts, plus the batches a stop
+    // leaves uncompacted. Those are the queued ones, the one the worker has in flight, and the one a conversion converted
+    // before it blocked in EnqueueAsync on the full queue.
+    private readonly long _reloadCompactionDepth = config.MaxInMemoryBaseSnapshotCount + (CompactQueueCapacity + 2) * (long)config.CompactSize;
 
     private readonly Channel<(ArrayPoolList<StateId> Batch, ulong PersistedBlockNumber)> _compactPersistedJobs = Channel.CreateBounded<(ArrayPoolList<StateId>, ulong)>(CompactQueueCapacity);
     private readonly Channel<(StateId Boundary, ulong PersistedBlockNumber)> _boundaryCompactJobs = Channel.CreateBounded<(StateId, ulong)>(16);
@@ -173,8 +174,8 @@ public class PersistedSnapshotCompactor(
     /// Compacts the sub-<c>CompactSize</c> windows of <paramref name="batch"/>, then the <c>CompactSize</c>-wide
     /// snapshot of each boundary in it, on the calling thread.
     /// </summary>
-    /// <param name="readHot">The outputs are read at once (a start), so the sub-<c>CompactSize</c> ones keep a sized
-    /// filter and their pages.</param>
+    /// <param name="readHot">The outputs are read at once (a start), so the sub-<c>CompactSize</c> ones above the last
+    /// boundary of the batch, which the head reads through, keep a sized filter and their pages.</param>
     /// <param name="largeBoundaries">Receives the large boundaries, whose wider merge is left to the caller; <c>null</c>
     /// skips them.</param>
     /// <returns>The number of compacted snapshots written.</returns>
@@ -217,12 +218,16 @@ public class PersistedSnapshotCompactor(
         // snapshot's failure does not abort the whole Parallel.ForEach and skip the CompactSized
         // boundary production + enqueue below, which would silently stall the persisted tier.
         int compacted = 0;
+        // A read takes the CompactSized edge of every boundary, so the head reads only the windows above the last one.
+        ulong lastBoundary = 0;
+        if (readHot)
+            foreach (StateId boundary in compactSizeBoundaries) lastBoundary = Math.Max(lastBoundary, boundary.BlockNumber);
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
             Parallel.ForEach(kv.Value, new ParallelOptions { CancellationToken = cancellationToken }, state =>
             {
                 try
                 {
-                    if (TryCompactSnapshot(state, persistedBlockNumber, readHot)) Interlocked.Increment(ref compacted);
+                    if (TryCompactSnapshot(state, persistedBlockNumber, readHot && state.BlockNumber > lastBoundary)) Interlocked.Increment(ref compacted);
                 }
                 catch (Exception ex)
                 {
@@ -344,7 +349,7 @@ public class PersistedSnapshotCompactor(
     }
 
     /// <param name="readHot">Read by a sub-<c>CompactSize</c> output only: it gets a sized filter and keeps its pages,
-    /// as the snapshots of a start are read at once.</param>
+    /// as the head reads through it right after a start.</param>
     private bool CompactRange(StateId snapshotTo, ulong startingBlockNumber, int compactSize, bool isCompactSized, bool readHot)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);

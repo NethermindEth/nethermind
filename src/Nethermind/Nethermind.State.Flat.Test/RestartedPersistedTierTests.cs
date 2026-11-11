@@ -81,6 +81,14 @@ public class RestartedPersistedTierTests
                 // A filter has to reject absent keys and admit present ones: every block writes AddressA.
                 Assert.That(WorstFalsePositiveRate(stack.Persisted), Is.LessThan(0.01), "absent keys the weakest filter lets through");
                 Assert.That(stack.Persisted.Select(static s => s.Bloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA))), Is.All.True);
+                Assert.That(stack.Persisted.Where(static s => s.Tier == SnapshotTier.PersistedSmallCompacted).Select(static s => s.Bloom.Capacity),
+                    Is.All.GreaterThan(1), "the windows above the last boundary get a sized filter");
+            }
+
+            if (start == 0) // until the next start rebuilds the filters
+            {
+                Assert.That(restarted.Repository.TryLeasePersistedState(Block(16), SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? covered), Is.True);
+                using (covered) Assert.That(covered!.Bloom.Capacity, Is.EqualTo(1), "a window under a CompactSize-wide one keeps the runtime filter");
             }
         }
     }
@@ -94,6 +102,7 @@ public class RestartedPersistedTierTests
         Address destructed = TestItem.AddressB; // self-destructed in block 70, created again in block 71
         Address deleted = TestItem.AddressC;    // created in block 10, deleted in block 90
         Address untouched = TestItem.AddressD;  // written by no block of the tail
+        Address cleared = TestItem.AddressE;    // slots written in block 34, self-destructed in 40 below the large boundary 1088
 
         // RocksDB holds values the tail overwrote, deleted or cleared; none of them may show through.
         IPersistence persistence = PersistenceAt(Persisted, reader =>
@@ -125,6 +134,20 @@ public class RestartedPersistedTierTests
                 case 10:
                     content.Accounts[deleted] = new Account(1, 10);
                     break;
+                case 34:
+                    content.Accounts[cleared] = new Account(1, 34);
+                    content.Storages[(cleared, (UInt256)0)] = (UInt256)0x34;
+                    content.Storages[(cleared, (UInt256)1)] = (UInt256)0x35;
+                    break;
+                case 40:
+                    content.Accounts[cleared] = null;
+                    content.SelfDestructedStorageAddresses[cleared] = false;
+                    break;
+                case 41:
+                    content.Accounts[cleared] = new Account(0, 41);
+                    content.SelfDestructedStorageAddresses[cleared] = true;
+                    content.Storages[(cleared, (UInt256)2)] = (UInt256)0x41;
+                    break;
                 case 60:
                     content.Storages[(hot, (UInt256)2)] = null;
                     break;
@@ -143,51 +166,63 @@ public class RestartedPersistedTierTests
             }
         });
 
-        using FlatTestContainer restarted = Open(dir.Path, catalog, persistence);
-        await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
-
-        StateId head = Block(tailLength);
-        using (Assert.EnterMultipleScope())
+        for (int start = 0; start < 2; start++) // the second start rebuilds the filters of what the first compacted
         {
-            Assert.That(ReadAccount(head, hot)?.Balance, Is.EqualTo((UInt256)tailLength));
-            Assert.That(ReadSlot(head, hot, 1), Is.EqualTo((UInt256?)tailLength), "the newest write");
-            Assert.That(ReadSlot(head, hot, 2), Is.Null, "deleted in block 60");
-            Assert.That(ReadSlot(head, hot, 3), Is.EqualTo((UInt256?)0x33), "written by no block of the tail: RocksDB");
-            Assert.That(ReadAccount(head, destructed)?.Balance, Is.EqualTo((UInt256)71));
-            Assert.That(ReadSlot(head, destructed, 1), Is.Null, "cleared by the self-destruct in block 70");
-            Assert.That(ReadSlot(head, destructed, 2), Is.EqualTo((UInt256?)0xB22), "written after the self-destruct");
-            Assert.That(ReadAccount(head, deleted), Is.Null, "deleted in block 90");
-            Assert.That(ReadAccount(head, untouched)?.Balance, Is.EqualTo((UInt256)444));
+            using FlatTestContainer restarted = Open(dir.Path, catalog, persistence);
+            await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
+
+            StateId head = Block(tailLength);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadAccount(head, hot)?.Balance, Is.EqualTo((UInt256)tailLength));
+                Assert.That(ReadSlot(head, hot, 1), Is.EqualTo((UInt256?)tailLength), "the newest write");
+                Assert.That(ReadSlot(head, hot, 2), Is.Null, "deleted in block 60");
+                Assert.That(ReadSlot(head, hot, 3), Is.EqualTo((UInt256?)0x33), "written by no block of the tail: RocksDB");
+                Assert.That(ReadAccount(head, destructed)?.Balance, Is.EqualTo((UInt256)71));
+                Assert.That(ReadSlot(head, destructed, 1), Is.Null, "cleared by the self-destruct in block 70");
+                Assert.That(ReadSlot(head, destructed, 2), Is.EqualTo((UInt256?)0xB22), "written after the self-destruct");
+                Assert.That(ReadAccount(head, deleted), Is.Null, "deleted in block 90");
+                Assert.That(ReadAccount(head, untouched)?.Balance, Is.EqualTo((UInt256)444));
+            }
+
+            // States below the head stay readable: a reorg within MinReorgDepth starts from one of them.
+            StateId beforeDeletions = Block(50);
+            StateId atSelfDestruct = Block(70);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadSlot(beforeDeletions, hot, 1), Is.EqualTo((UInt256?)50));
+                Assert.That(ReadSlot(beforeDeletions, hot, 2), Is.EqualTo((UInt256?)0x22));
+                Assert.That(ReadSlot(beforeDeletions, destructed, 1), Is.EqualTo((UInt256?)0xB1));
+                Assert.That(ReadAccount(beforeDeletions, deleted)?.Balance, Is.EqualTo((UInt256)10));
+                Assert.That(ReadAccount(atSelfDestruct, destructed), Is.Null);
+                Assert.That(ReadSlot(atSelfDestruct, destructed, 2), Is.Null, "cleared in this very block");
+                Assert.That(ReadSlot(atSelfDestruct, hot, 2), Is.Null);
+                Assert.That(ReadSlot(Block(71), hot, 1), Is.EqualTo((UInt256?)71), "through the base of block 71");
+            }
+
+            // Every retained state: a merge over block 40 drops the slots written before the self-destruct, so its filter
+            // must not stand in for the snapshots below it, neither at this start nor when the next one rebuilds the filters.
+            string[] wrong = [.. Enumerable.Range(1, tailLength).SelectMany(i => Enumerable.Range(0, 3)
+                .Where(slot => ReadSlot(Block(i), cleared, slot) != ClearedSlot(i, slot)).Select(slot => $"block {i} slot {slot}"))];
+            Assert.That(wrong, Is.Empty, "reads of the slots of the contract self-destructed in block 40");
+
+            Account? ReadAccount(StateId at, Address address)
+            {
+                using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(at);
+                return bundle.GetAccount(address);
+            }
+
+            // As FlatStateReader reads a slot.
+            UInt256? ReadSlot(StateId at, Address address, int index)
+            {
+                using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(at);
+                bundle.GetSlot(address, (UInt256)index, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
+                return value;
+            }
         }
 
-        // States below the head stay readable: a reorg within MinReorgDepth starts from one of them.
-        StateId beforeDeletions = Block(50);
-        StateId atSelfDestruct = Block(70);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ReadSlot(beforeDeletions, hot, 1), Is.EqualTo((UInt256?)50));
-            Assert.That(ReadSlot(beforeDeletions, hot, 2), Is.EqualTo((UInt256?)0x22));
-            Assert.That(ReadSlot(beforeDeletions, destructed, 1), Is.EqualTo((UInt256?)0xB1));
-            Assert.That(ReadAccount(beforeDeletions, deleted)?.Balance, Is.EqualTo((UInt256)10));
-            Assert.That(ReadAccount(atSelfDestruct, destructed), Is.Null);
-            Assert.That(ReadSlot(atSelfDestruct, destructed, 2), Is.Null, "cleared in this very block");
-            Assert.That(ReadSlot(atSelfDestruct, hot, 2), Is.Null);
-            Assert.That(ReadSlot(Block(71), hot, 1), Is.EqualTo((UInt256?)71), "through the base of block 71 and its own filter");
-        }
-
-        Account? ReadAccount(StateId at, Address address)
-        {
-            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(at);
-            return bundle.GetAccount(address);
-        }
-
-        // As FlatStateReader reads a slot.
-        UInt256? ReadSlot(StateId at, Address address, int index)
-        {
-            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(at);
-            bundle.GetSlot(address, (UInt256)index, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
-            return value;
-        }
+        static UInt256? ClearedSlot(int i, int slot) =>
+            i is >= 34 and < 40 && slot < 2 ? (UInt256)(0x34 + slot) : i >= 41 && slot == 2 ? (UInt256)0x41 : null;
     }
 
     // 33: the next start finds RocksDB in the middle of a chunk.
@@ -239,22 +274,33 @@ public class RestartedPersistedTierTests
     }
 
     [Test]
-    public void A_start_compacts_no_more_than_one_run_can_leave_uncompacted()
+    public void A_start_compacts_what_one_run_can_leave_uncompacted_and_no_more()
     {
-        // MaxInMemoryBaseSnapshotCount + 16 queued batches of CompactSize = 4 + 16 * 4 blocks below the newest.
-        using FlatTestContainer tier = new(new FlatDbConfig { CompactSize = 4, MaxInMemoryBaseSnapshotCount = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
-        ConvertBases(tier, 100);
+        // MaxInMemoryBaseSnapshotCount + (16 queued + 2) batches of CompactSize = 4 + 18 * 4 blocks below the newest.
+        const ulong Bound = 100 - 76;
+        using FlatTestContainer tier = SmallTier();
+        ConvertBases(tier, 1, 100);
 
         Assert.That(tier.Compactor.CompactReloaded(0, CancellationToken.None), Is.Positive);
         ulong[] compactedTo = [.. tier.Repository.PersistedSnapshots.Where(static s => s.Tier != SnapshotTier.PersistedBase).Select(static s => s.To.BlockNumber)];
-        Assert.That(compactedTo, Is.Not.Empty.And.All.GreaterThan(100UL - 68));
+        Assert.That(compactedTo, Is.Not.Empty.And.All.GreaterThan(Bound), "nothing ends at or below the bound");
+        Assert.That(compactedTo.Min(), Is.LessThanOrEqualTo(Bound + 4), "the lowest window ends within one CompactSize above it");
+    }
+
+    [Test]
+    public void A_start_compacts_above_a_database_that_holds_no_state()
+    {
+        // RocksDB at PreGenesis, whose ulong.MaxValue must sort below genesis.
+        using FlatTestContainer tier = SmallTier();
+        ConvertBases(tier, 0, 20);
+        Assert.That(tier.Compactor.CompactReloaded(StateId.PreGenesis.BlockNumber, CancellationToken.None), Is.Positive);
     }
 
     [Test]
     public async Task Runtime_compaction_keeps_the_one_line_filter_of_small_windows()
     {
-        using FlatTestContainer tier = new(new FlatDbConfig { CompactSize = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
-        ConvertBases(tier, 2);
+        using FlatTestContainer tier = SmallTier();
+        ConvertBases(tier, 1, 2);
         await tier.Compactor.EnqueueAsync(new ArrayPoolList<StateId>(2) { State(1), State(2) }, 0, CancellationToken.None);
         await tier.Compactor.DisposeAsync(); // drains the queue
 
@@ -291,11 +337,14 @@ public class RestartedPersistedTierTests
         }
     }
 
-    private static void ConvertBases(FlatTestContainer tier, int count)
+    private static FlatTestContainer SmallTier() =>
+        new(new FlatDbConfig { CompactSize = 4, MaxInMemoryBaseSnapshotCount = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
+
+    private static void ConvertBases(FlatTestContainer tier, ulong first, ulong last)
     {
-        for (ulong i = 1; i <= (ulong)count; i++)
+        for (ulong i = first; i <= last; i++)
         {
-            using Snapshot snapshot = tier.ResourcePool.CreateSnapshot(State(i - 1), State(i), ResourcePool.Usage.MainBlockProcessing);
+            using Snapshot snapshot = tier.ResourcePool.CreateSnapshot(i == 0 ? StateId.PreGenesis : State(i - 1), State(i), ResourcePool.Usage.MainBlockProcessing);
             snapshot.Content.Accounts[TestItem.AddressA] = new Account(i, i);
             tier.ConvertToPersistedBase(snapshot).Dispose();
         }

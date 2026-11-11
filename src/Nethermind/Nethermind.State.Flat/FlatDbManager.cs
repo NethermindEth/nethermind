@@ -79,9 +79,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
-        CompactReloadedSnapshots(processExitSource.Token);
 
         config.ValidateCompactSize();
+        // Also before any worker starts, so the first reads see the compacted tier.
+        CompactReloadedSnapshots(processExitSource.Token);
         _compactSize = (int)config.CompactSize;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
