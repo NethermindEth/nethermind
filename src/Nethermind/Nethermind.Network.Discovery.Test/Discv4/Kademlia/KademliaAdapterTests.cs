@@ -1009,6 +1009,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 n.Address.Equals(new IPEndPoint(_receiver.Address.Address, expectedTcpPort))));
         }
 
+        [TestCase("192.168.1.2", "2001:db8::2")]
+        [TestCase("2001:db8::2", "192.168.1.2")]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_in_the_other_address_family_keeps_the_bonded_endpoint(
+            string bondedAddress,
+            string enrAddress,
+            CancellationToken token)
+        {
+            if (!Socket.OSSupportsIPv6)
+            {
+                Assert.Ignore("IPv6 is not supported on this host.");
+            }
+
+            await _adapter.DisposeAsync();
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            _receiver = new Node(TestItem.PublicKeyB, bondedAddress, 30303, 30302);
+            // The record lists only the other address family, with the bonded UDP port.
+            IPAddress enrIp = IPAddress.Parse(enrAddress);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: enrIp,
+                configureExtras: record => record.SetEntry(enrIp.AddressFamily == AddressFamily.InterNetworkV6
+                    ? new Udp6Entry(30302)
+                    : new UdpEntry(30302)),
+                responseEndpoint: _receiver.DiscoveryAddress);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(_receiver.Address)));
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task Timed_out_response_handler_should_not_consume_later_unsolicited_message(CancellationToken token)
