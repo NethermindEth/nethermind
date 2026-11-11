@@ -29,7 +29,14 @@ public static class PersistedSnapshotMerger
     /// own the source lifecycle: open one reader source per input up front, pass them here, dispose
     /// after the merge returns.
     /// </summary>
-    internal static void NWayMergeSnapshots<TWriter, TView, TReader, TPin>(
+    /// <returns>
+    /// <c>hasStorageClears</c>: whether the merged table carries a "destructed" self-destruct record (a
+    /// storage clear), or a source's self-destruct flag could not be read. Only under such a record does
+    /// a merge drop slots, and the record survives every later merge, so <c>false</c> proves that no
+    /// merge at any level inside the range dropped one: <paramref name="bloom"/> then covers every
+    /// persisted snapshot contained in the range. With <c>true</c> it covers this snapshot only.
+    /// </returns>
+    internal static bool NWayMergeSnapshots<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref TWriter writer, BloomFilter bloom)
         where TWriter : IByteBufferWriter
         where TView : IByteReaderSource<TReader, TPin>
@@ -43,9 +50,10 @@ public static class PersistedSnapshotMerger
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
-            MergeEntries<TWriter, TView, TReader, TPin>(views, ref table, bloom);
+            bool hasStorageClears = MergeEntries<TWriter, TView, TReader, TPin>(views, ref table, bloom);
             MergeMetadata<TWriter, TView, TReader, TPin>(views, ref table);
             table.Build();
+            return hasStorageClears;
         }
         finally
         {
@@ -59,7 +67,9 @@ public static class PersistedSnapshotMerger
     /// order), so the self-destruct resolves the truncation barrier before the slots it filters — each
     /// slot is then emitted or dropped on the fly, with no per-address buffering.
     /// </summary>
-    private static void MergeEntries<TWriter, TView, TReader, TPin>(
+    /// <returns>Whether any per-address group carries a "destructed" record or an unreadable flag, across
+    /// the whole merge (see <see cref="NWayMergeSnapshots{TWriter, TView, TReader, TPin}"/>).</returns>
+    private static bool MergeEntries<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref SortedTableBuilder<TWriter> table, BloomFilter bloom)
         where TWriter : IByteBufferWriter
         where TView : IByteReaderSource<TReader, TPin>
@@ -88,6 +98,9 @@ public static class PersistedSnapshotMerger
             Address? curAddr = null;
             ulong addrBloomKey = 0;
             int barrier = -1;
+            // Sticky across the whole merge, never reset per group: one storage clear anywhere in the
+            // range is enough to keep the merged bloom off the snapshots the range contains.
+            bool hasStorageClears = false;
 
             Span<byte> minKey = stackalloc byte[PersistedSnapshotKey.MaxKeyLength];
             // n is the number of merged inputs (small in practice); cap the stackalloc and fall back to
@@ -149,7 +162,8 @@ public static class PersistedSnapshotMerger
                     {
                         // Self-destruct sorts before this address's slots: resolve the truncation barrier
                         // here so the slots that follow can be filtered and streamed without buffering.
-                        barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount]);
+                        barrier = ComputeSelfDestructBarrier<TView, TReader, TPin>(views, enums, matching[..matchCount], ref hasStorageClears);
+                        hasStorageClears |= barrier >= 0;
                         EmitSelfDestruct(ref table, key, barrier);
                     }
                     else if (sub == PersistedSnapshotKey.SlotSub)
@@ -176,6 +190,7 @@ public static class PersistedSnapshotMerger
                 }
             }
 
+            return hasStorageClears;
         }
         finally
         {
@@ -201,9 +216,11 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>The truncation barrier for a self-destruct key — the newest source index that
-    /// destructed, or -1 if none in the merged range did.</summary>
+    /// destructed, or -1 if none in the merged range did. Sets <paramref name="hasStorageClears"/> when a
+    /// source's flag cannot be read, since that source may have destructed.</summary>
     private static int ComputeSelfDestructBarrier<TView, TReader, TPin>(
-        ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums, scoped ReadOnlySpan<int> matching)
+        ReadOnlySpan<TView> views, SortedTableEnumerator<TReader, TPin>[] enums, scoped ReadOnlySpan<int> matching,
+        ref bool hasStorageClears)
         where TView : IByteReaderSource<TReader, TPin>
         where TReader : IByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
@@ -215,8 +232,13 @@ public static class PersistedSnapshotMerger
             byte flag = 0;
             TReader r = views[i].CreateReader();
             // Skip unreadable entries — do not let a failed read fall through as flag == 0, which is
-            // the destructed marker and would set a spurious truncation barrier.
-            if (!r.TryRead(enums[i].CurrentValue.Offset, new Span<byte>(ref flag))) continue;
+            // the destructed marker and would set a spurious truncation barrier. The merged bloom must not
+            // be shared over it, though: the unread source may have destructed and a lower merge dropped slots.
+            if (!r.TryRead(enums[i].CurrentValue.Offset, new Span<byte>(ref flag)))
+            {
+                hasStorageClears = true;
+                continue;
+            }
             if (flag == PersistedSnapshotTags.SelfDestructDestructedMarkerByte) barrier = i; // newest destructed
         }
         return barrier;

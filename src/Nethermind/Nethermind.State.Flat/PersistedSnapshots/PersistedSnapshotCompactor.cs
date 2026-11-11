@@ -411,10 +411,11 @@ public class PersistedSnapshotCompactor(
 
             SnapshotLocation location;
             ArenaReservation reservation;
+            bool hasStorageClears;
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, small: tier == SnapshotTier.PersistedSmallCompacted))
             {
                 long sw = Stopwatch.GetTimestamp();
-                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                hasStorageClears = PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSession, WholeReadSessionReader, NoOpPin>(
                     sessionsList.AsSpan(), ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;
@@ -478,11 +479,13 @@ public class PersistedSnapshotCompactor(
                 else
                 {
                     WarmAddressColumnIndex(compacted);
-                    // A >CompactSize merge spans (from, to] on the canonical chain, so its bloom is a
-                    // superset pre-filter for every persisted snapshot fully contained there. Adopt it
-                    // across all of them — each then shares one bloom and frees its own (multi-MiB)
-                    // filter, while still pre-filtering (unlike the AlwaysTrue demote sentinel).
-                    if (_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
+                    // At a large boundary (the large merge, and the CompactSized one made there) the merged
+                    // bloom is adopted by every persisted snapshot fully contained in (from, to], each then
+                    // freeing its own (multi-MiB) filter while still pre-filtering (unlike the AlwaysTrue
+                    // demote sentinel). It covers them only when the range holds no storage clear: a merge
+                    // drops the slots written before a "destructed" self-destruct, so its bloom has no key
+                    // for slots the contained snapshots still hold. With a clear the bloom stays its own.
+                    if (_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber) && !hasStorageClears)
                         snapshotRepository.ShareBloomAcrossRange(from, to, compacted.BloomRef, blobs);
                 }
             }

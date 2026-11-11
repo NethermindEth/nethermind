@@ -14,6 +14,11 @@ Option<bool> noZiskOption = new("--no-zisk")
     Description = "Don't wrap the serialized data in Zisk input frame.",
     DefaultValueFactory = r => false
 };
+Option<bool> trustedOption = new("--trusted")
+{
+    Description = "Write trusted inputs (.nti), which the guests built with GuestInput=Trusted take, instead of stateless inputs (.ssz).",
+    DefaultValueFactory = r => false
+};
 Option<string> outputOption = new("--output", "-o")
 {
     Description = "The directory in which to place the generated files.",
@@ -23,7 +28,8 @@ Option<string> outputOption = new("--output", "-o")
 
 Command rpcCommand = CreateRpcCommand();
 Command fixtureCommand = CreateFixtureCommand();
-RootCommand rootCommand = [rpcCommand, fixtureCommand];
+Command convertCommand = CreateConvertCommand();
+RootCommand rootCommand = [rpcCommand, fixtureCommand, convertCommand];
 
 return await rootCommand.Parse(args).InvokeAsync();
 
@@ -86,6 +92,7 @@ Command CreateRpcCommand()
     command.Options.Add(blockOption);
     command.Options.Add(beaconUrlOption);
     command.Options.Add(noZiskOption);
+    command.Options.Add(trustedOption);
     command.Options.Add(outputOption);
 
     command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputGenerator.Generate(
@@ -94,6 +101,7 @@ Command CreateRpcCommand()
         parseResult.GetValue(beaconUrlOption) is { } beaconUrl ? new Uri(beaconUrl.TrimEnd('/') + '/', UriKind.Absolute) : null,
         parseResult.GetValue(outputOption)!,
         !parseResult.GetValue(noZiskOption),
+        parseResult.GetValue(trustedOption),
         cancellationToken
     )));
 
@@ -112,9 +120,38 @@ Command CreateFixtureCommand()
     Command command = new("fixture");
     command.Options.Add(sourceOption);
     command.Options.Add(noZiskOption);
+    command.Options.Add(trustedOption);
     command.Options.Add(outputOption);
 
     command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputExtractor.ExtractFromFixtures(
+        parseResult.GetValue(sourceOption)!,
+        parseResult.GetValue(outputOption)!,
+        !parseResult.GetValue(noZiskOption),
+        parseResult.GetValue(trustedOption),
+        cancellationToken
+    )));
+
+    return command;
+}
+
+Command CreateConvertCommand()
+{
+    Option<string> sourceOption = new("--source", "-s")
+    {
+        Description = "The stateless input (.ssz) or the directory of them to convert to trusted inputs (.nti).",
+        HelpName = "path",
+        DefaultValueFactory = r => Environment.CurrentDirectory
+    };
+
+    Command command = new("convert")
+    {
+        Description = "Converts stateless inputs to trusted inputs, printing for each the result a trusted guest reports and its keccak."
+    };
+    command.Options.Add(sourceOption);
+    command.Options.Add(noZiskOption);
+    command.Options.Add(outputOption);
+
+    command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputConverter.Convert(
         parseResult.GetValue(sourceOption)!,
         parseResult.GetValue(outputOption)!,
         !parseResult.GetValue(noZiskOption),

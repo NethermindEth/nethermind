@@ -221,8 +221,46 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
             KeccakHash.IsResumable(rlp.Length)
-                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
+                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag, TakeUnchangedLength(rlp)))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
+
+        /// <summary>The full branch <see cref="TrieNodeDecoder.TryPatchFullBranch"/> patched last, and how many of its
+        /// leading bytes the patch left unchanged.</summary>
+        /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
+        /// class-initialization check.</remarks>
+        private static class PatchedBranch
+        {
+            public static unsafe byte* Rlp;
+            public static int Unchanged;
+        }
+
+        /// <summary>Records that <paramref name="rlp"/> holds a patched full branch whose first <paramref name="unchanged"/>
+        /// bytes are those of the encoding it was patched from, or with a negative <paramref name="unchanged"/>, forgets the
+        /// branch recorded.</summary>
+        /// <remarks>A patch forgets the branch before it writes and records its own only if it succeeds, so a recorded
+        /// buffer always holds what the patch that recorded it wrote. Only on Airbender, where a patch writes into scratch
+        /// of its own (see <see cref="RentPatchedBranchRlp"/>); elsewhere other encoders can write the same buffer.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void NoteFullBranchPatched(Span<byte> rlp, int unchanged)
+        {
+            if (!AirbenderFlag.IsActive) return;
+
+            PatchedBranch.Rlp = unchanged < 0 ? null : (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp));
+            PatchedBranch.Unchanged = unchanged;
+        }
+
+        /// <summary>How many leading bytes of <paramref name="rlp"/> are known to equal those of the encoding it was
+        /// re-encoded from, or -1 if none are; see <see cref="NoteFullBranchPatched"/>.</summary>
+        /// <remarks>Spares <see cref="KeccakHash.ComputeHash256OfEdited"/> comparing the leading rate blocks. The record
+        /// is taken: a branch is hashed once per encoding.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe int TakeUnchangedLength(ReadOnlySpan<byte> rlp)
+        {
+            if (!AirbenderFlag.IsActive || PatchedBranch.Rlp != Unsafe.AsPointer(ref MemoryMarshal.GetReference(rlp))) return -1;
+
+            PatchedBranch.Rlp = null;
+            return PatchedBranch.Unchanged;
+        }
 
         /// <summary>Loads, if it has none, and decodes the RLP of this node of unknown type.</summary>
         /// <remarks>
@@ -269,7 +307,7 @@ namespace Nethermind.Trie
         /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
         /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
         /// </remarks>
-        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive;
 
         /// <summary>Whether a walk over a branch's children skips the slots <see cref="_takenChildren"/> has no bit for.</summary>
         /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, as the bits are only kept there.</remarks>
@@ -287,6 +325,45 @@ namespace Nethermind.Trie
             /// <remarks>A branch's children are all deeper, so one is hashed before any other branch at its depth is encoded.
             /// Sixty-four depths: a branch has a child one nibble deeper, and a path is at most sixty-four nibbles.</remarks>
             public static byte[]?[]? ByDepth;
+
+            /// <summary>Per depth and per offset modulo 32 of the encoding it is patched from, the scratch a full branch at
+            /// that depth is patched into; see <see cref="RentPatchedBranchRlp"/>.</summary>
+            public static byte[]?[]? ByDepthAndPhase;
+        }
+
+        /// <summary>Rents the buffer a full branch re-encoded from <paramref name="previousRlp"/> is patched into.</summary>
+        /// <remarks>On Airbender a copy runs on delegated 32-byte moves only between addresses equal modulo 32, so there each
+        /// depth keeps a scratch for each 8-byte offset modulo 32 that the previous encoding can start at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe CappedArray<byte> RentPatchedBranchRlp(ICappedArrayPool? pool, ReadOnlySpan<byte> previousRlp, in TreePath path)
+        {
+            if (!AirbenderFlag.IsActive) return RentBranchRlp(pool, FullBranchRlpLength, path);
+
+            int phase = PhaseOf(ref MemoryMarshal.GetReference(previousRlp));
+            byte[]?[] byDepthAndPhase = BranchRlpScratch.ByDepthAndPhase ??= new byte[2 * Hash256.Size * Phases][];
+            int index = path.Length * Phases + phase;
+            byte[]? scratch = byDepthAndPhase[index];
+            if (scratch is null) byDepthAndPhase[index] = scratch = AllocateAtPhase(phase);
+            return new CappedArray<byte>(scratch, FullBranchRlpLength);
+        }
+
+        private const int Phases = 32 / sizeof(ulong);
+
+        private static unsafe int PhaseOf(ref byte data) => (int)((nuint)Unsafe.AsPointer(ref data) & 31) / sizeof(ulong);
+
+        /// <summary>Allocates a full branch's buffer whose data starts at <paramref name="phase"/> 8-byte offsets past a 32-byte boundary, if it can.</summary>
+        /// <remarks>Arrays are allocated one after another, and a filler array between two tries moves the next by 24 bytes,
+        /// so four tries reach every offset. Any other allocator only costs the copy its delegated moves.</remarks>
+        private static byte[] AllocateAtPhase(int phase)
+        {
+            byte[] candidate = new byte[FullBranchRlpLength];
+            for (int i = 0; i < Phases && PhaseOf(ref MemoryMarshal.GetArrayDataReference(candidate)) != phase; i++)
+            {
+                GC.KeepAlive(new byte[9]);
+                candidate = new byte[FullBranchRlpLength];
+            }
+
+            return candidate;
         }
 
         /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: where
