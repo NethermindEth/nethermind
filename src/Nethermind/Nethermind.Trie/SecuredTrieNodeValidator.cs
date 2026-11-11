@@ -46,16 +46,15 @@ internal static class SecuredTrieNodeValidator
     /// </para>
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static int Validate(ReadOnlySpan<byte> rlp, int depth, bool isHashed)
+    public static nint Validate(ReadOnlySpan<byte> rlp, int depth, bool isHashed)
     {
-        int remaining = KeyNibbles - depth;
-        int length = rlp.Length;
+        nint remaining = KeyNibbles - depth;
         ref byte node = ref MemoryMarshal.GetReference(rlp);
-        if (length == FullBranchLength)
+        if (rlp.Length == FullBranchLength)
         {
             // Unrolled: a loop costs the guest more than twice the three instructions per prefix. The list header and the first
             // child's prefix are read as one word: an array's data is word aligned.
-            uint mismatch = (Unsafe.ReadUnaligned<uint>(ref node) ^ FullBranchStart) | (uint)(Unsafe.Add(ref node, FullBranchLength - 1) ^ EmptyString)
+            nuint mismatch = (Unsafe.ReadUnaligned<uint>(ref node) ^ FullBranchStart) | (nuint)(Unsafe.Add(ref node, FullBranchLength - 1) ^ EmptyString)
                 | NotHash(ref node, 1) | NotHash(ref node, 2) | NotHash(ref node, 3)
                 | NotHash(ref node, 4) | NotHash(ref node, 5) | NotHash(ref node, 6) | NotHash(ref node, 7)
                 | NotHash(ref node, 8) | NotHash(ref node, 9) | NotHash(ref node, 10) | NotHash(ref node, 11)
@@ -68,12 +67,13 @@ internal static class SecuredTrieNodeValidator
             }
         }
 
+        nint length = rlp.Length;
         // Only the root is referenced by hash whatever its length: a shorter descendant is embedded in its parent. A node
         // encodes in under 64 KiB, so its list header is at most three bytes, and a long one must need its length bytes.
         if (length < (isHashed && depth > 0 ? Hash256.Size : 1)) ThrowInvalidNode();
-        int header = node;
-        int itemsStart = header <= 0xf7 ? 1 : header - 0xf6;
-        int listEnd = header switch
+        nint header = node;
+        nint itemsStart = header <= 0xf7 ? 1 : header - 0xf6;
+        nint listEnd = header switch
         {
             < 0xc0 => -1,
             <= 0xf7 => 1 + header - 0xc0,
@@ -86,8 +86,8 @@ internal static class SecuredTrieNodeValidator
         // Most of the other nodes are branches of hashed children, so those are told first, with no call that would make
         // every node save registers for it; a leaf or an extension fails within its first three items. Unrolled: the loop's
         // counter costs the guest a quarter of each slot.
-        int position = itemsStart;
-        int children = 0;
+        nint position = itemsStart;
+        nint children = 0;
         if (SkipHashOrEmpty(ref node, ref position, length, ref children) && SkipHashOrEmpty(ref node, ref position, length, ref children)
             && SkipHashOrEmpty(ref node, ref position, length, ref children) && SkipHashOrEmpty(ref node, ref position, length, ref children)
             && SkipHashOrEmpty(ref node, ref position, length, ref children) && SkipHashOrEmpty(ref node, ref position, length, ref children)
@@ -110,21 +110,21 @@ internal static class SecuredTrieNodeValidator
     /// a leaf, an extension, or a branch with an embedded child.</summary>
     /// <param name="mismatch">Where the node first failed to read as a branch of hashed children.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ValidateOtherNode(ref byte node, int itemsStart, int mismatch, int length, int remaining)
+    private static nint ValidateOtherNode(ref byte node, nint itemsStart, nint mismatch, nint length, nint remaining)
     {
-        int position = itemsStart;
-        int children = 0;
-        int slot = 0;
+        nint position = itemsStart;
+        nint children = 0;
+        nint slot = 0;
         // A branch only if an embedded child, a short list, stopped it there.
-        bool mayBeBranch = mismatch < length && (uint)(Unsafe.Add(ref node, mismatch) - 0xc1) < Hash256.Size - 2;
+        bool mayBeBranch = mismatch < length && (nuint)(Unsafe.Add(ref node, mismatch) - (nint)0xc1) < Hash256.Size - 2;
         while (mayBeBranch && slot < BranchChildren && position < length)
         {
             if (!SkipHashOrEmpty(ref node, ref position, length, ref children))
             {
                 // An embedded node, whose list encoding is shorter than a hash and decodes in full, as the spec decodes the
                 // whole parent.
-                int prefix = Unsafe.Add(ref node, position);
-                position = (uint)(prefix - 0xc1) < Hash256.Size - 2 ? ItemEnd(ref node, position, length) : -1;
+                nint prefix = Unsafe.Add(ref node, position);
+                position = (nuint)(prefix - 0xc1) < Hash256.Size - 2 ? ItemEnd(ref node, position, length) : -1;
                 if (position < 0) break;
                 children++;
             }
@@ -141,10 +141,10 @@ internal static class SecuredTrieNodeValidator
         // Each item's prefix is checked before the item is measured, as measuring a list recurses into its items: the path
         // must be a short string, a path of 56 bytes or more being far longer than a key, and the other item a string or a
         // node embedded because it is shorter than a hash.
-        int pathPrefix = Unsafe.Add(ref node, itemsStart);
+        nint pathPrefix = Unsafe.Add(ref node, itemsStart);
         if (pathPrefix == EmptyString || pathPrefix > 0xb7) ThrowInvalidNode();
 
-        int secondItem = ItemEnd(ref node, itemsStart, length);
+        nint secondItem = ItemEnd(ref node, itemsStart, length);
         if (secondItem < 0 || secondItem >= length || Unsafe.Add(ref node, secondItem) >= 0xc0 + Hash256.Size - 1
             || ItemEnd(ref node, secondItem, length) != length)
         {
@@ -159,11 +159,11 @@ internal static class SecuredTrieNodeValidator
     /// empty or a hash.</summary>
     /// <returns>Whether it is; <paramref name="position"/> is then past it, though maybe past the node.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool SkipHashOrEmpty(ref byte node, ref int position, int length, ref int children)
+    private static bool SkipHashOrEmpty(ref byte node, ref nint position, nint length, ref nint children)
     {
         if (position >= length) return false;
 
-        int prefix = Unsafe.Add(ref node, position);
+        nint prefix = Unsafe.Add(ref node, position);
         if (prefix == EmptyString)
         {
             position++;
@@ -179,23 +179,23 @@ internal static class SecuredTrieNodeValidator
 
     /// <summary>Nonzero unless child <paramref name="index"/> of a full branch is a hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint NotHash(ref byte fullBranch, int index) => (uint)(Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString);
+    private static nuint NotHash(ref byte fullBranch, int index) => (nuint)(Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString);
 
     /// <summary>Checks a node of two items, the first of which ends at <paramref name="secondItem"/>.</summary>
     /// <param name="path">The path item, a non-empty short string.</param>
-    private static void ValidateLeafOrExtension(ref byte node, int path, int secondItem, int length, int remaining)
+    private static void ValidateLeafOrExtension(ref byte node, nint path, nint secondItem, nint length, nint remaining)
     {
-        int prefix = Unsafe.Add(ref node, path);
-        int pathBytes = secondItem - path - (prefix < 0x80 ? 0 : 1);
-        // Hex-prefix encoding: the first nibble flags a leaf (0x2) and an odd nibble count (0x1), whose first nibble then
+        nint prefix = Unsafe.Add(ref node, path);
+        nint pathBytes = secondItem - path - (prefix < 0x80 ? 0 : 1);
+        // Hex-prefix encoding: the first nibble flags a leaf (0x20) and an odd nibble count (0x10), whose first nibble then
         // shares the byte.
-        int flags = Unsafe.Add(ref node, secondItem - pathBytes) >> 4;
-        int nibbles = 2 * pathBytes - ((flags & 1) != 0 ? 1 : 2);
-        int child = Unsafe.Add(ref node, secondItem);
-        bool isValid = (flags & 2) != 0
+        nint flags = Unsafe.Add(ref node, secondItem - pathBytes);
+        nint nibbles = 2 * pathBytes - 2 + ((flags >> 4) & 1);
+        nint child = Unsafe.Add(ref node, secondItem);
+        bool isValid = (flags & 0x20) != 0
             ? nibbles == remaining && child < 0xc0
             // A child reference that is a hash, or an embedded node shorter than one.
-            : nibbles > 0 && nibbles < remaining && (child == HashString || (uint)(child - 0xc1) < Hash256.Size - 2);
+            : nibbles > 0 && nibbles < remaining && (child == HashString || (nuint)(child - 0xc1) < Hash256.Size - 2);
         if (!isValid) ThrowInvalidNode();
     }
 
@@ -207,15 +207,16 @@ internal static class SecuredTrieNodeValidator
     /// is shorter than a hash, an embedded node, which bounds the recursion through <see cref="AreItems"/>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ItemEnd(ref byte node, int position, int end)
+    private static nint ItemEnd(ref byte node, nint position, nint end)
     {
-        int prefix = Unsafe.Add(ref node, position);
+        nint prefix = Unsafe.Add(ref node, position);
         if (prefix < 0x80) return position + 1;
 
         bool isList = prefix >= 0xc0;
-        int shortLength = prefix - (isList ? 0xc0 : 0x80);
-        int contentStart = position + 1;
-        int contentEnd;
+        // A string's prefix is 0x80 and a list's 0xc0 plus the short length.
+        nint shortLength = prefix & 0x3f;
+        nint contentStart = position + 1;
+        nint contentEnd;
         if (shortLength < ShortLengthLimit)
         {
             contentEnd = contentStart + shortLength;
@@ -223,11 +224,12 @@ internal static class SecuredTrieNodeValidator
         }
         else
         {
-            int lengthOfLength = shortLength - (ShortLengthLimit - 1);
-            if (lengthOfLength > 2 || contentStart + lengthOfLength > end || Unsafe.Add(ref node, contentStart) == 0) return -1;
+            nint lengthOfLength = shortLength - (ShortLengthLimit - 1);
+            if (lengthOfLength > 2 || contentStart + lengthOfLength > end) return -1;
 
-            int length = 0;
-            for (int i = 0; i < lengthOfLength; i++) length = length << 8 | Unsafe.Add(ref node, contentStart + i);
+            nint length = Unsafe.Add(ref node, contentStart);
+            if (length == 0) return -1;
+            if (lengthOfLength == 2) length = length << 8 | Unsafe.Add(ref node, contentStart + 1);
             contentStart += lengthOfLength;
             contentEnd = contentStart + length;
             if (length < ShortLengthLimit || contentEnd > end) return -1;
@@ -239,7 +241,7 @@ internal static class SecuredTrieNodeValidator
     /// <summary>Whether <paramref name="position"/> to <paramref name="end"/> holds canonical RLP items, a list's content.</summary>
     /// <remarks>Apart from <see cref="ItemEnd"/>, which stays free of recursion to inline into its callers.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool AreItems(ref byte node, int position, int end)
+    private static bool AreItems(ref byte node, nint position, nint end)
     {
         while (position < end)
         {

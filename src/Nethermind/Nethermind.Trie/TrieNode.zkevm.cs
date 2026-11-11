@@ -409,9 +409,9 @@ namespace Nethermind.Trie
             }
 
             ReadOnlySpan<byte> span = rlp.AsSpan();
-            int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            nint itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
             if (itemsStart == 0) _nodeData = new BranchData();
-            else DecodeLeafOrExtension(span, itemsStart, null);
+            else DecodeLeafOrExtension(span, (int)itemsStart, null);
 
             [DoesNotReturn, StackTraceHidden]
             static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
