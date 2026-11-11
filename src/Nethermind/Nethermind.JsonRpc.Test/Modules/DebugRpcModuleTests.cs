@@ -646,6 +646,7 @@ public partial class DebugRpcModuleTests
             }
             else
             {
+                // Nethermind permits header/state-only tracing without txIndex; Geth requires a body in both modes.
                 Assert.That(json["error"], Is.Null, response);
                 Assert.That((bool?)json["result"]?["failed"], Is.False, response);
                 Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
