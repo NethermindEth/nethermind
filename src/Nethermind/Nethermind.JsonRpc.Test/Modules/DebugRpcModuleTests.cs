@@ -580,12 +580,11 @@ public partial class DebugRpcModuleTests
             "safe" or "finalized" => selectorKind,
             _ => new { blockHash = TestItem.KeccakA.ToString(), requireCanonical = true }
         };
-        bool unknownTaggedBody = txIndex is not null && (selectorKind is "safe" or "finalized");
-        int expectedCode = unknownTaggedBody ? ErrorCodes.UnknownBlockError : ErrorCodes.ResourceNotFound;
+        int expectedCode = ErrorCodes.ResourceNotFound;
         string expected = selectorKind switch
         {
             "number" or "number-object" => "block #400 not found",
-            "safe" or "finalized" => unknownTaggedBody ? "Unknown block error" : "header not found",
+            "safe" or "finalized" => $"{selectorKind} block not found",
             _ => $"block {TestItem.KeccakA} not found"
         };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
@@ -610,14 +609,19 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_missing_body_retains_header_selection(
-        [Values("number", "hash", "canonical-hash")] string selectorKind,
-        [Values] bool streaming, [Values(null, "0x0")] string? txIndex)
+        [Values("number", "hash", "canonical-hash", "safe", "finalized")] string selectorKind,
+        [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool temporary)
     {
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(builder => builder.AddSingleton<ISyncModeSelector>(syncModeSelector));
         Block block = await AddTraceCallPrefixTransfers(chain, 2);
         await chain.AddBlock();
+        if (selectorKind is "safe" or "finalized")
+            chain.BlockTree.ForkChoiceUpdated(block.Hash!, block.Hash!);
         chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
+        syncModeSelector.Current.Returns(temporary ? SyncMode.FastHeaders : SyncMode.None);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
@@ -630,6 +634,7 @@ public partial class DebugRpcModuleTests
         {
             "number" => $"0x{block.Number:x}",
             "hash" => block.Hash!.ToString(),
+            "safe" or "finalized" => selectorKind,
             _ => new { blockHash = block.Hash!.ToString(), requireCanonical = true }
         };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
@@ -639,7 +644,9 @@ public partial class DebugRpcModuleTests
         {
             if (txIndex is not null)
             {
-                string expected = selectorKind == "number" ? $"block #{block.Number} not found" : $"block {block.Hash} not found";
+                bool knownTag = selectorKind is "safe" or "finalized";
+                string expected = knownTag ? $"{selectorKind} block not found"
+                    : selectorKind == "number" ? $"block #{block.Number} not found" : $"block {block.Hash} not found";
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
                 Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
                 Assert.That(json["result"], Is.Null, response);
@@ -656,20 +663,32 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_missing_block_preserves_temporary_status(
-        [Values] bool byHash, [Values] bool indexed, [Values] bool temporary)
+        [Values("number", "hash", "safe", "finalized")] string selectorKind, [Values] bool indexed, [Values] bool temporary)
     {
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddSingleton<ISyncModeSelector>(syncModeSelector));
         syncModeSelector.Current.Returns(temporary ? SyncMode.FastHeaders : SyncMode.None);
-        BlockParameter selector = byHash ? new(TestItem.KeccakA) : new(400UL);
+        BlockParameter selector = selectorKind switch
+        {
+            "hash" => new(TestItem.KeccakA),
+            "safe" => BlockParameter.Safe,
+            "finalized" => BlockParameter.Finalized,
+            _ => new(400UL)
+        };
+        string expected = selectorKind switch
+        {
+            "hash" => $"block {TestItem.KeccakA} not found",
+            "safe" or "finalized" => $"{selectorKind} block not found",
+            _ => "block #400 not found"
+        };
         using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
             new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 }, selector,
             new GethTraceOptions { TxIndex = indexed ? 0UL : null });
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(result.Result.Error, Is.EqualTo(byHash ? $"block {TestItem.KeccakA} not found" : "block #400 not found"));
+            Assert.That(result.Result.Error, Is.EqualTo(expected));
             Assert.That(result.IsTemporary, Is.EqualTo(temporary));
         }
     }

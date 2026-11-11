@@ -192,12 +192,16 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetTraceCallHeader(blockParameter, options?.TxIndex, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
-            if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error is BlockFinderExtensions.HeaderNotFound or BlockFinderExtensions.BlockBodyNotFound
-                && blockParameter.Type is BlockParameterType.BlockNumber or BlockParameterType.BlockHash
-                && GetMissingBlockMessage(blockParameter) is { } message)
+            bool missingExplicitBlock = blockParameter.Type is BlockParameterType.BlockNumber or BlockParameterType.BlockHash
+                && headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error is BlockFinderExtensions.HeaderNotFound or BlockFinderExtensions.BlockBodyNotFound;
+            bool missingTaggedBlock = blockParameter.Type is BlockParameterType.Safe or BlockParameterType.Finalized
+                && ((headerError.ErrorCode == ErrorCodes.ResourceNotFound && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+                    || headerError.ErrorCode == ErrorCodes.UnknownBlockError);
+
+            if ((missingExplicitBlock || missingTaggedBlock) && GetMissingBlockMessage(blockParameter) is { } message)
             {
-                return ResultWrapper<GethLikeTxTrace>.Fail(message, headerError.ErrorCode, headerError.IsTemporary);
+                return ResultWrapper<GethLikeTxTrace>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
             }
             return headerError;
         }
