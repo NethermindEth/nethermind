@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -297,29 +296,6 @@ public static class RlpReaderExtensions
         return (int)value;
     }
 
-    /// <summary>Reads an integer of at most <see cref="long.MaxValue"/>.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long DecodePositiveLong(this scoped ref RlpReader reader) => reader.DecodePositiveLong<OnFlag>();
-
-    /// <inheritdoc cref="DecodePositiveLong(ref RlpReader)"/>
-    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long DecodePositiveLong<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
-    {
-        ulong value = reader.ReadWord<TCanonicalChecks>(sizeof(long));
-        if (value > long.MaxValue) ThrowInvalid("RLP integer is too large");
-        return (long)value;
-    }
-
-    /// <summary>Reads a non-negative integer of at most 2 bytes.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort DecodeUShort(this scoped ref RlpReader reader) => reader.DecodeUShort<OnFlag>();
-
-    /// <inheritdoc cref="DecodeUShort(ref RlpReader)"/>
-    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort DecodeUShort<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (ushort)reader.ReadWord<TCanonicalChecks>(sizeof(ushort));
-
     /// <summary>Reads a non-negative integer of at most 1 byte.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte DecodeByte(this scoped ref RlpReader reader) => reader.DecodeByte<OnFlag>();
@@ -367,26 +343,6 @@ public static class RlpReaderExtensions
         return ToUInt256(bytes);
     }
 
-    /// <summary>Reads a non-negative integer of at most 32 bytes into a right-aligned word.</summary>
-    public static EvmWord DecodeEvmWord(this scoped ref RlpReader reader)
-    {
-        ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes();
-        if (bytes.Length > UInt256Bytes) ThrowInvalid("RLP integer is too large");
-
-        EvmWord value = default;
-        Span<byte> destination = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref value), UInt256Bytes);
-        bytes.CopyTo(destination[(UInt256Bytes - bytes.Length)..]);
-        return value;
-    }
-
-    /// <summary>Reads a non-negative integer of at most 32 bytes.</summary>
-    public static BigInteger DecodeUBigInt(this scoped ref RlpReader reader)
-    {
-        ReadOnlySpan<byte> bytes = reader.DecodeByteArraySpan(RlpLimit.L32);
-        if (bytes.Length >= 1 && bytes[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
-        return bytes.ToUnsignedBigInteger();
-    }
-
     /// <summary>Reads a 32-byte hash.</summary>
     /// <remarks>Returns the shared instances for <see cref="Keccak.OfAnEmptyString"/> and <see cref="Keccak.EmptyTreeHash"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -403,20 +359,6 @@ public static class RlpReaderExtensions
     /// <summary>Reads a 32-byte hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ValueHash256 DecodeValueKeccakNonNull(this scoped ref RlpReader reader) => new(reader.ReadBytes(Hash256.Size));
-
-    /// <summary>Reads a 32-byte hash, or <c>0x80</c>.</summary>
-    /// <returns><see langword="false"/> for <c>0x80</c>.</returns>
-    public static bool TryDecodeValueKeccak(this scoped ref RlpReader reader, out ValueHash256 keccak)
-    {
-        if (reader.TryReadEmptyBytes())
-        {
-            keccak = default;
-            return false;
-        }
-
-        keccak = new ValueHash256(reader.ReadBytes(Hash256.Size));
-        return true;
-    }
 
     /// <summary>Reads a hash that is stored without its leading zero bytes, or <see langword="null"/> for <c>0x80</c>.</summary>
     public static Hash256? DecodeZeroPrefixKeccak(this scoped ref RlpReader reader)
@@ -652,11 +594,6 @@ public static class RlpReaderExtensions
         reader.ExitSequence(in items, itemLength);
         return result;
     }
-
-    /// <inheritdoc cref="DecodeArray{T}(ref RlpReader, RefRlpReaderFunc{T}, T, RlpLimit?)"/>
-    public static T?[] DecodeNullableArray<T>(this scoped ref RlpReader reader, RefRlpReaderFunc<T?> decodeItem, T? defaultElement = default, RlpLimit? limit = null)
-        where T : class
-        => reader.DecodeArray(decodeItem, defaultElement, limit);
 
     /// <summary>Reads a sequence of non-null items with <paramref name="decodeItem"/> into a pooled list that the caller disposes.</summary>
     /// <param name="decodeEmptyList">When <see langword="true"/>, <c>0xc0</c> goes to <paramref name="decodeItem"/> instead of being a missing item.</param>

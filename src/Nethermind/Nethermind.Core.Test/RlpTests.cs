@@ -87,28 +87,13 @@ namespace Nethermind.Core.Test
         [Test]
         public void Reader_extensions_decode_each_value_type()
         {
-            byte[] integer = [0x82, 0x01, 0x00];
-            RlpReader reader = new(integer);
-            Assert.That((reader.DecodeUShort(), reader.BytesRead), Is.EqualTo(((ushort)256, integer.Length)));
-
-            reader = new(integer);
-            Assert.That((reader.DecodePositiveLong(), reader.BytesRead), Is.EqualTo((256L, integer.Length)));
-
-            reader = new(integer);
-            reader.DecodeEvmWord();
-            Assert.That(reader.BytesRead, Is.EqualTo(integer.Length));
-
             byte[] byteValueRlp = [1];
-            reader = new(byteValueRlp);
+            RlpReader reader = new(byteValueRlp);
             Assert.That((reader.DecodeByte(), reader.BytesRead), Is.EqualTo(((byte)1, byteValueRlp.Length)));
 
             byte[] hashRlp = [160, .. Keccak.EmptyTreeHash.Bytes];
             reader = new(hashRlp);
             Assert.That((reader.DecodeValueKeccak(), reader.BytesRead), Is.EqualTo(((ValueHash256?)Keccak.EmptyTreeHash.ValueHash256, hashRlp.Length)));
-
-            reader = new(hashRlp);
-            bool hasValue = reader.TryDecodeValueKeccak(out ValueHash256 valueHash);
-            Assert.That((hasValue, valueHash, reader.BytesRead), Is.EqualTo((true, Keccak.EmptyTreeHash.ValueHash256, hashRlp.Length)));
 
             byte[] zeroPrefixHashRlp = [1];
             reader = new(zeroPrefixHashRlp);
@@ -874,13 +859,11 @@ namespace Nethermind.Core.Test
         private static IEnumerable<DecoderCase> IntegerDecoders()
         {
             yield return new(nameof(RlpReaderExtensions.DecodeByte), static ctx => ctx.DecodeByte(), sizeof(byte));
-            yield return new(nameof(RlpReaderExtensions.DecodeUShort), static ctx => ctx.DecodeUShort(), sizeof(ushort));
             yield return new(nameof(RlpReaderExtensions.DecodeUInt), static ctx => ctx.DecodeUInt(), sizeof(uint));
             yield return new(nameof(RlpReaderExtensions.DecodeInt), static ctx => ctx.DecodeInt(), sizeof(int));
             yield return new(nameof(RlpReaderExtensions.DecodeULong), static ctx => ctx.DecodeULong(), sizeof(ulong));
             yield return new(nameof(RlpReaderExtensions.DecodeLong), static ctx => ctx.DecodeLong(), sizeof(long));
             yield return new(nameof(RlpReaderExtensions.DecodeUInt256), static ctx => ctx.DecodeUInt256(), 256 / 8);
-            yield return new(nameof(RlpReaderExtensions.DecodeUBigInt), static ctx => ctx.DecodeUBigInt(), null);
         }
 
         private static (byte[] rlp, string expectedHex)[] IntegerTestCases() =>

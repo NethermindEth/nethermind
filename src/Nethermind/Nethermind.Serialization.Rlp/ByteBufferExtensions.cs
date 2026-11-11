@@ -77,18 +77,6 @@ namespace Nethermind.Serialization.Rlp
             buffer.SetWriterIndex(buffer.WriterIndex + length);
         }
 
-        public static void MarkIndex(this IByteBuffer buffer)
-        {
-            buffer.MarkReaderIndex();
-            buffer.MarkWriterIndex();
-        }
-
-        public static void ResetIndex(this IByteBuffer buffer)
-        {
-            buffer.ResetReaderIndex();
-            buffer.ResetWriterIndex();
-        }
-
         public static Span<byte> AsSpan(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");

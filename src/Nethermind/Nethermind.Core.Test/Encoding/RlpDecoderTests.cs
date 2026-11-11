@@ -356,11 +356,11 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Decode_nullable_delegate_array_allows_null_reference_element()
+    public void Decode_delegate_array_allows_null_reference_element()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
 
-        Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccakOrNull());
+        Hash256?[] result = context.DecodeArray(static (ref RlpReader c) => c.DecodeKeccakOrNull());
 
         Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
     }
@@ -388,11 +388,11 @@ public class RlpDecoderTests
     }
 
     [Test]
-    public void Decode_nullable_delegate_array_uses_default_for_empty_list_element()
+    public void Decode_delegate_array_uses_default_for_empty_list_element()
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
 
-        Hash256?[] result = context.DecodeNullableArray(
+        Hash256?[] result = context.DecodeArray(
             static (ref RlpReader _) => throw new InvalidOperationException(),
             defaultElement: TestItem.KeccakA);
 

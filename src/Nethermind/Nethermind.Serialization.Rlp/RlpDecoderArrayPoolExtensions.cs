@@ -116,17 +116,6 @@ public static class RlpDecoderArrayPoolExtensions
         }
     }
 
-    /// <summary>Encodes <paramref name="item"/> to the start of <paramref name="destination"/>.</summary>
-    /// <returns>The number of bytes written, which is <see cref="IRlpDecoder{T}.GetLength(T, RlpBehaviors)"/>.</returns>
-    /// <exception cref="ArgumentException"><paramref name="destination"/> is too short.</exception>
-    /// <exception cref="InvalidOperationException">The decoder wrote another number of bytes than it computed.</exception>
-    public static int EncodeTo<T>(this IRlpDecoder<T> decoder, Span<byte> destination, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int length = decoder.GetLength(item, rlpBehaviors);
-        decoder.EncodeExact(destination[..length], item, rlpBehaviors);
-        return length;
-    }
-
     /// <summary>Encodes <paramref name="item"/> to <paramref name="destination"/>, which has exactly the length of the item.</summary>
     /// <remarks>For callers that know the length already, so that it is not computed again.</remarks>
     /// <exception cref="InvalidOperationException">The decoder wrote another number of bytes than <paramref name="destination"/> has.</exception>
