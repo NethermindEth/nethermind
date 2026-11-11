@@ -39,12 +39,11 @@ public class NodeRlpReaderTests
         Assert.That((position, value.Length), Is.EqualTo((LongItem.Length, 0x38)));
     }
 
-    [TestCase("c4820102")]
     [TestCase("f83a")]
     [TestCase("b838")]
-    [TestCase("82")]
-    [TestCase("")]
-    public void Truncated_item_throws(string hex)
+    [TestCase("f9")]
+    [TestCase("b8")]
+    public void Truncated_long_item_throws(string hex)
     {
         byte[] data = Bytes.FromHexString(hex);
         Assert.Throws<RlpReaderException>(() => new NodeRlpReader(data).PeekNextRlpLength(0));
@@ -55,41 +54,43 @@ public class NodeRlpReaderTests
         });
     }
 
+    [TestCase("b801" + "01")]
+    [TestCase("f801" + "01")]
+    [TestCase("f800" + "01")]
+    public void Long_prefix_with_a_short_length_throws(string hex)
+    {
+        byte[] data = Bytes.FromHexString(hex);
+        Assert.Throws<RlpReaderException>(() => new NodeRlpReader(data).PeekNextRlpLength(0));
+        Assert.Throws<RlpReaderException>(() =>
+        {
+            int position = 0;
+            new NodeRlpReader(data).ReadSequenceLength(ref position, out _);
+        });
+    }
+
     [TestCase("c3820102", 1)]
     [TestCase("f83a", 2)]
     [TestCase("b838", 2)]
+    [TestCase("f9", 3)]
     [TestCase("01", 0)]
-    public void SkipLength_moves_past_the_prefix(string hex, int expected)
+    public void SkipLength_moves_past_the_prefix_without_reading_it(string hex, int expected)
     {
         int position = 0;
         new NodeRlpReader(Bytes.FromHexString(hex)).SkipLength(ref position);
         Assert.That(position, Is.EqualTo(expected));
     }
 
-    [TestCase("f9")]
-    [TestCase("f901")]
-    [TestCase("bb0102")]
-    [TestCase("")]
-    public void SkipLength_throws_on_truncated_prefix(string hex)
-    {
-        byte[] data = Bytes.FromHexString(hex);
-        Assert.Throws<RlpReaderException>(() =>
-        {
-            int position = 0;
-            new NodeRlpReader(data).SkipLength(ref position);
-        });
-    }
-
+    /// <remarks>What <c>TrieNode.TryDecodeRlp</c> catches for a short item that is cut off.</remarks>
     [Test]
-    public void Truncated_child_throws()
+    public void Truncated_short_item_fails_the_slice()
     {
         byte[] data = Bytes.FromHexString("a0" + new string('1', 62));
-        Assert.Throws<RlpReaderException>(() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
         {
             int position = 0;
             new NodeRlpReader(data).DecodeValueKeccakNonNull(ref position, out ValueHash256 _);
         });
-        Assert.Throws<RlpReaderException>(() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
         {
             int position = 0;
             new NodeRlpReader(data).DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> _);
