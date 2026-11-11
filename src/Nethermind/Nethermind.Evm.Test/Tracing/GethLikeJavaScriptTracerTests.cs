@@ -190,6 +190,44 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, new[] { $"step:{cost}:stack limit reached 1024 (1023)" });
     }
 
+    [Test]
+    public void Step_cost_matches_struct_log_gas_cost()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { this.events.push(log.op.toString() + ":" + log.getCost()); },
+                fault: function(log) { },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] code = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SIGNEXTEND).Op(Instruction.POP)
+            .Op(Instruction.JUMPDEST)
+            .PushData(0).Op(Instruction.BLOCKHASH).Op(Instruction.POP)
+            .PushData(32).PushData(0).Op(Instruction.KECCAK256).Op(Instruction.POP)
+            .PushData(32).PushData(0).Op(Instruction.LOG0)
+            .Op(Instruction.STOP)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, code);
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header), GethTraceOptions.Default with { Tracer = userTracer });
+        using GethLikeTxMemoryTracer structLog = new(transaction, GethTraceOptions.Default);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer javascript = ((IBlockTracer)tracer).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CompositeTxTracer(javascript, structLog));
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        using GethLikeTxTrace structLogTrace = structLog.BuildResult();
+
+        string[] steps = JsonSerializer.Deserialize<string[]>(ResultJson(trace))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(steps, Is.SupersetOf(new[] { "SIGNEXTEND:5", "JUMPDEST:1", "BLOCKHASH:20", "KECCAK256:39", "LOG0:631" }));
+            Assert.That(steps, Is.EqualTo(structLogTrace.Entries.Select(static entry => entry.Opcode + ":" + entry.GasCost)));
+        }
+    }
+
     [TestCase("600156", 100000UL, "step:JUMP:8::1:1:0", "fault:JUMP:8:invalid jump destination:1:1:0")]
     [TestCase("6001600157", 100000UL, "step:JUMPI:10::2:1,1:0", "fault:JUMPI:10:invalid jump destination:2:1,1:0")]
     [TestCase("6000600157", 100000UL, "step:JUMPI:10::2:1,0:0", null)]
