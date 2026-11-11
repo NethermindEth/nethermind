@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
 
 namespace Nethermind.StatelessInputGen;
@@ -20,7 +23,7 @@ internal static class InputExtractor
 
     private static readonly char[] s_invalidFileNameChars = Path.GetInvalidFileNameChars();
 
-    internal static async Task<int> ExtractFromFixtures(string fixturePath, string outputPath, bool forZisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> ExtractFromFixtures(string fixturePath, string outputPath, bool forZisk, bool trusted, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fixturePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
@@ -77,7 +80,7 @@ internal static class InputExtractor
                     try
                     {
                         (int fileExtracted, int fileFailed) = await ExtractFromFile(
-                            fixtureFile, fullOutputPath, forZisk, maxFileNameLength, writtenFiles, cancellationToken);
+                            fixtureFile, fullOutputPath, forZisk, trusted, maxFileNameLength, writtenFiles, cancellationToken);
 
                         extracted += fileExtracted;
                         failed += fileFailed;
@@ -104,6 +107,7 @@ internal static class InputExtractor
         string fixtureFile,
         string outputPath,
         bool forZisk,
+        bool trusted,
         int maxFileNameLength,
         HashSet<string> writtenFiles,
         CancellationToken cancellationToken)
@@ -142,7 +146,7 @@ internal static class InputExtractor
 
                 try
                 {
-                    string fileName = GetOutputFileName(test.Name, blockIndex, blockCount, maxFileNameLength);
+                    string fileName = GetOutputFileName(test.Name, blockIndex, blockCount, maxFileNameLength, trusted ? ".nti" : ".ssz");
 
                     if (writtenFiles.Contains(fileName))
                     {
@@ -156,9 +160,23 @@ internal static class InputExtractor
 
                     try
                     {
-                        ReadOnlyMemory<byte> output = forZisk
-                            ? buffer.AsMemory(0, ZiskFrame.FrameInPlace(buffer, dataLength))
-                            : buffer.AsMemory(ZiskFrame.HeaderLength, dataLength);
+                        ReadOnlyMemory<byte> output;
+                        if (trusted)
+                        {
+                            if (!TryConvertToTrusted(buffer.AsSpan(ZiskFrame.HeaderLength, dataLength), out byte[]? converted, out string? error))
+                            {
+                                AnsiConsole.MarkupLine($"[yellow]-[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: skipped, {error.EscapeMarkup()}");
+                                continue;
+                            }
+
+                            output = forZisk ? ZiskFrame.Wrap(converted) : converted;
+                        }
+                        else
+                        {
+                            output = forZisk
+                                ? buffer.AsMemory(0, ZiskFrame.FrameInPlace(buffer, dataLength))
+                                : buffer.AsMemory(ZiskFrame.HeaderLength, dataLength);
+                        }
 
                         await File.WriteAllBytesAsync(Path.Join(outputPath, fileName), output, cancellationToken);
                     }
@@ -179,6 +197,24 @@ internal static class InputExtractor
         }
 
         return (extracted, failed);
+    }
+
+    /// <summary>Converts a stateless input to a trusted input.</summary>
+    /// <returns>Whether it converted: a fixture whose block does not decode, a negative test, has no trusted input.</returns>
+    private static bool TryConvertToTrusted(ReadOnlySpan<byte> statelessInput, [NotNullWhen(true)] out byte[]? trustedInput, [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            trustedInput = TrustedInput.FromStatelessInput(statelessInput);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or RlpException)
+        {
+            trustedInput = null;
+            error = ex.Message;
+            return false;
+        }
     }
 
     /// <summary>
@@ -216,9 +252,8 @@ internal static class InputExtractor
         return (buffer, dataLength);
     }
 
-    private static string GetOutputFileName(string testName, int blockIndex, int blockCount, int maxLength)
+    private static string GetOutputFileName(string testName, int blockIndex, int blockCount, int maxLength, string extension)
     {
-        const string extension = ".ssz";
         const int hashLength = 8;
 
         string name = string.Join('_', testName.Split(s_invalidFileNameChars));

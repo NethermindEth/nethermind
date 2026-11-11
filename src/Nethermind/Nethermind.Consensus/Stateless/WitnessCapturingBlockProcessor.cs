@@ -24,19 +24,38 @@ namespace Nethermind.Consensus.Stateless;
 /// The witness processor shares the main pipeline's writable world state, so the witnessed block is
 /// really imported, not re-executed.
 /// </remarks>
-public sealed class WitnessCapturingBlockProcessor(
-    IBlockProcessor inner,
-    WitnessCapturingBlockProcessingEnv witness,
-    WitnessRendezvous rendezvous,
-    IHeaderFinder headerFinder,
-    ILogManager? logManager = null) : IBlockProcessor
+public sealed class WitnessCapturingBlockProcessor : IBlockProcessor
 {
-    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
+    private readonly IBlockProcessor _inner;
+    private readonly WitnessCapturingBlockProcessingEnv _witness;
+    private readonly WitnessRendezvous _rendezvous;
+    private readonly IHeaderFinder _headerFinder;
+    private readonly ILogger _logger;
+    private Action<Block>? _transactionsExecuted;
 
+    /// <param name="graphCore">Given to the selector built inside the witness graph, which hands <paramref name="inner"/> to
+    /// it and is never run itself; see <see cref="WitnessCapturingBlockProcessingEnv"/>.</param>
+    public WitnessCapturingBlockProcessor(
+        IBlockProcessor inner,
+        WitnessCapturingBlockProcessingEnv witness,
+        WitnessRendezvous rendezvous,
+        IHeaderFinder headerFinder,
+        ILogManager? logManager = null,
+        WitnessGraphCore? graphCore = null)
+    {
+        _inner = inner;
+        _witness = witness;
+        _rendezvous = rendezvous;
+        _headerFinder = headerFinder;
+        _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
+        if (graphCore is not null) graphCore.Processor = inner;
+    }
+
+    /// <remarks>Forwarded to the inner processor, and to the witness processor for the block it runs.</remarks>
     public event Action<Block>? TransactionsExecuted
     {
-        add => inner.TransactionsExecuted += value;
-        remove => inner.TransactionsExecuted -= value;
+        add { _inner.TransactionsExecuted += value; _transactionsExecuted += value; }
+        remove { _inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
     }
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(
@@ -53,21 +72,21 @@ public sealed class WitnessCapturingBlockProcessor(
             blockHash is not null
             && parentHash is not null
             && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
-            && rendezvous.HasPendingRequest(blockHash);
+            && _rendezvous.HasPendingRequest(blockHash);
 
         if (!shouldCapture)
-            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            return _inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         ulong parentBlockNumber = suggestedBlock.Number - 1;
-        BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
+        BlockHeader parent = _headerFinder.Get(parentHash, parentBlockNumber)
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
-        witness.ResetForBlock();
+        _witness.ResetForBlock();
 
         // If ProcessOne throws, the handler's using-registration cancels the pending slot — nothing to do here.
-        (Block Block, TxReceipt[] Receipts) result = witness.Processor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        (Block Block, TxReceipt[] Receipts) result = ProcessWithWitness(suggestedBlock, options, blockTracer, spec, token);
 
-        if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
+        if (!_rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
             return result; // request was declined or cancelled — nothing to publish.
 
         // Witness building is best-effort: the block is already processed and validated, so swallow any failure
@@ -76,7 +95,7 @@ public sealed class WitnessCapturingBlockProcessor(
         Witness? capturedWitness = null;
         try
         {
-            capturedWitness = witness.GetWitness(parent);
+            capturedWitness = _witness.GetWitness(parent);
         }
         catch (Exception ex)
         {
@@ -84,5 +103,23 @@ public sealed class WitnessCapturingBlockProcessor(
         }
         tcs!.SetResult(capturedWitness);
         return result;
+    }
+
+    /// <remarks>The witness processor is built on the first witnessed block, so the handlers reach it here rather than as
+    /// they are added.</remarks>
+    private (Block Block, TxReceipt[] Receipts) ProcessWithWitness(Block block, ProcessingOptions options, IBlockTracer tracer,
+        IReleaseSpec spec, CancellationToken token)
+    {
+        IBlockProcessor processor = _witness.Processor;
+        Action<Block>? handlers = _transactionsExecuted;
+        processor.TransactionsExecuted += handlers;
+        try
+        {
+            return processor.ProcessOne(block, options, tracer, spec, token);
+        }
+        finally
+        {
+            processor.TransactionsExecuted -= handlers;
+        }
     }
 }

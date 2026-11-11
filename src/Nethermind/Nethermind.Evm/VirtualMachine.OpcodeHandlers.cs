@@ -1342,6 +1342,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct BlockHashFromStateOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.BlockHashGasCost.GasCost;
+        public static int? TraceStackInputs => 1;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlockHashFromState<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
@@ -1532,8 +1535,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (Unsafe.IsNullRef(ref source))
                 return false;
 
-            // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-            Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
+            // Memory holds the word big-endian, or swizzled; the slot takes it in limb layout, over the offset it held.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.LoadWord(ref Unsafe.As<byte, ulong>(ref slot), ref source);
+            else
+                Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
             gasLeft -= GasPolicy.VeryLowGasCost.GasCost;
             return true;
         }
@@ -1582,8 +1588,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // take a callee-saved register; the charge writes through a reference, so the JIT reloads them.
             ref byte top = ref stack.PeekBytesByRefUnchecked();
             ref byte destination = ref state.Vm.VmState.Memory.CommitWordOverwrite(Unsafe.As<byte, ulong>(ref top));
-            // The value sits below the offset in limb layout; memory holds it big-endian.
-            Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
+            // The value sits below the offset in limb layout; memory holds it big-endian, or swizzled.
+            if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.StoreWord(ref destination, ref Unsafe.As<byte, ulong>(ref top));
+            else
+                Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
             stack.Head -= 2;
             return true;
         }
@@ -1732,6 +1741,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
         public static bool HasCheckedBody => true;
+        public static ulong? TraceGasCost => GasPolicy.JumpDestGasCost.GasCost;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas);
 
@@ -1758,6 +1768,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct CallDestOpcode : IOpcodeBody
     {
+        public static ulong? TraceGasCost => GasPolicy.JumpDestGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas) ? EvmExceptionType.None : EvmExceptionType.OutOfGas;
     }
@@ -1932,6 +1943,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct DupNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionDupN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
@@ -1939,6 +1951,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SwapNOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSwapN<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
@@ -1946,6 +1959,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct ExchangeOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static ulong? TraceGasCost => GasPolicy.VeryLowGasCost.GasCost;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionExchange<TGasPolicy, TTracingInst>(ref stack, ref gas, ref programCounter);
     }
