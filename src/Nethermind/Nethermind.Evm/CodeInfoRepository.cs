@@ -150,8 +150,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        InsertCode(_worldState, code, codeOwner, spec, out _);
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        InsertCode(worldState, code, codeOwner, spec, out _);
 
     public static bool InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, out ValueHash256 codeHash)
     {
@@ -159,17 +159,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
     }
 
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        InsertTransientCode(_worldState, code, codeOwner, spec);
-
-    public static void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         worldState.InsertTransientCode(codeOwner, in codeHash, code, spec);
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
-        SetDelegation(_worldState, codeSource, authority, spec, out _, out _);
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) =>
+        SetDelegation(worldState, codeSource, authority, spec, out _, out _);
 
     public static bool SetDelegation(
         IWorldState worldState,
