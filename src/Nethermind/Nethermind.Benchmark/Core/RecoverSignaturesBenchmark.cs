@@ -142,6 +142,8 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block10TxWith10AuthSigs);
             ResetSigs(_block10TxWith0AuthSigs);
             ResetSigs(_block3TxWith1AuthSigs);
+            // Every iteration recovers again rather than reading the senders the previous one cached.
+            EthereumEcdsaExtensions.ClearSenderCache();
 
             static void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
             {

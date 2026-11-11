@@ -3,9 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -16,9 +18,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -257,11 +261,36 @@ public class Eip7709Tests : VirtualMachineTestsBase
         return trace.Gas - trace.Entries.Single(static e => e.Opcode == nameof(Instruction.BLOCKHASH)).GasCost + opcodeGas;
     }
 
-    private ulong[] BlockhashGasCosts(params UInt256[] requestedBlocks) =>
-        ExecuteAndTrace(BlockhashCode(requestedBlocks)).Entries
+    /// <summary>Returns each <c>BLOCKHASH</c>'s struct-log gas cost, asserting that a JavaScript step sees the same cost.</summary>
+    private ulong[] BlockhashGasCosts(params UInt256[] requestedBlocks)
+    {
+        const string blockhashCostTracer = """
+            {
+                costs: [],
+                step: function(log) { if (log.op.toString() === "BLOCKHASH") this.costs.push(log.getCost()); },
+                fault: function(log) { },
+                result: function() { return this.costs; }
+            }
+            """;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, BlockhashCode(requestedBlocks));
+        using GethLikeTxMemoryTracer structLog = new(transaction, GethTraceOptions.Default);
+        using GethLikeBlockJavaScriptTracer javascript = new(TestState, Spec, GethTraceOptions.Default with { Tracer = blockhashCostTracer });
+        javascript.StartNewBlockTrace(block);
+        ITxTracer javascriptTx = ((IBlockTracer)javascript).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), new CompositeTxTracer(javascriptTx, structLog));
+        javascript.EndTxTrace();
+        javascript.EndBlockTrace();
+        using GethLikeTxTrace structLogTrace = structLog.BuildResult();
+        using GethLikeTxTrace javascriptTrace = javascript.BuildResult().First();
+
+        ulong[] costs = structLogTrace.Entries
             .Where(static e => e.Opcode == nameof(Instruction.BLOCKHASH))
             .Select(static e => e.GasCost)
             .ToArray();
+        Assert.That(JsonSerializer.Serialize(javascriptTrace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+            Is.EqualTo(JsonSerializer.Serialize(costs)), "JavaScript step cost");
+        return costs;
+    }
 
     private static byte[] BlockhashCode(params UInt256[] requestedBlocks)
     {

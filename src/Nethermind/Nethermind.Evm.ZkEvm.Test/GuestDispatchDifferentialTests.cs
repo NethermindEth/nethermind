@@ -290,6 +290,11 @@ public class GuestDispatchDifferentialTests
             "6001600657005B1900",
             "6001600457005B1900",
             "61000556005B1900",
+            "611234501900",
+            "6100145A10600957005B1900",
+            "6100145A10600857005B1900",
+            "6100005A10600957005B1900",
+            "61FFFF5A10600957005B1900",
             "600061000757005B1900",
             "600161000757005B1900",
             "63123456788063123456781461001157005B1900",
@@ -456,6 +461,25 @@ public class GuestDispatchDifferentialTests
         }
 
         Assert.That(mismatches, Is.Empty);
+    }
+
+    [Test]
+    public void Addmod_with_small_modulus_continues_at_the_following_opcode()
+    {
+        byte[] program =
+        [
+            (byte)Instruction.PUSH1, 7, (byte)Instruction.PUSH1, 3, (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.ADDMOD, (byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        Outcome untraced = Run(100, [], 0, new CodeInfo(program), Table.Untraced);
+        Outcome traced = Run(100, [], 0, new CodeInfo(program), Table.Traced);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(untraced, Is.EqualTo(traced));
+            Assert.That(untraced.Memory, Is.EqualTo(Convert.ToHexString(new UInt256(6).ToBigEndian())));
+        }
     }
 
     /// <remarks>

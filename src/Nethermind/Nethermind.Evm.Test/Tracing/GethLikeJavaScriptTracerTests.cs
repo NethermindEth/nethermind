@@ -153,6 +153,40 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Create_frame_to_is_the_creation_address_when_the_precheck_fails([Values] bool salted)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                enter: function(frame) { this.events.push(frame.getType() + ":" + toHex(frame.getTo())); },
+                exit: function(frame) { this.events.push("exit:" + (frame.getError() || "")); },
+                fault: function(log) { },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
+        // A creation with 1000 ether to transfer fails its precheck. CREATE deploys first, so its failed creation
+        // reports the address for the creator's next nonce; CREATE2 fails first, then deploys at the same address.
+        Prepare code = salted
+            ? Prepare.EvmCode.Create2(initCode, salt, 1000.Ether).Op(Instruction.POP).Create2(initCode, salt, 0)
+            : Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).Create(initCode, 1000.Ether);
+        const string rejected = "exit:insufficient balance for transfer";
+        string create2 = Enter("CREATE2", ContractAddress.From(Recipient, salt, initCode));
+        string[] expected = salted
+            ? [create2, rejected, create2, "exit:"]
+            : [Enter("CREATE", ContractAddress.From(Recipient, 0)), "exit:", Enter("CREATE", ContractAddress.From(Recipient, 1)), rejected];
+
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), code.Op(Instruction.POP).STOP().Done, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+
+        AssertResult(trace, expected);
+
+        static string Enter(string type, Address to) => $"{type}:{to.ToString().ToLowerInvariant()}";
+    }
+
+    [Test]
     public void Fixed_cost_stack_underflow_is_reported_by_step()
     {
         const string userTracer = """
@@ -188,6 +222,44 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, new[] { $"step:{cost}:stack limit reached 1024 (1023)" });
+    }
+
+    [Test]
+    public void Step_cost_matches_struct_log_gas_cost()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { this.events.push(log.op.toString() + ":" + log.getCost()); },
+                fault: function(log) { },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] code = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SIGNEXTEND).Op(Instruction.POP)
+            .Op(Instruction.JUMPDEST)
+            .PushData(0).Op(Instruction.BLOCKHASH).Op(Instruction.POP)
+            .PushData(32).PushData(0).Op(Instruction.KECCAK256).Op(Instruction.POP)
+            .PushData(32).PushData(0).Op(Instruction.LOG0)
+            .Op(Instruction.STOP)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, code);
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header), GethTraceOptions.Default with { Tracer = userTracer });
+        using GethLikeTxMemoryTracer structLog = new(transaction, GethTraceOptions.Default);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer javascript = ((IBlockTracer)tracer).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CompositeTxTracer(javascript, structLog));
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        using GethLikeTxTrace structLogTrace = structLog.BuildResult();
+
+        string[] steps = JsonSerializer.Deserialize<string[]>(ResultJson(trace))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(steps, Is.SupersetOf(new[] { "SIGNEXTEND:5", "JUMPDEST:1", "BLOCKHASH:20", "KECCAK256:39", "LOG0:631" }));
+            Assert.That(steps, Is.EqualTo(structLogTrace.Entries.Select(static entry => entry.Opcode + ":" + entry.GasCost)));
+        }
     }
 
     [TestCase("600156", 100000UL, "step:JUMP:8::1:1:0", "fault:JUMP:8:invalid jump destination:1:1:0")]
