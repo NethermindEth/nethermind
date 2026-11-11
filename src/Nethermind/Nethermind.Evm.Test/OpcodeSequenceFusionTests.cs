@@ -90,8 +90,7 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] cancelable =
             Machine.GetOpcodeHandlers<OffFlag, OnFlag>();
         const int Unfused = VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset;
-        Instruction[] fused = [Instruction.ISZERO, Instruction.EQ, Instruction.LT, Instruction.GT, Instruction.SLT,
-            Instruction.SGT, Instruction.DUP1, Instruction.POP];
+        Instruction[] fused = [Instruction.EQ, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT];
 
         using (Assert.EnterMultipleScope())
         {
