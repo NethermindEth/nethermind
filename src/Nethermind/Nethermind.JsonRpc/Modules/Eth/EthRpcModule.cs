@@ -1385,15 +1385,22 @@ public partial class EthRpcModule(
     }
 
     /// <summary>
-    /// Answers a receipt lookup by transaction hash that found no receipt. When the transaction index still places the
-    /// transaction in a canonical block below the served floor, that block's history is pruned, and the answer is the
-    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error a block search below the floor gives. Every other miss is
-    /// a <c>null</c> result: no index entry, an entry naming a side-chain block or a header that is not stored, or a block
-    /// at or above the floor.
+    /// Answers a receipt lookup by transaction hash that has no receipt to return: the
+    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error when the transaction index still places the transaction
+    /// in a canonical block below the served floor, otherwise a <c>null</c> result.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The floor is <see cref="IBlockFinder.LowestServedBlock"/>, the oldest block the node advertises as served. It
+    /// can come from the configured ancient bodies barrier or the download frontiers as well as from history pruning,
+    /// so a block below it may still be stored. The error code is the one a block search returns when it misses below
+    /// the floor. Every other miss is a <c>null</c> result: the index gives no block hash, the block it names is not
+    /// canonical or its header is not stored, or the block is at or above the floor.
+    /// </para>
+    /// <para>
     /// History pruning deletes bodies and receipts but leaves the transaction index to a background sweep, so an entry
     /// can outlive its block's history; with <see cref="IReceiptConfig.TxLookupLimit"/> 0 nothing removes it.
+    /// </para>
     /// </remarks>
     protected ResultWrapper<ReceiptForRpc?> GetMissingTransactionReceiptResult(Hash256 txHash) =>
         _receiptFinder.FindBlockHash(txHash) is { } blockHash
