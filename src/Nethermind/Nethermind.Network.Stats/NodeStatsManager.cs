@@ -40,27 +40,39 @@ namespace Nethermind.Stats
         {
             _cleanupTimer.Stop();
 
-            int deleteCount = _nodeStats.Count - _maxCount;
-
-            if (deleteCount > 0)
+            try
             {
-                DateTime utcNow = DateTime.UtcNow;
-                IEnumerable<Node> toDelete = _nodeStats
-                    .OrderBy(n => n.Value.CurrentNodeReputation(utcNow))
-                    .Select(n => n.Key)
-                    .Take(_nodeStats.Count - _maxCount);
+                int deleteCount = _nodeStats.Count - _maxCount;
 
-                int i = 0;
-                foreach (Node node in toDelete)
+                if (deleteCount > 0)
                 {
-                    _nodeStats.TryRemove(node, out _);
-                    i++;
+                    DateTime utcNow = DateTime.UtcNow;
+                    // LINQ over the live dictionary throws when a node is added during its Count/CopyTo.
+                    KeyValuePair<Node, INodeStats>[] snapshot = _nodeStats.ToArray();
+                    IEnumerable<Node> toDelete = snapshot
+                        .OrderBy(n => n.Value.CurrentNodeReputation(utcNow))
+                        .Select(n => n.Key)
+                        .Take(snapshot.Length - _maxCount);
+
+                    int i = 0;
+                    foreach (Node node in toDelete)
+                    {
+                        _nodeStats.TryRemove(node, out _);
+                        i++;
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
                 }
-
-                if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
             }
-
-            _cleanupTimer.Start();
+            catch (Exception ex)
+            {
+                // The timer swallows handler exceptions, so an unlogged failure here is invisible.
+                if (_logger.IsError) _logger.Error("Node stats cleanup failed.", ex);
+            }
+            finally
+            {
+                _cleanupTimer.Start();
+            }
         }
 
         public INodeStats GetOrAdd(Node node)
