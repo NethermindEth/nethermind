@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs;
 using NUnit.Framework;
+using DispatchState = Nethermind.Evm.VirtualMachine<Nethermind.Evm.GasPolicy.EthereumGasPolicy>.DispatchState;
 
 namespace Nethermind.Evm.Test;
 
@@ -72,6 +75,32 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         Assert.That(full.StatusCode, Is.EqualTo(1), "the full run must succeed for the sweep to cover every opcode");
         for (ulong gasLimit = IntrinsicGas; gasLimit <= full.GasSpent; gasLimit++)
             AssertSameAsPlain(code, gasLimit);
+    }
+
+    /// <summary>
+    /// Every other test compares the untraced tables with the traced ones, so it only means something while the untraced
+    /// tables carry the fused handlers.
+    /// </summary>
+    [Test]
+    public unsafe void Fused_handlers_are_installed_on_the_untraced_tables()
+    {
+        AssertSameAsPlain(Code(Push1(1), Ops(Instruction.POP), Ops(Instruction.STOP)));
+        delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] untraced =
+            Machine.GetOpcodeHandlers<OffFlag, OffFlag>();
+        delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] cancelable =
+            Machine.GetOpcodeHandlers<OffFlag, OnFlag>();
+        const int Unfused = VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset;
+        Instruction[] fused = [Instruction.ISZERO, Instruction.EQ, Instruction.LT, Instruction.GT, Instruction.SLT,
+            Instruction.SGT, Instruction.DUP1, Instruction.POP];
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Instruction opcode in fused)
+            {
+                Assert.That((nint)untraced[(int)opcode], Is.Not.EqualTo((nint)untraced[Unfused + (int)opcode]), $"{opcode} untraced");
+                Assert.That((nint)cancelable[(int)opcode], Is.Not.EqualTo((nint)cancelable[Unfused + (int)opcode]), $"{opcode} cancelable");
+            }
+        }
     }
 
     private static readonly byte[] StoreTopAndReturn = [0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
@@ -142,12 +171,12 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         AssertSameAsPlainAtEveryGasLimit(code);
     }
 
+    /// <summary>The selector's bytes sit in the low limb, but one byte of a higher limb, or of the low limb above them, is set.</summary>
     [Test]
-    public void Selector_branch_does_not_match_a_word_wider_than_the_selector()
+    public void Selector_branch_does_not_match_a_word_wider_than_the_selector([Values(0, 8, 16, 24)] int highByte)
     {
-        // The selector's bytes sit in the low limb, but a higher limb is nonzero.
         byte[] word = new byte[32];
-        word[0] = 1;
+        word[highByte] = 1;
         word[28] = 0x12;
         word[29] = 0x34;
         word[30] = 0x56;
@@ -279,7 +308,8 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
     {
         byte[] fill = Repeat((byte)Instruction.PUSH0, depth);
         byte[] sequence = first == Instruction.ISZERO
-            ? Code(Ops(Instruction.ISZERO), Push2(0), Ops(Instruction.JUMPI))
+            // The branch is taken to a JUMPDEST, so the fused handler gets past its jump check and only the stack bound decides.
+            ? Code(Ops(Instruction.ISZERO), Push2(depth + 5), Ops(Instruction.JUMPI), Ops(Instruction.JUMPDEST))
             : Code(Ops(Instruction.DUP1), Push4(1), Ops(Instruction.EQ), Push2(0), Ops(Instruction.JUMPI));
         byte[] code = Code(fill, sequence, Ops(Instruction.STOP));
 
