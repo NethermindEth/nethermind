@@ -16,6 +16,11 @@ namespace Nethermind.Evm;
 /// implementation, deliberately. A wrapping repository has to answer for the one it wraps, and a default body
 /// would let a missing forward return the terminal answer silently — the reason <see cref="IsCodeOverridable"/>
 /// had its <c>=> false</c> default stripped again in #12282.
+/// <para>The writing members, <see cref="InsertCode"/>, <see cref="InsertTransientCode"/> and <see cref="SetDelegation"/>,
+/// take the world state to write to instead of using the one the repository reads from, so a caller that records
+/// a transaction into a wrapper of that state, as the EIP-7906 ASSERT diff does, sees the writes too. That state
+/// must be the one the repository reads from, or a write-through wrapper of it: reads keep going through the
+/// repository's own state, so a write to an unrelated state would leave the two disagreeing.</para>
 /// </remarks>
 public interface ICodeInfoRepository
 {
@@ -37,14 +42,14 @@ public interface ICodeInfoRepository
     CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec);
 
     /// <summary>Deposits <paramref name="code"/> into <paramref name="worldState"/> and primes any cache the repository keeps.</summary>
-    /// <remarks>The writes take the world state instead of using the one the repository reads from, so a caller
-    /// that records a transaction into a wrapper of that state, as the EIP-7906 ASSERT diff does, sees them too.</remarks>
     void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
 
     /// <summary>Installs EIP-8360 <c>TCREATE</c> code, which the world state never writes to the code database.</summary>
     /// <remarks>Goes through the repository, as <see cref="InsertCode"/> does, so a wrapper sees the code change.</remarks>
     void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    /// <inheritdoc cref="InsertCode"/>
+
+    /// <summary>Sets the EIP-7702 delegation of <paramref name="authority"/> to <paramref name="codeSource"/> in
+    /// <paramref name="worldState"/>, or clears it for <see cref="Address.Zero"/>, and primes any cache the repository keeps.</summary>
     void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
 

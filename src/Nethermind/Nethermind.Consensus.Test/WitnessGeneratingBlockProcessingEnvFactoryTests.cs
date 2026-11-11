@@ -10,6 +10,8 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -18,12 +20,13 @@ namespace Nethermind.Consensus.Test;
 public class WitnessGeneratingBlockProcessingEnvFactoryTests
 {
     // proof_call runs its call through this env; the processor starts its own EIP-7906 ASSERT diff
-    // recorder for a frame transaction, so the env's world state carries none.
+    // recorder for a frame transaction, so the env's world state carries none. Checked on a chain that
+    // schedules the fork, where a scope-level recorder used to be wired in.
     [Test]
     public void CreateScope_CarriesNoDiffRecorder()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = true, IsEip7928Enabled = true }))
             .Build();
 
         WorldStateProbeModule probe = new();

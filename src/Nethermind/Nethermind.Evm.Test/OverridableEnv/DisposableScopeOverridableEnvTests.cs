@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -15,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -78,11 +80,12 @@ public class DisposableScopeOverridableEnvTests
     }
 
     // The processor records the EIP-7906 ASSERT diff itself, so eth_call, eth_estimateGas and eth_simulateV1
-    // run on the plain world state the scope hands out.
+    // run on the plain world state the scope hands out. Checked on a chain that schedules the fork, where a
+    // scope-level recorder used to be wired in.
     [Test]
     public void BuildAndOverride_CarriesNoDiffRecorder()
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = true, IsEip7928Enabled = true });
 
         using Scope<Components> scope = ctx.Env.BuildAndOverride(
             Build.A.BlockHeader.TestObject,
@@ -187,10 +190,10 @@ public class DisposableScopeOverridableEnvTests
         public IOverridableEnv<Components> Env { get; }
         public TestStateHeaderProvider StateHeaderProvider { get; } = new();
 
-        public TestContext()
+        public TestContext(IReleaseSpec? releaseSpec = null)
         {
             _container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule())
+                .AddModule(new TestNethermindModule(releaseSpec))
                 .AddSingleton<IStateHeaderProvider>(StateHeaderProvider)
                 .AddScoped<ITransactionProcessor, TestTransactionProcessor>()
                 .Add<Components>()

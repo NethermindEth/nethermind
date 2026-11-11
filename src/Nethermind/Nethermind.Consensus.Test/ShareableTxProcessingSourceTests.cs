@@ -7,6 +7,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,12 +35,16 @@ public class ShareableTxProcessingSourceTests
     }
 
     // The processor records the EIP-7906 ASSERT diff itself, so eth_call, mempool admission and the parallel
-    // BAL parent readers all run on the plain world state.
+    // BAL parent readers all run on the plain world state. Checked on a chain that schedules the fork, where a
+    // scope-level recorder used to be wired in.
     [Test]
     public void Create_CarriesNoDiffRecorder()
     {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = true, IsEip7928Enabled = true }))
+            .Build();
         using IReadOnlyTxProcessorSource source = new AutoReadOnlyTxProcessingEnvFactory(
-            _container.Resolve<ILifetimeScope>(), _container.Resolve<IWorldStateManager>()).Create();
+            container.Resolve<ILifetimeScope>(), container.Resolve<IWorldStateManager>()).Create();
 
         using IReadOnlyTxProcessingScope scope = source.Build(IWorldState.PreGenesis);
 
