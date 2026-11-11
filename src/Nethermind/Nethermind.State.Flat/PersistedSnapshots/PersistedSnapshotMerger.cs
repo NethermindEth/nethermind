@@ -32,9 +32,9 @@ public static class PersistedSnapshotMerger
     /// <returns>
     /// <c>hasStorageClears</c>: whether the merged table carries a "destructed" self-destruct record (a
     /// storage clear), or a source's self-destruct flag could not be read. Only under such a record does
-    /// a merge drop slots, and the record survives every later merge, so <c>false</c> proves that no
-    /// merge at any level inside the range dropped one: <paramref name="bloom"/> then covers every
-    /// persisted snapshot contained in the range. With <c>true</c> it covers this snapshot only.
+    /// a merge drop slots, and the record survives every later merge, so for readable tables <c>false</c>
+    /// proves that no merge at any level inside the range dropped one: <paramref name="bloom"/> then covers
+    /// every persisted snapshot contained in the range. With <c>true</c> it covers this snapshot only.
     /// </returns>
     internal static bool NWayMergeSnapshots<TWriter, TView, TReader, TPin>(
         ReadOnlySpan<TView> views, ref TWriter writer, BloomFilter bloom)
