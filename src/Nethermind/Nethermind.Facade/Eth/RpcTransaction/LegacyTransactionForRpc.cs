@@ -163,19 +163,29 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v = 0;
-            if (V is not null)
-            {
-                if (V.Value > 1)
-                    v = V.Value.ToUInt64(null); // non protected
-                else if (!EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, V.Value == 1, out v)) // protected
-                    return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
-            }
+            if (!TryGetSignatureV(out ulong v))
+                return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
 
         return tx;
+    }
+
+    /// <summary>The <c>v</c> the transaction's signature carries for the request's <see cref="V"/>.</summary>
+    /// <returns>False when a y-parity <c>v</c> has no EIP-155 <c>v</c> for <see cref="ChainId"/>.</returns>
+    /// <remarks>A legacy request's <c>v</c> of 0 or 1 is a y-parity, protected for <see cref="ChainId"/> as in EIP-155.</remarks>
+    internal virtual bool TryGetSignatureV(out ulong v)
+    {
+        v = 0;
+        if (V is not { } value) return true;
+        if (value > 1)
+        {
+            v = value.ToUInt64(null); // non protected
+            return true;
+        }
+
+        return EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, value == 1, out v); // protected
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();

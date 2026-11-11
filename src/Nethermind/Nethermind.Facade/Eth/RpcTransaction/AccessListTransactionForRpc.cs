@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -55,6 +56,23 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         }
 
         return tx;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A typed transaction signs with a y-parity, which its signature carries offset by 27, as a decoded one does: a
+    /// <c>v</c> of 0 or 1 is that y-parity, and so is a <see cref="YParity"/> of 0 or 1 when <c>v</c> is left out. Any other
+    /// <c>v</c> is taken as given.
+    /// </remarks>
+    internal override bool TryGetSignatureV(out ulong v)
+    {
+        if ((V ?? YParity) is { } yParity && yParity <= UInt256.One)
+        {
+            v = Signature.VOffset + yParity.ToUInt64(null);
+            return true;
+        }
+
+        return base.TryGetSignatureV(out v);
     }
 
     public new static AccessListTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
