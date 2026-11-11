@@ -5134,6 +5134,8 @@ public partial class FrameTxProcessorTests
             Assert.That(HexValue(frames[3], "gasUsed"), Is.Zero);
             Assert.That(frames[4].GetProperty("logs").GetArrayLength(), Is.EqualTo(1),
                 "the frame after the batch committed its log");
+            Assert.That(HexValue(frames[4].GetProperty("logs")[0], "index"), Is.Zero,
+                "the rollback renumbers the logs after it");
             Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
                 "the trace's logs are the receipt's logs");
         }
@@ -5160,6 +5162,7 @@ public partial class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(document.RootElement.GetProperty("error").GetString(), Is.EqualTo("ASSERT frame reverted"));
+            Assert.That(document.RootElement.GetProperty("calls").GetArrayLength(), Is.EqualTo(3));
             Assert.That(TxFrameReceipt.ConcatLogs(receipts), Has.Length.EqualTo(1),
                 "the prefix's log outlives the revert, so the receipt still carries it");
             Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
