@@ -364,8 +364,12 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
-        ReportUnknownAccountFirst(rpcTx, await SignAndSendTransaction(rpcTx));
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    {
+        (ResultWrapper<Hash256> result, bool signatureKept) = await SignAndSendTransaction(rpcTx);
+        // The wallet plays no part in a transaction sent under the signature its request brought.
+        return signatureKept ? result : ReportUnknownAccountFirst(rpcTx, result);
+    }
 
     /// <summary>
     /// A request from an account this node holds no key for fails as an unknown account whatever else is wrong
@@ -398,34 +402,36 @@ public partial class EthRpcModule(
             : null;
     }
 
-    private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    /// <returns>The result, and whether the transaction was sent under the signature the request brought.</returns>
+    private async Task<(ResultWrapper<Hash256> Result, bool SignatureKept)> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
-            return sendError;
+            return (sendError, false);
 
         // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
         IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
 
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
-        if (tx.Signature is not null)
-        {
-            // Without a nonce the node picks one and the wallet signs for from, so the request's signature is not kept.
-            if (nonce is null && !tx.SupportsFrames)
-                tx.Signature = null;
-            else if (SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
-                return signerError;
-        }
+        // A frame transaction has no r/s signature: its sender is part of its payload, and r/s it carries are not used.
+        bool signed = tx.Signature is not null && !tx.SupportsFrames;
+        // Without a nonce the node picks one and the wallet signs for from, so the request's signature is not kept.
+        if (signed && nonce is null)
+            tx.Signature = null;
+
+        bool signatureKept = signed && nonce is not null;
+        if (signatureKept && SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
+            return (signerError, true);
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
-        return await SendTx(tx, options);
+        return (await SendTx(tx, options), signatureKept);
     }
 
     /// <summary>

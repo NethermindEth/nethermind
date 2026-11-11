@@ -26,14 +26,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 /// <summary>
 /// <c>eth_sendTransaction</c> with requests that bring their own signature, signed by B, a funded account, unless a test
-/// says otherwise. Typed requests give v as 27 or 28.
+/// says otherwise. Typed requests give v as their y-parity, as clients serialize them, unless a test says otherwise.
 /// </summary>
 public partial class EthRpcModuleTests
 {
-    // A node that holds no key for the from reports it as unknown, whatever else is wrong with the request.
-    [TestCase(true, "from does not match the signer")]
-    [TestCase(false, "unknown account")]
-    public async Task Signed_request_from_another_account_is_rejected(bool walletHoldsFrom, string expectedError)
+    // The wallet plays no part in a request that keeps its signature, so its answer does not depend on the keys the node holds.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Signed_request_from_another_account_is_rejected(bool walletHoldsFrom)
     {
         using TestRpcBlockchain test = await SignedSendChain(walletHoldsFrom ? Wallet(holdsC: true) : NullWallet.Instance);
         Transaction signed = SignedTransfer(test, TxType.Legacy);
@@ -44,22 +44,27 @@ public partial class EthRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"{{expectedError}}"},"id":67}"""));
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"from does not match the signer"},"id":67}"""));
             Assert.That(pooled, Is.Zero, "the request left the pool unchanged");
             Assert.That(raw, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{signed.Hash}}","id":67}"""), "the transaction is still accepted from its signer");
         }
     }
 
-    [TestCase(TxType.Legacy, false)]
-    [TestCase(TxType.Legacy, true)]
-    [TestCase(TxType.EIP1559, false)]
-    [TestCase(TxType.EIP1559, true)]
-    public async Task Signed_request_runs_as_its_signer(TxType type, bool fromGiven)
+    public enum TypedV { YParity, V27Or28, YParityFieldOnly }
+
+    [TestCase(TxType.Legacy, false, TypedV.YParity)]
+    [TestCase(TxType.Legacy, true, TypedV.YParity)]
+    [TestCase(TxType.EIP1559, false, TypedV.YParity)]
+    [TestCase(TxType.EIP1559, true, TypedV.YParity)]
+    [TestCase(TxType.EIP1559, false, TypedV.V27Or28)]
+    [TestCase(TxType.EIP1559, false, TypedV.YParityFieldOnly)]
+    [TestCase(TxType.AccessList, false, TypedV.YParity)]
+    public async Task Signed_request_runs_as_its_signer(TxType type, bool fromGiven, TypedV typedV)
     {
         using TestRpcBlockchain test = await SignedSendChain(NullWallet.Instance);
         Transaction signed = SignedTransfer(test, type);
 
-        string response = await test.TestEthRpc("eth_sendTransaction", SignedRequest(signed, fromGiven ? TestItem.AddressB : null));
+        string response = await test.TestEthRpc("eth_sendTransaction", SignedRequest(signed, fromGiven ? TestItem.AddressB : null, typedV));
         bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out Transaction? inPool);
 
         using (Assert.EnterMultipleScope())
@@ -105,7 +110,7 @@ public partial class EthRpcModuleTests
             Assert.That(test.ReadOnlyState.GetBalance(otherAddress).IsZero, Is.False, "precondition: that address is funded");
             Assert.That(response, Is.EqualTo(accepted
                 ? $$"""{"jsonrpc":"2.0","result":"{{signed.Hash}}","id":67}"""
-                : $$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"unknown account"},"id":67}"""));
+                : $$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"from does not match the signer"},"id":67}"""));
             Assert.That(pooledSenders, Is.EqualTo(accepted ? new[] { TestItem.AddressB } : Array.Empty<Address>()), "the senders in the pool");
         }
     }
@@ -205,6 +210,81 @@ public partial class EthRpcModuleTests
         await txSender.Received(1).SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
     }
 
+    // A request that keeps its signature does not go through the wallet, so the pool's own answer is reported.
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Signed_request_sent_again_is_reported_as_already_known(bool fromGiven)
+    {
+        using TestRpcBlockchain test = await SignedSendChain(NullWallet.Instance);
+        LegacyTransactionForRpc request = SignedRequest(SignedTransfer(test, TxType.Legacy), fromGiven ? TestItem.AddressB : null);
+
+        string first = await test.TestEthRpc("eth_sendTransaction", request);
+        string second = await test.TestEthRpc("eth_sendTransaction", request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Does.Contain("\"result\""), "precondition: the first request was pooled");
+            Assert.That(second, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.TransactionRejected}},"message":"already known"},"id":67}"""));
+        }
+    }
+
+    // The wallet signs this request, so an account it does not hold is reported first, whatever else fails.
+    [Test]
+    public async Task Unsigned_request_from_an_account_the_wallet_does_not_hold_is_reported_as_unknown()
+    {
+        using TestRpcBlockchain test = await SignedSendChain(Wallet(holdsC: false));
+        LegacyTransactionForRpc request = UnsignedRequest(nonce: 0);
+        request.From = TestItem.AddressC;
+
+        string response = await test.TestEthRpc("eth_sendTransaction", request);
+
+        Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidInput}},"message":"unknown account"},"id":67}"""));
+    }
+
+    /// <remarks>
+    /// A frame transaction has no r/s signature: its sender is part of its payload. r/s a frame request carries are passed
+    /// on unused and not checked, so the request is sent from its from either way.
+    /// </remarks>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Frame_request_is_sent_from_its_from_whether_or_not_it_carries_r_s(bool carriesRs)
+    {
+        ITxSender txSender = Substitute.For<ITxSender>();
+        Transaction? sent = null;
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>()).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithWallet(NullWallet.Instance)
+            .WithTxSender(txSender).Build(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = new()
+        {
+            From = TestItem.AddressC,
+            Gas = 100_000,
+            Nonce = 0,
+            MaxFeePerGas = 3,
+            MaxPriorityFeePerGas = 1,
+            Frames =
+            [
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000, StateGas = 0 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 },
+            ],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+        };
+        if (carriesRs)
+        {
+            request.R = 1;
+            request.S = 2;
+            request.V = 27;
+        }
+
+        string response = await test.TestEthRpc("eth_sendTransaction", request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA}}","id":67}"""));
+            Assert.That(sent?.SenderAddress, Is.EqualTo(TestItem.AddressC));
+            Assert.That(sent?.Signature is not null, Is.EqualTo(carriesRs), "r/s are passed on as given");
+        }
+    }
+
     private static Task<TestRpcBlockchain> SignedSendChain(IWallet wallet) =>
         TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithWallet(wallet).Build(new TestSpecProvider(Prague.Instance));
 
@@ -229,20 +309,29 @@ public partial class EthRpcModuleTests
             .WithGasLimit(GasCostOf.Transaction)
             .To(TestItem.AddressD)
             .WithValue(1.Wei);
-        builder = type == TxType.Legacy ? builder.WithGasPrice(20.GWei) : builder.WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei);
+        builder = type is TxType.Legacy or TxType.AccessList
+            ? builder.WithGasPrice(20.GWei)
+            : builder.WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei);
         return builder.SignedAndResolved(new EthereumEcdsa(signatureChainId ?? test.SpecProvider.ChainId), signer ?? TestItem.PrivateKeyB).TestObject;
     }
 
     /// <summary>The request that brings the fields and the signature of <paramref name="signed"/>, sent with <paramref name="from"/>.</summary>
-    private static LegacyTransactionForRpc SignedRequest(Transaction signed, Address? from)
+    /// <param name="typedV">How a typed request gives its y-parity: as <c>v</c> and <c>yParity</c>, the form clients send, as
+    /// a <c>v</c> of 27 or 28, or as <c>yParity</c> alone.</param>
+    private static LegacyTransactionForRpc SignedRequest(Transaction signed, Address? from, TypedV typedV = TypedV.YParity)
     {
         LegacyTransactionForRpc request = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(signed);
         request.From = from;
-        if (request is EIP1559TransactionForRpc typed)
+        // A dynamic-fee request is priced by its fee fields alone.
+        if (request is EIP1559TransactionForRpc dynamicFee) dynamicFee.GasPrice = null;
+        if (request is AccessListTransactionForRpc typed)
         {
-            // A typed request is priced by its fee fields alone, and its v is read as 27 or 28.
-            typed.GasPrice = null;
-            typed.V = (UInt256)(27UL + signed.Signature!.RecoveryId);
+            typed.V = typedV switch
+            {
+                TypedV.V27Or28 => (UInt256)(27UL + signed.Signature!.RecoveryId),
+                TypedV.YParityFieldOnly => null,
+                _ => typed.V
+            };
         }
 
         return request;

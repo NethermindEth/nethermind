@@ -74,10 +74,11 @@ namespace Nethermind.TxPool
         }
 
         // Every node runs a transaction as the account its signature recovers, and the pool keeps a sender it is given,
-        // so a given sender that is not that account is refused.
+        // so a given sender that is not that account is refused. A frame transaction has no r/s signature: its sender is
+        // part of its payload, and r/s it carries are not used.
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions, bool senderGiven) =>
             !_sealer.TrySeal(tx, txHandlingOptions) ? AcceptTxResult.SignFailed
-            : senderGiven && tx.Signature is not null && !IsSignedBySender(tx) ? SenderIsNotSigner
+            : senderGiven && tx.Signature is not null && !tx.SupportsFrames && !IsSignedBySender(tx) ? SenderIsNotSigner
             : _txPool.SubmitTx(tx, txHandlingOptions);
 
         private bool IsSignedBySender(Transaction tx) =>

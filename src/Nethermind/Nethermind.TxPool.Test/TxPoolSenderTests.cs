@@ -136,6 +136,27 @@ public class TxPoolSenderTests
         }
     }
 
+    /// <remarks>A frame transaction has no r/s signature: its sender is part of its payload, and r/s it carries are not used.</remarks>
+    [Test]
+    public void Frame_transaction_with_r_s_of_another_account_is_submitted_as_its_sender()
+    {
+        EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        TxPoolSender sender = BuildSender(out INonceManager _, txPool, ecdsa: ecdsa);
+        Transaction tx = FrameTx(nonce: 0);
+        tx.Signature = Build.A.Transaction.Signed(ecdsa, TestItem.PrivateKeyB).TestObject.Signature;
+
+        (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.None).Result;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(txPool.ReceivedCalls().Any(static call => call.GetMethodInfo().Name == nameof(ITxPool.SubmitTx)), Is.True, "submitted to the pool");
+            Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
     private static TxPoolSender BuildSender(out INonceManager nonceManager, ITxPool txPool = null, ITxSigner signer = null, IEthereumEcdsa ecdsa = null,
         IReleaseSpec spec = null)
     {
