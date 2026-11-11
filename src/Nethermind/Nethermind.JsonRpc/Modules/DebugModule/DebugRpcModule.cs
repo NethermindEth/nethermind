@@ -1529,6 +1529,24 @@ public class DebugRpcModule(
                 return null;
             }
 
+            ReadOnlySpan<byte> encoded = blockRlp.Bytes;
+            if (encoded[0] > 0xf7)
+            {
+                int lengthOfLength = encoded[0] - 0xf7;
+                if (lengthOfLength >= encoded.Length)
+                    throw new RlpException("rlp: value size exceeds available input length");
+
+                // Bound the root's eight-byte RLP length before the int-sized reader sees it.
+                if (encoded[1] != 0)
+                {
+                    ulong length = 0;
+                    for (int i = 1; i <= lengthOfLength; i++)
+                        length = (length << 8) | encoded[i];
+                    if (length >= 56 && length > (ulong)(encoded.Length - lengthOfLength - 1))
+                        throw new RlpException("rlp: value size exceeds available input length");
+                }
+            }
+
             RlpReader context = new(blockRlp.Bytes);
             if (context.PeekNextRlpLength() > blockRlp.Bytes.Length)
                 throw new RlpException("rlp: value size exceeds available input length");

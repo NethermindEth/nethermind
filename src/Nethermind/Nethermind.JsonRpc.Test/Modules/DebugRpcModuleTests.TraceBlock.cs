@@ -60,17 +60,33 @@ public partial class DebugRpcModuleTests
         ("0xdeadbeef", "rlp: value size exceeds available input length"),
         ("0xc1", "rlp: value size exceeds available input length"),
         ("0xf864", "rlp: value size exceeds available input length"),
+        ("0xfb80000000", "rlp: value size exceeds available input length"),
+        ("0xfbffffffff", "rlp: value size exceeds available input length"),
+        ("0xfc01", "rlp: value size exceeds available input length"),
+        ("0xfc0100000000", "rlp: value size exceeds available input length"),
+        ("0xff0100000000000000", "rlp: value size exceeds available input length"),
+        ("0xffffffffffffffffff", "rlp: value size exceeds available input length"),
+        ("0xf801", "Expected length greater than or equal to 56 and was 1"),
+        ("0xf90038", "Length starts with 0"),
+        ("0xf83af9ffff" + new string('0', 110), "RLP data is truncated: not enough bytes for the declared length prefix"),
         ("0xc0", "rlp: too few elements for types.extblock"),
         ("0x", "EOF")
     ];
 
     [Test]
     public async Task Debug_traceBlock_preserves_decode_diagnostic(
-        [ValueSource(nameof(RawBlockDecodeCases))] (string Payload, string Diagnostic) input, [Values] bool streamMode)
+        [ValueSource(nameof(RawBlockDecodeCases))] (string Payload, string Diagnostic) input, [Values] bool streamMode,
+        [Values("debug_traceBlock", "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method)
     {
         using Context context = await Context.Create();
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", input.Payload,
-            new { streamMode, tracer = "noopTracer" });
+        object options = new { streamMode, tracer = "noopTracer" };
+        object[] parameters = method switch
+        {
+            "debug_traceTransactionInBlockByHash" => [input.Payload, TestItem.KeccakA, options],
+            "debug_traceTransactionInBlockByIndex" => [input.Payload, 0, options],
+            _ => [input.Payload, options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
 
         using (Assert.EnterMultipleScope())
