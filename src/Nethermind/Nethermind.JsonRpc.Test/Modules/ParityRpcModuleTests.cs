@@ -328,6 +328,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public async Task parity_pendingTransactions_keeps_the_intrinsic_gas_memo_of_a_non_frame_transaction()
+        {
+            Transaction legacyTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            IIntrinsicGasMemo memo = Substitute.For<IIntrinsicGasMemo>();
+            legacyTx.IntrinsicGasMemo = memo;
+            ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([legacyTx]);
+
+            await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool, specProvider: specProvider, blockFinder: blockFinder), "parity_pendingTransactions");
+
+            Assert.That(legacyTx.IntrinsicGasMemo, Is.SameAs(memo));
+        }
+
         /// <remarks>
         /// An EIP-8141 frame transaction is accepted with no envelope signature, and every pending transaction
         /// is mapped through the same constructor, so one of them in the pool used to throw the whole request.

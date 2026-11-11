@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
 
         private static string GetTransactionSummary(Transaction tx, IReleaseSpec? pendingSpec)
         {
-            ulong gas = pendingSpec is not null && FrameTxValidation.TryCalculateGasBudget(tx, pendingSpec, out _, out _, out ulong frameGas)
+            ulong gas = pendingSpec is not null && tx.Frames is not null && FrameTxValidation.TryCalculateGasBudget(tx, pendingSpec, out _, out _, out ulong frameGas)
                 ? frameGas
                 : tx.GasLimit;
             string recipient = tx.To?.ToString(withZeroX: true, withEip55Checksum: true) ?? "contract creation";

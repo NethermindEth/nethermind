@@ -298,6 +298,27 @@ public class TxPoolRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task TxPool_Inspect_KeepsTheIntrinsicGasMemoOfANonFrameTx()
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
+        IIntrinsicGasMemo memo = Substitute.For<IIntrinsicGasMemo>();
+        tx.IntrinsicGasMemo = memo;
+        Dictionary<TxPoolTxKey, Transaction> senderTxs = new() { { new TxPoolTxKey(0), tx } };
+        ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
+            pending: new() { { new AddressAsKey(TestItem.AddressA), senderTxs } },
+            queued: []));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, blockFinder, new BlocksConfig { SecondsPerSlot = 12 });
+
+        await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_inspect");
+
+        Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memo));
+    }
+
     [TestCase("txpool_content", TxPoolContentJson)]
     [TestCase("txpool_inspect", TxPoolInspectJson)]
     public async Task TxPool_WhenPoolHasSeveralSendersAndNonces_SerializesToTheContractedBytes(string method, string expectedJson)

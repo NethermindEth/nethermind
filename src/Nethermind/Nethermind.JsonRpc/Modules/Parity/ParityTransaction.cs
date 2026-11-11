@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             To = transaction.IsContractCreation ? null : transaction.To;
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
-            Gas = pendingSpec is not null && FrameTxValidation.TryCalculateGasBudget(transaction, pendingSpec, out _, out _, out ulong frameGas)
+            Gas = pendingSpec is not null && transaction.Frames is not null && FrameTxValidation.TryCalculateGasBudget(transaction, pendingSpec, out _, out _, out ulong frameGas)
                 ? frameGas
                 : transaction.GasLimit;
             Raw = raw;
