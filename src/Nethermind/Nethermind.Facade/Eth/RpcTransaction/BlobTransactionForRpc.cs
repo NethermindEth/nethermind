@@ -100,11 +100,22 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
-    /// <summary>Checks the conversion rules that precede blob fields when validating conflicting submission aliases.</summary>
-    internal Result<Transaction> ToTransactionBeforeBlobFields(ulong? gasCap, IReleaseSpec? spec) =>
-        MaxFeePerBlobGas?.IsZero == true
-            ? RpcTransactionErrors.ZeroMaxFeePerBlobGas
-            : base.ToTransaction(validateUserInput: true, gasCap, spec);
+    internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
+    {
+        string? dataError = base.GetSubmissionDataError();
+        // Geth's setDefaults checks aliases after sidecars and fees, but before blob fields.
+        if (Blobs is null && dataError == RpcTransactionErrors.DataAndInputDiffer
+            && conversionError is RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
+                or RpcTransactionErrors.InvalidBlobVersionedHashSize or RpcTransactionErrors.InvalidBlobVersionedHashVersion)
+        {
+            Result<Transaction> preceding = MaxFeePerBlobGas?.IsZero == true
+                ? RpcTransactionErrors.ZeroMaxFeePerBlobGas
+                : CheckFeeCapOrder(base.ToTransaction(validateUserInput: true, gasCap, spec));
+            return preceding.IsError ? preceding.Error : dataError;
+        }
+
+        return conversionError ?? dataError;
+    }
 
     public override Result FillDefaults(in TxFillContext context)
     {

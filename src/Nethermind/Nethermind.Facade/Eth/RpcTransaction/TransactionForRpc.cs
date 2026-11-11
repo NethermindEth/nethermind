@@ -96,26 +96,20 @@ public abstract class TransactionForRpc
     /// <remarks>
     /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
     /// so the first failing check still names the request. Differing non-null input and data are then rejected,
-    /// as in Geth's setDefaults, before a missing contract data error or empty blob hashes / missing blob recipient
+    /// as in Geth's setDefaults, before a missing contract data error or invalid blob hashes / missing blob recipient
     /// when no sidecar was supplied; calls instead prefer input over data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
-        if (GetSubmissionDataError() is not { } error) return result;
-        if (error == RpcTransactionErrors.DataAndInputDiffer
-            && this is BlobTransactionForRpc { Blobs: null } blob
-            && result.Error is RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx)
-        {
-            Result<Transaction> preceding = CheckFeeCapOrder(blob.ToTransactionBeforeBlobFields(gasCap, spec));
-            return preceding.IsError ? preceding : Result<Transaction>.Fail(error);
-        }
-        return result.IsError ? result : Result<Transaction>.Fail(error);
+        return GetSubmissionDataError(result.Error, gasCap, spec) is { } error && error != result.Error
+            ? Result<Transaction>.Fail(error)
+            : result;
     }
 
-    internal virtual string? GetSubmissionDataError() => null;
+    internal virtual string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null) => conversionError;
 
-    private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
+    private protected Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
         && !result.IsError

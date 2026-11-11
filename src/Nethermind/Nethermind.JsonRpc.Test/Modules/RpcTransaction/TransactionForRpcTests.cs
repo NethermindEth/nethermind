@@ -147,22 +147,34 @@ public class TransactionForRpcTests
 
     [Test]
     public void Blob_submission_alias_checks_preserve_fee_sidecar_and_call_precedence(
-        [Values] bool suppliedBlobs, [Values] bool invalidFee)
+        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("empty", "size", "version")] string hashKind)
     {
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
+        string hashes = hashKind switch
+        {
+            "size" => "[\"0x0100\"]",
+            "version" => "[\"0x0200000000000000000000000000000000000000000000000000000000000000\"]",
+            _ => "[]"
+        };
+        string blobError = hashKind switch
+        {
+            "size" => RpcTransactionErrors.InvalidBlobVersionedHashSize,
+            "version" => RpcTransactionErrors.InvalidBlobVersionedHashVersion,
+            _ => RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
+        };
         TransactionForRpc request = DeserializeTransactionForRpc($$"""
-            { {{sidecar}}"blobVersionedHashes":[],"maxFeePerBlobGas":"0x1",
+            { {{sidecar}}"blobVersionedHashes":{{hashes}},"maxFeePerBlobGas":"0x1",
               "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
               "input":"0x01","data":"0x2a" }
             """);
-        string expected = suppliedBlobs ? RpcTransactionErrors.AtLeastOneBlobInBlobTransaction
+        string expected = suppliedBlobs ? blobError
             : invalidFee ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)
             : RpcTransactionErrors.DataAndInputDiffer;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(request.ToValidatedTransaction().Error, Is.EqualTo(expected));
-            Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
+            Assert.That(request.ToCallTransaction(Cancun.Instance).Error, Is.EqualTo(blobError));
         }
     }
 

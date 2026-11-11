@@ -1918,14 +1918,17 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_prefers_input_when_data_differs([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
-        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressD}\",{calldata}}}");
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
 
-        using JsonDocument reference = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressD}\",\"input\":{call.RootElement.GetProperty("input").GetRawText()}}}");
+        using JsonDocument reference = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"input\":{call.RootElement.GetProperty("input").GetRawText()}}}");
+        string expected = call.RootElement.GetProperty("input").GetString() == "0x"
+            ? "0x" : "0x0000000000000000000000000000000000000000000000000000000000000001";
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+            Assert.That((string?)JToken.Parse(serialized)["result"], Is.EqualTo(expected), serialized);
             Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", reference.RootElement, "latest")));
         }
     }

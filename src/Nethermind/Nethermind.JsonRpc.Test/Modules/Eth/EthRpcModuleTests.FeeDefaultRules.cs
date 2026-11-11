@@ -337,6 +337,43 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Blob_submission_fee_checks_do_not_depend_on_alias_conflicts(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool emptyHashes)
+    {
+        JsonObject request = JsonNode.Parse("""{"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        request["blobVersionedHashes"] = emptyHashes ? new JsonArray()
+            : new JsonArray("0x0100000000000000000000000000000000000000000000000000000000000000");
+
+        Assert.That(await FeeDefaultsError(method, request.ToJsonString(), london: true), Is.EqualTo("maxFeePerGas must be non-zero"));
+    }
+
+    [Test]
+    public async Task Blob_submission_calldata_conflicts_precede_invalid_hashes(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidSize)
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        request["blobVersionedHashes"] = new JsonArray(invalidSize ? "0x0100"
+            : "0x0200000000000000000000000000000000000000000000000000000000000000");
+
+        string response = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
+        string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+            : invalidSize ? RpcTransactionErrors.InvalidBlobVersionedHashSize : RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)
     {
         using Context ctx = london ? await Context.CreateWithLondonEnabled() : await Context.Create();

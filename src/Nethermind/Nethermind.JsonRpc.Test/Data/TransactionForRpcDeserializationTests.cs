@@ -261,14 +261,15 @@ public class TransactionForRpcDeserializationTests
     }
 
     [Test]
-    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
+    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized, [Values] bool assignInput)
     {
         LegacyTransactionForRpc rpc = deserialized
-            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"data":"0x6001"}""")!
+            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"input":"0x01","data":"0x2a"}""")!
             : new LegacyTransactionForRpc { Input = [0x60, 0x01] };
         byte[] data = [0x60, 0x2a];
 
-        rpc.Data = data;
+        if (assignInput) rpc.Input = data;
+        else rpc.Data = data;
 
         using JsonDocument document = JsonDocument.Parse(_serializer.Serialize(rpc));
         using (Assert.EnterMultipleScope())
@@ -277,6 +278,16 @@ public class TransactionForRpcDeserializationTests
             Assert.That(rpc.ToTransaction().Data!.Data, Is.SequenceEqualTo(data));
             Assert.That(document.RootElement.GetProperty("input").GetString(), Is.EqualTo("0x602a"));
             Assert.That(document.RootElement.TryGetProperty("data", out _), Is.False);
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.Not.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+        }
+
+        if (assignInput) rpc.Input = null;
+        else rpc.Data = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Input, Is.Null, "clearing calldata must not revive a JSON data alias");
+            Assert.That(rpc.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
         }
     }
 

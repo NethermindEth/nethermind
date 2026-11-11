@@ -381,12 +381,11 @@ public partial class EthRpcModule(
     /// <returns>The error that stops the send, or null when the check and the fill pass.</returns>
     /// <remarks>
     /// A blob transaction is not filled because it is sent without a sidecar and rejected anyway.
-    /// Without a supplied sidecar, a calldata conflict still follows fee checks to preserve error precedence.
+    /// Without a supplied sidecar, fee checks still precede conversion errors.
     /// </remarks>
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (rpcTx is BlobTransactionForRpc { Blobs: null }
-            && rpcTx.GetSubmissionDataError() == RpcTransactionErrors.DataAndInputDiffer
             && _blockFinder.Head?.Header is { } blobHead
             && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(blobHead).IsEip1559Enabled) is { } blobFeeError)
         {
