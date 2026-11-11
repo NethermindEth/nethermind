@@ -87,7 +87,7 @@ public class RestartedPersistedTierTests
 
             if (start == 0) // until the next start rebuilds the filters
             {
-                Assert.That(restarted.Repository.TryLeasePersistedState(Block(16), SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? covered), Is.True);
+                Assert.That(restarted.Repository.TryLeasePersistedState(Block(80), SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? covered), Is.True);
                 using (covered) Assert.That(covered!.Bloom.Capacity, Is.EqualTo(1), "a window under a CompactSize-wide one keeps the runtime filter");
             }
         }
