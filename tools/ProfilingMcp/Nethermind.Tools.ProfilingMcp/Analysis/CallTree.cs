@@ -88,7 +88,7 @@ internal static class CallTree
         double active = root.TotalTime - root.WaitTime;
         for (double fraction = 0.000001; ; fraction *= 2)
         {
-            bool Keep(CallTreeNode n) => n.TotalTime >= fraction * root.TotalTime || n.TotalTime - n.WaitTime >= fraction * active;
+            bool Keep(CallTreeNode n) => n.TotalTime >= fraction * root.TotalTime || (active > 0 && n.TotalTime - n.WaitTime >= fraction * active);
 
             int kept = Count(root, Keep);
             if (kept <= maxNodes || fraction >= 1)

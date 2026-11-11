@@ -54,6 +54,23 @@ public class CallTreeTests
     }
 
     [Test]
+    public void Prune_fits_a_tree_that_only_waits()
+    {
+        CallTreeNode root = CallTree.Build(
+        [
+            Function("Wait", Stack(10_000, 10_000, "Main", "Wait"), Stack(1, 1, "Main", "A", "Wait"), Stack(1, 1, "Main", "B", "Wait")),
+        ], IsWait);
+
+        int kept = CallTree.Prune(root, maxNodes: 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(kept, Is.EqualTo(3));
+            Assert.That(root.Children.Single().Children.Select(static c => c.Name), Is.EqualTo(new[] { "Wait" }));
+        }
+    }
+
+    [Test]
     public void Report_embeds_method_names_without_closing_its_script()
     {
         FunctionStat[] functions = [Function("Evil</script><b>", Stack(5, 5, "Evil</script><b>"))];

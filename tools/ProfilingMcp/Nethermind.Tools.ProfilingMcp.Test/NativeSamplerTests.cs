@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.Native;
 using NUnit.Framework;
@@ -100,11 +101,44 @@ public class NativeSamplerTests
 
     [TestCase(null, ExpectedResult = "/proc/7/root/tmp/perf-7.map")]
     [TestCase("/data/maps/", ExpectedResult = "/proc/7/root/data/maps/perf-7.map")]
+    [TestCase("/", ExpectedResult = "/proc/7/root/perf-7.map")]
     [TestCase("maps", ExpectedResult = "/proc/7/cwd/maps/perf-7.map")]
     public string Finds_the_perf_map_where_the_runtime_writes_it(string? jitDumpPath) =>
         NativeSampler.PerfMapPath(7, jitDumpPath is null
             ? new Dictionary<string, string> { ["TMPDIR"] = "/elsewhere" }
             : new Dictionary<string, string> { ["TMPDIR"] = "/elsewhere", ["DOTNET_PerfMapJitDumpPath"] = jitDumpPath });
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Keeps_a_perf_map_that_was_on_before_the_sample(CancellationToken cancellationToken)
+    {
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        if (!OperatingSystem.IsLinux() || path is null || !path.Split(':').Any(static folder => File.Exists(Path.Combine(folder, "perf"))))
+            Assert.Ignore("perf runs on Linux only and is not installed here.");
+
+        DiagnosticsClient runtime = new(Environment.ProcessId);
+        runtime.EnablePerfMap(PerfMapType.PerfMap);
+        string output = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}{NativeSampler.Extension}");
+        string? perfMap = null;
+        try
+        {
+            (string PerfMap, int Methods)? jit = await NativeSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(1), output, cancellationToken);
+            perfMap = jit?.PerfMap;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(jit?.Methods, Is.GreaterThan(0));
+                Assert.That(perfMap, Does.Exist);
+            }
+        }
+        finally
+        {
+            runtime.DisablePerfMap();
+            File.Delete(output);
+            if (perfMap is not null)
+                File.Delete(perfMap);
+        }
+    }
 
     [Test]
     public void Keeps_the_innermost_frames_of_a_deep_stack()

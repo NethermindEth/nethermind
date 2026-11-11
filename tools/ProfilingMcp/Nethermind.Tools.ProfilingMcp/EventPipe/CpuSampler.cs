@@ -41,8 +41,15 @@ internal static class CpuSampler
         finally
         {
             // Stopping triggers the rundown that names the JIT-compiled methods, so it is needed even after cancellation.
-            await session.StopAsync(CancellationToken.None);
-            await copy;
+            try
+            {
+                await session.StopAsync(CancellationToken.None);
+            }
+            finally
+            {
+                // The file is disposed on return, so the copy into it must have ended even when stopping failed.
+                await copy;
+            }
         }
     }
 }

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Nethermind.Tools.ProfilingMcp.Memory;
@@ -92,6 +94,34 @@ public class GcHeapDumpTests
             GcHeapDumpResult[] results = await Task.WhenAll(first, second);
 
             Assert.That(results.Select(static r => r.Snapshot.Types.FirstOrDefault(static t => t.Name == nameof(Retained))?.Count), Is.All.EqualTo(Instances));
+        }
+        finally
+        {
+            RetainedByStatic.Clear();
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Counts_one_walk_when_another_tool_reads_the_heap_too(
+        [Values(0, 10)] int otherStartsAfterMs, [Values] bool withReferences, CancellationToken cancellationToken)
+    {
+        Allocate();
+        try
+        {
+            // A heap session that takes none of this server's locks, as dotnet-gcdump's does.
+            Task<GcHeapDumpResult> read = GcHeapDump.CollectAsync(Environment.ProcessId, withReferences, cancellationToken);
+            await Task.Delay(otherStartsAfterMs, cancellationToken);
+            using EventPipeSession other = await new DiagnosticsClient(Environment.ProcessId).StartEventPipeSessionAsync(
+                [new EventPipeProvider(ClrTraceEventParser.ProviderName, EventLevel.Verbose, (long)ClrTraceEventParser.Keywords.GCHeapSnapshot)],
+                requestRundown: false, token: cancellationToken);
+            Task drain = other.EventStream.CopyToAsync(Stream.Null, cancellationToken);
+
+            GcHeapDumpResult dump = await read;
+            await other.StopAsync(cancellationToken);
+            await drain;
+
+            Assert.That(dump.Snapshot.Types.FirstOrDefault(static t => t.Name == nameof(Retained))?.Count, Is.EqualTo(Instances));
         }
         finally
         {

@@ -34,7 +34,7 @@ internal static class GcHeapDump
     /// <summary>How long no heap event may arrive after the walk began before the session is stopped, which flushes the rest.</summary>
     private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(2);
 
-    /// <summary>How long the session may stay silent before any heap event; an idle runtime can hold back even the first ones.</summary>
+    /// <summary>How long the session may stay silent before the heap read's GC starts; an idle runtime can hold back even its first events.</summary>
     private static readonly TimeSpan QuietBeforeHeap = TimeSpan.FromSeconds(5);
 
     /// <summary>The longest a read waits for the runtime before stopping the session and judging what arrived.</summary>
@@ -79,8 +79,10 @@ internal static class GcHeapDump
             {
                 // An idle runtime may hold heap events, from the first object to the GC's end, in its buffers; stopping the session flushes
                 // them, so a session that has gone quiet is stopped rather than waited on. Whether the heap arrived whole is checked after.
+                // Objects are reported only once the GC has marked the heap, which can take longer than any quiet period on a large heap,
+                // so between the GC's start and its first object the read waits up to the deadline.
                 while (!dumpGc.Task.IsCompleted && !processing.IsCompleted && elapsed.Elapsed < Deadline
-                       && builder.QuietFor < (builder.HasNodes ? Quiet : QuietBeforeHeap))
+                       && (builder.HasNodes ? builder.QuietFor < Quiet : builder.GcStarted || builder.QuietFor < QuietBeforeHeap))
                     await Task.WhenAny(dumpGc.Task, processing, Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken)).WaitAsync(cancellationToken);
             }
             finally
@@ -159,8 +161,22 @@ internal static class GcHeapDump
         private readonly List<(ulong Key, ulong Value)> _dependentHandles = [];
         private long _objects;
         private long _lastEvent = Environment.TickCount64;
+        private volatile bool _gcStarted;
+        private bool _inWalkGc;
+        private bool _walkRecorded;
 
         public bool HasNodes => _objects > 0;
+
+        /// <summary>Whether a blocking gen2 GC, which the heap read induces, has started since the session began.</summary>
+        public bool GcStarted => _gcStarted;
+
+        /// <summary>Whether objects now arriving belong to the one heap walk this read records.</summary>
+        /// <remarks>
+        /// The runtime sends every heap walk to every session with the heap-dump keywords, whichever session asked for it, so another
+        /// reader such as <c>dotnet-gcdump</c> starting close to this one adds a walk to this session. Only the objects of the first
+        /// blocking gen2 GC whose start this session saw are taken: a walk joined midway is skipped and later walks are ignored.
+        /// </remarks>
+        private bool Recording => _inWalkGc && !_walkRecorded;
 
         public TimeSpan QuietFor => TimeSpan.FromMilliseconds(Environment.TickCount64 - Interlocked.Read(ref _lastEvent));
 
@@ -185,6 +201,21 @@ internal static class GcHeapDump
 
         public void Subscribe(ClrTraceEventParser clr)
         {
+            clr.GCStart += data =>
+            {
+                Heard();
+                if (data.Depth == 2 && data.Type != GCType.BackgroundGC)
+                {
+                    _gcStarted = true;
+                    _inWalkGc = true;
+                }
+            };
+            clr.GCStop += _ =>
+            {
+                if (_inWalkGc)
+                    _walkRecorded = _objects > 0;
+                _inWalkGc = false;
+            };
             clr.TypeBulkType += data =>
             {
                 Heard();
@@ -198,6 +229,8 @@ internal static class GcHeapDump
             clr.GCBulkNode += data =>
             {
                 Heard();
+                if (!Recording)
+                    return;
                 for (int i = 0; i < data.Count; i++)
                 {
                     GCBulkNodeValues node = data.Values(i);
@@ -223,11 +256,15 @@ internal static class GcHeapDump
             clr.GCBulkEdge += data =>
             {
                 Heard();
+                if (!Recording)
+                    return;
                 for (int i = 0; i < data.Count; i++)
                     _edges.Add(data.Values(i).Target);
             };
             clr.GCBulkRootEdge += data =>
             {
+                if (!Recording)
+                    return;
                 for (int i = 0; i < data.Count; i++)
                 {
                     GCBulkRootEdgeValues root = data.Values(i);
@@ -238,6 +275,8 @@ internal static class GcHeapDump
             };
             clr.GCBulkRootConditionalWeakTableElementEdge += data =>
             {
+                if (!Recording)
+                    return;
                 for (int i = 0; i < data.Count; i++)
                 {
                     GCBulkRootConditionalWeakTableElementEdgeValues edge = data.Values(i);

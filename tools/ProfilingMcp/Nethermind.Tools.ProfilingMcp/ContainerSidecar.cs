@@ -231,28 +231,33 @@ internal static class ContainerSidecar
 
         string target = TargetRoot + temp;
         // Servers starting together race to replace the folder; whatever one of them did, the link is what must be there afterwards.
-        try
+        for (int attempt = 0; new FileInfo(temp).LinkTarget != target; attempt++)
         {
-            if (Path.Exists(temp) && new FileInfo(temp).LinkTarget != target)
-            {
-                if (temp is not ("/tmp" or "/var/tmp") || Directory.EnumerateFileSystemEntries(temp).GetEnumerator().MoveNext())
-                    throw new InvalidOperationException($"The target's TMPDIR {temp} already exists in the sidecar.");
-                Directory.Delete(temp);
-            }
+            if (attempt == 5)
+                throw new InvalidOperationException($"Could not link the target's TMPDIR {temp} in the sidecar.");
 
-            if (!Path.Exists(temp))
+            try
             {
+                if (Path.Exists(temp))
+                {
+                    if (temp is not ("/tmp" or "/var/tmp") || Directory.EnumerateFileSystemEntries(temp).GetEnumerator().MoveNext())
+                    {
+                        if (new FileInfo(temp).LinkTarget == target)
+                            continue;
+                        throw new InvalidOperationException($"The target's TMPDIR {temp} already exists in the sidecar.");
+                    }
+
+                    Directory.Delete(temp);
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
                 File.CreateSymbolicLink(temp, target);
             }
+            catch (IOException)
+            {
+                // Another server in the sidecar is replacing it at the same time; look again.
+            }
         }
-        catch (IOException) when (new FileInfo(temp).LinkTarget == target)
-        {
-            // Another server in the sidecar replaced it first.
-        }
-
-        if (new FileInfo(temp).LinkTarget != target)
-            throw new InvalidOperationException($"Could not link the target's TMPDIR {temp} in the sidecar.");
     }
 
     /// <summary>Top-level folders of the sidecar image that a target's TMPDIR must not be linked into.</summary>

@@ -35,7 +35,7 @@ internal sealed class GcTracker
                 ["LOH"] = data.GenerationSize3,
                 ["POH"] = data.GenerationSize4,
             };
-            _lastPromoted = data.TotalPromotedSize0 + data.TotalPromotedSize1 + data.TotalPromotedSize2 + data.TotalPromotedSize3;
+            _lastPromoted = data.TotalPromotedSize0 + data.TotalPromotedSize1 + data.TotalPromotedSize2 + data.TotalPromotedSize3 + data.TotalPromotedSize4;
         };
     }
 

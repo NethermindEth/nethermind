@@ -283,13 +283,13 @@ public sealed class TraceTools(NetTraceReader netTrace, WorkspacePaths paths)
         return output;
     }
 
-    /// <summary>Text from the profiled process, such as an exception message, quoted and without control characters, so it reads as data.</summary>
+    /// <summary>Text from the profiled process, such as an exception message, quoted, with control characters removed and inner double quotes turned into single ones, so it reads as data.</summary>
     internal static string Quoted(string text)
     {
         StringBuilder quoted = new(text.Length + 2);
         quoted.Append('"');
         foreach (char c in text)
-            quoted.Append(char.IsControl(c) ? ' ' : c);
+            quoted.Append(char.IsControl(c) ? ' ' : c == '"' ? '\'' : c);
         return quoted.Append('"').ToString();
     }
 

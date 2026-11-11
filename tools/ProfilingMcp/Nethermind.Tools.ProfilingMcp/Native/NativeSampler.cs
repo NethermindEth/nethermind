@@ -109,8 +109,8 @@ public static class NativeSampler
     /// <remarks>An absolute folder is in the target's file system, reached through its root; a relative one is relative to its working directory.</remarks>
     internal static string PerfMapPath(int pid, IReadOnlyDictionary<string, string> environment)
     {
-        string folder = Setting(environment, "PerfMapJitDumpPath") is { Length: > 0 } configured ? configured.TrimEnd('/') : "/tmp";
-        return folder.StartsWith('/') ? $"/proc/{pid}/root{folder}/perf-{pid}.map" : $"/proc/{pid}/cwd/{folder}/perf-{pid}.map";
+        string folder = Setting(environment, "PerfMapJitDumpPath") is { Length: > 0 } configured ? configured : "/tmp";
+        return folder.StartsWith('/') ? $"/proc/{pid}/root{folder.TrimEnd('/')}/perf-{pid}.map" : $"/proc/{pid}/cwd/{folder.TrimEnd('/')}/perf-{pid}.map";
     }
 
     private static IReadOnlyDictionary<string, string> ReadEnvironment(int pid)

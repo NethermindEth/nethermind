@@ -31,11 +31,11 @@ internal static partial class DebuggingLibraries
 
     /// <summary>The .NET version and runtime identifier of a runtime loaded from <paramref name="coreclrPath"/>, or null when they cannot be told.</summary>
     /// <remarks>A shared framework lives in a folder named after its version; a self-contained app's runtime does not, and gets no DAC.</remarks>
-    internal static (string Rid, string Version)? Runtime(string coreclrPath, bool musl, string architecture)
+    internal static (string Rid, string Version)? Runtime(string coreclrPath, string architecture)
     {
         string? version = Path.GetFileName(Path.GetDirectoryName(coreclrPath.Replace('\\', '/'))?.Replace('\\', '/'));
         string? arch = architecture switch { "amd64" or "x64" => "x64", "arm64" => "arm64", _ => null };
-        return version is not null && arch is not null && VersionPattern().IsMatch(version) ? ($"linux-{(musl ? "musl-" : "")}{arch}", version) : null;
+        return version is not null && arch is not null && VersionPattern().IsMatch(version) ? ($"linux-{arch}", version) : null;
     }
 
     /// <summary>Run on the host: copies the DACs for every .NET runtime the target's processes have loaded into the sidecar, downloading them once.</summary>
@@ -45,10 +45,14 @@ internal static partial class DebuggingLibraries
         string maps = await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "sh", "-c",
             "cat /proc/[0-9]*/maps 2>/dev/null | grep -oE '/[^ ]*(libcoreclr\\.so|ld-musl-[a-z0-9_]+\\.so\\.1)$' | grep -v '^/profmcp/' | sort -u || true");
         string[] paths = maps.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        bool musl = Array.Exists(paths, static p => p.Contains("ld-musl-", StringComparison.Ordinal));
+        // The sidecar is a glibc image, so it cannot load the DAC of a musl runtime.
+        if (Array.Exists(paths, static p => p.Contains("ld-musl-", StringComparison.Ordinal)))
+            throw new InvalidOperationException("The target runs on musl libc (an Alpine-based image). The sidecar is a glibc image and cannot load a musl runtime's " +
+                                                "debugging library, so native_memory and dump analysis are not available for this container; the other tools are.");
+
         foreach (string path in paths)
         {
-            if (!path.EndsWith("/libcoreclr.so", StringComparison.Ordinal) || Runtime(path, musl, architecture) is not var (rid, version))
+            if (!path.EndsWith("/libcoreclr.so", StringComparison.Ordinal) || Runtime(path, architecture) is not var (rid, version))
                 continue;
 
             string target = $"{SidecarFolder}/{rid}/{version}";
@@ -108,7 +112,7 @@ internal static partial class DebuggingLibraries
         foreach (string dac in supplied)
         {
             string? folder = Path.GetFileName(Path.GetDirectoryName(dac.Replace('\\', '/'))?.Replace('\\', '/'));
-            if (folder == version && dac.EndsWith($"-{RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}/{version}/{Dac}", StringComparison.Ordinal))
+            if (folder == version && dac.EndsWith($"/linux-{RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}/{version}/{Dac}", StringComparison.Ordinal))
                 return dac;
         }
 
