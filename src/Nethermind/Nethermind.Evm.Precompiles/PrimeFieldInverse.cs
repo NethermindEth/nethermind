@@ -28,6 +28,14 @@ internal static class PrimeFieldInverse
     private const long LimbMask = (1L << LimbBits) - 1;
     private const ulong UnsignedLimbMask = (1UL << LimbBits) - 1;
 
+    /// <summary>The most batches of 62 divsteps any 256-bit input needs before g reaches 0.</summary>
+    /// <remarks>
+    /// Theorem 11.2 of the paper cited above proves that divsteps starting from delta = 1 bring g to 0 for every odd f
+    /// and every g below 2^d within floor((49d + 57) / 17) steps when d >= 46. For d = 256 that is 741 divsteps, so
+    /// ceil(741 / 62) = 12 batches. More batches mean a broken invariant, and the caller takes the general path.
+    /// </remarks>
+    internal const int MaxBatches = 12;
+
     private static readonly Prime[] Primes =
     [
         // BN254 scalar field
@@ -51,8 +59,15 @@ internal static class PrimeFieldInverse
     /// <param name="exponent">Big-endian exponent of exactly 32 bytes.</param>
     /// <param name="modulus">Big-endian modulus of exactly 32 bytes.</param>
     /// <param name="result">The 32-byte big-endian result.</param>
-    /// <returns><c>false</c> when the inputs do not have this shape and the general exponentiation must run.</returns>
-    public static bool TryInvert(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> exponent, ReadOnlySpan<byte> modulus, [NotNullWhen(true)] out byte[]? result)
+    /// <returns>
+    /// <c>false</c> when the inputs do not have this shape, or the inversion does not finish within <see cref="MaxBatches"/>,
+    /// and the general exponentiation must run.
+    /// </returns>
+    public static bool TryInvert(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> exponent, ReadOnlySpan<byte> modulus, [NotNullWhen(true)] out byte[]? result) =>
+        TryInvert(@base, exponent, modulus, MaxBatches, out result);
+
+    // Tests lower maxBatches to reach the fallback that a broken invariant would take
+    internal static bool TryInvert(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> exponent, ReadOnlySpan<byte> modulus, int maxBatches, [NotNullWhen(true)] out byte[]? result)
     {
         // Every prime has a nonzero top byte, so its modulus and its p - 2 both take exactly 32 bytes
         if (@base.Length <= Size && exponent.Length == Size && modulus.Length == Size)
@@ -61,9 +76,14 @@ internal static class PrimeFieldInverse
             {
                 if (modulus.SequenceEqual(prime.Modulus) && exponent.SequenceEqual(prime.Exponent))
                 {
-                    result = new byte[Size];
-                    prime.Invert(@base, result);
-                    return true;
+                    byte[] output = new byte[Size];
+                    if (prime.TryInvert(@base, maxBatches, output))
+                    {
+                        result = output;
+                        return true;
+                    }
+
+                    break;
                 }
             }
         }
@@ -163,7 +183,7 @@ internal static class PrimeFieldInverse
             _inverse62 = inverse & LimbMask;
         }
 
-        public void Invert(ReadOnlySpan<byte> @base, Span<byte> result)
+        public bool TryInvert(ReadOnlySpan<byte> @base, int maxBatches, Span<byte> result)
         {
             UInt256 x = new(@base, isBigEndian: true);
             // Every prime exceeds 2^253, so a 256-bit base is below 6p and at most five subtractions reduce it
@@ -173,7 +193,7 @@ internal static class PrimeFieldInverse
             if (x.IsZero)
             {
                 result.Clear();
-                return;
+                return true;
             }
 
             Signed62 g = Signed62.From(x);
@@ -183,8 +203,11 @@ internal static class PrimeFieldInverse
             Signed62 f = _value;
             int eta = -1;
 
-            while (!g.IsZero)
+            for (int batches = 0; !g.IsZero; batches++)
             {
+                if (batches == maxBatches)
+                    return false;
+
                 eta = DivSteps(eta, f.V0, g.V0, out Transition t);
                 UpdateFg(ref f, ref g, t);
                 UpdateDe(ref d, ref e, t);
@@ -199,6 +222,7 @@ internal static class PrimeFieldInverse
                 d.Add(_value);
 
             d.WriteBigEndian(result);
+            return true;
         }
 
         /// <summary>Runs 62 divsteps on the low bits of f and g, skipping runs of zero bits of g at once.</summary>

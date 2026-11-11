@@ -120,6 +120,24 @@ public class ModExpPrimeInverseTests
     }
 
     [TestCaseSource(nameof(PrimeCases))]
+    public void Inversion_past_the_batch_bound_takes_the_general_path(string primeHex)
+    {
+        BigInteger p = Parse(primeHex);
+        byte[] exponent = ToBytes(p - 2, 32);
+        byte[] modulus = Convert.FromHexString(primeHex);
+        // A divstep at most halves the larger of f and g, so no nonzero base finishes within one batch of 62
+        byte[] baseBytes = ToBytes(p - 1, 32);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PrimeFieldInverse.TryInvert(baseBytes, exponent, modulus, 1, out byte[]? cut), Is.False);
+            Assert.That(cut, Is.Null);
+            Assert.That(PrimeFieldInverse.TryInvert(baseBytes, exponent, modulus, PrimeFieldInverse.MaxBatches, out byte[]? inverse), Is.True);
+            Assert.That(inverse, Is.EqualTo(ToBytes(p - 1, 32)));
+        }
+    }
+
+    [TestCaseSource(nameof(PrimeCases))]
     public void Longer_encodings_match_exponentiation(string primeHex)
     {
         BigInteger p = Parse(primeHex);
