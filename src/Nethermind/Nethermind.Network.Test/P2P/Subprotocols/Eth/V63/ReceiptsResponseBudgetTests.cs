@@ -33,7 +33,7 @@ public class ReceiptsResponseBudgetTests
     {
         using DisposableByteBuffer content = envelope.Encode(BuildBlocks(scenario.ReceiptsPerBlock)).AsDisposable();
 
-        Action check = () => ReceiptsResponseBudget.ThrowIfExceeded(content, envelope.FieldsBeforeReceipts, scenario.RequestedBlocks, scenario.MaxReceiptsPerBlock);
+        Action check = () => ReceiptsResponseBudget.ThrowIfExceeded(content.AsSpan(), envelope.FieldsBeforeReceipts, scenario.RequestedBlocks, scenario.MaxReceiptsPerBlock);
 
         Assert.That(check, scenario.Rejected
             ? Throws.TypeOf<SubprotocolException>().With.Message.Contains("exceeds the request")
@@ -62,7 +62,7 @@ public class ReceiptsResponseBudgetTests
     {
         using DisposableByteBuffer content = Unpooled.WrappedBuffer(payload).AsDisposable();
 
-        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpException>());
+        Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content.AsSpan(), fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpException>());
     }
 
     private static ArrayPoolList<TxReceipt[]> BuildBlocks(int[] receiptsPerBlock) =>

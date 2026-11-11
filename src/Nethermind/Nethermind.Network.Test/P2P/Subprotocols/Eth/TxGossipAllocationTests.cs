@@ -194,13 +194,13 @@ public class TxGossipAllocationTests
     private RoundTripAllocations RunRoundTrip(Transaction[] txs)
     {
         // Every peer announces the batch; the first announcer is asked for it, the rest are kept as fallbacks.
-        ZeroPacket[] announcements = new ZeroPacket[Peers];
+        NettyBufferPacket[] announcements = new NettyBufferPacket[Peers];
         for (int i = 0; i < Peers; i++) announcements[i] = Packet(Announcement(txs), Eth68MessageCode.NewPooledTransactionHashes);
         foreach (LoopbackSession session in _sessions) session.ClearRequests();
 
         long announce = MeasureHandling(announcements);
 
-        ZeroPacket[] responses = new ZeroPacket[Peers];
+        NettyBufferPacket[] responses = new NettyBufferPacket[Peers];
         int requestedTxs = 0;
         for (int i = 0; i < Peers; i++)
         {
@@ -218,7 +218,7 @@ public class TxGossipAllocationTests
         long deliver = MeasureHandling(responses);
         Assert.That(_txPool.GetPendingTransactionsCount(), Is.GreaterThanOrEqualTo(txs.Length), "batch admitted");
 
-        ZeroPacket[] duplicates = new ZeroPacket[Peers];
+        NettyBufferPacket[] duplicates = new NettyBufferPacket[Peers];
         for (int i = 0; i < Peers; i++)
         {
             if (responses[i] is not null) continue;
@@ -229,7 +229,7 @@ public class TxGossipAllocationTests
 
         ValueHash256[] hashes = new ValueHash256[txs.Length];
         for (int i = 0; i < txs.Length; i++) hashes[i] = txs[i].Hash!;
-        ZeroPacket[] serveRequests = new ZeroPacket[Peers];
+        NettyBufferPacket[] serveRequests = new NettyBufferPacket[Peers];
         serveRequests[Peers - 1] = Packet(
             new GetPooledTransactionsMessage(new ArrayPoolList<ValueHash256>(hashes.Length, hashes)),
             Eth66MessageCode.GetPooledTransactions);
@@ -261,19 +261,19 @@ public class TxGossipAllocationTests
         return (double)allocated / Peers;
     }
 
-    private long MeasureHandling(ZeroPacket?[] packets)
+    private long MeasureHandling(NettyBufferPacket?[] packets)
     {
         long allocated = 0;
         for (int i = 0; i < packets.Length; i++)
         {
-            ZeroPacket? packet = packets[i];
+            NettyBufferPacket? packet = packets[i];
             if (packet is null) continue;
 
             long start = GC.GetAllocatedBytesForCurrentThread();
             _handlers[i].HandleMessage(packet);
             allocated += GC.GetAllocatedBytesForCurrentThread() - start;
 
-            packet.Content.Release();
+            packet.Release();
         }
         return allocated;
     }
@@ -333,20 +333,20 @@ public class TxGossipAllocationTests
         return requested;
     }
 
-    private ZeroPacket Packet<T>(T message, int code) where T : MessageBase
+    private NettyBufferPacket Packet<T>(T message, int code) where T : MessageBase
     {
         IByteBuffer buffer = _serializer.ZeroSerialize(message);
         buffer.ReadByte();
         (message as IDisposable)?.Dispose();
-        return new ZeroPacket(buffer) { PacketType = (byte)code };
+        return new NettyBufferPacket(buffer) { PacketType = (byte)code };
     }
 
     private void ReceiveStatus(Eth68ProtocolHandler handler, Block genesis)
     {
         StatusMessage status = new() { GenesisHash = genesis.Hash, BestHash = genesis.Hash };
-        ZeroPacket packet = Packet(status, Eth62MessageCode.Status);
+        NettyBufferPacket packet = Packet(status, Eth62MessageCode.Status);
         handler.HandleMessage(packet);
-        packet.Content.Release();
+        packet.Release();
     }
 
     private readonly record struct RoundTripAllocations(double AnnouncePerHashPerPeer, double DeliverPerTx, double DuplicatePerTxPerPeer, double ServePerTx)

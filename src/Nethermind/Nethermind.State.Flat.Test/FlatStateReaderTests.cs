@@ -178,10 +178,10 @@ public class FlatStateReaderTests
         using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         using (Assert.EnterMultipleScope())
@@ -246,6 +246,7 @@ public class FlatStateReaderTests
     {
         public int Nodes;
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public bool ExpectAccounts => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }

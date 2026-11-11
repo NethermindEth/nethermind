@@ -207,10 +207,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
     /// error; a failed creation drops its <c>to</c>.
     /// </summary>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         OnError(gasLeft, error);
     }
 
@@ -404,8 +404,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 // Uniform across dispatched and undispatched frames, where the VM's own figures would be the
                 // execution dimension net of the pre-dispatch charges.
-                frameCallFrame.Gas = _frames[i].GasLimit;
-                frameCallFrame.GasUsed = frameReceipt.GasUsed;
+                frameCallFrame.Gas = _frames[i].ExecutionGasLimit;
+                frameCallFrame.GasUsed = frameReceipt.ExecutionGasUsed;
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {

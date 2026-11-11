@@ -74,11 +74,11 @@ public abstract class HobbitTestsBase
 
             if (inbound == StackType.Zero)
             {
-                ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
+                NettyBufferPacket decodedPacket = embeddedChannel.ReadInbound<NettyBufferPacket>();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
-                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.Buffer.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
                 }
                 decodedPacket.Release();
             }

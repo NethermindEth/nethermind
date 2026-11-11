@@ -2820,4 +2820,21 @@ public partial class DebugRpcModuleTests
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         }
     }
+
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Debug_traceCall_runs_a_signed_call_as_its_from([Values] bool fromOmitted, [Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Cancun.Instance));
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(chain.EthereumEcdsa, chain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer = "callTracer" });
+
+        string? caller = (string?)JToken.Parse(response)["result"]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
+    }
 }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Network;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Xdc.P2P;
 
@@ -18,7 +18,7 @@ namespace Nethermind.Xdc.P2P;
 internal interface IXdcMessageContext
 {
     /// <summary>Deserializes a message using the owning handler's error and limit reporting.</summary>
-    T Decode<T>(IByteBuffer buffer) where T : P2PMessage;
+    T Decode<T>(ZeroPacket packet) where T : P2PMessage;
 
     /// <summary>Traces an incoming message on the owning handler's session.</summary>
     void Report(MessageBase message, int size);

@@ -236,7 +236,7 @@ public sealed class OtsRpcModule(
             {
                 tx.SenderAddress ??= receipt.Sender;
                 result.Txs.Add(TransactionForRpc.FromTransaction(tx, new(specProvider.ChainId, block.Hash!, block.Number,
-                    i, block.Timestamp, block.BaseFeePerGas, receipt)));
+                    i, block.Timestamp, block.BaseFeePerGas, spec, receipt)));
                 result.Receipts.Add(new(tx.Hash!, receipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndex));
             }
             logIndex += receipt.Logs?.Length ?? 0;

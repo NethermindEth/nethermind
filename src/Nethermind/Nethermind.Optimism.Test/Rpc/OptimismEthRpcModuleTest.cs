@@ -1156,6 +1156,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
@@ -1230,6 +1231,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
@@ -1775,7 +1777,7 @@ internal static class TestRpcBlockchainExt
             new EthSyncingInfo(blockchain.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
-            new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
+            new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider, blockchain.RpcConfig),
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,

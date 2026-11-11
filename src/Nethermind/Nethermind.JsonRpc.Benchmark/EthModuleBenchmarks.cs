@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Benchmark
             IBlockchainBridge bridge = _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
 
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
-            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
+            FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider, new JsonRpcConfig());
 
             _headBlockSignal = new HeadBlockSignal(blockTree);
             _ethModule = new EthRpcModule(
