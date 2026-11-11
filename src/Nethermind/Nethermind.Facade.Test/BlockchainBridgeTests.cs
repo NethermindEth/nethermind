@@ -35,6 +35,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -43,6 +44,7 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.TxPool;
 
 namespace Nethermind.Facade.Test;
 
@@ -239,6 +241,45 @@ public class BlockchainBridgeTests
 
         storedContext.Receipt.AssertEquivalentTo(fullContext.Receipt);
         storedReceipt.AssertEquivalentTo(fullReceipt);
+    }
+
+    [Test]
+    public void Pending_frame_transaction_lookup_reports_the_gas_it_has_once_included_in_the_next_block()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        tx.GasLimit = 200_000;
+        tx.Hash = TestItem.KeccakA;
+        ISpecProvider specProvider = new TestSpecProvider(Prague.Instance) { NextForkSpec = Eip8141Prototype.Instance, ForkOnBlockNumber = 1 };
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.TryGetPendingTransaction(tx.Hash, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = tx;
+            return true;
+        });
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(specProvider)
+            .AddSingleton(blockTree)
+            .AddSingleton(txPool)
+            .AddSingleton<IReceiptFinder>(_receiptStorage)
+            .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton(Substitute.For<IStateReader>())
+            .Build();
+        IBlockchainBridge bridge = container.Resolve<IBlockchainBridge>();
+
+        Assert.That(bridge.TryGetTransaction(tx.Hash, out TransactionLookupResult? pending), Is.True);
+
+        ulong pendingGas = TransactionForRpc.FromTransaction(tx, pending!.Value.ExtraData).Gas!.Value;
+        ulong includedGas = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, specProvider.GetSpec(1, 12))).Gas!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(tx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(pendingGas, Is.EqualTo(includedGas), "a pending frame tx reports the gas the next block, which enables EIP-8141, will include it with");
+        }
     }
 
     [Test]

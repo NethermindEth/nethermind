@@ -11,7 +11,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.TxPool;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -223,6 +227,45 @@ public class TxPoolRpcModuleTests
         Assert.That(json, Does.Contain("\"transactionIndex\":null"), "pending transactions have no block context");
         Assert.That(json, Does.Contain("\"from\":\"" + TestItem.AddressA.ToString().ToLowerInvariant() + "\""), "the spec requires 'from' to be present on every pending transaction");
         Assert.That(json, Does.Contain("\"" + TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true) + "\":{"), "address map keys must use EIP-55 checksum format to match the spec");
+    }
+
+    [TestCase("txpool_content")]
+    [TestCase("txpool_contentFrom")]
+    public async Task TxPool_WhenFrameTxIsPendingBeforeEip8141_ReportsTheGasItHasOnceIncluded(string method)
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        tx.GasLimit = 200_000;
+        tx.Hash = TestItem.KeccakA;
+        Dictionary<TxPoolTxKey, Transaction> senderTxs = new() { { new TxPoolTxKey(0), tx } };
+
+        ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
+            pending: new() { { new AddressAsKey(TestItem.AddressA), senderTxs } },
+            queued: []));
+        txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(new TxPoolSenderInfo(senderTxs, new Dictionary<TxPoolTxKey, Transaction>()));
+
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, blockFinder, new BlocksConfig { SecondsPerSlot = 12 });
+
+        ulong includedGas = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, specProvider.GetSpec(1, 12))).Gas!.Value;
+
+        string json = method == "txpool_content"
+            ? await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, method)
+            : await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, method, TestItem.AddressA);
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement pending = document.RootElement.GetProperty("result").GetProperty("pending");
+        if (method == "txpool_content") pending = pending.GetProperty(TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true));
+        string pendingGas = pending.GetProperty("0").GetProperty("gas").GetString()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(tx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(pendingGas, Is.EqualTo($"0x{includedGas:x}"), "a pending frame tx reports the gas the next block, which enables EIP-8141, will include it with");
+        }
     }
 
     [TestCase("txpool_content", TxPoolContentJson)]
