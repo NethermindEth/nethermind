@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -40,6 +41,7 @@ public sealed class BlockTransactions
     private readonly ulong _blockNumber;
     private readonly ulong _blockTimestamp;
     private readonly UInt256 _baseFee;
+    private readonly IReleaseSpec _spec;
 
     private BlockTransactions(Hash256[]? hashes, TransactionForRpc[]? full)
     {
@@ -49,7 +51,7 @@ public sealed class BlockTransactions
 
     private BlockTransactions(ValueHash256[] flatHashes) => _flatHashes = flatHashes;
 
-    private BlockTransactions(Block block, ulong chainId)
+    private BlockTransactions(Block block, ulong chainId, IReleaseSpec spec)
     {
         _source = block.Transactions;
         _chainId = chainId;
@@ -57,6 +59,7 @@ public sealed class BlockTransactions
         _blockNumber = block.Number;
         _blockTimestamp = block.Timestamp;
         _baseFee = block.BaseFeePerGas;
+        _spec = spec;
     }
 
     /// <summary>The transaction hashes, or <see langword="null"/> for a block carrying full transactions.</summary>
@@ -71,7 +74,7 @@ public sealed class BlockTransactions
 
     /// <summary>Creates the full form as a view over <paramref name="block"/>'s transactions.</summary>
     /// <exception cref="ArgumentException">A transaction has a type with no registered RPC type, as building it eagerly would report.</exception>
-    internal static BlockTransactions FromBlock(Block block, ulong chainId)
+    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec spec)
     {
         Transaction[] transactions = block.Transactions;
         if (transactions.Length == 0) return EmptyInstance;
@@ -82,7 +85,7 @@ public sealed class BlockTransactions
             if (TransactionForRpc.TransactionJsonConverter.GetRegisteredType(transaction.Type) is null) throw new ArgumentException("No converter for transaction type");
         }
 
-        return new BlockTransactions(block, chainId);
+        return new BlockTransactions(block, chainId, spec);
     }
 
     /// <summary>Wraps transaction hashes without an object per hash; the array is written as is and must not change.</summary>
@@ -105,7 +108,7 @@ public sealed class BlockTransactions
     /// <param name="reuse">An instance of the right type to refill instead of creating one, or <see langword="null"/>.</param>
     internal TransactionForRpc GetViewTransaction(int index, TransactionForRpc? reuse)
     {
-        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee);
+        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, _spec);
         Transaction transaction = _source![index];
         if (reuse is null) return TransactionForRpc.FromTransaction(transaction, context);
 

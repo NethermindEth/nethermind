@@ -45,7 +45,7 @@ public partial class FrameTxFloodMeasurement
     public const string ImportTailsSuite = "frame-tx-import-tails";
     public const string HonestSuite = "frame-tx-honest";
 
-    /// <summary>100,000 is today's EIP value: the reference the other ceilings are compared against.</summary>
+    /// <summary>Ceilings below the shared 300,000 floor are clamped to it, so 100,000, 235,800 and 250,000 run at the floor and only the higher ceilings differ.</summary>
     private static readonly ulong[] ProducerCeilings = [100_000, 235_800, 250_000, 300_000, 400_000, 500_000];
     private static readonly ulong[] ImportCeilings = [235_800, 250_000, 300_000, 400_000];
     private static readonly ulong[] HonestCeilings = [235_800, 300_000];
@@ -55,7 +55,7 @@ public partial class FrameTxFloodMeasurement
     private static readonly int[] ProducerLevelsMillions = [5, 10, 15, 20, 25, 30, 35, 40];
     private static readonly int[] ImportLevelsMillions = [5, 10, 30, 50];
 
-    /// <summary>The producer model's check (SPEC §4a): sig-stuffed decides on the stock node, 100k is today's value.</summary>
+    /// <summary>The producer model's check (SPEC §4a): sig-stuffed decides on the stock node; the 100,000 ceiling is clamped to the shared 300,000 floor.</summary>
     private static readonly ulong[] ProducerValidationCeilings = [100_000, 300_000];
     private static readonly int[] ProducerValidationLevelsMillions = [10, 25, 40];
 

@@ -4,6 +4,7 @@
 using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network
 {
@@ -16,6 +17,9 @@ namespace Nethermind.Network
         ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase;
         IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase;
         T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
-        T Deserialize<T>(IByteBuffer buffer) where T : MessageBase;
+
+        /// <summary>Deserializes a received message from the content of <paramref name="packet"/>.</summary>
+        /// <remarks>An <see cref="IOwningMessageSerializer{T}"/> gets a lease on the content, which its message may keep.</remarks>
+        T Deserialize<T>(ZeroPacket packet) where T : MessageBase;
     }
 }
