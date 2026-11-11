@@ -164,6 +164,22 @@ public class FlatDbManagerTests
         Assert.That(result, Is.False);
     }
 
+    // The compacted snapshots only shorten reads, so a start that cannot write them goes on with the reloaded ones.
+    [TestCase(typeof(InvalidOperationException))]
+    [TestCase(typeof(OperationCanceledException))]
+    public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(Type failure)
+    {
+        _persistenceManager.CompactReloadedSnapshots(Arg.Any<CancellationToken>()).Returns(_ => throw (Exception)Activator.CreateInstance(failure)!);
+
+        await using FlatDbManager manager = CreateManager();
+
+        Received.InOrder(() =>
+        {
+            _persistedSnapshotLoader.Load();
+            _persistenceManager.CompactReloadedSnapshots(_cts.Token);
+        });
+    }
+
     // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a
     // reorg below the pre-shutdown head could never be served after a restart.
     [Test]

@@ -79,6 +79,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
+        CompactReloadedSnapshots(processExitSource.Token);
 
         config.ValidateCompactSize();
         _compactSize = (int)config.CompactSize;
@@ -103,6 +104,29 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
+    }
+
+    /// <summary>
+    /// Compacts the persisted snapshots the last run left one per block before anything reads them. Best-effort: they
+    /// only shorten reads, and the reloaded ones serve every state without them.
+    /// </summary>
+    private void CompactReloadedSnapshots(CancellationToken cancellationToken)
+    {
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            int compacted = _persistenceManager.CompactReloadedSnapshots(cancellationToken);
+            if (compacted > 0 && _logger.IsInfo)
+                _logger.Info($"Compacted the state kept from the last run into {compacted} persisted snapshots in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopping. What is left is read one snapshot per block, as before.
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Could not compact the persisted snapshots kept from the last run; reads walk one snapshot per block until they are persisted.", e);
+        }
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)

@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -13,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,90 +24,71 @@ namespace Nethermind.State.Flat.Test;
 
 /// <summary>
 /// What a node reads through after a clean restart: the in-memory tail that the shutdown converted into one-block
-/// persisted snapshots, loaded again by the next start.
+/// persisted snapshots, which the next start loads and compacts.
 /// </summary>
 /// <remarks>
-/// Both runs go through <see cref="FlatDbManager"/> as a node does: blocks are added with <see cref="FlatDbManager.AddSnapshot"/>
-/// (which compacts them in memory), <see cref="FlatDbManager.DisposeAsync"/> converts the tail, and the second manager's
-/// constructor loads it. RocksDB is a substitute whose state stays at <see cref="Persisted"/>.
+/// Blocks go through <see cref="FlatDbManager.AddSnapshot"/>, <see cref="FlatDbManager.DisposeAsync"/> converts the tail,
+/// and the next manager's constructor loads it. RocksDB is a substitute whose state stays at <see cref="Persisted"/>.
 /// </remarks>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public class RestartedPersistedTierTests
 {
-    // A node following the head with the default config (CompactSize 32, MinReorgDepth 128) keeps 128 to 159 blocks in
-    // memory above the RocksDB state: the finalized persist moves RocksDB one CompactSize forward once the head is
-    // MinReorgDepth past the next boundary. A clean shutdown converts all of them; the measured mainnet restart reloaded 128.
-    private const int TailLength = 128;
+    private const int CompactSize = 32;
+    // A mainnet block writes thousands of keys; 64 slots are enough that a one-line filter cannot hold several blocks.
     private const int SlotsPerBlock = 64;
 
-    // A persist always ends on a CompactSize boundary (offset 0 here), as the finalized persist leaves it.
+    // On a CompactSize boundary (offset 0 here), as the finalized persist leaves it.
     private static readonly StateId Persisted = State(1024);
 
     private static StateId State(ulong number) => new(number, Keccak.Compute($"{number}"));
 
     private static StateId Block(int indexInTail) => State(Persisted.BlockNumber + (ulong)indexInTail);
 
-    private static FlatDbConfig Config() => new() { CompactionOffset = 0, InlineCompaction = true };
-
-    // 128 ends on a boundary; 150 leaves a partial chunk of 22 blocks on top of four full ones.
-    [TestCase(TailLength)]
+    // The default config keeps 128 to 159 blocks above the RocksDB state, and a clean shutdown converts all of them. 128
+    // ends on a boundary; 150 and 159 leave 22 and 31 blocks above the last one.
+    [TestCase(128)]
     [TestCase(150)]
-    public async Task Restart_reads_the_reloaded_tail_through_a_logarithmic_persisted_stack(int tailLength)
+    [TestCase(159)]
+    public async Task A_restart_compacts_the_reloaded_tail_before_the_first_read(int tailLength)
     {
         using TempPath dir = TempPath.GetTempDirectory();
         MemDb catalog = new();
-        FlatDbConfig config = Config();
         IPersistence persistence = PersistenceAt(Persisted);
         StateId head = Block(tailLength);
+        await RunAndShutDown(dir.Path, catalog, persistence, tailLength, WriteBlock);
 
-        // Enough keys per block that a filter sized for one block cannot hold a window of several: a mainnet block writes
-        // thousands of keys.
-        await RunAndShutDown(config, dir.Path, catalog, persistence, tailLength, static (i, content) =>
+        // One CompactSize-wide snapshot per chunk, then one narrower one per set bit of the rest: 4, 7 and 9.
+        int depth = tailLength / CompactSize + BitOperations.PopCount((uint)(tailLength % CompactSize));
+        CatalogEntry[]? afterFirstStart = null;
+        for (int start = 0; start < 2; start++) // the second start finds the work done
         {
-            content.Accounts[TestItem.AddressA] = new Account((ulong)i, (UInt256)i);
-            for (int slot = 0; slot < SlotsPerBlock; slot++)
+            using FlatTestContainer restarted = Open(dir.Path, catalog, persistence);
+            await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
+            // Asserted at once: the first reads after the constructor returns already see the compacted stack.
+            using AssembledSnapshotResult stack = restarted.Repository.AssembleSnapshots(head, Persisted, estimatedSize: tailLength);
+            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(head);
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalog).Load()];
+            afterFirstStart ??= rows;
+            using (Assert.EnterMultipleScope())
             {
-                content.Storages[(TestItem.AddressA, (UInt256)(i * SlotsPerBlock + slot))] = (UInt256)i;
+                Assert.That(stack.Persisted.Count, Is.EqualTo(depth), "persisted snapshots a miss for the head walks");
+                Assert.That(bundle.SnapshotCount, Is.EqualTo(depth), "snapshots in the bundle the manager serves for the head");
+                Assert.That(rows.Count(static r => r.Tier == SnapshotTier.PersistedCompactSized), Is.EqualTo(tailLength / CompactSize));
+                Assert.That(rows.Count(static r => r.Tier == SnapshotTier.PersistedLargeCompacted), Is.Zero, "no wider merge at a start");
+                Assert.That(rows, Has.Length.EqualTo(restarted.Repository.PersistedSnapshotCount), "a catalog row for every snapshot");
+                Assert.That(rows, Is.EquivalentTo(afterFirstStart), "the second start rewrites nothing");
+                // A filter has to reject absent keys and admit present ones: every block writes AddressA.
+                Assert.That(WorstFalsePositiveRate(stack.Persisted), Is.LessThan(0.01), "absent keys the weakest filter lets through");
+                Assert.That(stack.Persisted.Select(static s => s.Bloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA))), Is.All.True);
             }
-        });
-
-        using FlatTestContainer restarted = Open(config, dir.Path, catalog, persistence);
-        // The start: the manager's constructor loads the persisted tier before any read.
-        await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
-        Assert.That(manager.HasStateForBlock(head), Is.True, "the head's state is available after the restart");
-
-        // A logarithmically compacted tail starting on a boundary is tiled by at most floor(N / CompactSize)
-        // CompactSize-wide snapshots plus one narrower power-of-two snapshot per set bit of N mod CompactSize.
-        int compactSize = (int)config.CompactSize;
-        int bound = (tailLength + compactSize - 1) / compactSize + BitOperations.Log2((uint)compactSize);
-
-        // The read stack GatherReadOnlySnapshotBundle assembles for the head, recomputed on every poll so that a compaction
-        // running in the background is seen without waiting out the manager's bundle cache. A slot or account read that
-        // misses probes one bloom in every snapshot of it (PersistedSnapshotStack.TryGetSlot), so this is also the number
-        // of snapshots a miss visits.
-        int PersistedReadDepth()
-        {
-            using AssembledSnapshotResult assembled = restarted.Repository.AssembleSnapshots(head, Persisted, estimatedSize: tailLength);
-            return assembled.Persisted.Count;
-        }
-
-        Assert.That(PersistedReadDepth, Is.LessThanOrEqualTo(bound).After(1000, 10),
-            $"persisted snapshots read through for the head after a restart that reloaded {tailLength} blocks");
-
-        // The depth is worth only as much as each snapshot's filter: one that lets every key through turns each probe into
-        // a lookup in the snapshot's table.
-        using AssembledSnapshotResult stack = restarted.Repository.AssembleSnapshots(head, Persisted, estimatedSize: tailLength);
-        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(head);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(WorstFalsePositiveRate(stack.Persisted), Is.LessThan(0.05), "share of absent keys the weakest filter of the stack lets through");
-            Assert.That(bundle.SnapshotCount, Is.LessThanOrEqualTo(bound), "snapshots in the bundle the manager serves for the head");
         }
     }
 
-    [Test]
-    public async Task Reads_after_a_restart_return_what_each_reloaded_block_wrote()
+    // At 150 the head reads through the sub-CompactSize windows above the last boundary.
+    [TestCase(128)]
+    [TestCase(150)]
+    public async Task Reads_after_a_restart_return_what_each_reloaded_block_wrote(int tailLength)
     {
         Address hot = TestItem.AddressA;        // written by every block, like a busy contract
         Address destructed = TestItem.AddressB; // self-destructed in block 70, created again in block 71
@@ -123,8 +108,7 @@ public class RestartedPersistedTierTests
 
         using TempPath dir = TempPath.GetTempDirectory();
         MemDb catalog = new();
-        FlatDbConfig config = Config();
-        await RunAndShutDown(config, dir.Path, catalog, persistence, TailLength, (i, content) =>
+        await RunAndShutDown(dir.Path, catalog, persistence, tailLength, (i, content) =>
         {
             content.Accounts[hot] = new Account((ulong)i, (UInt256)i);
             content.Storages[(hot, (UInt256)1)] = (UInt256)i;
@@ -159,14 +143,14 @@ public class RestartedPersistedTierTests
             }
         });
 
-        using FlatTestContainer restarted = Open(config, dir.Path, catalog, persistence);
+        using FlatTestContainer restarted = Open(dir.Path, catalog, persistence);
         await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
 
-        StateId head = Block(TailLength);
+        StateId head = Block(tailLength);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ReadAccount(head, hot)?.Balance, Is.EqualTo((UInt256)TailLength));
-            Assert.That(ReadSlot(head, hot, 1), Is.EqualTo((UInt256?)TailLength), "the newest of 128 writes");
+            Assert.That(ReadAccount(head, hot)?.Balance, Is.EqualTo((UInt256)tailLength));
+            Assert.That(ReadSlot(head, hot, 1), Is.EqualTo((UInt256?)tailLength), "the newest write");
             Assert.That(ReadSlot(head, hot, 2), Is.Null, "deleted in block 60");
             Assert.That(ReadSlot(head, hot, 3), Is.EqualTo((UInt256?)0x33), "written by no block of the tail: RocksDB");
             Assert.That(ReadAccount(head, destructed)?.Balance, Is.EqualTo((UInt256)71));
@@ -188,6 +172,7 @@ public class RestartedPersistedTierTests
             Assert.That(ReadAccount(atSelfDestruct, destructed), Is.Null);
             Assert.That(ReadSlot(atSelfDestruct, destructed, 2), Is.Null, "cleared in this very block");
             Assert.That(ReadSlot(atSelfDestruct, hot, 2), Is.Null);
+            Assert.That(ReadSlot(Block(71), hot, 1), Is.EqualTo((UInt256?)71), "through the base of block 71 and its own filter");
         }
 
         Account? ReadAccount(StateId at, Address address)
@@ -205,32 +190,118 @@ public class RestartedPersistedTierTests
         }
     }
 
-    /// <summary>Adds the tail to a node whose RocksDB state is <see cref="Persisted"/>, then shuts it down cleanly.</summary>
-    private static async Task RunAndShutDown(FlatDbConfig config, string path, MemDb catalog, IPersistence persistence, int tailLength, Action<int, SnapshotContent> write)
+    // 33: the next start finds RocksDB in the middle of a chunk.
+    [TestCase(32)]
+    [TestCase(33)]
+    public async Task The_first_persist_after_a_restart_writes_a_whole_chunk(int persistedAtNextStart)
     {
-        using FlatTestContainer node = Open(config, path, catalog, persistence);
-        FlatDbManager manager = (FlatDbManager)node.Resolve<IFlatDbManager>();
-        StateId parent = Persisted;
-        for (int i = 1; i <= tailLength; i++)
+        const int TailLength = 159;
+        using TempPath dir = TempPath.GetTempDirectory();
+        MemDb catalog = new();
+        IPersistence persistence = PersistenceAt(Persisted);
+        await RunAndShutDown(dir.Path, catalog, persistence, TailLength, WriteBlock);
+
+        // Block 32 is finalized and the block after the tail leaves MinReorgDepth above it, so it is persisted.
+        IStateHeaderProvider finality = Substitute.For<IStateHeaderProvider>();
+        finality.FinalizedBlockNumber.Returns(Block(32).BlockNumber);
+        finality.GetFinalizedHeader(Block(32).BlockNumber).Returns(Build.A.BlockHeader.WithNumber(Block(32).BlockNumber)
+            .WithStateRoot(Keccak.Compute($"{Block(32).BlockNumber}")).TestObject);
+        using (FlatTestContainer restarted = Open(dir.Path, catalog, persistence, finality))
         {
-            StateId to = Block(i);
-            Snapshot snapshot = node.ResourcePool.CreateSnapshot(parent, to, ResourcePool.Usage.MainBlockProcessing);
-            write(i, snapshot.Content);
-            manager.AddSnapshot(snapshot, node.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing));
-            parent = to;
+            FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
+            AddBlocks(restarted, manager, TailLength + 1, TailLength + 1, WriteBlock);
+            await manager.DisposeAsync(); // drains the persistence queue
         }
 
-        Assert.That(node.Repository.PersistedSnapshotCount, Is.Zero, "below MaxInMemoryBaseSnapshotCount the tail stays in memory");
-        await manager.DisposeAsync();
+        (StateId From, StateId To)[] batches = [.. persistence.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name == nameof(IPersistence.CreateWriteBatch))
+            .Select(static call => ((StateId)call.GetArguments()[0]!, (StateId)call.GetArguments()[1]!))];
+        Assert.That(batches, Is.EqualTo(new[] { (Persisted, Block(32)) }), "RocksDB write batches");
+
+        using FlatTestContainer next = Open(dir.Path, catalog, PersistenceAt(Block(persistedAtNextStart)));
+        await using FlatDbManager nextManager = (FlatDbManager)next.Resolve<IFlatDbManager>();
+        using ReadOnlySnapshotBundle bundle = nextManager.GatherReadOnlySnapshotBundle(Block(TailLength + 1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Repository.HasBasePersistedSnapshot(Block(1)), Is.True, "the shutdown converts the whole tail");
-            Assert.That(node.Repository.HasBasePersistedSnapshot(Block(tailLength)), Is.True);
+            Assert.That(bundle.SnapshotCount, Is.EqualTo(4), "four CompactSize-wide snapshots above the persisted block");
+            Assert.That(bundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)(TailLength + 1)));
         }
     }
 
-    // A filter sized for its keys lets about 0.2% of absent keys through at the default 14 bits per key; the always-true
-    // placeholder, or a filter far too small for its keys, lets nearly all of them through.
+    [Test]
+    public async Task A_start_without_a_persisted_tier_compacts_nothing()
+    {
+        IPersistedSnapshotCompactor compactor = Substitute.For<IPersistedSnapshotCompactor>();
+        using TempPath dir = TempPath.GetTempDirectory();
+        using FlatTestContainer node = Open(dir.Path, new MemDb(), PersistenceAt(Persisted), compactor: compactor);
+        await using FlatDbManager manager = (FlatDbManager)node.Resolve<IFlatDbManager>();
+        compactor.DidNotReceiveWithAnyArgs().CompactReloaded(default, default);
+    }
+
+    [Test]
+    public void A_start_compacts_no_more_than_one_run_can_leave_uncompacted()
+    {
+        // MaxInMemoryBaseSnapshotCount + 16 queued batches of CompactSize = 4 + 16 * 4 blocks below the newest.
+        using FlatTestContainer tier = new(new FlatDbConfig { CompactSize = 4, MaxInMemoryBaseSnapshotCount = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
+        ConvertBases(tier, 100);
+
+        Assert.That(tier.Compactor.CompactReloaded(0, CancellationToken.None), Is.Positive);
+        ulong[] compactedTo = [.. tier.Repository.PersistedSnapshots.Where(static s => s.Tier != SnapshotTier.PersistedBase).Select(static s => s.To.BlockNumber)];
+        Assert.That(compactedTo, Is.Not.Empty.And.All.GreaterThan(100UL - 68));
+    }
+
+    [Test]
+    public async Task Runtime_compaction_keeps_the_one_line_filter_of_small_windows()
+    {
+        using FlatTestContainer tier = new(new FlatDbConfig { CompactSize = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
+        ConvertBases(tier, 2);
+        await tier.Compactor.EnqueueAsync(new ArrayPoolList<StateId>(2) { State(1), State(2) }, 0, CancellationToken.None);
+        await tier.Compactor.DisposeAsync(); // drains the queue
+
+        Assert.That(tier.Repository.TryLeasePersistedState(State(2), SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? window), Is.True);
+        using (window) Assert.That(window!.Bloom.Capacity, Is.EqualTo(1));
+    }
+
+    private static void WriteBlock(int i, SnapshotContent content)
+    {
+        content.Accounts[TestItem.AddressA] = new Account((ulong)i, (UInt256)i);
+        for (int slot = 0; slot < SlotsPerBlock; slot++)
+            content.Storages[(TestItem.AddressA, (UInt256)(i * SlotsPerBlock + slot))] = (UInt256)i;
+    }
+
+    /// <summary>Adds the tail to a node whose RocksDB state is <see cref="Persisted"/>, then shuts it down cleanly.</summary>
+    private static async Task RunAndShutDown(string path, MemDb catalog, IPersistence persistence, int tailLength, Action<int, SnapshotContent> write)
+    {
+        using FlatTestContainer node = Open(path, catalog, persistence);
+        FlatDbManager manager = (FlatDbManager)node.Resolve<IFlatDbManager>();
+        AddBlocks(node, manager, 1, tailLength, write);
+        Assert.That(node.Repository.PersistedSnapshotCount, Is.Zero, "below MaxInMemoryBaseSnapshotCount the tail stays in memory");
+        await manager.DisposeAsync();
+        Assert.That(node.Repository.HasBasePersistedSnapshot(Block(1)) && node.Repository.HasBasePersistedSnapshot(Block(tailLength)), Is.True,
+            "the shutdown converts the whole tail");
+    }
+
+    private static void AddBlocks(FlatTestContainer node, FlatDbManager manager, int first, int last, Action<int, SnapshotContent> write)
+    {
+        for (int i = first; i <= last; i++)
+        {
+            Snapshot snapshot = node.ResourcePool.CreateSnapshot(Block(i - 1), Block(i), ResourcePool.Usage.MainBlockProcessing);
+            write(i, snapshot.Content);
+            manager.AddSnapshot(snapshot, node.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing));
+        }
+    }
+
+    private static void ConvertBases(FlatTestContainer tier, int count)
+    {
+        for (ulong i = 1; i <= (ulong)count; i++)
+        {
+            using Snapshot snapshot = tier.ResourcePool.CreateSnapshot(State(i - 1), State(i), ResourcePool.Usage.MainBlockProcessing);
+            snapshot.Content.Accounts[TestItem.AddressA] = new Account(i, i);
+            tier.ConvertToPersistedBase(snapshot).Dispose();
+        }
+    }
+
+    // A filter sized for its keys lets about 0.2% of absent keys through at the default 14 bits per key.
     private static double WorstFalsePositiveRate(PersistedSnapshotList snapshots)
     {
         const int Probes = 1024;
@@ -250,9 +321,14 @@ public class RestartedPersistedTierTests
         return worst;
     }
 
-    private static FlatTestContainer Open(FlatDbConfig config, string path, MemDb catalog, IPersistence persistence) =>
-        new(config, arenaFileSizeBytes: 1024 * 1024, baseDbPath: path, catalogDb: catalog, loadPersistedTier: false,
-            configure: builder => builder.AddSingleton(persistence));
+    private static FlatTestContainer Open(string path, MemDb catalog, IPersistence persistence, IStateHeaderProvider? finality = null,
+        IPersistedSnapshotCompactor? compactor = null) =>
+        new(new FlatDbConfig { CompactionOffset = 0, InlineCompaction = true }, arenaFileSizeBytes: 1024 * 1024, baseDbPath: path,
+            catalogDb: catalog, finalizedStateProvider: finality, loadPersistedTier: false, configure: builder =>
+            {
+                builder.AddSingleton(persistence);
+                if (compactor is not null) builder.AddSingleton(compactor);
+            });
 
     private static IPersistence PersistenceAt(StateId state, Action<IPersistence.IPersistenceReader>? configure = null)
     {

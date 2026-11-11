@@ -51,7 +51,14 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
 
-    private readonly Channel<(ArrayPoolList<StateId> Batch, ulong PersistedBlockNumber)> _compactPersistedJobs = Channel.CreateBounded<(ArrayPoolList<StateId>, ulong)>(16);
+    // Batches the queue holds. With the in-memory tail it bounds what one run can leave uncompacted.
+    private const int CompactQueueCapacity = 16;
+
+    // The newest blocks CompactReloaded looks at: the in-memory tail a clean shutdown converts, plus the batches still
+    // queued here when the run stopped.
+    private readonly long _reloadCompactionDepth = config.MaxInMemoryBaseSnapshotCount + CompactQueueCapacity * (long)config.CompactSize;
+
+    private readonly Channel<(ArrayPoolList<StateId> Batch, ulong PersistedBlockNumber)> _compactPersistedJobs = Channel.CreateBounded<(ArrayPoolList<StateId>, ulong)>(CompactQueueCapacity);
     private readonly Channel<(StateId Boundary, ulong PersistedBlockNumber)> _boundaryCompactJobs = Channel.CreateBounded<(StateId, ulong)>(16);
     // Background workers and their in-flight compaction observe process-exit directly; graceful
     // disposal instead completes the channels and drains the remaining work (see DisposeAsync).
@@ -128,11 +135,54 @@ public class PersistedSnapshotCompactor(
         }
     }
 
+    /// <inheritdoc/>
+    public int CompactReloaded(ulong persistedBlockNumber, CancellationToken cancellationToken)
+    {
+        if (snapshotRepository.GetLastSnapshotId() is not { } newest) return 0;
+
+        // Signed, as in DoCompactSnapshot: PreGenesis is ulong.MaxValue and must sort below genesis.
+        long lowest = Math.Max((long)persistedBlockNumber, (long)newest.BlockNumber - _reloadCompactionDepth);
+
+        using ArrayPoolList<StateId> reloaded = new(64);
+        foreach (PersistedSnapshot snapshot in snapshotRepository.PersistedSnapshots)
+        {
+            // Every base, forks included, as a Phase-2 batch carries every state of its blocks.
+            if (snapshot.Tier == SnapshotTier.PersistedBase && (long)snapshot.To.BlockNumber > lowest)
+                reloaded.Add(snapshot.To);
+        }
+
+        // The large merges are left out: they can span far more than a start should wait for.
+        return CompactWindows(reloaded, persistedBlockNumber, readHot: true, largeBoundaries: null, cancellationToken);
+    }
+
     private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
         if (batch.Count == 0) return;
 
         using ArrayPoolList<StateId> largeBoundaries = new(batch.Count);
+        CompactWindows(batch, persistedBlockNumber, readHot: false, largeBoundaries, cancellationToken);
+
+        // Large boundaries additionally carry a >CompactSize merge. These can be a few GB large, so
+        // they are handed to the boundary compactor to run as a separate background task rather than
+        // blocking this batch worker.
+        foreach (StateId boundary in largeBoundaries)
+            await _boundaryCompactJobs.Writer.WriteAsync((boundary, persistedBlockNumber), cancellationToken);
+    }
+
+    /// <summary>
+    /// Compacts the sub-<c>CompactSize</c> windows of <paramref name="batch"/>, then the <c>CompactSize</c>-wide
+    /// snapshot of each boundary in it, on the calling thread.
+    /// </summary>
+    /// <param name="readHot">The outputs are read at once (a start), so the sub-<c>CompactSize</c> ones keep a sized
+    /// filter and their pages.</param>
+    /// <param name="largeBoundaries">Receives the large boundaries, whose wider merge is left to the caller; <c>null</c>
+    /// skips them.</param>
+    /// <returns>The number of compacted snapshots written.</returns>
+    private int CompactWindows(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, bool readHot,
+        ArrayPoolList<StateId>? largeBoundaries, CancellationToken cancellationToken)
+    {
+        if (batch.Count == 0) return 0;
+
         using ArrayPoolList<StateId> compactSizeBoundaries = new(batch.Count);
         SortedDictionary<int, List<StateId>> buckets = [];
         for (int i = 0; i < batch.Count; i++)
@@ -144,7 +194,7 @@ public class PersistedSnapshotCompactor(
             if (_schedule.IsLargeCompactionBoundary(b))
             {
                 // Large boundary: needs the CompactSized snapshot AND the >CompactSize merge.
-                largeBoundaries.Add(s);
+                largeBoundaries?.Add(s);
                 compactSizeBoundaries.Add(s);
             }
             else if (_schedule.IsCompactSizeBoundary(b))
@@ -166,12 +216,13 @@ public class PersistedSnapshotCompactor(
         // outputs) exist before it runs. Each item is guarded (like RunBoundaryCompactor) so one
         // snapshot's failure does not abort the whole Parallel.ForEach and skip the CompactSized
         // boundary production + enqueue below, which would silently stall the persisted tier.
+        int compacted = 0;
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
             Parallel.ForEach(kv.Value, new ParallelOptions { CancellationToken = cancellationToken }, state =>
             {
                 try
                 {
-                    DoCompactSnapshot(state, persistedBlockNumber);
+                    if (TryCompactSnapshot(state, persistedBlockNumber, readHot)) Interlocked.Increment(ref compacted);
                 }
                 catch (Exception ex)
                 {
@@ -183,13 +234,11 @@ public class PersistedSnapshotCompactor(
         // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
         // per step); both kinds are collected in compactSizeBoundaries above.
         foreach (StateId boundary in compactSizeBoundaries)
-            DoCompactCompactSized(boundary);
+        {
+            if (TryCompactCompactSized(boundary)) compacted++;
+        }
 
-        // Large boundaries additionally carry a >CompactSize merge. These can be a few GB large, so
-        // they are handed to the boundary compactor to run as a separate background task rather than
-        // blocking this batch worker.
-        foreach (StateId boundary in largeBoundaries)
-            await _boundaryCompactJobs.Writer.WriteAsync((boundary, persistedBlockNumber), cancellationToken);
+        return compacted;
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
@@ -245,13 +294,16 @@ public class PersistedSnapshotCompactor(
     /// <see cref="ProcessCompactBatch"/> routes those boundaries away from here, so this method
     /// only ever sees sub-<c>CompactSize</c> intermediates and <c>&gt;CompactSize</c> merges.
     /// </remarks>
-    public void DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0)
+    public void DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0) =>
+        TryCompactSnapshot(snapshotTo, persistedBlockNumber, readHot: false);
+
+    private bool TryCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber, bool readHot)
     {
         ulong blockNumber = snapshotTo.BlockNumber;
         int size = (int)_schedule.GetPersistedSnapshotCompactSize(blockNumber);
         // size 1 is a single snapshot — nothing to merge.
-        if (size <= 1) return;
-        if (snapshotRepository.PersistedSnapshotCount < 2) return;
+        if (size <= 1) return false;
+        if (snapshotRepository.PersistedSnapshotCount < 2) return false;
 
         // Window left edge is the raw block number (blockNumber - size); the alignment lives in
         // offset-shifted space, so ((blockNumber-1)/size)*size would only be correct at offset 0.
@@ -265,7 +317,7 @@ public class PersistedSnapshotCompactor(
         // wrapped-huge window edge over persistedBlockNumber. The (ulong) round-trip preserves a
         // below-genesis result, which the assemble walk reads back via its signed Height() comparison.
         ulong startingBlockNumber = (ulong)Math.Max((long)blockNumber - size, (long)persistedBlockNumber);
-        CompactRange(snapshotTo, startingBlockNumber, size, isCompactSized: false);
+        return CompactRange(snapshotTo, startingBlockNumber, size, isCompactSized: false, readHot);
     }
 
     /// <summary>
@@ -274,22 +326,26 @@ public class PersistedSnapshotCompactor(
     /// RocksDB. Invoked by the background batch worker (see <see cref="Enqueue"/>); not part of
     /// <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
-    public void DoCompactCompactSized(StateId snapshotTo)
+    public void DoCompactCompactSized(StateId snapshotTo) => TryCompactCompactSized(snapshotTo);
+
+    private bool TryCompactCompactSized(StateId snapshotTo)
     {
         ulong blockNumber = snapshotTo.BlockNumber;
-        if (!_schedule.IsCompactSizeBoundary(blockNumber) && !_schedule.IsLargeCompactionBoundary(blockNumber)) return;
+        if (!_schedule.IsCompactSizeBoundary(blockNumber) && !_schedule.IsLargeCompactionBoundary(blockNumber)) return false;
 
-        if (snapshotRepository.PersistedSnapshotCount < 2) return;
+        if (snapshotRepository.PersistedSnapshotCount < 2) return false;
 
         // The CompactSized snapshot is always CompactSize-wide; GetCompactSize returns exactly CompactSize at
         // any boundary (it caps there), so the window is (blockNumber - CompactSize, blockNumber]. No
         // persistence clamp: this CompactSize-wide window lands on a persistence boundary and never dips
         // below the persisted block.
         int compactSize = (int)_schedule.GetCompactSize(blockNumber);
-        CompactRange(snapshotTo, blockNumber - (ulong)compactSize, compactSize, isCompactSized: true);
+        return CompactRange(snapshotTo, blockNumber - (ulong)compactSize, compactSize, isCompactSized: true, readHot: false);
     }
 
-    private bool CompactRange(StateId snapshotTo, ulong startingBlockNumber, int compactSize, bool isCompactSized)
+    /// <param name="readHot">Read by a sub-<c>CompactSize</c> output only: it gets a sized filter and keeps its pages,
+    /// as the snapshots of a start are read at once.</param>
+    private bool CompactRange(StateId snapshotTo, ulong startingBlockNumber, int compactSize, bool isCompactSized, bool readHot)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
@@ -345,10 +401,10 @@ public class PersistedSnapshotCompactor(
             // Sub-CompactSize intermediates (PersistedSmallCompacted) are read-cold and short-lived, so
             // they skip a capacity-sized bloom and take a minimal single-cache-line filter the merge still
             // populates (keeping Bloom.Count accurate for a wider merge that later consumes them). The
-            // CompactSized and LargeCompacted tiers keep the real sized bloom. Bloom-disabled or empty
-            // capacity falls back to the AlwaysTrue sentinel so the builder always gets a non-null bloom.
+            // CompactSized and LargeCompacted tiers keep the real sized bloom, and so does a read-hot one. Bloom-disabled
+            // or empty capacity falls back to the AlwaysTrue sentinel so the builder always gets a non-null bloom.
             BloomFilter mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
-                ? (tier == SnapshotTier.PersistedSmallCompacted
+                ? (tier == SnapshotTier.PersistedSmallCompacted && !readHot
                     ? new BloomFilter(1, _bloomBitsPerKey)
                     : new BloomFilter(bloomCapacity, _bloomBitsPerKey))
                 : BloomFilter.AlwaysTrue();
@@ -415,8 +471,9 @@ public class PersistedSnapshotCompactor(
                 {
                     // Sub-CompactSize intermediate. The bundle priority means this is never queried
                     // unless there's a deep reorg, so drop its freshly-written pages from the cache +
-                    // tracker; they would otherwise sit hot until the snapshot is pruned.
-                    compacted.Demote();
+                    // tracker; they would otherwise sit hot until the snapshot is pruned. After a restart
+                    // the head sits above the last boundary and reads through it, so it keeps them.
+                    if (!readHot) compacted.Demote();
                 }
                 else
                 {

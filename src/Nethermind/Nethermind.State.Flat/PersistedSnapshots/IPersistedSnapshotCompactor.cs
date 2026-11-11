@@ -27,4 +27,19 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before or while
     /// waiting to enqueue; <paramref name="batch"/> is returned to its pool before the exception is propagated.</exception>
     ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Compacts, on the calling thread, the persisted base snapshots a start reloaded without their compacted layers:
+    /// the tail a clean shutdown converted, and what an earlier run converted but never compacted.
+    /// </summary>
+    /// <remarks>
+    /// For the start only, before any worker or reader uses the persisted tier. Writes the same sub-<c>CompactSize</c>
+    /// and <c>CompactSize</c>-wide snapshots as <see cref="EnqueueAsync"/>, with full-size filters because the head
+    /// reads through them, and no wider merge. A window that already has its snapshot is left alone.
+    /// </remarks>
+    /// <param name="persistedBlockNumber">The RocksDB persisted state block; windows are clamped to it as in
+    /// <see cref="EnqueueAsync"/>.</param>
+    /// <param name="cancellationToken">Process exit; the snapshots written so far stay.</param>
+    /// <returns>The number of compacted snapshots written.</returns>
+    int CompactReloaded(ulong persistedBlockNumber, CancellationToken cancellationToken);
 }
