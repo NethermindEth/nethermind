@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -14,7 +16,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
+internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState, ulong? secondsPerSlot = null)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -161,13 +163,19 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         return filtered.AsSpan().Slice(start, kept);
     }
 
-    /// <summary>The base fee the next block will charge.</summary>
-    /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
-    /// stands in and pre-fork EIP-1559 parameters are resolved for a post-fork block.</remarks>
+    private readonly SlotSchedule _slots = specProvider.GetSlotSchedule(secondsPerSlot ?? new BlocksConfig().SecondsPerSlot);
+
+    /// <summary>The base fee the next block will charge, assuming it lands in the slot after the parent's.</summary>
     private UInt256 NextBlockBaseFee(BlockHeader? parent)
     {
         parent ??= blockTree.Head?.Header;
-        return parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
+        if (parent is null) return UInt256.Zero;
+
+        BlockHeader? previous = parent.ParentHash is { } parentHash
+                ? blockTree.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+        ulong timestamp = BaseFeeCalculator.GetPredictionTimestamp(parent, previous, _slots.GetNextSlotTimestamp(parent.Timestamp));
+        return BaseFeeCalculator.CalculateForPrediction(parent, previous, timestamp, specProvider.GetSpec(parent.Number + 1, timestamp));
     }
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)

@@ -10,7 +10,7 @@ namespace Ethereum.Test.Base;
 /// <summary>Remaps the fork name a fixture declares onto the fork the loaded archive actually means.</summary>
 /// <remarks>
 /// Separate EEST release lines can define one fork name incompatibly, and the fixture carries no EIP list
-/// to tell them apart — only the archive does. The FOCIL line's <c>Bogota</c> is Amsterdam plus EIP-7805;
+/// to tell them apart — only the archive does. The Heze line's <c>Bogota</c> adds EIP-7805 and EIP-8198;
 /// the frame-transaction line's is Amsterdam plus EIP-8141, which is <c>Eip8141Prototype</c> here. Whoever
 /// selects the archive therefore names the fork it means, rather than the parser guessing from a name that
 /// is genuinely ambiguous. Aliases must be set before any fixture is loaded; they are read from every

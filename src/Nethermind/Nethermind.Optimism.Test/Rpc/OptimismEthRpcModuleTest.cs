@@ -305,7 +305,7 @@ public class OptimismEthRpcModuleTest
 
         Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
         BlockHeader head = rpcBlockchain.BlockTree.Head!.Header;
-        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
+        UInt256 nextBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sent!.Nonce, Is.EqualTo(1UL), "the nonce must follow the account's mined transaction");

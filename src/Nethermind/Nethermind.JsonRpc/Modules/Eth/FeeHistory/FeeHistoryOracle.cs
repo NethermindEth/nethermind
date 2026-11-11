@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -34,15 +35,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ulong _secondsPerSlot;
+        private SlotSchedule? _slots;
         private readonly ulong _maxBlockCount;
         private readonly int _maxUncachedRequests;
         private int _uncachedRequests;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ulong? maxDistanceFromHead = null, IBlocksConfig? blocksConfig = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _specProvider = specProvider;
+            _secondsPerSlot = blocksConfig?.SecondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
             _maxBlockCount = jsonRpcConfig.FeeHistoryMaxBlockCount > 0 ? (ulong)Math.Min(jsonRpcConfig.FeeHistoryMaxBlockCount, MaxBlockCount) : MaxBlockCount;
             _maxUncachedRequests = jsonRpcConfig.FeeHistoryMaxConcurrentRequests ?? Math.Max(1, Environment.ProcessorCount / 4);
@@ -163,10 +167,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     ? fee
                     : UInt256.Zero;
 
+                ulong nextTimestamp = (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(b.Timestamp);
+                BlockHeader? previous = b.Number > 0
+                    ? _blockTree.FindHeader(b.ParentHash, AncestorLookupOptions, b.Number - 1)
+                    : null;
+                nextTimestamp = BaseFeeCalculator.GetPredictionTimestamp(b.Header, previous, nextTimestamp);
+                IReleaseSpec nextSpec = _specProvider.GetSpec(b.Number + 1, nextTimestamp);
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
-                    BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
+                    BaseFeeCalculator.CalculateForPrediction(b.Header, previous, nextTimestamp, nextSpec),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     nextFeePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
@@ -242,11 +253,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 : null;
 
             ulong oldestBlockNumber = info.BlockNumber;
-            baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
             try
             {
+                baseFeePerGas[effectiveBlockCount] = GetNextBaseFee(info);
                 while (historyInfo is not null && effectiveBlockCount-- > 0)
                 {
                     info = historyInfo.Value;
@@ -296,6 +307,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// Returns the base fee of the block after <paramref name="info"/>: the canonical child's actual value when
+        /// the child exists, otherwise the estimate.
+        /// </summary>
+        private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
+        {
+            BlockHeader? child = _blockTree.FindHeader(info.BlockNumber + 1, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return child is not null && child.ParentHash == info.BlockHash ? child.BaseFeePerGas : info.BaseFeePerGasEst;
         }
 
         /// <summary>

@@ -96,6 +96,41 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // The EIP-8198 spec activates by timestamp; the next block is taken to land one slot after the head, and its base fee
+    // follows that spacing: 10 s slots after the fork give 5/48, the last 12 s slot into the fork gives 1/8.
+    [TestCase(0UL, 30_000_000UL, 100UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_at_fork_full_block")]
+    [TestCase(0UL, 0UL, 100UL, "0x356554f6", TestName = "Eth_baseFee_Eip8198_head_at_fork_empty_block")]
+    [TestCase(12UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_one_slot_before_fork")]
+    [TestCase(13UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_more_than_a_slot_before_fork")]
+    [TestCase(0UL, 30_000_000UL, null, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_without_slot_number")]
+    [TestCase(0UL, 30_000_000UL, 100UL, "0x4180c5fd", 19UL, 2UL, TestName = "Eth_baseFee_Eip8198_observed_fractional_spacing")]
+    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, ulong? slotNumber, string expected, ulong secondsElapsed = 0, ulong slotsElapsed = 0)
+    {
+        const ulong forkTimestamp = 1_000;
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+        {
+            Eip8198SlotDurationMs = 10_000
+        };
+        using Context ctx = await Context.Create(specProvider);
+        Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
+            .WithGasLimit(30_000_000).WithGasUsed(gasUsed).WithSlotNumber(slotNumber).TestObject;
+        Block genesis = head;
+        if (secondsElapsed > 0)
+        {
+            genesis = Build.A.Block.WithNumber(0).WithTimestamp(head.Timestamp - secondsElapsed).WithSlotNumber(slotNumber - slotsElapsed).TestObject;
+            head = Build.A.Block.WithParent(genesis).WithTimestamp(head.Timestamp).WithBaseFeePerGas(1_000_000_000)
+                .WithGasLimit(30_000_000).WithGasUsed(gasUsed).WithSlotNumber(slotNumber).TestObject;
+        }
+        BlockTree blockTree = Build.A.BlockTree(genesis).WithBlocks(secondsElapsed > 0 ? [genesis, head] : [head]).TestObject;
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
+
+        string result = await ctx.Test.TestEthRpc("eth_baseFee");
+
+        Assert.That(result, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
+    }
+
     // AddBlocksOnStart builds 3 blocks on top of genesis, so head = block 3.
     // Setting ForkOnBlockNumber = 4 makes block 3 the last pre-London block,
     // with Eip1559TransitionBlock = 4, so eth_baseFee returns ForkBaseFee.

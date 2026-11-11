@@ -32,8 +32,9 @@ public static class T8nValidator
         }
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
-            .WithGasUsed(env.ParentGasUsed).WithGasLimit(env.ParentGasLimit).TestObject;
-        env.CurrentBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+            .WithGasUsed(env.ParentGasUsed).WithGasLimit(env.ParentGasLimit).WithTimestamp(env.ParentTimestamp)
+            .WithSlotNumber(env.ParentSlotNumber).TestObject;
+        env.CurrentBaseFee = BaseFeeCalculator.Calculate(parent, env.CurrentTimestamp, env.SlotNumber, spec);
     }
 
     private static void ApplyShanghaiChecks(EnvJson env, IReleaseSpec spec)

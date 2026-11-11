@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -1129,6 +1130,70 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8360Timestamp - 1)).IsEip8360Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8360Timestamp)).IsEip8360Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Eip8198_activates_only_at_its_transition_timestamp()
+    {
+        const ulong eip8198Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip1559Transition = 0, Eip8198TransitionTimestamp = eip8198Timestamp },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, eip8198Timestamp - 10, [])
+        {
+            GasUsed = 30_000_000,
+            BaseFeePerGas = 1_000_000_000,
+            SlotNumber = 6
+        };
+        IReleaseSpec before = provider.GetSpec(new ForkActivation(11, eip8198Timestamp - 1));
+        IReleaseSpec after = provider.GetSpec(new ForkActivation(11, eip8198Timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip8198Enabled, Is.False);
+            Assert.That(after.IsEip8198Enabled, Is.True);
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, before), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, after), Is.EqualTo((UInt256)1_104_166_666));
+        }
+    }
+
+    [Test]
+    public void Eip8198_scales_a_configured_denominator_by_block_spacing()
+    {
+        const ulong eip8198Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip1559Transition = 0,
+                Eip1559BaseFeeMaxChangeDenominator = 250,
+                Eip8198TransitionTimestamp = eip8198Timestamp
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(new ForkActivation(11, eip8198Timestamp - 1));
+        IReleaseSpec after = provider.GetSpec(new ForkActivation(11, eip8198Timestamp));
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, eip8198Timestamp - 10, [])
+        {
+            GasUsed = 30_000_000,
+            BaseFeePerGas = 3_000_000_000,
+            SlotNumber = 6
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)250));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)250));
+            // 1/250 per 12 s slot: 3e9 / 250 at 12 s spacing, 3e9 × 10 / 3000 at 10 s spacing.
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp + 2, 7, after), Is.EqualTo((UInt256)3_012_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, after), Is.EqualTo((UInt256)3_010_000_000));
         }
     }
 

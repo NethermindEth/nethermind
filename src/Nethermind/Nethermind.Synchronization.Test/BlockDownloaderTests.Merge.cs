@@ -343,13 +343,13 @@ public partial class BlockDownloaderTests
             .WithGasLimit(parent.GasLimit)
             .WithDifficulty(0)
             .WithNonce(0)
-            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent)))
+            .WithBaseFeePerGas(BaseFeeCalculator.CalculateForReferenceSlot(parent, specProvider.GetSpec(parent)))
             .TestObject;
         Block child = Build.A.Block
             .WithParent(posBlock)
             .WithGasLimit(posBlock.GasLimit)
             .WithDifficulty(parent.Difficulty)
-            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(posBlock.Header, specProvider.GetSpec(posBlock.Header)))
+            .WithBaseFeePerGas(BaseFeeCalculator.CalculateForReferenceSlot(posBlock.Header, specProvider.GetSpec(posBlock.Header)))
             .TestObject;
         remoteTree.SuggestBlock(posBlock);
         remoteTree.SuggestBlock(child);

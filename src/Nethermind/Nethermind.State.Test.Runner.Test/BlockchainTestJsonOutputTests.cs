@@ -551,7 +551,7 @@ public class BlockchainTestJsonOutputTests
         child.Number = number;
         child.ParentHash = parent.Hash;
         child.Timestamp = "0x0c";
-        child.BaseFeePerGas = BaseFeeCalculator.Calculate(JsonToEthereumTest.Convert(parent), Paris.Instance).ToHexString(true);
+        child.BaseFeePerGas = BaseFeeCalculator.CalculateForReferenceSlot(JsonToEthereumTest.Convert(parent), Paris.Instance).ToHexString(true);
         return child;
     }
 

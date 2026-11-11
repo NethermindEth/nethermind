@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
@@ -17,6 +18,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Optimism;
 
 public class OptimismPayloadPreparationService(
+    ISpecProvider specProvider,
     IBlockProducer blockProducer,
     ITxPool txPool,
     IBlockImprovementContextFactory blockImprovementContextFactory,
@@ -28,7 +30,8 @@ public class OptimismPayloadPreparationService(
         blockImprovementContextFactory,
         timerFactory,
         logManager,
-        blocksConfig)
+        blocksConfig,
+        specProvider)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
 

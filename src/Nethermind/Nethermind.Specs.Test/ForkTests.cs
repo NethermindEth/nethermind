@@ -156,14 +156,19 @@ public class ForkTests
     }
 
     [Test]
-    public void Bogota_enables_inclusion_lists_without_frame_transactions()
+    public void Bogota_enables_inclusion_lists_and_eip8198_without_frame_transactions()
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
             Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Bogota.Instance.IsEip8198Enabled, Is.True);
+            Assert.That(Bogota.Instance.TargetBlobCount, Is.EqualTo(Amsterdam.Instance.TargetBlobCount));
+            Assert.That(Bogota.Instance.MaxBlobCount, Is.EqualTo(Amsterdam.Instance.MaxBlobCount));
+            Assert.That(Bogota.Instance.BlobBaseFeeUpdateFraction, Is.EqualTo(Amsterdam.Instance.BlobBaseFeeUpdateFraction));
             Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
             Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip8198Enabled, Is.False);
         }
     }
 }

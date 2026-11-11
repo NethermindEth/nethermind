@@ -102,6 +102,7 @@ public class OptimismPayloadPreparationServiceTests
             blocksConfig: Substitute.For<IBlocksConfig>()
         );
         using OptimismPayloadPreparationService service = new(
+            specProvider: specProvider,
             blockProducer: blockProducer,
             txPool: Substitute.For<ITxPool>(),
             blockImprovementContextFactory: new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)),
@@ -142,6 +143,7 @@ public class OptimismPayloadPreparationServiceTests
 
         CapturingBlockImprovementContextFactory factory = new(new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)));
         using OptimismPayloadPreparationService service = new(
+            specProvider: Substitute.For<ISpecProvider>(),
             blockProducer: blockProducer,
             txPool: Substitute.For<ITxPool>(),
             blockImprovementContextFactory: factory,

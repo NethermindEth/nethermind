@@ -46,6 +46,7 @@ namespace Nethermind.Specs
 
         public ulong? DaoBlockNumber { get; }
         public ulong? BeaconChainGenesisTimestamp { get; }
+        public ulong? Eip8198SlotDurationMs => null;
 
         public string SealEngine { get; set; } = SealEngineType.Ethash;
     }

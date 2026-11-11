@@ -121,6 +121,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
+        public bool IsEip8198Enabled { get; set; } = spec.IsEip8198Enabled;
         public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
@@ -135,7 +136,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip8116Enabled { get; set; } = spec.IsEip8116Enabled;
         public bool IsEip7668Enabled { get; set; } = spec.IsEip7668Enabled;
-        public bool IsEip7843Enabled => spec.IsEip7843Enabled;
+        public bool IsEip7843Enabled { get; set; } = spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;

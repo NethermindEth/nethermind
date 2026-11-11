@@ -4,7 +4,9 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -21,27 +23,31 @@ namespace Nethermind.Blockchain
         private readonly IBlockTree _blockTree;
         private readonly Func<BlockHeader, IReadOnlyStateProvider> _stateAt;
         private readonly IBlockBuildingTracker? _blockBuildingTracker;
+        private readonly ulong _secondsPerSlot;
+        private SlotSchedule? _slots;
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header), blockBuildingTracker)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null, IBlocksConfig? blocksConfig = null)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header), blockBuildingTracker, blocksConfig)
         {
         }
 
         /// <remarks><paramref name="stateProvider"/> is used as given, so <see cref="TryGetHeadState"/> returns it
         /// unbound: binding the state to the head is the caller's concern.</remarks>
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
-            : this(specProvider, blockTree, stateProvider, _ => stateProvider, blockBuildingTracker)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null, IBlocksConfig? blocksConfig = null)
+            : this(specProvider, blockTree, stateProvider, _ => stateProvider, blockBuildingTracker, blocksConfig)
         {
         }
 
-        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt, IBlockBuildingTracker? blockBuildingTracker)
+        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt, IBlockBuildingTracker? blockBuildingTracker, IBlocksConfig? blocksConfig)
         {
             _stateAt = stateAt;
+            _secondsPerSlot = blocksConfig?.SecondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
             _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
+            _blockTree = blockTree;
             Block? head = blockTree.Head;
             HeadNumber = head?.Number ?? 0;
             HeadTimestamp = head?.Timestamp ?? 0;
@@ -49,7 +55,6 @@ namespace Nethermind.Blockchain
             // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
-            _blockTree = blockTree;
             blockTree.BlockAddedToMain += OnHeadChanged;
             blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
         }
@@ -123,8 +128,15 @@ namespace Nethermind.Blockchain
             IReleaseSpec spec = SpecProvider.GetSpec(header);
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
-            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
-            NextBaseFee = childSpec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(header, childSpec) : UInt256.Zero;
+            BlockHeader? previous = header.ParentHash is { } parentHash
+                ? _blockTree.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+            ulong timestamp = BaseFeeCalculator.GetPredictionTimestamp(header, previous,
+                (_slots ??= SpecProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(header.Timestamp));
+            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, timestamp);
+            NextBaseFee = childSpec.IsEip1559Enabled
+                ? BaseFeeCalculator.CalculateForPrediction(header, previous, timestamp, childSpec)
+                : UInt256.Zero;
             CurrentFeePerBlobGas =
                 BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas

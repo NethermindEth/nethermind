@@ -38,6 +38,7 @@ namespace Nethermind.Specs.Test
 
         public ulong? DaoBlockNumber => SpecProvider.DaoBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => SpecProvider.BeaconChainGenesisTimestamp;
+        public ulong? Eip8198SlotDurationMs => SpecProvider.Eip8198SlotDurationMs;
         public ulong NetworkId => SpecProvider.NetworkId;
         public ulong ChainId => SpecProvider.ChainId;
         public string SealEngine => SpecProvider.SealEngine;

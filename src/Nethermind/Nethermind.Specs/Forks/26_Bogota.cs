@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Specs.Forks;
 
-/// <summary>Fork enabling EIP-7805 inclusion lists on top of Amsterdam.</summary>
+/// <summary>Fork enabling EIP-7805 inclusion lists and EIP-8198 quick slots on top of Amsterdam.</summary>
 /// <remarks>
 /// EIP-8141 frame transactions are not bundled here. A chain wanting both schedules
 /// <c>eip8141TransitionTimestamp</c> alongside this fork.
@@ -16,6 +16,8 @@ public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
     {
         spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
+        // EIP-8198 changes no blob parameter: a slot duration change brings its own EIP-7892 blobSchedule entry.
+        spec.IsEip8198Enabled = true;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V6;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V5;
     }

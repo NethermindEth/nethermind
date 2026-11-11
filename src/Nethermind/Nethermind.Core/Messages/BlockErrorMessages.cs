@@ -210,6 +210,9 @@ public static class BlockErrorMessages
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";
 
+    public static string SlotNumberNotAfterParent(ulong slotNumber, ulong parentSlotNumber) =>
+        $"SlotNumberNotAfterParent: Slot number {slotNumber} must be greater than the parent's {parentSlotNumber}.";
+
     public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
         $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";
 }

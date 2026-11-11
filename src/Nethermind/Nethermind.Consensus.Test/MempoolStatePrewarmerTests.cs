@@ -43,7 +43,18 @@ public class MempoolStatePrewarmerTests
     [TestCase(100UL, 129UL, 136UL)]
     [TestCase(100UL, 90UL, 112UL)]
     public void PredictNextTimestamp_ReturnsTheFirstSlotBoundaryThatCanStillArrive(ulong parent, ulong now, ulong expected) =>
-        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, secondsPerSlot: 12), Is.EqualTo(expected));
+        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, new SlotSchedule(SecondsPerSlot)), Is.EqualTo(expected));
+
+    // EIP-8198 from 124: the step from 112 still lands on 124, steps from there are 10 s, and the grace past a
+    // boundary after the fork is 3 s.
+    [TestCase(100UL, 105UL, 112UL)]
+    [TestCase(112UL, 117UL, 124UL)]
+    [TestCase(112UL, 136UL, 134UL)]
+    [TestCase(124UL, 130UL, 134UL)]
+    [TestCase(124UL, 137UL, 134UL)]
+    [TestCase(124UL, 138UL, 144UL)]
+    public void PredictNextTimestamp_FollowsTheEip8198SlotLength(ulong parent, ulong now, ulong expected) =>
+        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, new SlotSchedule(SecondsPerSlot, null, [(124, 10_000)])), Is.EqualTo(expected));
 
     [Test]
     public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)
@@ -200,7 +211,7 @@ public class MempoolStatePrewarmerTests
                 "the predicted header must sit on the next slot boundary: the EIP-4788 cells warmed for it are indexed by its timestamp");
             Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
             Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
-            Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
+            Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.CalculateForReferenceSlot(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
             Assert.That(deltaHeader.GasBeneficiary, Is.EqualTo(parentHeader.GasBeneficiary), "Beneficiary resolves to the parent's actual coinbase (Author), not a diverging governance vote target");
             txSource.Received(1).GetTransactions(parentHeader, deltaHeader, deltaHeader.GasLimit);
         }

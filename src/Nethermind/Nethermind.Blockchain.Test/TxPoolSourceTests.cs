@@ -486,7 +486,7 @@ public class TxPoolSourceTests
     /// <summary>A max_fee frame tx one wei short of <c>required_max_fee</c> at <see cref="MaxFeeParent"/>'s child, or exactly at it.</summary>
     private static Transaction BuildMaxFeeFrameTx(bool blobs, bool coversBudget, out UInt256 baseFee)
     {
-        baseFee = BaseFeeCalculator.Calculate(MaxFeeParent, BogotaFrames);
+        baseFee = BaseFeeCalculator.CalculateForReferenceSlot(MaxFeeParent, BogotaFrames);
         BlobGasCalculator.TryCalculateFeePerBlobGas(0, BogotaFrames.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
 
         Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);

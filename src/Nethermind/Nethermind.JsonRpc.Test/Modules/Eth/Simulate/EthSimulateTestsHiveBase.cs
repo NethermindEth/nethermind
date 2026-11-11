@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -17,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Blockchain.TestBlockchain;
 using ResultType = Nethermind.Core.ResultType;
@@ -166,5 +169,39 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
             Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));
             Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
         }
+    }
+
+    /// <summary>Without a time override each simulated block, fillers included, lands one slot on; here EIP-8198 slots are 10 seconds.</summary>
+    [Test]
+    public async Task TestSimulate_DefaultTimestampsFollowTheEip8198SlotLength()
+    {
+        const ulong fork = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .Build((builder) => builder
+                .AddSingleton<ISpecProvider>(new CustomSpecProvider(
+                    ((ForkActivation)0, London.Instance),
+                    (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+                {
+                    Eip8198SlotDurationMs = 10_000
+                }));
+
+        ulong head = chain.BlockFinder.Head!.Number;
+        string data = $$"""
+                        {
+                          "blockStateCalls": [
+                            { "blockOverrides": { "time": "{{(fork - 12).ToHexString(true)}}" } },
+                            {},
+                            { "blockOverrides": { "number": "{{(head + 4).ToHexString(true)}}" } }
+                          ]
+                        }
+                        """;
+        SimulatePayload<TransactionForRpc> payload = new EthereumJsonSerializer().Deserialize<SimulatePayload<TransactionForRpc>>(data)
+            ?? throw new InvalidOperationException("Simulate payload deserialized as null.");
+
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> results = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest).Data
+            ?? throw new InvalidOperationException("Simulation returned null.");
+
+        Assert.That(results.Select(static r => (ulong)r.Timestamp), Is.EqualTo(new[] { fork - 12, fork, fork + 10, fork + 20 }));
     }
 }

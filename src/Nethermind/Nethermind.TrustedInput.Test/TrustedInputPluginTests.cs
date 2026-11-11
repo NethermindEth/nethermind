@@ -356,15 +356,10 @@ public class TrustedInputPluginTests
     }
 
     [Test]
-    public async Task Capture_has_no_backlog_and_shutdown_drains_the_running_capture([Values] bool witnessCaptureEnabled)
+    public async Task Capture_has_no_backlog_and_shutdown_drains_the_running_capture()
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder => builder
-            .AddSingleton<ITrustedInputConfig>(new TrustedInputConfig { Enabled = true })
-            .AddSingleton<WitnessCapturingBlockProcessingEnv>()
-            .AddSingleton<WitnessRendezvous>()
-            .AddSingleton<IMainProcessingModule>(new WitnessCapturingMainProcessingModule(witnessCaptureEnabled))
-            .AddModule(new TrustedInputModule()));
-        TrustedInputCapturingBlockProcessor processor = (TrustedInputCapturingBlockProcessor)chain.Container.Resolve<IMainProcessingContext>().BlockProcessor;
+        TrustedInputCapturingBlockProcessor processor = new(Substitute.For<IBlockProcessor>(), new WitnessRendezvous(),
+            new TrustedInputStore(new TrustedInputConfig(), LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
         using ManualResetEventSlim release = new();
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         try

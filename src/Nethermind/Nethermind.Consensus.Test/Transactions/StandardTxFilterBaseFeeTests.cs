@@ -136,7 +136,7 @@ public class StandardTxFilterBaseFeeTests
             foreach (Transaction tx in Transactions)
             {
                 TxFilterContext computed = new(parent, spec);
-                TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
+                TxFilterContext given = new(parent, spec, BaseFeeCalculator.CalculateForReferenceSlot(parent, spec));
                 Assert.That(pipeline.Execute(tx, in given), Is.EqualTo(pipeline.Execute(tx, in computed)),
                     $"parent {parent.Number}, spec floor {spec.Eip1559BaseFeeMinValue}, 1559 {spec.IsEip1559Enabled}");
             }
@@ -382,7 +382,7 @@ public class StandardTxFilterBaseFeeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(BaseFeeCalculator.Calculate(parent, activation), Is.EqualTo(1.GWei));
+            Assert.That(BaseFeeCalculator.CalculateForReferenceSlot(parent, activation), Is.EqualTo(1.GWei));
             Assert.That(selected, Is.EquivalentTo(aboveBaseFee));
         }
     }
@@ -455,7 +455,7 @@ public class StandardTxFilterBaseFeeTests
     private static string[] Decide(ITxFilter filter, Transaction tx, BlockHeader parent, IReleaseSpec spec)
     {
         TxFilterContext computed = new(parent, spec);
-        TxFilterContext given = new(parent, spec, BaseFeeCalculator.Calculate(parent, spec));
+        TxFilterContext given = new(parent, spec, BaseFeeCalculator.CalculateForReferenceSlot(parent, spec));
         return
         [
             filter.IsAllowed(tx, in computed).ToString(),
@@ -513,11 +513,11 @@ public class StandardTxFilterBaseFeeTests
 
         public int Calls => Volatile.Read(ref _calls);
 
-        public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
+        public UInt256 Calculate(BlockHeader parent, ulong timestamp, ulong? slotNumber, IEip1559Spec specFor1559)
         {
             Interlocked.Increment(ref _calls);
             // The default calculator needs a parent; a null one stands for a caller without a head.
-            return parent is null ? UInt256.Zero : _inner.Calculate(parent, specFor1559);
+            return parent is null ? UInt256.Zero : _inner.Calculate(parent, timestamp, slotNumber, specFor1559);
         }
     }
 }

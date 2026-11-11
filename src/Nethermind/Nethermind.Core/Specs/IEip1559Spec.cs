@@ -19,7 +19,21 @@ namespace Nethermind.Core.Specs
         public Address? FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
         public UInt256 ForkBaseFee { get; }
+        /// <summary>
+        /// The maximum per-block base fee change is <c>1 / BaseFeeMaxChangeDenominator</c>; under EIP-8198, per
+        /// <see cref="Eip8198Constants.BaseFeeReferenceSlotSeconds"/> of slot duration.
+        /// </summary>
         public UInt256 BaseFeeMaxChangeDenominator { get; }
+
+        /// <summary>
+        /// EIP-8198: Quick Slots. Scales the maximum per-block base fee change with the slot duration read from the spacing
+        /// of a block and its parent, see <see cref="DefaultBaseFeeCalculator"/>.
+        /// </summary>
+        /// <remarks>
+        /// The slot length from the fork is the chain's <see cref="ISpecProvider.Eip8198SlotDurationMs"/>, used only to place
+        /// slots; the blob parameters are chainspec <c>blobSchedule</c> data.
+        /// </remarks>
+        public bool IsEip8198Enabled { get; }
         public ulong ElasticityMultiplier { get; }
         public IBaseFeeCalculator BaseFeeCalculator { get; }
     }
@@ -32,6 +46,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
+        public bool IsEip8198Enabled { get; init; } = spec.IsEip8198Enabled;
         public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;
     }

@@ -6,6 +6,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
+using Nethermind.EraE.Proofs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -179,6 +182,26 @@ internal class EraWriterTests
         sut.Dispose();
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    [TestCase(false, 5L, TestName = "Add_PostMergeBlock_FetchesBeaconRootsForTwelveSecondSlot")]
+    [TestCase(true, 6L, TestName = "Add_PostMergeBlock_FetchesBeaconRootsForEip8198Slot")]
+    public async Task Add_PostMergeBlock_FetchesBeaconRootsForItsSlot(bool eip8198Scheduled, long expectedSlot)
+    {
+        const ulong genesis = 100;
+        const ulong fork = genesis + 5 * 12;
+        (ForkActivation, IReleaseSpec)[] transitions = eip8198Scheduled
+            ? [((ForkActivation)0, London.Instance), (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true })]
+            : [((ForkActivation)0, London.Instance)];
+        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis, Eip8198SlotDurationMs = 10_000 };
+        IBeaconRootsProvider beaconRoots = Substitute.For<IBeaconRootsProvider>();
+        using EraWriter sut = new(new MemoryStream(), specProvider, beaconRoots);
+
+        await sut.Add(Build.A.Block.WithNumber(0).WithTimestamp(fork - 12).WithPostMergeRules().TestObject, []);
+        await sut.Add(Build.A.Block.WithNumber(1).WithTimestamp(fork + 10).WithPostMergeRules().TestObject, []);
+
+        await beaconRoots.Received(1).GetBeaconRoots(4, Arg.Any<CancellationToken>());
+        await beaconRoots.Received(1).GetBeaconRoots(expectedSlot, Arg.Any<CancellationToken>());
     }
 
     private static EraWriter CreateSut() => new(new MemoryStream(), Substitute.For<ISpecProvider>());

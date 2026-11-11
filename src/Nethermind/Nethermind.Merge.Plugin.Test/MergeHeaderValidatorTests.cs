@@ -105,7 +105,7 @@ public class MergeHeaderValidatorTests
             .WithDifficulty(0)
             .WithNonce(0)
             .WithTimestamp(parent.Timestamp + 1)
-            .WithBaseFee(BaseFeeCalculator.Calculate(parent, Paris.Instance))
+            .WithBaseFee(BaseFeeCalculator.CalculateForReferenceSlot(parent, Paris.Instance))
             .TestObject;
         header.TotalDifficulty = childHasTotalDifficulty ? parentTotalDifficulty : null;
         using IContainer ctx = new ContainerBuilder()

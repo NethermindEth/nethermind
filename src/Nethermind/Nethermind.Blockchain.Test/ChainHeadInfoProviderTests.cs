@@ -77,6 +77,27 @@ public class ChainHeadInfoProviderTests
         }
     }
 
+    [TestCase(10ul, 1ul, 1_104_166_666ul)]
+    [TestCase(20ul, 2ul, 1_104_166_666ul)]
+    [TestCase(19ul, 2ul, 1_098_958_333ul)]
+    public void Next_fee_uses_observed_spacing_with_default_slot_configuration(ulong seconds, ulong slots, ulong expected)
+    {
+        BlockHeader previous = Build.A.BlockHeader.WithNumber(9).WithTimestamp(1_000 - seconds).WithSlotNumber(100 - slots).TestObject;
+        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(10).WithParentHash(previous.Hash!)
+            .WithTimestamp(1_000).WithSlotNumber(100).WithBaseFee(1_000_000_000)
+            .WithGasLimit(HeadGasLimit).WithGasUsed(HeadGasLimit).TestObject).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        blockTree.FindHeader(previous.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(previous);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call =>
+            ((ForkActivation)call[0]).Timestamp >= 1_009 ? Bogota.Instance : Amsterdam.Instance);
+
+        ChainHeadInfoProvider provider = new(specProvider, blockTree, Substitute.For<IReadOnlyStateProvider>());
+
+        Assert.That(provider.NextBaseFee, Is.EqualTo((UInt256)expected));
+    }
+
     private static ChainHeadInfoProvider CreateProvider(IBlockTree blockTree)
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();

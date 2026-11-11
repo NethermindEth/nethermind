@@ -190,7 +190,7 @@ public class TxPoolTxSourceSenderQueueBenchmark
             .WithParentHash(_parentHeader.Hash!)
             .WithNumber(1)
             .WithGasLimit(BlockGasLimit)
-            .WithBaseFee(BaseFeeCalculator.Calculate(_parentHeader, Spec))
+            .WithBaseFee(BaseFeeCalculator.CalculateForReferenceSlot(_parentHeader, Spec))
             .WithTimestamp(_parentHeader.Timestamp + 12)
             .TestObject;
 

@@ -13,6 +13,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Facade.Test.Simulate;
@@ -146,6 +147,27 @@ public class SimulateBridgeHelperTests
         { ExpectedResult = 0UL, TestName = "a parent before the beacon genesis falls back" };
         yield return new TestCaseData(MainnetBeaconGenesis, MainnetSlotLength, MainnetBeaconGenesis, null, MainnetBeaconGenesis - 1)
         { ExpectedResult = 0UL, TestName = "a timestamp before the beacon genesis falls back" };
+    }
+
+    /// <summary>
+    /// From the EIP-8198 fork the beacon grid has 10-second slots, counted on from the fork's slot.
+    /// </summary>
+    [TestCase(MainnetHeadTime, 30UL, ExpectedResult = MainnetHeadSlot + 5, TestName = "head before the fork, block three 10-second slots after it")]
+    [TestCase(MainnetHeadTime + 2 * MainnetSlotLength, 30UL, ExpectedResult = MainnetHeadSlot + 5, TestName = "head at the fork, block three slots on")]
+    [TestCase(MainnetHeadTime + 2 * MainnetSlotLength + 10, 20UL, ExpectedResult = MainnetHeadSlot + 4, TestName = "head on the post-fork grid only still fits it")]
+    public ulong? Simulated_header_slot_follows_the_eip8198_grid(ulong parentTime, ulong secondsAfterFork)
+    {
+        const ulong fork = MainnetHeadTime + 2 * MainnetSlotLength;
+        CustomSpecProvider specProvider = new(
+            ((ForkActivation)0, Amsterdam.Instance),
+            (new ForkActivation(0, fork), new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8198Enabled = true }))
+        {
+            BeaconChainGenesisTimestamp = MainnetBeaconGenesis,
+            Eip8198SlotDurationMs = 10_000
+        };
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithTimestamp(parentTime).TestObject;
+
+        return GetCallHeaderSlot(specProvider, MainnetSlotLength, parent, fork + secondsAfterFork);
     }
 
     /// <summary>

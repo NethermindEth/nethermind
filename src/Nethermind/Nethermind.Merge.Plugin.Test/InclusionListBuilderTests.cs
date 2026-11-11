@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -149,6 +150,24 @@ public class InclusionListBuilderTests
         BuildBuilder(pool, baseFee: 17).GetInclusionList().Dispose();
 
         pool.Received().GetPendingTransactionsBySenderWithReadyNonFrameTx((UInt256)17);
+    }
+
+    [TestCase(1_010ul, 1)]
+    [TestCase(1_011ul, 0)]
+    public void Next_slot_picks_the_spec_at_its_timestamp(ulong activationTimestamp, int expectedCount)
+    {
+        Transaction tx = TxOfSize(50, maxFeePerGas: 1_110_000_000);
+        ITxPool pool = PoolOf(tx);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000).WithSlotNumber(100)
+            .WithGasLimit(30_000_000).WithGasUsed(30_000_000).WithBaseFee(1_000_000_000).TestObject;
+        CustomSpecProvider specProvider = new(((ForkActivation)0, Amsterdam.Instance),
+            (ForkActivation.TimestampOnly(activationTimestamp), Bogota.Instance));
+        InclusionListBuilder builder = new(pool, Substitute.For<IBlockTree>(), specProvider,
+            Substitute.For<IReadOnlyStateProvider>(), secondsPerSlot: 10);
+
+        using InclusionListBytes il = builder.GetInclusionList(parent);
+
+        Assert.That(il.Count, Is.EqualTo(expectedCount));
     }
 
     // The named parent, not the head, fixes the fee the candidates are filtered against.

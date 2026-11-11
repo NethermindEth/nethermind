@@ -76,9 +76,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] data = new byte[length + 8];
         SwizzledMemory.ComputeHash(ref data[1], length, out _);
         SwizzledMemory.ComputeHash(ref data[1], length, out _);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+        // Exclude one-off runtime allocations while methods tier up, as in the move allocation test.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < 5; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.That(allocated, Is.Zero);
     }
 
     [Test]

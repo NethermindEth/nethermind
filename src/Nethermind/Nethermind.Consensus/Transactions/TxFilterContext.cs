@@ -47,5 +47,10 @@ public readonly struct TxFilterContext(BlockHeader parent, IReleaseSpec spec)
     /// <see cref="BaseFeeCalculator.Calculate"/> from <see cref="Parent"/> and <see cref="Spec"/>, so a context nobody
     /// reads it from costs nothing, and a null parent fails where the calculator fails.
     /// </remarks>
-    public UInt256 BaseFee => _hasBaseFee ? _baseFee : BaseFeeCalculator.Calculate(Parent, Spec);
+    public UInt256 BaseFee => GetBaseFee(null);
+
+    internal UInt256 GetBaseFee(SlotSchedule? slots) =>
+        _hasBaseFee ? _baseFee : Spec.IsEip8198Enabled
+            ? BaseFeeCalculator.CalculateForNextSlot(Parent, slots, Spec)
+            : BaseFeeCalculator.Calculate(Parent, 0, null, Spec);
 }

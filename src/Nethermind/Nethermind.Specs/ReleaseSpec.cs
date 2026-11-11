@@ -76,6 +76,7 @@ public class ReleaseSpec : IReleaseSpec
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
     public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
+    public bool IsEip8198Enabled { get; set; }
     public bool IsEip1153Enabled { get; set; }
     public bool IsEip3651Enabled { get; set; }
     public bool IsEip3855Enabled { get; set; }

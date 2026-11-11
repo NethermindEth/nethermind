@@ -145,4 +145,7 @@ public abstract partial class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public abstract ulong TimestampFork { get; }
     public abstract ulong NetworkId { get; }
     public abstract ulong? BeaconChainGenesisTimestamp { get; }
+
+    /// <summary>None of the hard-coded networks schedules EIP-8198.</summary>
+    public ulong? Eip8198SlotDurationMs => null;
 }
