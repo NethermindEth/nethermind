@@ -47,6 +47,10 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     /// <inheritdoc/>
+    public void ReportFrameCodelessTarget() =>
+        _frameTxTracer?.ReportFrameCodelessTarget();
+
+    /// <inheritdoc/>
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
@@ -466,7 +470,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();

@@ -867,6 +867,7 @@ public static partial class EvmInstructions
 
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        if (TTracingInst.IsActive) vm.TraceOperationReady(GasCostOf.BlockHash);
 
         // Current block, future block, or unrepresentable block number all resolve to no hash.
         BlockHeader header = vm.BlockExecutionContext.Header;
@@ -923,6 +924,7 @@ public static partial class EvmInstructions
         ulong currentNumber = vm.BlockExecutionContext.Header.Number;
         if (!a.IsUint64 || a.u0 >= currentNumber || currentNumber - a.u0 > Eip2935Constants.BlockHashServeWindow)
         {
+            if (TTracingInst.IsActive) vm.TraceOperationReady(GasCostOf.BlockHash);
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
@@ -931,9 +933,12 @@ public static partial class EvmInstructions
             spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
             new UInt256(a.u0 % spec.Eip2935RingBufferSize));
 
-        if (!TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
-            || !TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec)
-            || !vm.TryMeterBalStorageKey(in storageCell))
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? GasCostOf.BlockHash + vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
+        bool gasAvailable = TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
+            && TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable || !vm.TryMeterBalStorageKey(in storageCell))
         {
             return EvmExceptionType.OutOfGas;
         }

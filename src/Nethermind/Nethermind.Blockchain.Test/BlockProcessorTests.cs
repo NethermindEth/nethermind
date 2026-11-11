@@ -417,6 +417,25 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task Block_processing_recovers_the_signer_of_a_transaction_whose_given_sender_has_no_account()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Block parent = chain.BlockTree.Head!;
+        Block block = await AddThreeTransferBlock(chain);
+        Block copy = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
+        copy.Transactions[0].SenderAddress = TestItem.AddressF;
+
+        Block processed = chain.BranchProcessor.Process(parent.Header, [copy], ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance)[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Hash, Is.EqualTo(block.Hash));
+            Assert.That(copy.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    [Test]
     public void TransactionTraceBoundary_WhenReused_ResetsCompletion()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;

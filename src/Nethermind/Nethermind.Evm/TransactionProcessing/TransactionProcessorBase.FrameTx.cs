@@ -887,7 +887,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
+        if (delegation is null && codeInfo.IsEmpty && TTracing.IsActive)
+        {
+            (tracer as IFrameTxReceiptTracer)?.ReportFrameCodelessTarget();
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
+        // A guest whose memory is swizzled takes call input laid out the same way (see EvmPooledMemory.LoadInputAfterGas).
+        if (EvmPooledMemory.IsSwizzled && !inputData.IsEmpty) inputData = SwizzledMemory.FromNatural(inputData.Span);
 
         // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
         // declared before the VmState so it returns to the pool after it.

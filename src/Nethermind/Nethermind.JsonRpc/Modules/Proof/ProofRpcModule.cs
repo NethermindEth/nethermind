@@ -64,7 +64,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 txIndex: txIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
-                spec: spec);
+                spec: spec,
+                excessBlobGas: block.Header.ExcessBlobGas);
             txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
             txWithProof.TxProof = BuildTxProofs(txs, spec, txIndex);
             if (includeHeader)

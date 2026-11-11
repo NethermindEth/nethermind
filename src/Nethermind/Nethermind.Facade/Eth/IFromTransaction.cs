@@ -27,6 +27,9 @@ public readonly record struct TransactionForRpcContext
     /// <summary>The release spec of the including block, or of the next block for a pending transaction, which prices the gas a frame transaction reports.</summary>
     public IReleaseSpec? Spec { get; }
 
+    /// <summary>The including block's excess blob gas, which prices the blob fee in a frame transaction's gas price.</summary>
+    public ulong? ExcessBlobGas { get; }
+
     public TransactionForRpcContext(ulong chainId) : this(chainId, null) { }
 
     private TransactionForRpcContext(ulong chainId, IReleaseSpec? spec)
@@ -39,6 +42,7 @@ public readonly record struct TransactionForRpcContext
         BaseFee = null;
         Receipt = null;
         Spec = spec;
+        ExcessBlobGas = null;
     }
 
     /// <summary>A context for a transaction not yet included, priced under the spec of the block after <paramref name="head"/>.</summary>
@@ -54,7 +58,8 @@ public readonly record struct TransactionForRpcContext
         ulong blockTimestamp,
         UInt256 baseFee,
         IReleaseSpec spec,
-        TxReceipt? receipt = null)
+        TxReceipt? receipt = null,
+        ulong? excessBlobGas = null)
     {
         ChainId = chainId;
         BlockHash = blockHash;
@@ -64,5 +69,6 @@ public readonly record struct TransactionForRpcContext
         BaseFee = baseFee;
         Receipt = receipt;
         Spec = spec;
+        ExcessBlobGas = excessBlobGas;
     }
 }

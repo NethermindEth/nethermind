@@ -178,15 +178,22 @@ public class FlatStateReaderTests
         using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A per-walk allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        const int windows = 5;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            walk.Accept(rootHash, null);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(counter.Nodes, Is.EqualTo((1 + windows) * 17));
             Assert.That(allocated, Is.Zero);
         }
     }
@@ -246,6 +253,7 @@ public class FlatStateReaderTests
     {
         public int Nodes;
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public bool ExpectAccounts => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }

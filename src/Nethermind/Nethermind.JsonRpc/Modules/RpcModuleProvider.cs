@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules
             {
                 Dictionary<string, ResolvedMethodInfo> methodsByName = new(_methods, StringComparer.Ordinal);
                 KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
-                Func<bool, ValueTask<IRpcModule>> rentModule = canBeShared => RentModule(pool, canBeShared);
+                Func<bool, CancellationToken, ValueTask<IRpcModule>> rentModule = (canBeShared, cancellationToken) => RentModule(pool, canBeShared, cancellationToken);
                 Action<IRpcModule> returnModule = m => pool.ReturnModule((T)m);
 
                 methods
@@ -114,9 +114,9 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private static ValueTask<IRpcModule> RentModule<T>(IRpcModulePool<T> pool, bool canBeShared) where T : IRpcModule
+        private static ValueTask<IRpcModule> RentModule<T>(IRpcModulePool<T> pool, bool canBeShared, CancellationToken cancellationToken) where T : IRpcModule
         {
-            Task<T> moduleTask = pool.GetModule(canBeShared);
+            Task<T> moduleTask = pool.GetModule(canBeShared, cancellationToken);
             return moduleTask.IsCompletedSuccessfully
                 ? ValueTask.FromResult<IRpcModule>(moduleTask.Result)
                 : AwaitRentModule(moduleTask);
@@ -242,15 +242,19 @@ namespace Nethermind.JsonRpc.Modules
             return result;
         }
 
-        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Rent(methodName, canBeShared, default);
+
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared, CancellationToken cancellationToken)
         {
             MethodCache cache = EnsureMethodCache();
             if (!TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result)) return ValueTask.FromResult<IRpcModule>(null!);
 
-            return result.RentModule(canBeShared);
+            return result.RentModule(canBeShared, cancellationToken);
         }
 
-        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => method.RentModule();
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Rent(method, default);
+
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken) => method.RentModule(cancellationToken);
 
         public void Return(string methodName, IRpcModule rpcModule)
         {
@@ -500,7 +504,7 @@ namespace Nethermind.JsonRpc.Modules
             public override string ToString() => MethodInfo.Name;
 
             internal void SetPool(
-                Func<bool, ValueTask<IRpcModule>> rentModule,
+                Func<bool, CancellationToken, ValueTask<IRpcModule>> rentModule,
                 Action<IRpcModule> returnModule,
                 IRpcModulePool modulePool)
             {
@@ -509,22 +513,22 @@ namespace Nethermind.JsonRpc.Modules
                 ModulePool = modulePool;
             }
 
-            private Func<bool, ValueTask<IRpcModule>>? _rentModule;
+            private Func<bool, CancellationToken, ValueTask<IRpcModule>>? _rentModule;
 
             private Action<IRpcModule>? _returnModule;
 
-            internal ValueTask<IRpcModule> RentModule(bool canBeShared)
+            internal ValueTask<IRpcModule> RentModule(bool canBeShared, CancellationToken cancellationToken)
             {
-                Func<bool, ValueTask<IRpcModule>>? rentModule = _rentModule;
+                Func<bool, CancellationToken, ValueTask<IRpcModule>>? rentModule = _rentModule;
                 if (rentModule is null)
                 {
                     ThrowMissingPool();
                 }
 
-                return rentModule(canBeShared);
+                return rentModule(canBeShared, cancellationToken);
             }
 
-            internal ValueTask<IRpcModule> RentModule() => RentModule(ReadOnly);
+            internal ValueTask<IRpcModule> RentModule(CancellationToken cancellationToken) => RentModule(ReadOnly, cancellationToken);
 
             internal void ReturnModule(IRpcModule rpcModule)
             {

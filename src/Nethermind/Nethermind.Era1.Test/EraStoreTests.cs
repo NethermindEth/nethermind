@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
+using NSubstitute;
+using Testably.Abstractions;
 
 namespace Nethermind.Era1.Test;
 
@@ -70,6 +75,93 @@ public class EraStoreTests
             for (ulong block = firstBlock; block < 64; block += eraSize)
             {
                 Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
+            }
+        }
+    }
+
+    public enum DuplicateManifest
+    {
+        NamesOneFile,
+        NamesOneOfThree,
+        NamesOneInReversedLines,
+        NamesOneOfTwoCaseVariants,
+        PlaceholderNamesFromARelease,
+        NamesAbsentFile,
+        HashOnly,
+        HashOnlyIdenticalCopies,
+        NoEntry,
+        NoEntryOnlyPlaceholders,
+    }
+
+    [Test]
+    public async Task Create_WhenEpochHasTwoFiles_ReadsTheFileTheManifestNames([Values] DuplicateManifest manifest, [Values] bool reversed)
+    {
+        await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(64);
+        string directory = ctx.ResolveTempDirPath();
+        string EpochFile(int epoch) => Directory.GetFiles(directory, $"{EraTestModule.TestNetwork}-{epoch:D5}-*.era1").Single();
+        string named = Path.GetFileName(EpochFile(2));
+        // A stale file of epoch 2 that holds epoch 1's blocks, so reading it would fail: a placeholder, a finished name, or
+        // the named file's name in another case. Its name sorts before the named file's.
+        string hash = named.Split('-')[2][..8];
+        string stale = manifest switch
+        {
+            DuplicateManifest.NamesOneOfTwoCaseVariants => named.Replace(hash, hash.ToUpperInvariant()),
+            DuplicateManifest.NamesAbsentFile or DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies or DuplicateManifest.NoEntry
+                => $"{EraTestModule.TestNetwork}-00002-0000000a.era1",
+            // An unpadded epoch number makes a second placeholder name for epoch 2, also on a case-insensitive file system.
+            DuplicateManifest.NoEntryOnlyPlaceholders => $"{EraTestModule.TestNetwork}-2-00000000.era1",
+            _ => $"{EraTestModule.TestNetwork}-00002-00000000.era1",
+        };
+        Assume.That(File.Exists(Path.Combine(directory, stale)), Is.False, "needs a case-sensitive file system");
+        File.Copy(EpochFile(manifest == DuplicateManifest.HashOnlyIdenticalCopies ? 2 : 1), Path.Combine(directory, stale));
+        if (manifest == DuplicateManifest.NamesOneOfThree)
+            File.Copy(EpochFile(1), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000001.era1"));
+        if (manifest == DuplicateManifest.NoEntryOnlyPlaceholders)
+            File.Move(EpochFile(2), Path.Combine(directory, $"{EraTestModule.TestNetwork}-00002-00000000.era1"));
+        string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        string[] lines = await File.ReadAllLinesAsync(checksumsPath);
+        lines = manifest switch
+        {
+            DuplicateManifest.NamesOneInReversedLines => [.. lines.AsEnumerable().Reverse()],
+            // Releases up to 2.2.2 listed the placeholder name instead of the file it was renamed to.
+            DuplicateManifest.PlaceholderNamesFromARelease => [.. lines.Select(static line => line[..^"00000000.era1".Length] + "00000000.era1")],
+            DuplicateManifest.NamesAbsentFile => [.. lines.Select(line => line.Replace(named, $"{EraTestModule.TestNetwork}-00002-ffffffff.era1"))],
+            DuplicateManifest.HashOnly or DuplicateManifest.HashOnlyIdenticalCopies => [.. lines.Select(static line => line.Split(' ')[0])],
+            DuplicateManifest.NoEntry or DuplicateManifest.NoEntryOnlyPlaceholders => [.. lines.Where(static line => !line.Contains("-00002-"))],
+            _ => lines,
+        };
+        await File.WriteAllLinesAsync(checksumsPath, lines);
+
+        // List the files in ordinal order or in reverse, so neither the first nor the last file can pass for the named one.
+        IFileSystem real = new RealFileSystem();
+        IDirectory listing = Substitute.For<IDirectory>();
+        listing.GetFiles(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EnumerationOptions>()).Returns(c =>
+        {
+            string[] files = [.. real.Directory.GetFiles(c.ArgAt<string>(0), c.ArgAt<string>(1), c.ArgAt<EnumerationOptions>(2)).Order(StringComparer.Ordinal)];
+            return reversed ? [.. files.AsEnumerable().Reverse()] : files;
+        });
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.File.Returns(real.File);
+        fileSystem.Directory.Returns(listing);
+        EraStore Create() => new(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockValidator>(), fileSystem, EraTestModule.TestNetwork, 16, null, directory);
+
+        // Without a usable name, the store takes the only finished file, else the only one whose SHA-256 is listed.
+        if (manifest is DuplicateManifest.HashOnlyIdenticalCopies)
+        {
+            Assert.That(() => Create(), Throws.TypeOf<EraException>().With.Message.Contains("Epoch 2").And.Message.Contains(named).And.Message.Contains(stale));
+            return;
+        }
+
+        // An epoch without a checksum entry keeps the store open; only a validated read of that epoch fails.
+        using EraStore eraStore = Create();
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong block = 0; block < 64; block += 8)
+            {
+                if (manifest is DuplicateManifest.NoEntry or DuplicateManifest.NoEntryOnlyPlaceholders && block is >= 32 and < 48)
+                    Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.TypeOf<EraVerificationException>(), $"block {block}");
+                else
+                    Assert.That(async () => await eraStore.FindBlockAndReceipts(block), Throws.Nothing, $"block {block}");
             }
         }
     }

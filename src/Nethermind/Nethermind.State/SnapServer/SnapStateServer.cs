@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.SnapServer;
@@ -246,7 +247,7 @@ public class SnapStateServer : ISnapStateServer
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
