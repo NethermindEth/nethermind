@@ -189,9 +189,11 @@ with `UnsupportedFork` rather than losing their proofs.
 
 Enable EIP-8141 and EIP-8288 in a development chainspec with `eip8288TransitionTimestamp`,
 or the geth genesis key `eip8288PrototypeTime`. The named `Eip8288Prototype` / `eip8288PrototypeTime` also enables master's EIP-8250 keyed
-nonces, EIP-8272 recent roots and EIP-7906 POST_TX frames. Frame transactions use explicit
-`nonce_keys`; `[0]` retains account-nonce behavior. Individual chainspec transition fields
-remain independently configurable. Recent roots follow master's older envelope-reference /
+nonces and EIP-7906 POST_TX frames. It does not enable slot numbers or EIP-8272 recent roots: EIP-8272 requires
+EIP-7843, so schedule it with `eip8272PrototypeTime` or `eip8272TransitionTimestamp` at or after EIP-7843 (for example
+Amsterdam's `amsterdamTime`); loading refuses an EIP-8272 activation without or before EIP-7843, and an EIP-7843 later
+than EIP-8288. Frame transactions use explicit `nonce_keys`; `[0]` retains account-nonce behavior. Other chainspec
+transition fields remain independently configurable. Recent roots follow master's older envelope-reference /
 `RECENTROOTREFLOAD` draft, with existing commitment and slot-age checks; the newer EIP-8272
 canonical VERIFY contract remains TBD and is not implemented here.
 
