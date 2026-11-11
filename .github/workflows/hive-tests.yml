@@ -201,7 +201,8 @@ jobs:
         env:
           LIMIT: ${{ matrix.limit }}
         run: |
-          hive_args=(--client nethermind
+          hive_args=(--docker.buildoutput
+            --client nethermind
             --sim "${{ matrix.suite }}"
             --sim.loglevel "$LOG_LEVEL"
             --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
