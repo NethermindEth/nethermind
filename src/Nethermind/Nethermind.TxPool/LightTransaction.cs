@@ -31,6 +31,7 @@ public class LightTransaction : Transaction
         GasPrice = fullTx.GasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = fullTx.DecodedMaxFeePerGas;
         MaxFeePerBlobGas = fullTx.MaxFeePerBlobGas;
+        MaxFee = fullTx.MaxFee;
         BlobVersionedHashes = fullTx.BlobVersionedHashes;
         GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
@@ -94,10 +95,11 @@ public class LightTransaction : Transaction
         UInt256[]? nonceKeys = null,
         Address? payerAddress = null,
         UInt256? payerExposure = null,
-        Address? paymaster = null)
+        Address? paymaster = null,
+        UInt256 maxFee = default)
         : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
             blobVersionHashes, poolIndex, size, proofVersion, blobCellMask, sparseBlobNetworkSize, 0,
-            type, expiryDeadline, nonceKeys, payerAddress, payerExposure, paymaster)
+            type, expiryDeadline, nonceKeys, payerAddress, payerExposure, paymaster, maxFee)
     {
     }
 
@@ -124,6 +126,7 @@ public class LightTransaction : Transaction
         Address? payerAddress,
         UInt256? payerExposure,
         Address? paymaster,
+        UInt256 maxFee,
         bool? dependencyBearing = null)
     {
         Type = type;
@@ -134,7 +137,9 @@ public class LightTransaction : Transaction
         GasLimit = gasLimit;
         GasPrice = gasPrice; // means MaxPriorityFeePerGas
         DecodedMaxFeePerGas = maxFeePerGas;
-        MaxFeePerBlobGas = maxFeePerBlobGas;
+        // The record writes max_fee_per_blob_gas as zero for a frame transaction, which has none.
+        MaxFeePerBlobGas = type.SupportsFrames() ? null : maxFeePerBlobGas;
+        MaxFee = maxFee;
         BlobVersionedHashes = blobVersionHashes;
         Timestamp = timestamp;
         PoolIndex = poolIndex;

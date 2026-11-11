@@ -88,8 +88,11 @@ public class BranchSpliceTests
         ResolveKeyBelowRoot(first);
         ResolveKeyBelowRoot(second);
 
-        Assert.That(first.Keccak, Is.Null);
-        Assert.That(first.FullRlp.AsSpan().ToArray(), Is.EqualTo(Encode(EmbeddedBranch(1, restored: false))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Keccak, Is.Null);
+            Assert.That(first.FullRlp.AsSpan().ToArray(), Is.EqualTo(Encode(EmbeddedBranch(1, restored: false))));
+        }
     }
 
     /// <summary>A branch of two embedded leaves, itself short enough to be embedded; when <paramref name="restored"/>, the

@@ -26,6 +26,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -55,7 +56,9 @@ public class HistoryRowScannerTests
             Assert.That(session.IsReady, Is.True);
         }
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+#pragma warning disable NUnit2045 // The reopened store must be ready before creating its reader.
         Assert.That(reopened.IsReady, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.EqualTo(account));
         Assert.That(reopened.CurrentState.BlockNumber, Is.Zero);
     }
@@ -111,8 +114,11 @@ public class HistoryRowScannerTests
         using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
 
         Assert.Throws<OperationCanceledException>(() => session.ImportGenesis(Allocations(), cancellation.Token));
-        Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
-        Assert.That(session.IsReady, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
+            Assert.That(session.IsReady, Is.False);
+        }
 
         IEnumerable<KeyValuePair<Address, Account>> Allocations()
         {
@@ -949,9 +955,13 @@ public class HistoryRowScannerTests
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
             if (rocks)
-                return new ColumnsDb<T>(directory, new DbSettings("TransactionIndexScratch", directory), new DbConfig(),
-                    new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-                    LimboLogs.Instance, Enum.GetValues<T>());
+            {
+                DbConfig dbConfig = new();
+                return new RocksDbFactory(
+                        new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                        dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), LimboLogs.Instance, directory)
+                    .CreateColumnsDb<T>(new DbSettings("TransactionIndexScratch", directory));
+            }
             return (IColumnsDb<T>)(object)memory;
         }
     }

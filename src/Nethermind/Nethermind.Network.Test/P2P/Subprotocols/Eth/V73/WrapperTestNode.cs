@@ -57,6 +57,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
     private readonly List<string> _penalties = [];
 
     public string Description => name;
+    public PublicKey? NodeId { get; init; }
 
     public void Send(P2PMessage message)
     {
@@ -127,6 +128,12 @@ internal sealed class WrapperTestNode : IDisposable
         Block head = Build.A.Block.WithParent(parent).WithNumber(number).WithTimestamp(timestamp).WithSlotNumber(number).TestObject;
         Tree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
         Tree.Head.Returns(head);
+    }
+
+    /// <summary>Pools <paramref name="transactions"/>, as a node offering their wrappers does.</summary>
+    public void AddPending(params Transaction[] transactions)
+    {
+        lock (Pending) Pending.AddRange(transactions);
     }
 
     public WrapperPeer Connect(FakeWrapperLink link) =>

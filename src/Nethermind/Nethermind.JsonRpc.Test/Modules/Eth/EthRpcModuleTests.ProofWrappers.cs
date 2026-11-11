@@ -57,18 +57,27 @@ public partial class EthRpcModuleTests
         };
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(direct).Bytes;
         ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(encoded);
-        Assert.That(received.Result, Is.EqualTo(Result.Success), received.Result.Error);
-        Assert.That(received.Data, Is.EqualTo(new[] { transaction.Hash }));
-        Assert.That(context.Test.TxPool.TryGetPendingTransaction(received.Data[0].ValueHash256, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received.Result, Is.EqualTo(Result.Success), received.Result.Error);
+            Assert.That(received.Data, Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(context.Test.TxPool.TryGetPendingTransaction(received.Data[0].ValueHash256, out _), Is.True);
+        }
         ResultWrapper<Hash256[]> resubmitted = await context.Test.EthRpcModule.eth_sendProofWrapper(encoded);
         Assert.That(resubmitted.Result, Is.EqualTo(Result.Success), resubmitted.Result.Error);
         int proofCalls = verifier.ProofCalls;
-        Assert.That(context.Test.EthRpcModule.eth_getProofWrapper().Result.Error, Does.Contain("not ready"));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
-        Assert.That(context.Test.Container.Resolve<ProofWrapperService>().BuildWrapper().IsSuccess, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Test.EthRpcModule.eth_getProofWrapper().Result.Error, Does.Contain("not ready"));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
+            Assert.That(context.Test.Container.Resolve<ProofWrapperService>().BuildWrapper().IsSuccess, Is.True);
+        }
         ResultWrapper<byte[]> aggregated = context.Test.EthRpcModule.eth_getProofWrapper();
-        Assert.That(aggregated.Result, Is.EqualTo(Result.Success), aggregated.Result.Error);
-        Assert.That(verifier.LastInput!.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 7 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aggregated.Result, Is.EqualTo(Result.Success), aggregated.Result.Error);
+            Assert.That(verifier.LastInput!.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 7 }));
+        }
         RlpReader reader = new(aggregated.Data);
         MempoolWrapper output = MempoolWrapperDecoder.Instance.Decode(ref reader)!;
         using (Assert.EnterMultipleScope())
@@ -121,13 +130,14 @@ public partial class EthRpcModuleTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             ChainId = context.Test.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();

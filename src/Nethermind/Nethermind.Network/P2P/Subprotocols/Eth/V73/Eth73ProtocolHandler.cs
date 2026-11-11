@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -59,6 +60,8 @@ public class Eth73ProtocolHandler(
     public override int MessageIdSpaceSize => Eth73Protocol.MessageIdSpaceSize;
 
     string IWrapperLink.Description => Session.ToString() ?? "eth/73 peer";
+
+    PublicKey? IWrapperLink.NodeId => Session.Node.Id;
 
     /// <summary>Whether wrapper exchange runs on this connection, which the blob availability of wrapped transactions needs.</summary>
     private bool WrapperExchangeActive => wrapperTransport.IsEnabled && Volatile.Read(ref _wrapperPeer) is not null;

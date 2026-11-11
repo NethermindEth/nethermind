@@ -8,10 +8,10 @@ use lean_vm::cpu::{self, Program};
 use primitives::field::F192;
 use rec_aggregation::eip8288_mixed::{self, GenericInput, MixedProof};
 use sphincs::{SphincsPublicKey, SphincsSignature};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Barrier, Mutex, OnceLock};
+use std::sync::{Barrier, Condvar, Mutex, OnceLock};
 use std::thread::ThreadId;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -31,8 +31,166 @@ fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
     let guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    lean_vm::init_prover();
+    static ARENA: std::sync::Once = std::sync::Once::new();
+    ARENA.call_once(|| {
+        lean_vm::init_prover();
+        restore_system_heap();
+    });
     guard
+}
+
+/// Undoes the process-wide glibc tuning `init_prover` applies, restoring the operator's setting or glibc's default.
+///
+/// The arena is its own mapping and does not rely on that tuning, while the host would otherwise never trim its heap or
+/// mmap large allocations again. glibc's adaptive mmap threshold stays off: `init_prover` already disabled it, and no
+/// mallopt re-enables it.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn restore_system_heap() {
+    let trim = glibc_setting("trim_threshold", "MALLOC_TRIM_THRESHOLD_", 128 * 1024);
+    let mmap_max = glibc_setting("mmap_max", "MALLOC_MMAP_MAX_", 65536);
+    // SAFETY: mallopt only adjusts allocator tuning parameters.
+    unsafe {
+        libc::mallopt(libc::M_TRIM_THRESHOLD, trim);
+        libc::mallopt(libc::M_MMAP_MAX, mmap_max);
+    }
+}
+
+/// The `glibc.malloc.<tunable>` value from `GLIBC_TUNABLES`, else the legacy environment alias, else `default`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn glibc_setting(tunable: &str, alias: &str, default: i32) -> i32 {
+    let key = format!("glibc.malloc.{tunable}=");
+    std::env::var("GLIBC_TUNABLES")
+        .ok()
+        .and_then(|tunables| {
+            tunables
+                .split(':')
+                .find_map(|entry| parse_c_integer(entry.strip_prefix(key.as_str())?))
+        })
+        .or_else(|| parse_c_integer(&std::env::var(alias).ok()?))
+        .unwrap_or(default)
+}
+
+/// Parses an unsigned integer as `strtoul(s, _, 0)` does (decimal, `0x` hex or leading-`0` octal), saturating at `i32::MAX`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn parse_c_integer(value: &str) -> Option<i32> {
+    let parsed = if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16)
+    } else if value.len() > 1 && value.starts_with('0') {
+        u64::from_str_radix(&value[1..], 8)
+    } else {
+        value.parse()
+    };
+    parsed.ok().map(|v| i32::try_from(v).unwrap_or(i32::MAX))
+}
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn restore_system_heap() {}
+
+/// Keeps verifications off arena phase openings. A thread's `ArenaVec`s die when it next allocates after a phase opens,
+/// and an allocation racing the opening can land in the stale phase, so no phase may open while a verification runs.
+/// Verifications may run inside an open phase, on their own slabs, so they wait only for an opening, not for the proof
+/// node: a node takes several seconds on a few cores, which held up block import and wrapper admission.
+struct PhaseGate {
+    state: Mutex<GateState>,
+    changed: Condvar,
+}
+
+struct GateState {
+    verifications: usize,
+    /// The arena generation an opening started from, while one is pending or its node is still proving.
+    opening_from: Option<usize>,
+}
+
+static PHASE_GATE: PhaseGate = PhaseGate {
+    state: Mutex::new(GateState {
+        verifications: 0,
+        opening_from: None,
+    }),
+    changed: Condvar::new(),
+};
+
+/// How often a verification held at an opening checks whether the phase has opened, which nothing signals.
+const OPENING_POLL: std::time::Duration = std::time::Duration::from_millis(1);
+
+impl PhaseGate {
+    fn lock(&self) -> std::sync::MutexGuard<'_, GateState> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+struct OpeningGuard;
+
+impl Drop for OpeningGuard {
+    fn drop(&mut self) {
+        PHASE_GATE.lock().opening_from = None;
+        PHASE_GATE.changed.notify_all();
+    }
+}
+
+/// Runs `prove`, which must open at most one arena phase, once no verification is in flight.
+fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
+    let mut state = PHASE_GATE.lock();
+    let generation = zk_alloc::stats().phases;
+    state.opening_from = Some(generation);
+    while state.verifications > 0 {
+        state = PHASE_GATE
+            .changed
+            .wait(state)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    }
+    drop(state);
+    let _opening = OpeningGuard;
+    let result = prove();
+    assert!(
+        zk_alloc::stats().phases - generation <= 1,
+        "a gated prove opened more than one arena phase"
+    );
+    result
+}
+
+/// Runs `verify` outside any arena phase opening: before it, or once the phase it waits for has opened.
+fn verify_between_phases<T>(verify: impl FnOnce() -> T) -> T {
+    let mut state = PHASE_GATE.lock();
+    while let Some(generation) = state.opening_from {
+        if zk_alloc::stats().phases != generation {
+            break;
+        }
+        state = PHASE_GATE
+            .changed
+            .wait_timeout(state, OPENING_POLL)
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .0;
+    }
+    state.verifications += 1;
+    drop(state);
+    let _verification = VerificationGuard;
+    verify()
+}
+
+struct VerificationGuard;
+
+impl Drop for VerificationGuard {
+    fn drop(&mut self) {
+        let mut state = PHASE_GATE.lock();
+        state.verifications -= 1;
+        if state.verifications == 0 {
+            PHASE_GATE.changed.notify_all();
+        }
+    }
+}
+
+fn aggregate_mixed(
+    children: &[MixedProof],
+    signatures: &[(SphincsPublicKey, [u8; 32], SphincsSignature)],
+    generic: &[GenericInput],
+    deps: &[Dep],
+) -> Result<MixedProof, ()> {
+    in_arena_phase(|| eip8288_mixed::aggregate_mixed(children, signatures, generic, deps, 1))
+        .map_err(|_| ())
 }
 
 // leanVM's carry-less-multiply field arithmetic is about 68x slower without these features. An
@@ -49,6 +207,7 @@ compile_error!(
 static ACTIVE_ABI_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ABI_WORKERS: OnceLock<Vec<ThreadId>> = OnceLock::new();
 thread_local! { static IN_ABI: Cell<bool> = const { Cell::new(false) }; }
+thread_local! { static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) }; }
 type Dep = [u8; 96];
 
 pub fn keccak(bytes: &[u8]) -> [u8; 32] {
@@ -290,13 +449,19 @@ fn encode_program(program: &Program) -> Vec<u8> {
     }
     out
 }
-fn stark_program(code: &[u8]) -> Result<Program, ()> {
-    use cpu::{DerefMode, Op};
+/// The instruction count of `code` if its length matches it, checked without decoding any instruction.
+fn instruction_count(code: &[u8]) -> Result<usize, ()> {
     let mut r = Reader { bytes: code };
     let n = r.number()?;
     if n == 0 || n > MAX_INSTRUCTIONS || !n.is_power_of_two() || r.bytes.len() != n * 45 {
         return Err(());
     }
+    Ok(n)
+}
+fn stark_program(code: &[u8]) -> Result<Program, ()> {
+    use cpu::{DerefMode, Op};
+    let n = instruction_count(code)?;
+    let mut r = Reader { bytes: &code[4..] };
     let mut ops = Vec::with_capacity(n);
     for _ in 0..n {
         let tag = r.take(1)?[0];
@@ -399,6 +564,7 @@ fn decode_stark(
     }
     let mut r = Reader { bytes: witness };
     let code = r.blob()?;
+    instruction_count(code)?;
     if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
         return Err(());
     }
@@ -415,7 +581,7 @@ fn decode_stark(
 }
 
 fn verify_stark(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
-    decode_stark(hash, vk, witness).is_ok()
+    verify_between_phases(|| decode_stark(hash, vk, witness).is_ok())
 }
 
 // EIP-8288 `stark_proof`: the guest proof alone, checked against `deps_hash` and the pinned key.
@@ -430,7 +596,7 @@ fn preflight_proof(proof: &[u8]) -> Result<(), ()> {
 
 fn verify_aggregate(hash: &[u8; 32], proof: &[u8]) -> Result<(), ()> {
     preflight_proof(proof)?;
-    eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ())
+    verify_between_phases(|| eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ()))
 }
 
 // A recursive child is proven against its declared dependencies, which the caller supplies;
@@ -491,8 +657,7 @@ fn aggregate_bounded(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        nodes
-            .push(eip8288_mixed::aggregate_mixed(&[], &signatures, &[], &deps, 1).map_err(|_| ())?);
+        nodes.push(aggregate_mixed(&[], &signatures, &[], &deps)?);
     }
     for leaf in generic.chunks(RAW_GENERICS_PER_LEAF) {
         let inputs: Vec<_> = leaf
@@ -509,7 +674,7 @@ fn aggregate_bounded(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        nodes.push(eip8288_mixed::aggregate_mixed(&[], &[], &inputs, &deps, 1).map_err(|_| ())?);
+        nodes.push(aggregate_mixed(&[], &[], &inputs, &deps)?);
     }
     while nodes.len() > 1 {
         let mut next = Vec::new();
@@ -527,9 +692,7 @@ fn aggregate_bounded(
             if batch.len() == 1 && batch[0].dependencies() == deps {
                 next.push(batch.pop().ok_or(())?);
             } else {
-                next.push(
-                    eip8288_mixed::aggregate_mixed(&batch, &[], &[], &deps, 1).map_err(|_| ())?,
-                );
+                next.push(aggregate_mixed(&batch, &[], &[], &deps)?);
             }
         }
         nodes = next;
@@ -538,7 +701,7 @@ fn aggregate_bounded(
     if node.dependencies() == desired {
         return Ok(node);
     }
-    eip8288_mixed::aggregate_mixed(&[node], &[], &[], desired, 1).map_err(|_| ())
+    aggregate_mixed(&[node], &[], &[], desired)
 }
 
 pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
@@ -631,7 +794,7 @@ unsafe fn bytes_with_limit<'a>(ptr: *const u8, len: usize, limit: usize) -> Resu
     }
 }
 /// Runs one ABI call: returns 1 for accepted, 0 for rejected input and -1 for a contained panic,
-/// so callers never read a fault as a verdict. Every `checked` export shares this contract, including
+/// so callers never read a fault as a verdict. The panic message stays readable through `nlean_last_error`. Every `checked` export shares this contract, including
 /// `nlean_aggregated_vk` and `nlean_prove_recursive`, where the C# side accepts only `== 1` as success.
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     static HOOK: OnceLock<()> = OnceLock::new();
@@ -644,6 +807,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     }
     let _guard = CallGuard(IN_ABI.with(|flag| flag.replace(true)));
     ACTIVE_ABI_CALLS.fetch_add(1, Ordering::AcqRel);
+    LAST_PANIC.with(|message| message.borrow_mut().clear());
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         HOOK.get_or_init(|| {
             let previous = std::panic::take_hook();
@@ -674,11 +838,39 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         f()
     }))
-    .map_or(-1, |verdict| verdict.unwrap_or(false) as i32)
+    .map_or_else(
+        |payload| {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|text| text.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "non-string panic payload".to_string());
+            LAST_PANIC.with(|last| *last.borrow_mut() = message);
+            -1
+        },
+        |verdict| verdict.unwrap_or(false) as i32,
+    )
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    9
+    10
+}
+/// Copies up to `len` bytes of the calling thread's last contained panic message into `out` and returns its full
+/// length; empty unless that thread's latest `checked` call returned -1.
+///
+/// # Safety
+/// `out` must reference `len` writable bytes, or be null with `len` 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nlean_last_error(out: *mut u8, len: usize) -> usize {
+    LAST_PANIC.with(|message| {
+        let message = message.borrow();
+        let copied = message.len().min(len);
+        if !out.is_null() {
+            // SAFETY: copied <= len, and the caller guarantees `out` holds len writable bytes.
+            unsafe { std::ptr::copy_nonoverlapping(message.as_ptr(), out, copied) };
+        }
+        message.len()
+    })
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -817,7 +1009,7 @@ pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]),
     let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
     let key = eip8288_mixed::generic_verification_key(&program).map_err(|_| ())?;
     let code = encode_program(&program);
-    let (proof, _) = cpu::prove(&program, pi(hash), 1).map_err(|_| ())?;
+    let (proof, _) = in_arena_phase(|| cpu::prove(&program, pi(hash), 1)).map_err(|_| ())?;
     if !eip8288_mixed::generic_recursion_supported(&program, &proof) {
         return Err(());
     }
@@ -1222,7 +1414,7 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 9);
+        assert_eq!(nlean_abi_version(), 10);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(
@@ -1249,8 +1441,21 @@ mod tests {
         );
         assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
+        let last_error = || {
+            let mut message = [0u8; 64];
+            let len = unsafe { nlean_last_error(message.as_mut_ptr(), message.len()) };
+            String::from_utf8(message[..len].to_vec()).unwrap()
+        };
         assert_eq!(checked(|| panic!("contained upstream failure")), -1);
+        assert_eq!(last_error(), "contained upstream failure");
+        let pool_panic = || {
+            parallel::for_each(parallel::num_threads(), |_| panic!("pool task failed"));
+            Ok(true)
+        };
+        assert_eq!(checked(pool_panic), -1);
+        assert_eq!(last_error(), "pool task failed");
         assert_eq!(checked(|| Err(())), 0);
+        assert_eq!(last_error(), "");
     }
 
     #[test]
@@ -1460,6 +1665,105 @@ mod tests {
             put_deps(&mut input, &[]);
             assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
         }
+    }
+
+    fn single_signature_input(seed: u8) -> ([u8; 32], Vec<u8>) {
+        let (sk, pk) = sphincs::key_gen_from_seed([seed; 32]);
+        let message = [seed; 32];
+        let signature = [
+            pk.flatten().as_slice(),
+            sphincs::sign(&sk, &message).to_bytes().as_slice(),
+        ]
+        .concat();
+        let dep = sphincs_dependency(&pk, &message);
+        let mut input = Vec::new();
+        put_number(&mut input, 1);
+        input.extend_from_slice(&dep);
+        put_blob(&mut input, &signature);
+        put_number(&mut input, 0);
+        put_deps(&mut input, &[]);
+        (commitment(&[dep]), input)
+    }
+
+    #[test]
+    fn verification_and_proving_do_not_share_arena_phases() {
+        let (hash, input) = single_signature_input(44);
+        let proof = prove_aggregate(&hash, &input).unwrap();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let verified = std::sync::Arc::new(AtomicUsize::new(0));
+        let verifier = {
+            let (stop, verified, proof) = (stop.clone(), verified.clone(), proof.clone());
+            std::thread::spawn(move || {
+                let mut failures = 0;
+                while !stop.load(Ordering::Acquire) {
+                    failures += usize::from(verify_aggregate(&hash, &proof).is_err());
+                    verified.fetch_add(1, Ordering::Release);
+                }
+                failures
+            })
+        };
+        // Phase churn as a prover produces it, then a real proof whose arena buffers the verifier must not touch.
+        while verified.load(Ordering::Acquire) < 20 {
+            let _guard = begin_proof();
+            for _ in 0..1000 {
+                in_arena_phase(|| drop(zk_alloc::enter_phase()));
+            }
+        }
+        let (other_hash, other_input) = single_signature_input(45);
+        let other = prove_aggregate(&other_hash, &other_input);
+        stop.store(true, Ordering::Release);
+        assert_eq!(verifier.join().unwrap(), 0);
+        verify_aggregate(&other_hash, &other.unwrap()).unwrap();
+    }
+
+    #[test]
+    fn verification_does_not_wait_for_an_open_phase() {
+        const PHASE: std::time::Duration = std::time::Duration::from_secs(4);
+        let (hash, input) = single_signature_input(46);
+        let proof = prove_aggregate(&hash, &input).unwrap();
+        let opened = std::sync::Arc::new(Barrier::new(2));
+        let prover = {
+            let opened = opened.clone();
+            std::thread::spawn(move || {
+                let _guard = begin_proof();
+                in_arena_phase(|| {
+                    let _phase = zk_alloc::enter_phase();
+                    opened.wait();
+                    std::thread::sleep(PHASE);
+                });
+            })
+        };
+        opened.wait();
+        let started = std::time::Instant::now();
+        verify_aggregate(&hash, &proof).unwrap();
+        let waited = started.elapsed();
+        prover.join().unwrap();
+        assert!(
+            waited < PHASE / 2,
+            "verification waited {waited:?} for the open phase"
+        );
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn glibc_settings_parse_like_strtoul() {
+        assert_eq!(parse_c_integer("131072"), Some(131072));
+        assert_eq!(parse_c_integer("0x40000"), Some(0x40000));
+        assert_eq!(parse_c_integer("0100"), Some(64));
+        assert_eq!(parse_c_integer("0"), Some(0));
+        assert_eq!(parse_c_integer("4294967296"), Some(i32::MAX));
+        assert_eq!(parse_c_integer("lots"), None);
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn proving_leaves_host_heap_on_glibc_defaults() {
+        drop(begin_proof());
+        // Above glibc's 32 MiB dynamic mmap threshold cap, below a thread arena's 64 MiB heap: only M_MMAP_MAX = 0 keeps it off mmap.
+        let before = unsafe { libc::mallinfo2() }.hblks;
+        let buffer = std::hint::black_box(vec![1u8; 40 << 20]);
+        assert!(unsafe { libc::mallinfo2() }.hblks > before);
+        drop(buffer);
     }
 
     #[test]

@@ -170,8 +170,11 @@ public class InclusionListProofsTests
         {
             CommitteeInclusionList[] lists = [new([covered], [2], proofDeps), new([covered], [2], proofDeps)];
             service.ResolveObligations(lists, Eip8288Prototype.Instance);
-            Assert.That(lists.Select(static list => list.VerifiedProofDeps), Has.All.Not.Null);
-            Assert.That(InclusionListProofService.ProvenInputs(lists), Has.Count.EqualTo(1), "one proof shared by two lists is folded once");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lists.Select(static list => list.VerifiedProofDeps), Has.All.Not.Null);
+                Assert.That(InclusionListProofService.ProvenInputs(lists), Has.Count.EqualTo(1), "one proof shared by two lists is folded once");
+            }
             if (!sharedCacheEvicted) continue;
             ValueHash256 deps = ValueKeccak.Compute([(byte)i]);
             for (int j = 0; j <= ProofVerdictCache.Capacity; j++, otherVerifications++)
@@ -329,8 +332,11 @@ public class InclusionListProofsTests
             candidates.Add([candidate]);
         }
 
-        Assert.That(new InclusionListProofService(verifier, store).ChooseHeldProof(candidates, Eip8288Prototype.Instance), Is.Null);
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(InclusionListProofService.MaxHeldProofVerifications));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new InclusionListProofService(verifier, store).ChooseHeldProof(candidates, Eip8288Prototype.Instance), Is.Null);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(InclusionListProofService.MaxHeldProofVerifications));
+        }
     }
 
     private static FrameDependency Dependency(string message) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(message), default);

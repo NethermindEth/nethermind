@@ -23,7 +23,8 @@ var nonce = ulong.Parse(args[3]);
 var to = new Address(args[4]);
 var value = UInt256.Parse(args[5]);
 var outPrefix = args[6];
-var nonceKey = args.Length == 8 ? UInt256.Parse(args[7]) : UInt256.Zero;
+// Without a nonce key the transaction uses the account nonce: empty nonce_keys (key 0 is an ordinary keyed nonce).
+UInt256[] nonceKeys = args.Length == 8 ? [UInt256.Parse(args[7])] : [];
 
 byte[] Sign(ValueHash256 message)
 {
@@ -49,23 +50,24 @@ var publicKey = new ValueHash256(Sign(default).AsSpan(0, 32));
 var declared = new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, publicKey);
 TxFrame[] frames =
 [
-    new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000UL, nonceKey.IsZero ? 0UL : (ulong)GasCostOf.SSetState, UInt256.Zero, default),
+    new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000UL, nonceKeys.Length == 0 ? 0UL : (ulong)GasCostOf.SSetState, UInt256.Zero, default),
     new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([declared])),
     new(FrameMode.Sender, FrameFlags.None, to, 50_000, value, default)
 ];
+var gasLimit = FrameTxValidation.TotalGasLimit(frames);
 var tx = new Transaction
 {
     Type = TxType.FrameTx,
     ChainId = chainId,
     SenderAddress = key.Address,
     Nonce = nonce,
-    NonceKeys = [nonceKey],
+    NonceKeys = nonceKeys,
     Frames = frames,
-    GasLimit = FrameTxValidation.TotalGasLimit(frames),
+    GasLimit = gasLimit,
     GasPrice = 2.GWei,
-    DecodedMaxFeePerGas = 100.GWei
+    MaxFee = (UInt256)gasLimit * 100.GWei
 };
-tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, default, default)];
+tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
 var ecdsa = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
 var raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
 raw[0] = ecdsa.RecoveryId;

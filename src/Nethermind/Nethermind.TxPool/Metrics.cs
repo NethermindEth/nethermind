@@ -117,7 +117,7 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxPaymasterLimitReached;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.")]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix relies on an account whose code can change (EIP-8298), or that EIP-8151 ecRecover returned, already relied on by the maximum number of pending transactions, or by the pay frames of the maximum number of paymasters.")]
         public static long PendingTransactionsFrameTxCodeDependencyLimitReached;
 
         [CounterMetric]
@@ -332,5 +332,9 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of pending transactions evicted by the local verifier-change rule for lack of proof coverage.")]
         public static long Eip8288UpgradeEvictedTransactions { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions not executable at the head evicted to make proof capacity for a proof wrapper.")]
+        public static long Eip8288CapacityEvictedTransactions { get; set; }
     }
 }

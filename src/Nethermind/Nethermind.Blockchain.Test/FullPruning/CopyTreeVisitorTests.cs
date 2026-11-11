@@ -47,8 +47,11 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         ctx.Commit();
 
         Assert.That(clonedDb.Count, Is.EqualTo(132));
-        Assert.That(clonedDb.Keys, Is.EquivalentTo(keys));
-        Assert.That(clonedDb.Values, Is.EquivalentTo(values));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clonedDb.Keys, Is.EquivalentTo(keys));
+            Assert.That(clonedDb.Values, Is.EquivalentTo(values));
+        }
 
         clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
         trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);

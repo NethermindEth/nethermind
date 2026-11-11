@@ -27,6 +27,12 @@ with an illegal instruction (SIGILL) on an older CPU: build on the oldest CPU th
 set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
 `-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
 across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
+No arena phase opens while a verification runs; a verification waits only for an opening in progress (including the prover's input preparation, which verifies any leanSTARK inputs), then runs
+alongside the proof node on its own slab rather than for the node (1–3 s on a 12-core arm64 host, about 7 s on 2 cores).
+The arena keeps its touched slabs resident between proofs. leanVM also switches glibc's heap trimming and
+large-allocation mmap off process-wide when it enables the arena; at the first proof the backend restores the
+operator's `GLIBC_TUNABLES`/`MALLOC_*_` values or glibc's defaults, so the host's own freed memory still returns to
+the kernel. glibc's adaptive mmap threshold stays off.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation
@@ -42,12 +48,13 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 9, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 10, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
 SPHINCS witness bytes, leanSTARK claims per list, instructions, operand offset, aggregation
 input bytes, mixed guest proof bytes); startup checks these against the managed protocol
 bounds before accepting work.
-Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. Callers initialize proof output
+Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. After -1, `nlean_last_error(out, len)` on the same
+thread copies up to `len` bytes of the panic message and returns its full length. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
 using the returned pointer and length. Verification contains upstream panics and never
 accepts malformed inputs. Panic diagnostics on ABI callers and the pinned parallel worker
@@ -136,7 +143,7 @@ EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
   statement over it to the prover, a received mode-1 wrapper over it is invalid and an
   inclusion-list proof over it imposes no obligation, both without penalty or verification.
 
-Startup checks ABI 9, the pinned key and the nine bounds together. New devnets require fresh
+Startup checks ABI 10, the pinned key and the nine bounds together. New devnets require fresh
 chain and database namespaces.
 
 The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, at most 16 of them leanSTARK; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
@@ -182,9 +189,11 @@ with `UnsupportedFork` rather than losing their proofs.
 
 Enable EIP-8141 and EIP-8288 in a development chainspec with `eip8288TransitionTimestamp`,
 or the geth genesis key `eip8288PrototypeTime`. The named `Eip8288Prototype` / `eip8288PrototypeTime` also enables master's EIP-8250 keyed
-nonces, EIP-8272 recent roots and EIP-7906 POST_TX frames. Frame transactions use explicit
-`nonce_keys`; `[0]` retains account-nonce behavior. Individual chainspec transition fields
-remain independently configurable. Recent roots follow master's older envelope-reference /
+nonces and EIP-7906 POST_TX frames. It does not enable slot numbers or EIP-8272 recent roots: EIP-8272 requires
+EIP-7843, so schedule it with `eip8272PrototypeTime` or `eip8272TransitionTimestamp` at or after EIP-7843 (for example
+Amsterdam's `amsterdamTime`); loading refuses an EIP-8272 activation without or before EIP-7843, and an EIP-7843 later
+than EIP-8288. Frame transactions use explicit `nonce_keys`; `[0]` retains account-nonce behavior. Other chainspec
+transition fields remain independently configurable. Recent roots follow master's older envelope-reference /
 `RECENTROOTREFLOAD` draft, with existing commitment and slot-age checks; the newer EIP-8272
 canonical VERIFY contract remains TBD and is not implemented here.
 
@@ -314,7 +323,11 @@ it gets one outstanding request instead of four. It is never disconnected for it
 
 Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces mode-1
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
-one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
+one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Only
+transactions executable at the head are candidates: no nonce gap from the sender's state nonce, and
+fees per gas covering the next block's base fee after two maximal decreases (49/64 of it on mainnet),
+and per blob gas the blob base fee after two blocks without blobs;
+the others stay pooled with their direct witnesses until they qualify. Ticks
 coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
 order start as one bucket, and one that does not fit is subdivided by successive hash bits. Buckets
 do not depend on arrival order, but splits depend on the held proofs through the proving-cost
@@ -323,7 +336,9 @@ circuit's dependency-list limit (the guest's 256 dependencies), and a bucket als
 proving cost equal to folding 16 fresh signatures: already proven aggregates merge whole and may
 carry many more dependencies. Mode-0 witnesses fold directly into the aggregate, and a set a held
 proof already proves is not proven again; for partial coverage held proofs are merged and only
-missing dependencies added, discarding those outside the retained transactions. A set an announced
+missing dependencies added, discarding those outside the retained transactions. A dependency without a
+held direct witness takes the held recursive proof covering the most still-needed dependencies, as each
+recursive input costs about one recursive verification whatever its size. A set an announced
 mode-1 wrapper claims (by its `deps-hash`) is left for up to two intervals while that wrapper is
 fetched, then proven locally. Completed selections are checked against current pool membership
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.

@@ -199,8 +199,11 @@ public class RetryCacheTests
         AnnounceResult result1 = _cache.Announced(1, new TestHandler());
         AnnounceResult result2 = _cache.Announced(1, new TestHandler());
 
-        Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
-        Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+        }
     }
 
     [Test]
@@ -271,8 +274,11 @@ public class RetryCacheTests
         TestHandler laterPeer = new();
         Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
         _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 3 / 4));
-        Assert.That(_cache.Announced(1, claimant), Is.EqualTo(AnnounceResult.RequestRequired));
-        Assert.That(_cache.Announced(1, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Announced(1, claimant), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.Announced(1, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+        }
 
         // Past the push's deadline, inside the claim's: the claimed request is still in flight.
         _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
@@ -364,8 +370,11 @@ public class RetryCacheTests
         _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => request4.WasCalled, Is.True.After(AssertTimeoutMs, 100));
-        Assert.That(request1.WasCalled, Is.False);
-        Assert.That(request3.WasCalled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.WasCalled, Is.False);
+            Assert.That(request3.WasCalled, Is.False);
+        }
     }
 
     [Test]
@@ -1385,8 +1394,11 @@ public class RetryCacheTests
             foreach (int resource in expected)
             {
                 _cache.Received(resource);
-                Assert.That(_cache.Announced(resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
-                Assert.That(_cache.Announced(resource, alternate), Is.EqualTo(AnnounceResult.Delayed));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_cache.Announced(resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                    Assert.That(_cache.Announced(resource, alternate), Is.EqualTo(AnnounceResult.Delayed));
+                }
             }
 
             _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
@@ -1503,8 +1515,11 @@ public class RetryCacheTests
         if (keepPending) _cache.Announced(count, source);
         _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
         _cache.ProcessRetryTick();
-        Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(keepPending ? 1 : 0));
-        Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(keepPending ? 1 : 0));
+            Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+        }
         _cache.ProcessRetryTick();
         _cache.ProcessRetryTick();
         if (keepPending)
@@ -2107,7 +2122,9 @@ public class RetryCacheTests
         long generation = bag.Activate();
 
         Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+#pragma warning disable NUnit2045 // The handler must be added before it is taken.
         Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+#pragma warning restore NUnit2045
         Assert.That(bag.TryTake(generation, out _, out bool hasMoreHandlers), Is.True);
         Assert.That(hasMoreHandlers, Is.True);
         Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
@@ -2129,7 +2146,9 @@ public class RetryCacheTests
                 Assert.That(bag.Add(handlers[i], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
             }
 
+#pragma warning disable NUnit2045 // A handler must be taken before the same instance is added again.
             Assert.That(bag.TryTake(generation, out IMessageHandler<ResourceRequestMessage> taken, out _), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(bag.Add(taken, handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
             Assert.That(bag.Add(handlers[count], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
             List<IMessageHandler<ResourceRequestMessage>> remaining = TakeAll(bag, generation);

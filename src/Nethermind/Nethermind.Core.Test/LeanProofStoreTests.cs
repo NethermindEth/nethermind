@@ -75,8 +75,11 @@ public class LeanProofStoreTests
         FrameDependency[] dependencies = Enumerable.Range(0, LeanProofStore.MaxSenderPinnedRecords).Select(Dependency).ToArray();
         store.AddVerified(dependencies, dependencies.Select(_ => new byte[] { 1 }).ToArray(), null);
         Transaction first = Transaction(dependencies, sender, 0), second = Transaction(dependencies, sender, 1);
-        Assert.That(store.PinPending(first), Is.True);
-        Assert.That(store.PinPending(second), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.PinPending(first), Is.True);
+            Assert.That(store.PinPending(second), Is.True);
+        }
         FrameDependency extra = Dependency(2000);
         store.AddVerified([extra], [[1]], null);
         Transaction next = Transaction([extra], sender, 2);
@@ -95,21 +98,49 @@ public class LeanProofStoreTests
         store.AddVerified([dependency], [[1]], null);
         store.AddCachedRecursive([dependency], [2]);
         store.AddCachedRecursive([unrelated], [3]);
-        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? rejected), Is.True);
-        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.True);
-        store.AddCachedRecursive([dependency], [4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? rejected), Is.True);
+            Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.True);
+            store.AddCachedRecursive([dependency], [4]);
 
-        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.False);
-        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
-        byte[] expectedReplacement = [4];
-        Assert.That(replacement, Is.EqualTo(expectedReplacement));
-        Assert.That(store.TryGetRecursiveProof([unrelated], out byte[]? other), Is.True);
-        byte[] expectedOther = [3];
-        Assert.That(other, Is.EqualTo(expectedOther));
-        Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
-        Assert.That(input.Deps, Has.Count.EqualTo(1));
-        byte[] expectedWitness = [1];
-        Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
+            Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.False);
+            Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+            byte[] expectedReplacement = [4];
+            Assert.That(replacement, Is.EqualTo(expectedReplacement));
+            Assert.That(store.TryGetRecursiveProof([unrelated], out byte[]? other), Is.True);
+            byte[] expectedOther = [3];
+            Assert.That(other, Is.EqualTo(expectedOther));
+            Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
+            Assert.That(input.Deps, Has.Count.EqualTo(1));
+            byte[] expectedWitness = [1];
+            Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
+        }
+    }
+
+    // EIP-8288: recursive inputs are picked by greedy set cover, as each costs about one recursive verification whatever its size.
+    [TestCaseSource(nameof(SetCoverCases))]
+    public void Recursive_input_is_the_held_proof_covering_the_most_requested_dependencies(int[][] held, int[] requested, int expected)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency[][] proofs = [.. held.Select(static ids => ids.Select(Dependency).ToArray())];
+        for (int i = 0; i < proofs.Length; i++) store.AddVerified(proofs[i], null, [(byte)(i + 1)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetInput([.. requested.Select(Dependency)], out AggregationInput input), Is.True);
+            Assert.That(input.RecursiveProofs.Select(static proof => proof.InnerDeps), Is.EqualTo(new[] { proofs[expected] }));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> SetCoverCases()
+    {
+        yield return new TestCaseData(new[] { Enumerable.Range(1, 8).ToArray(), new[] { 1, 100 } }, new[] { 1, 100 }, 1)
+            .SetName("More requested dependencies win over a held covering proof");
+        yield return new TestCaseData(Enumerable.Range(1, 8).Select(static id => new[] { id }).Append(Enumerable.Range(1, 10).ToArray()).ToArray(),
+            Enumerable.Range(1, 8).ToArray(), 8).SetName("One wide proof wins over a proof per dependency");
+        yield return new TestCaseData(new[] { new[] { 1, 2, 3 }, new[] { 1, 4 } }, new[] { 1 }, 1)
+            .SetName("The shorter dependency list wins a tie");
     }
 
     [Test]
@@ -121,9 +152,12 @@ public class LeanProofStoreTests
         Assert.That(store.TryBeginAdmission([shared], null, proof, out IDisposable? recursiveAdmission), Is.True);
         using (recursiveAdmission) store.CommitAdmission([shared]);
         Transaction pending = Transaction([shared], Sender(1), 0);
-        Assert.That(store.PinPending(pending), Is.True);
-        Assert.That(store.TryGetInput([shared], out AggregationInput recursive), Is.True);
-        Assert.That(recursive.RecursiveProofs, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.PinPending(pending), Is.True);
+            Assert.That(store.TryGetInput([shared], out AggregationInput recursive), Is.True);
+            Assert.That(recursive.RecursiveProofs, Has.Count.EqualTo(1));
+        }
 
         Assert.That(store.TryBeginAdmission([shared], [[1]], null, out IDisposable? directAdmission), Is.True);
         using (directAdmission) store.CommitAdmission([shared]);
@@ -137,6 +171,28 @@ public class LeanProofStoreTests
             Assert.That(direct.Deps, Is.EqualTo(new[] { shared }));
             Assert.That(store.Covers(pending), Is.True);
         }
+    }
+
+    [Test]
+    public void Admitted_direct_witness_is_charged_instead_of_the_recursive_coverage_it_supersedes()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Address sender = Sender(1);
+        byte[] recursiveProof = new byte[1024 * 1024];
+        for (int i = 0; i < 11; i++)
+        {
+            FrameDependency filler = Dependency(100 + i);
+            store.AddVerified([filler], null, recursiveProof);
+            Assert.That(store.PinPending(Transaction([filler], sender, i)), Is.True);
+        }
+        FrameDependency shared = Dependency(1);
+        store.AddVerified([shared], null, recursiveProof);
+        IDisposable? admission = null;
+        Assert.That(store.PinPending(Transaction([shared], Sender(2), 0))
+            && store.TryBeginAdmission([shared], [new byte[6304]], null, out admission), Is.True);
+        using (admission)
+            Assert.That(store.PinPending(Transaction([shared], sender, 11)), Is.True,
+                "the sender's remaining allowance fits the supplied witness but not the recursive proof");
     }
 
     [Test]

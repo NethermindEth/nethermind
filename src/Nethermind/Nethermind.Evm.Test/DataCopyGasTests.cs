@@ -122,8 +122,11 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
+        }
     }
 
     [Test]
@@ -144,8 +147,11 @@ public class DataCopyGasTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
+        }
     }
 
     private static byte[] BuildCopyCode(Instruction instruction, int length)

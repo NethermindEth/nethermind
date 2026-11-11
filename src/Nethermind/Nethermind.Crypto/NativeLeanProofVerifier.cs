@@ -8,6 +8,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -19,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 9;
+    private const uint ExpectedAbiVersion = 10;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -32,7 +33,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         try
         {
-            if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+            // The first native call starts leanVM's worker pool and permanently raises its caller's macOS QoS;
+            // keep that on the prover thread, which dispatches every proof.
+            if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
@@ -144,8 +147,10 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* h = depsHash.Bytes)
             fixed (byte* vk = aggregatedVk)
             fixed (byte* w = witness)
-                if (nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length) != 1)
-                    throw new InvalidOperationException("Lean aggregation failed");
+            {
+                int result = nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length);
+                if (result != 1) throw new InvalidOperationException(result == 0 ? "Lean aggregation rejected its input" : $"Lean aggregation panicked: {LastPanic()}");
+            }
             if (proof == null || length > Eip8288Constants.MaxAggregateProofBytes) throw new InvalidOperationException("Invalid native Lean proof buffer");
             return new ReadOnlySpan<byte>(proof, checked((int)length)).ToArray();
         }
@@ -260,8 +265,19 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         1 => true,
         0 => false,
-        _ => throw new InvalidOperationException("Native Lean verifier failed or has an incompatible ABI")
+        _ when AbiVersion != ExpectedAbiVersion => throw new InvalidOperationException("Native Lean verifier has an incompatible ABI"),
+        _ => throw new InvalidOperationException($"Native Lean verifier panicked: {LastPanic()}")
     };
+
+    /// <summary>The calling thread's last contained native panic message.</summary>
+    private static string LastPanic()
+    {
+        Span<byte> message = stackalloc byte[512];
+        nuint length;
+        fixed (byte* p = message)
+            length = nlean_last_error(p, (nuint)message.Length);
+        return Encoding.UTF8.GetString(message[..(int)Math.Min(length, (nuint)message.Length)]);
+    }
 
     private static bool IsUnavailable(Exception e) => e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
 
@@ -289,4 +305,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial void nlean_free(byte* proof, nuint proofLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial nuint nlean_last_error(byte* message, nuint messageLen);
 }

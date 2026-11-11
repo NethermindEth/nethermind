@@ -553,10 +553,12 @@ public class BlockValidator(
 
     /// <summary>Whether <paramref name="body"/> carries the <c>stark_proof</c> its header commits to.</summary>
     /// <remarks>EIP-8288: a body whose <c>stark_proof</c> does not hash to <c>stark_proof_hash</c> is not the body of this block. It is
-    /// discarded and requested again, and the block is not marked invalid.</remarks>
+    /// discarded and requested again, and the block is not marked invalid.
+    /// A header committing an empty statement to a nonempty proof is invalid whatever body is served (EIPs#12479), so no body
+    /// is blamed for it.</remarks>
     public static bool StarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
         header.RecursiveStark is { } commitment
-            ? body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
+            ? !commitment.HasValidShape || body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
             : body.StarkProof is null;
 
     public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)

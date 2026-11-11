@@ -10,7 +10,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-internal sealed class RecoveringJavaScriptBlockTracer(Func<IBlockTracer<GethLikeTxTrace>> createTracer, Hash256? txHash) : IBlockTracer<GethLikeTxTrace>, IDisposable
+internal sealed class RecoveringJavaScriptBlockTracer(
+    Func<IBlockTracer<GethLikeTxTrace>> createTracer, Hash256? txHash, GethTraceDeadlineScope? deadlineScope = null) : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     private IBlockTracer<GethLikeTxTrace>? _inner;
     private string? _constructionError;
@@ -44,7 +45,12 @@ internal sealed class RecoveringJavaScriptBlockTracer(Func<IBlockTracer<GethLike
     {
         _transactionHash = txHash is null || transaction?.Hash == txHash ? transaction?.Hash : null;
         _transactionError = _constructionError;
-        if (_transactionHash is null || _transactionError is not null) return NullTxTracer.Instance;
+        if (_transactionHash is null) return NullTxTracer.Instance;
+        if (_transactionError is not null)
+        {
+            if (deadlineScope is not null) deadlineScope.HasRecoverableSetupFailure = true;
+            return NullTxTracer.Instance;
+        }
         try
         {
             return _inner!.StartNewTxTrace(transaction);
@@ -52,6 +58,7 @@ internal sealed class RecoveringJavaScriptBlockTracer(Func<IBlockTracer<GethLike
         catch (Exception exception) when (JavaScriptTraceFailure.IsRecoverable(exception))
         {
             _transactionError = exception.Message;
+            if (deadlineScope is not null) deadlineScope.HasRecoverableSetupFailure = true;
             // The transaction still executes without tracing, preserving the next transaction's prestate.
             return NullTxTracer.Instance;
         }

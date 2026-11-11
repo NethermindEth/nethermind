@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -85,6 +86,63 @@ public class ChainParametersTests
             }
         };
         Assert.That(() => TestSpecHelper.LoadChainSpec(test), Throws.InvalidOperationException);
+    }
+
+    // EIP-8288's header field follows the EIP-7843 slot number: scheduling EIP-8288 alone leaves slot numbers off, a later
+    // EIP-7843 is refused.
+    [TestCase(null, false)]
+    [TestCase(5UL, false)]
+    [TestCase(10UL, false)]
+    [TestCase(11UL, true)]
+    public void Eip8288_keeps_eip7843_as_scheduled_and_refuses_a_later_one(ulong? slotNumberTransition, bool refused)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip7843TransitionTimestamp = slotNumberTransition,
+                Eip8288TransitionTimestamp = 10
+            }
+        };
+        if (refused)
+        {
+            Assert.That(() => TestSpecHelper.LoadChainSpec(test),
+                Throws.Exception.With.InnerException.InstanceOf<InvalidConfigurationException>());
+            return;
+        }
+        (ChainSpecBasedSpecProvider provider, ChainSpec spec) = TestSpecHelper.LoadChainSpec(test);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.Parameters.Eip7843TransitionTimestamp, Is.EqualTo(slotNumberTransition));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).IsEip7843Enabled, Is.EqualTo(slotNumberTransition is not null));
+        }
+    }
+
+    // EIP-8272's recent root contract reads SLOTNUM, so it activates at or after EIP-7843.
+    [TestCase(null, true)]
+    [TestCase(5UL, false)]
+    [TestCase(10UL, false)]
+    [TestCase(11UL, true)]
+    public void Eip8272_refuses_to_activate_before_eip7843(ulong? slotNumberTransition, bool refused)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip7843TransitionTimestamp = slotNumberTransition,
+                Eip8272TransitionTimestamp = 10
+            }
+        };
+        if (refused)
+        {
+            Assert.That(() => TestSpecHelper.LoadChainSpec(test),
+                Throws.Exception.With.InnerException.InstanceOf<InvalidConfigurationException>());
+            return;
+        }
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(test);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).IsEip8272Enabled, Is.True);
     }
 
     [Test]

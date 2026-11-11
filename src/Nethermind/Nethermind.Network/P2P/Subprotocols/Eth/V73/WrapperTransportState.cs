@@ -17,6 +17,9 @@ internal interface IWrapperLink
 {
     string Description { get; }
 
+    /// <summary>The peer's node ID, under which its failure score outlives the connection; null when unknown.</summary>
+    PublicKey? NodeId { get; }
+
     /// <summary>Sends a wrapper message.</summary>
     void Send(P2PMessage message);
 
@@ -72,12 +75,18 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
     private long _updated = clock.GetTimestamp();
 
     /// <summary>Takes <paramref name="amount"/> if available; the allowance refills at its rate up to one second's worth.</summary>
-    public bool TryTake(double amount)
+    public bool TryTake(double amount) => TryTake(amount, amount);
+
+    /// <summary>Takes <paramref name="amount"/> once a full second's worth, or the amount if less, is available, leaving the
+    /// allowance in debt for an amount above one second's worth.</summary>
+    public bool TryBorrow(double amount) => TryTake(amount, Math.Min(amount, _rate));
+
+    private bool TryTake(double amount, double required)
     {
         long now = clock.GetTimestamp();
         _available = Math.Min(_rate, _available + clock.GetElapsedTime(_updated, now).TotalSeconds * _rate);
         _updated = now;
-        if (amount > _available) return false;
+        if (required > _available) return false;
         _available -= amount;
         return true;
     }
@@ -235,7 +244,7 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     private double _failures;
     private long _failuresUpdated = clock.GetTimestamp();
 
-    /// <summary>Wrappers from this peer that recently failed verification, decaying with a half-life of
+    /// <summary>Wrappers from this peer that recently failed verification and requests it left unserved, decaying with a half-life of
     /// <see cref="WrapperTransportLimits.FailureHalfLife"/> and capped at <see cref="WrapperTransportLimits.MaxFailureScore"/>.</summary>
     /// <remarks>Never a ground for penalties or disconnection (EIP-8437): it only orders and rate-limits fetching.</remarks>
     public double FailureScore
@@ -254,8 +263,16 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <see cref="WrapperTransportLimits.MaxRequestsPerFailingPeer"/> outstanding requests.</summary>
     public bool IsDeprioritized => FailureScore >= WrapperTransportLimits.DeprioritizedFailureScore;
 
-    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation.</summary>
-    public void RecordVerificationFailure() => _failures = Math.Min(FailureScore + 1, WrapperTransportLimits.MaxFailureScore);
+    /// <summary>Restores a failure score recorded at <paramref name="since"/>, from which it keeps decaying.</summary>
+    public void RestoreFailureScore(double score, long since)
+    {
+        _failures = score;
+        _failuresUpdated = since;
+    }
+
+    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation, or a request it timed out on
+    /// or withheld wrappers from, at <paramref name="weight"/>.</summary>
+    public void RecordFailure(double weight = 1) => _failures = Math.Min(FailureScore + weight, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;
 }
@@ -286,9 +303,13 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>When the first request was sent; the fetch deadline runs from here.</summary>
     public long? Started { get; set; }
 
-    /// <summary>Peers that announced or served the wrapper, up to <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>.</summary>
+    /// <summary>Peers that announced or served the wrapper, up to <see cref="WrapperTransportLimits.MaxAnnouncersPerWrapper"/>.</summary>
     public List<WrapperPeer> Sources { get; } = [];
     public HashSet<WrapperPeer> Tried { get; } = [];
+
+    /// <summary>Tried sources that answered with an empty response, a spent serving budget, which do not count toward
+    /// <see cref="WrapperTransportLimits.MaxSourcesPerWrapper"/>.</summary>
+    public HashSet<WrapperPeer> AnsweredEmpty { get; } = [];
     public bool Requested { get; set; }
 
     /// <summary>Set after a compact response referenced an encoding this node no longer holds: the wrapper is requested again
@@ -310,7 +331,7 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
 
     public void AddSource(WrapperPeer peer, int mode, int length, WrapperCoverage coverage)
     {
-        if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
+        if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxAnnouncersPerWrapper) return;
         Sources.Add(peer);
         _metadata[peer] = (mode, length, coverage);
     }
@@ -328,17 +349,17 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public WrapperCoverage CoverageFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length, WrapperCoverage Coverage) metadata) ? metadata.Coverage : Announcement.Coverage;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
-    /// <remarks>Sources are asked in announcement order, except that one whose wrappers repeatedly failed verification is asked
-    /// only after the others.</remarks>
+    /// <remarks>Sources are asked in announcement order, except that deprioritized ones are asked only after the others, the
+    /// lowest failure score first.</remarks>
     public WrapperPeer? NextSource()
     {
-        if (Tried.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
+        if (Tried.Count - AnsweredEmpty.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
         WrapperPeer? deprioritized = null;
         foreach (WrapperPeer peer in Sources)
         {
             if (peer.Closed || Tried.Contains(peer)) continue;
             if (!peer.IsDeprioritized) return peer;
-            deprioritized ??= peer;
+            if (deprioritized is null || peer.FailureScore < deprioritized.FailureScore) deprioritized = peer;
         }
         return deprioritized;
     }

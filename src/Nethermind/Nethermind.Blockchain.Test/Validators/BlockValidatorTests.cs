@@ -94,8 +94,11 @@ public class BlockValidatorTests
 
         bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        }
     }
 
     [Test]
@@ -160,9 +163,12 @@ public class BlockValidatorTests
         block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         block.StarkProof = missing ? null : [2];
         FixedLeanProofVerifier verifier = new(true);
-        Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
-        Assert.That(verifier.RecursiveCalls, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(verifier.RecursiveCalls, Is.Zero);
+        }
     }
 
     [Test]
@@ -213,9 +219,12 @@ public class BlockValidatorTests
         Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
 
         Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
-        Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
-        Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
+            Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
+            Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+        }
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
 
@@ -401,8 +410,11 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
-        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+            Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        }
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
@@ -896,8 +908,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        }
     }
 
     /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
@@ -908,8 +923,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        }
     }
 
     /// <summary>
@@ -924,8 +942,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
-        Assert.That(isValid, Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+            Assert.That(isValid, Is.True, error);
+        }
     }
 
     /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
@@ -958,8 +979,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        }
     }
 
     private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>

@@ -168,7 +168,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
             {
                 if (!IsDependencyBearingCandidate(tx)) continue;
                 if (++scanned > MaxDependencyBearingScannedPerSender) break;
-                if (!tx.CanPayBaseFee(baseFee) || !InclusionListProofValidator.IsStaticallyValid(tx, targetSpec)) continue;
+                if (!FrameTxValidation.CoversRequiredMaxFee(tx, targetSpec, baseFee, UInt256.Zero)
+                    || !InclusionListProofValidator.IsStaticallyValid(tx, targetSpec)) continue;
                 bool ready = KeyedNonceManager.UsesKeyedNonce(tx)
                     ? KeyedNonceManager.IsNonceSetValid(headState, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce)
                     : tx.Nonce == (accountNonce ??= headState.GetNonce(tx.SenderAddress!));

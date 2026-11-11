@@ -12,6 +12,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
@@ -47,6 +50,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
     internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
+
+    /// <summary>Maximal base-fee decreases a pending transaction may still need before it is aggregated.</summary>
+    /// <remarks>Aggregation covers only transactions executable at the head, plus those whose fees reach the next block's base
+    /// fee after this many decreases of <c>1/BASE_FEE_MAX_CHANGE_DENOMINATOR</c>, (7/8)^2 = 49/64 of it on mainnet, and its
+    /// EIP-4844 blob base fee after as many blocks without blobs, so a transaction about to become includable is ready. The
+    /// rest stay pooled with their direct witnesses until they qualify. While the EIP-7918 reserve price binds, blobless blocks
+    /// do not lower excess blob gas, so the blob floor is lenient there: it may aggregate, never exclude, a few extra transactions.</remarks>
+    internal const int MaxAwaitedBaseFeeDecreases = 2;
 
     /// <summary>How long a dependency set that waited for an offer is proven without waiting again.</summary>
     private static readonly TimeSpan OfferWaitMemory = TimeSpan.FromMinutes(1);
@@ -202,6 +213,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             foreach (Transaction transaction in txPool.GetPendingTransactions())
                 if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
                     evicted++;
+            // The blob pool's light records carry no frames, so coverage is judged on the full transaction.
+            foreach (Transaction[] senderTransactions in txPool.GetPendingLightBlobTransactionsBySender().Values)
+                foreach (Transaction light in senderTransactions)
+                    if (Eip8288Dependencies.IsDependencyBearing(light)
+                        && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? full)
+                        && !leanProofStore.Covers(full) && txPool.RemoveTransaction(light.Hash))
+                        evicted++;
             return (dropped, evicted);
         }
     }
@@ -300,7 +318,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope))
+                if (!TryBeginAdmission(decoded, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
             using (scope)
@@ -329,7 +347,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             }
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
-                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source);
+                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
+                            copyInput ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
@@ -367,6 +386,145 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (entered) ExitAdmission(queue);
             Interlocked.Decrement(ref queue.Callers);
         }
+    }
+
+    /// <summary>Reserves the wrapper's witnesses, first evicting pending transactions not executable at the head when proof
+    /// capacity is full.</summary>
+    /// <remarks>Witnesses pinned by pending transactions are never evicted, so a full store would otherwise refuse every wrapper.
+    /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
+    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
+    /// eviction frees witness capacity.</remarks>
+    private bool TryBeginAdmission(MempoolWrapper decoded, out IDisposable? scope)
+    {
+        if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
+        FeeFloors floors = ExecutableFeeFloors();
+        if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
+        List<ValueHash256> hashes = [];
+        HashSet<Transaction> stale = [];
+        foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
+        {
+            if (hashes.Count == MaxEvictedPerAdmission) break;
+            if (IsStillNotExecutable(candidate, floors)) hashes.Add(candidate.Hash!.ValueHash256);
+            else stale.Add(candidate);
+        }
+        if (stale.Count != 0) _evictionCandidates?.Candidates.RemoveAll(stale.Contains);
+        if (hashes.Count == 0) return false;
+        if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
+            is not { Count: > 0 } releases) return false;
+        foreach (ValueHash256 hash in releases)
+            if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+        HashSet<ValueHash256> released = [.. releases];
+        _evictionCandidates?.Candidates.RemoveAll(transaction => released.Contains(transaction.Hash!.ValueHash256));
+        return leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope);
+    }
+
+    /// <summary>Whether <paramref name="candidate"/>, listed as not executable when the head was scanned, is still pending and not
+    /// executable against its sender's current pending transactions, which may since have filled a nonce gap.</summary>
+    private bool IsStillNotExecutable(Transaction candidate, in FeeFloors floors)
+    {
+        Address sender = candidate.SenderAddress!;
+        IPendingTxsBySender bySender = txPool;
+        Transaction[] bucket = bySender.GetPendingTransactionsBySender(sender);
+        if (Array.FindIndex(bucket, transaction => transaction.Hash == candidate.Hash) < 0)
+        {
+            bucket = bySender.GetPendingLightBlobTransactionsBySender(sender);
+            if (Array.FindIndex(bucket, transaction => transaction.Hash == candidate.Hash) < 0) return false;
+        }
+        List<Transaction> executable = [];
+        AddExecutable(sender, bucket, floors, executable);
+        return executable.FindIndex(transaction => transaction.Hash == candidate.Hash) < 0;
+    }
+
+    /// <summary>Pending transactions one admission may evict to make room for its witnesses.</summary>
+    internal const int MaxEvictedPerAdmission = AdmissionChunk;
+
+    /// <summary>Hashes of transactions admitted through local wrappers, such as RPC, which capacity eviction removes last.</summary>
+    /// <remarks>Bounded by <see cref="MaxLocalTransactions"/>, beyond which local admissions are not remembered, and pruned to the
+    /// pending ones on each pool scan.</remarks>
+    private readonly HashSet<ValueHash256> _localTransactions = [];
+
+    internal const int MaxLocalTransactions = 4096;
+
+    private void MarkLocal(Hash256 hash)
+    {
+        lock (_localTransactions)
+            if (_localTransactions.Count < MaxLocalTransactions) _localTransactions.Add(hash.ValueHash256);
+    }
+
+    /// <summary>The pool's dependency-bearing transactions not executable at the head, oldest first, scanned once per head and
+    /// read and replaced under the commit lock.</summary>
+    /// <remarks>Transactions removed or made executable since remain listed until an admission rechecks and drops them.</remarks>
+    private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
+
+    /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
+    /// first, with those admitted locally after all others.</summary>
+    private List<Transaction> NotExecutable(IReadOnlyList<Transaction> wrapped, FeeFloors floors)
+    {
+        if (blockFinder.Head?.Hash is not { } head) return [];
+        if (_evictionCandidates is not { } cached || cached.Head != head)
+            _evictionCandidates = cached = (head, ScanNotExecutable(floors));
+        HashSet<Hash256> skipped = [];
+        foreach (Transaction transaction in wrapped) skipped.Add(transaction.Hash!);
+        List<Transaction> notExecutable = [], local = [];
+        lock (_localTransactions)
+            foreach (Transaction transaction in cached.Candidates)
+                if (!skipped.Contains(transaction.Hash!))
+                    (_localTransactions.Contains(transaction.Hash!.ValueHash256) ? local : notExecutable).Add(transaction);
+        notExecutable.AddRange(local);
+        return notExecutable;
+    }
+
+    /// <summary>The pool's dependency-bearing transactions not executable at the head, oldest first.</summary>
+    /// <remarks>Forgets local transactions no longer pending.</remarks>
+    private List<Transaction> ScanNotExecutable(FeeFloors floors)
+    {
+        List<Transaction> notExecutable = [];
+        List<Transaction> executable = [];
+        HashSet<ValueHash256> pending = [];
+        Collect(txPool.GetPendingTransactionsBySender());
+        Collect(txPool.GetPendingLightBlobTransactionsBySender());
+        lock (_localTransactions) _localTransactions.IntersectWith(pending);
+        notExecutable.Sort(static (x, y) => x.Timestamp.CompareTo(y.Timestamp));
+        return notExecutable;
+
+        void Collect(IDictionary<AddressAsKey, Transaction[]> bySender)
+        {
+            foreach ((AddressAsKey sender, Transaction[] transactions) in bySender)
+            {
+                executable.Clear();
+                AddExecutable(sender, transactions, floors, executable);
+                foreach (Transaction transaction in transactions)
+                {
+                    pending.Add(transaction.Hash!.ValueHash256);
+                    if (Eip8288Dependencies.IsDependencyBearing(transaction) && !executable.Contains(transaction))
+                        notExecutable.Add(transaction);
+                }
+            }
+        }
+    }
+
+    /// <summary>Whether <paramref name="wrapped"/> adds transactions to the pool and each it adds would be executable at the head:
+    /// fees of at least <paramref name="floors"/> and account nonces continuing the sender's pending ones.</summary>
+    /// <remarks>An EIP-8250 keyed transaction is never judged executable here, as its nonce lives in state this does not read.</remarks>
+    private bool AddsOnlyExecutable(IReadOnlyList<Transaction> wrapped, in FeeFloors floors)
+    {
+        List<Transaction> added = [];
+        foreach (Transaction transaction in wrapped)
+        {
+            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
+            if (KeyedNonceManager.UsesKeyedNonce(transaction) || !IsPriced(transaction, floors)) return false;
+            added.Add(transaction);
+        }
+        added.Sort(static (x, y) => x.SenderAddress!.Bytes.SequenceCompareTo(y.SenderAddress!.Bytes) is var bySender && bySender != 0
+            ? bySender : x.Nonce.CompareTo(y.Nonce));
+        Address? sender = null;
+        ulong next = 0;
+        foreach (Transaction transaction in added)
+        {
+            if (transaction.SenderAddress != sender) next = txPool.GetLatestPendingNonce(sender = transaction.SenderAddress!);
+            if (transaction.Nonce != next++) return false;
+        }
+        return added.Count != 0;
     }
 
     /// <summary>Takes the source's turn and then admission, within <see cref="AdmissionWaitTimeout"/>.</summary>
@@ -435,8 +593,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Submits <paramref name="transactions"/> from <paramref name="start"/> up to <paramref name="end"/>.</summary>
+    /// <param name="handling">Local submissions persist and bypass the pool's gossip-only filters; peer-served ones do not.</param>
     private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
-        ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
+        ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source,
+        TxHandlingOptions handling)
     {
         for (int i = start; i < end; i++)
         {
@@ -454,13 +614,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // the other transactions intact.
             AcceptTxResult result = IsAwaitingAvailability(transaction)
                 ? AdmitAwaitingAvailability(transaction, source)
-                : txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+                : txPool.SubmitTx(transaction, handling);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else
             {
                 pooled++;
                 admitted++;
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+                if ((handling & TxHandlingOptions.PersistentBroadcast) != 0) MarkLocal(hash);
             }
         }
     }
@@ -525,7 +686,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (i != 0 && budget is { } limit && clock.GetElapsedTime(started) >= limit) break;
                 int index = (start + i) % buckets.Count;
                 Result<byte[]> result = BuildBucket(buckets[index], verifier, false, clock, cancellationToken, out bool unchanged);
-                Advance(buckets, index);
+                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.IsSuccess)
                 {
                     any = true;
@@ -558,7 +719,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 int index = (start + i) % buckets.Count;
                 result = BuildBucket(buckets[index], verifier, returnEncoded, TimeProvider.System, cancellationToken, out _);
-                Advance(buckets, index);
+                if (result.Error != ProductionProofCache.BackgroundBusyMessage) Advance(buckets, index);
                 if (result.Error != AwaitingOfferedProof) break;
             }
             return result;
@@ -594,6 +755,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
+    /// <summary>Dependencies and wrapper-encoded length of the transactions the last plan saw, by hash; read and replaced under
+    /// the aggregation lock.</summary>
+    private Dictionary<ValueHash256, (List<FrameDependency> Deps, int EncodedLength)> _candidateShapes = [];
+
     /// <summary>A pending dependency-bearing transaction with its dependencies and encoded size.</summary>
     private readonly record struct Candidate(Transaction Transaction, List<FrameDependency> Deps, int EncodedLength);
 
@@ -607,22 +772,32 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits.
     /// Buckets do not depend on arrival order, but the cost check depends on the proofs held here, so nodes with the same pool view
     /// share bucket boundaries only where their held proofs agree. A transaction exceeding the proving
-    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.</remarks>
+    /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.
+    /// Only transactions executable at the head are candidates (see <see cref="AddExecutable"/>).</remarks>
     private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
     {
         WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
         RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
-        List<Transaction> pending = [.. txPool.GetPendingTransactions()];
-        AddBlobCandidates(pending);
+        FeeFloors floors = ExecutableFeeFloors();
+        List<Transaction> pending = [];
+        foreach ((AddressAsKey sender, Transaction[] bucket) in txPool.GetPendingTransactionsBySender())
+            AddExecutable(sender, bucket, floors, pending);
+        AddBlobCandidates(pending, floors);
         List<Candidate> candidates = new(pending.Count);
+        Dictionary<ValueHash256, (List<FrameDependency> Deps, int EncodedLength)> shapes = new(_candidateShapes.Count);
         foreach (Transaction transaction in pending)
         {
             if (!transaction.SupportsFrames) continue;
-            List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
-            if (deps.Count == 0) continue;
-            int encodedLength = Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors));
-            if (encodedLength <= MaxWrapperTransactionBytes) candidates.Add(new(transaction, deps, encodedLength));
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            if (!_candidateShapes.TryGetValue(hash, out (List<FrameDependency> Deps, int EncodedLength) shape))
+                shape = (Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
+                    Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors)));
+            shapes[hash] = shape;
+            if (shape.Deps.Count != 0 && shape.EncodedLength <= MaxWrapperTransactionBytes)
+                candidates.Add(new(transaction, shape.Deps, shape.EncodedLength));
         }
+        // Only transactions still pending are remembered, so removed ones are dropped.
+        _candidateShapes = shapes;
         candidates.Sort(static (a, b) => a.Transaction.Hash!.Bytes.SequenceCompareTo(b.Transaction.Hash!.Bytes));
         List<Bucket> buckets = [];
         Plan(0, candidates.Count, 0);
@@ -648,13 +823,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             fits = false;
             long bytes = 0;
-            List<FrameDependency> union = [];
-            for (int i = start; i < end; i++)
-            {
-                bytes += candidates[i].EncodedLength;
-                union.AddRange(candidates[i].Deps);
-            }
+            for (int i = start; i < end; i++) bytes += candidates[i].EncodedLength;
             if (bytes > MaxWrapperTransactionBytes) return null;
+            List<FrameDependency> union = [];
+            for (int i = start; i < end; i++) union.AddRange(candidates[i].Deps);
             union = Eip8288Dependencies.Canonicalize(union);
             if (!Eip8288Dependencies.FitsProofList(union) || !leanProofStore.TryGetInput(union, out AggregationInput input)
                 || union.Count + input.Discards.Count > Eip8288Constants.MaxProofDependencies) return null;
@@ -664,6 +836,58 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return new(transactions, union, input);
         }
     }
+
+    /// <summary>The lowest fees per gas and per blob gas a transaction executable at the head may offer, at <see cref="Spec"/>.</summary>
+    private readonly record struct FeeFloors(UInt256 PerGas, UInt256 PerBlobGas, IReleaseSpec? Spec);
+
+    /// <summary>The next block's base fee and blob base fee, each after <see cref="MaxAwaitedBaseFeeDecreases"/> maximal decreases;
+    /// zero where the fork does not charge it.</summary>
+    /// <remarks>A blob base fee decreases most in a block without blobs, which lowers the excess blob gas by the target.</remarks>
+    private FeeFloors ExecutableFeeFloors()
+    {
+        if (blockFinder.Head is not { } head) return default;
+        IReleaseSpec spec = TargetForksOf(head.Header).Target;
+        UInt256 fee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head.Header, spec) : UInt256.Zero;
+        if (!spec.BaseFeeMaxChangeDenominator.IsZero)
+            for (int i = 0; i < MaxAwaitedBaseFeeDecreases; i++) fee -= fee / spec.BaseFeeMaxChangeDenominator;
+        if (BlobGasCalculator.CalculateExcessBlobGas(head.Header, spec) is not { } excess) return new(fee, UInt256.Zero, spec);
+        ulong target = spec.GasCosts.TargetBlobGasPerBlock;
+        excess = excess > MaxAwaitedBaseFeeDecreases * target ? excess - MaxAwaitedBaseFeeDecreases * target : 0;
+        return new(fee, BlobGasCalculator.TryCalculateFeePerBlobGas(excess, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
+            ? blobFee : UInt256.MaxValue, spec);
+    }
+
+    /// <summary>Adds the frame transactions of <paramref name="sender"/>'s nonce-ordered pending <paramref name="bucket"/> executable
+    /// at the head to <paramref name="executable"/>.</summary>
+    /// <remarks>Executable means fees of at least <paramref name="floors"/> and no nonce gap from the sender's state nonce,
+    /// so an account-nonce transaction also needs every one before it to qualify. An EIP-8250 keyed transaction is judged alone:
+    /// the pool holds only keyed transactions at their current sequence.</remarks>
+    private void AddExecutable(Address sender, Transaction[] bucket, in FeeFloors floors, List<Transaction> executable)
+    {
+        if (!Array.Exists(bucket, static transaction => transaction.SupportsFrames)) return;
+        ulong? nextNonce = null;
+        bool blocked = false;
+        foreach (Transaction transaction in bucket)
+        {
+            bool priced = IsPriced(transaction, floors);
+            if (KeyedNonceManager.UsesKeyedNonce(transaction))
+            {
+                if (!priced) continue;
+            }
+            else
+            {
+                nextNonce ??= txPool.GetLatestPendingNonce(sender);
+                blocked |= !priced || transaction.Nonce >= nextNonce;
+                if (blocked) continue;
+            }
+            if (transaction.SupportsFrames) executable.Add(transaction);
+        }
+    }
+
+    // An EIP-8141 max_fee is checked as a budget: its implied per-gas cap leaves out intrinsic gas, recursive_stark_gas included.
+    private static bool IsPriced(Transaction transaction, in FeeFloors floors) => transaction.SupportsFrames
+        ? floors.Spec is null || FrameTxValidation.CoversRequiredMaxFee(transaction, floors.Spec, floors.PerGas, floors.PerBlobGas)
+        : transaction.MaxFeePerGas >= floors.PerGas && transaction.CanPayForBlobGas(floors.PerBlobGas);
 
     private static bool HasBit(Hash256 hash, int bit) => (hash.Bytes[bit >> 3] >> (7 - (bit & 7)) & 1) != 0;
 
@@ -676,6 +900,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return 0;
     }
 
+    /// <remarks>Not called for a bucket the prover was too busy for, so the next cycle retries it rather than skipping it; other
+    /// failures still advance, so a bucket that cannot be built does not stall the rotation.</remarks>
     private void Advance(List<Bucket> buckets, int built) =>
         _resumeAfter = built == buckets.Count - 1 ? null : buckets[built].Transactions[^1].Hash!.ValueHash256;
 
@@ -773,13 +999,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Adds the blob pool's dependency-bearing frame transactions in the elided network form EIP-8437 carries:
     /// commitments and cell proofs without blob data, which peers retrieve as EIP-8070 cells.</summary>
-    private void AddBlobCandidates(List<Transaction> candidates)
+    private void AddBlobCandidates(List<Transaction> candidates, in FeeFloors floors)
     {
-        foreach (Transaction[] senderTransactions in txPool.GetPendingLightBlobTransactionsBySender().Values)
-            foreach (Transaction light in senderTransactions)
-                if (light.SupportsFrames && light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
-                    && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
-                    candidates.Add(elided);
+        List<Transaction> executable = [];
+        foreach ((AddressAsKey sender, Transaction[] senderTransactions) in txPool.GetPendingLightBlobTransactionsBySender())
+            AddExecutable(sender, senderTransactions, floors, executable);
+        foreach (Transaction light in executable)
+            if (light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
+                && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
+                candidates.Add(elided);
     }
 
     /// <summary>The estimated proving cost of <paramref name="input"/>, or of extending <paramref name="parent"/> with it when
@@ -804,6 +1032,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         foreach (Hash256 hash in transactions)
             if (!txPool.TryGetPendingTransaction(hash.ValueHash256, out _)) return false;
         return true;
+    }
+
+    /// <summary>Whether any of <paramref name="transactions"/> is still pending.</summary>
+    internal bool IsAnyPending(ReadOnlySpan<ValueHash256> transactions)
+    {
+        foreach (ValueHash256 hash in transactions)
+            if (txPool.TryGetPendingTransaction(hash, out _)) return true;
+        return false;
     }
 
     /// <summary>Whether the target fork enables dependency-proof wrappers.</summary>

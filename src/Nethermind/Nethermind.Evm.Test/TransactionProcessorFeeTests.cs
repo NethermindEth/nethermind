@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -14,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -74,8 +76,11 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        }
     }
 
     [Test]
@@ -106,9 +111,12 @@ public class TransactionProcessorFeeTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
-        Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
+            Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
+        }
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
@@ -144,8 +152,66 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
+    }
+
+    [Test]
+    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool revert, [Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8037Enabled = eip8037, IsEip7708Enabled = eip7708, IsEip8246Enabled = eip8246 };
+        Address creator = ContractAddress.From(TestItem.AddressA, 0);
+        Address beneficiary = ContractAddress.From(creator, 1);
+
+        byte[] selfDestructInitCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        Prepare initCode = Prepare.EvmCode
+            .Create(selfDestructInitCode, UInt256.Zero)
+            .Op(Instruction.POP);
+        if (revert)
+        {
+            initCode.Revert(0, 0);
+        }
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(5_000_000)
+            .WithCode(initCode.Done)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(beneficiary).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30_000_000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        // execution-specs pay the coinbase, then destroy: the fee is burned unless EIP-8246 keeps the balance.
+        // A reverted tx destroys nothing, so the fee is always kept.
+        bool feeKept = revert || eip8246;
+        bool burnLogged = !revert && eip8037 && eip7708 && !eip8246;
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(feeKept ? feesTracer.Fees : UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(feeKept));
+            Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
+            Assert.That(receipt.Logs!.Count(static log => log.Topics[0] == TransferLog.BurnSignature), Is.EqualTo(burnLogged ? 1 : 0));
+        }
     }
 
     [Test]
@@ -170,10 +236,13 @@ public class TransactionProcessorFeeTests
 
         // tx1: 1 * 21000
         // tx2: (10 - 2) * 21000 = 168000
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(42000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
+            Assert.That(block.GasUsed, Is.EqualTo(42000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
+        }
     }
 
     [Test]
@@ -198,10 +267,13 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo(UInt256.Zero));
 
-        Assert.That(block.GasUsed, Is.EqualTo(21000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)131072));
+            Assert.That(block.GasUsed, Is.EqualTo(21000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)131072));
+        }
 
         if (withFeeCollector)
         {
@@ -243,10 +315,13 @@ public class TransactionProcessorFeeTests
         // tx1: 2 * 21000
         // tx2: (10 - 1) * 21000
         // tx3: 1 * 60000
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)291000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)291000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(102000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
+            Assert.That(block.GasUsed, Is.EqualTo(102000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
+        }
     }
 
     [Test]
@@ -296,14 +371,20 @@ public class TransactionProcessorFeeTests
         if (withCancellation)
         {
             // tx1: 1 * 21000
-            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)21000));
-            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)42000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)21000));
+                Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)42000));
+            }
         }
         else
         {
             // tx2: (10 - 2) * 21000 = 168000
-            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)189000));
-            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)84000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)189000));
+                Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)84000));
+            }
         }
     }
 
@@ -324,10 +405,13 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)42000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)42000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(42000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+            Assert.That(block.GasUsed, Is.EqualTo(42000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        }
     }
 
     [Test]
@@ -361,8 +445,11 @@ public class TransactionProcessorFeeTests
         BlockExecutionContext blkCtx = new(block.Header, _spec);
         TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
-        Assert.That(result.ErrorDescription, Does.Contain($"maxFeePerGas: {feeCap}"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+            Assert.That(result.ErrorDescription, Does.Contain($"maxFeePerGas: {feeCap}"));
+        }
         Assert.That(result.ErrorDescription, Does.Contain($"baseFee: {baseFee}"));
         Assert.That(result.ErrorDescription, Does.Contain(TestItem.AddressA.ToString(withEip55Checksum: true)));
     }

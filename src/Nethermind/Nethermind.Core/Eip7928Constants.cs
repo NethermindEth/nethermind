@@ -7,9 +7,6 @@ public static class Eip7928Constants
 {
     // Max buffer lengths for RLP decoding
 
-    // max number of transactions per block
-    public const int MaxTxs = ushort.MaxValue;
-
     // max number of slots changed / read in one account
     public const int MaxSlots = 1_000_000;
 

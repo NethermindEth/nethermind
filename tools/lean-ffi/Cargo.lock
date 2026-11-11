@@ -1376,11 +1376,13 @@ dependencies = [
  "bincode",
  "lean_compiler",
  "lean_vm",
+ "libc",
  "parallel",
  "primitives",
  "rec_aggregation",
  "sphincs",
  "tiny-keccak",
+ "zk_alloc",
 ]
 
 [[package]]

@@ -26,9 +26,12 @@ public class XdcHeaderModuleTests
             .AddModule(new XdcHeaderModule())
             .Build();
 
-        Assert.That(container.Resolve<IHeaderDecoder>(), Is.InstanceOf<XdcHeaderDecoder>());
-        Assert.That(container.Resolve<BlockDecoder>(), Is.Not.Null);
-        Assert.That(container.Resolve<BlockBodyDecoder>(), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IHeaderDecoder>(), Is.InstanceOf<XdcHeaderDecoder>());
+            Assert.That(container.Resolve<BlockDecoder>(), Is.Not.Null);
+            Assert.That(container.Resolve<BlockBodyDecoder>(), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -50,9 +53,12 @@ public class XdcHeaderModuleTests
             .AddModule(new XdcHeaderModule())
             .Build();
 
-        Assert.That(Rlp.GetDecoder<BlockHeader>(), Is.InstanceOf<XdcHeaderDecoder>());
-        Assert.That(Rlp.GetDecoder<Block>(), Is.Not.Null);
-        Assert.That(Rlp.GetDecoder<BlockBody>(), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Rlp.GetDecoder<BlockHeader>(), Is.InstanceOf<XdcHeaderDecoder>());
+            Assert.That(Rlp.GetDecoder<Block>(), Is.Not.Null);
+            Assert.That(Rlp.GetDecoder<BlockBody>(), Is.Not.Null);
+        }
     }
 
     [Test]

@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ENCLAVE=${1:-daisugi}
 PACKAGE=${PACKAGE:-github.com/ethpandaops/ethereum-package@5795b77e65235ad223d4d3b413b2739190bf60cc}
-NETHERMIND_IMAGE=${NETHERMIND_IMAGE:-daisugi/nethermind:0260e692fc}
+NETHERMIND_IMAGE=${NETHERMIND_IMAGE:-daisugi/nethermind:1e5d1fa8a0}
 LIGHTHOUSE_IMAGE=${LIGHTHOUSE_IMAGE:-daisugi/lighthouse:eip8288-lean}
 PQ_KEY=${PQ_KEY:-bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31}
 G=$PWD/run/$ENCLAVE

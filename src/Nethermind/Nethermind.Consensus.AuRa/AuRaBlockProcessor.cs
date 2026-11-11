@@ -188,7 +188,8 @@ namespace Nethermind.Consensus.AuRa
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, parentHeader, currentSpec);
+                        TxFilterContext context = new(parentHeader, currentSpec);
+                        return _txFilter.IsAllowed(tx, in context);
                     }
                 }
 
@@ -197,7 +198,8 @@ namespace Nethermind.Consensus.AuRa
 
             IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader, spec);
+            TxFilterContext context = new(parentHeader, spec);
+            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, in context);
             if (!isAllowed)
             {
                 isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader, spec) ?? isAllowed;

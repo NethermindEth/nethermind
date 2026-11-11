@@ -67,8 +67,11 @@ public class BranchProcessorVerdictTests
             context.WorldState.CreateAccount(TestItem.AddressA, fundedBeforeTransactions ? 1.GWei : 0, nonce);
         context.WorldState.Commit(spec);
         ValidationResult txValidation = container.Resolve<ITxValidator>().IsWellFormed(tx, spec, block.GasLimit);
-        Assert.That((bool)txValidation, Is.True, txValidation.ToString());
-        Assert.That(InclusionListValidator.IsSatisfied(block, context.WorldState, spec, container.Resolve<ITxValidator>()), Is.EqualTo(!fundedBeforeTransactions), "Before processing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)txValidation, Is.True, txValidation.ToString());
+            Assert.That(InclusionListValidator.IsSatisfied(block, context.WorldState, spec, container.Resolve<ITxValidator>()), Is.EqualTo(!fundedBeforeTransactions), "Before processing");
+        }
 
         Block[] processed = context.BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
@@ -92,11 +95,12 @@ public class BranchProcessorVerdictTests
             Type = TxType.FrameTx,
             ChainId = 1,
             SenderAddress = TestItem.AddressA,
-            NonceKeys = [0],
+            NonceKeys = [],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, TestItem.AddressA);
         tx.Hash = tx.CalculateHash();
@@ -146,10 +150,13 @@ public class BranchProcessorVerdictTests
     }
 
     [Test]
-    public void Inclusion_list_preserves_parallel_execution_except_for_frame_simulation([Values] bool nonemptyList, [Values] bool frame)
+    public void Inclusion_list_preserves_parallel_execution_except_for_frame_simulation([Values] bool nonemptyList, [Values] bool frame,
+        [Values] bool included)
     {
         Transaction tx = Build.A.Transaction.WithType(frame ? TxType.FrameTx : TxType.Legacy).TestObject;
-        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [tx] : []).TestObject;
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithNumber(0).WithTransactions(included ? [tx] : [])
+            .WithInclusionListTransactions(nonemptyList ? [tx] : []).TestObject;
         IBlockProcessor processor = Substitute.For<IBlockProcessor>();
         ProcessingOptions actualOptions = ProcessingOptions.None;
         processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
@@ -166,7 +173,7 @@ public class BranchProcessorVerdictTests
 
         container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList && frame));
+        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList && frame && !included));
     }
 
     [Test]

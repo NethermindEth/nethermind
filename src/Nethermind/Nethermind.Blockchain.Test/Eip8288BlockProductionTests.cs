@@ -42,7 +42,7 @@ public class Eip8288BlockProductionTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256);
-        Transaction transaction = CreateTransaction(chain, raw, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, raw, []);
         FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)[0];
         byte[] encoded = TxDecoder.Instance.Encode(transaction).Bytes;
         proofs.AddVerified([raw], [[1]], null);
@@ -164,13 +164,19 @@ public class Eip8288BlockProductionTests
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That((await AcceptWrapper(service, wrapper, first, second)).IsSuccess, Is.True);
-        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(service, wrapper, first, second)).IsSuccess, Is.True);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
         Block? built = await chain.BlockProducer.BuildBlock();
         Assert.That(built, Is.Not.Null);
-        Assert.That(built!.Transactions, Has.Length.EqualTo(2));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the background proof already covers the final body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built!.Transactions, Has.Length.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the background proof already covers the final body");
+        }
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
         BlockToProduce repeated = new(built.Header.Clone(), built.Transactions, [], built.Withdrawals);
         Block? processed = environment.ChainProcessor.Process(repeated, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
@@ -191,7 +197,7 @@ public class Eip8288BlockProductionTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("rejected-cache"), default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         proofs.AddVerified([dependency], [[1]], null);
         Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         proofs.AddCachedRecursive([dependency], [0xee]);
@@ -201,13 +207,16 @@ public class Eip8288BlockProductionTests
         Assert.That(block, Is.Not.Null);
         Assert.That(block!.Transactions, Has.Length.EqualTo(1));
         ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
-        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
-        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
-        Assert.That(replacement, Is.EqualTo(block.StarkProof));
-        Block? repeated = await chain.BlockProducer.BuildBlock();
-        Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
+            Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+            Assert.That(replacement, Is.EqualTo(block.StarkProof));
+            Block? repeated = await chain.BlockProducer.BuildBlock();
+            Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -235,19 +244,28 @@ public class Eip8288BlockProductionTests
             });
             Assert.That(requested.Wait(TimeSpan.FromSeconds(5)), Is.True);
             await Task.Delay(50);
-            Assert.That(concurrent.IsCompleted, Is.False);
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(concurrent.IsCompleted, Is.False);
+                Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            }
             release.Set();
             byte[][] completed = await Task.WhenAll(initial, concurrent).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.That(completed[0], Is.EqualTo(completed[1]));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed[0], Is.EqualTo(completed[1]));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            }
             entered.Reset();
             release.Reset();
             Task<byte[]> unrelated = Task.Run(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, secondInput));
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Task<byte[]> ready = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
-            Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
-            Assert.That(unrelated.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
+                Assert.That(unrelated.IsCompleted, Is.False);
+            }
             release.Set();
             await unrelated.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(verifier.ProofCalls, Is.EqualTo(2));
@@ -275,8 +293,11 @@ public class Eip8288BlockProductionTests
         cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store);
         try
         {
-            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            Assert.That(cache.ObserveProduction(112, 11), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(cache.ObserveProduction(112, 11), Is.True);
+            }
         }
         finally { release.Set(); }
         for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
@@ -374,10 +395,13 @@ public class Eip8288BlockProductionTests
             }
             else
             {
-                Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
-                Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
-                    new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
-                Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
+                    Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                        new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
+                    Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+                }
             }
         }
         finally
@@ -420,13 +444,14 @@ public class Eip8288BlockProductionTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             ChainId = chain.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
@@ -450,13 +475,19 @@ public class Eip8288BlockProductionTests
 
         Block? empty = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(empty, Is.Not.Null);
-        Assert.That(empty!.Transactions, Is.Empty);
-        Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty!.Transactions, Is.Empty);
+            Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
         Block? restored = await chain.BlockProducer.BuildBlock();
         Assert.That(restored, Is.Not.Null);
-        Assert.That(restored!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored!.Transactions, Has.Length.EqualTo(1));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -524,8 +555,11 @@ public class Eip8288BlockProductionTests
         AggregationInput input = new() { Deps = [dependency], Witnesses = [new byte[] { 1 }] };
         Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
         verifier.WrongStatement = false;
-        Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        }
         verifier.RejectChangedWitness = true;
         AggregationInput bad = new() { Deps = [dependency], Witnesses = [new byte[] { 2 }] };
         Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, bad));
@@ -533,8 +567,11 @@ public class Eip8288BlockProductionTests
         FrameDependency changed = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cache-b"), default);
         ValueHash256 changedHash = Eip8288Dependencies.ComputeDepsHash([changed]);
         AggregationInput next = new() { Deps = [changed], Witnesses = [new byte[] { 1 }] };
-        Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        }
     }
 
     [Test]
@@ -573,10 +610,13 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline"), default);
         proofs.AddVerified([dependency], [[1]], null);
-        Transaction proofBacked = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction proofBacked = CreateTransaction(chain, dependency, []);
         Transaction plain = CreatePlainTransaction(chain);
-        Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
         try
         {
             using CancellationTokenSource deadline = new();
@@ -642,8 +682,11 @@ public class Eip8288BlockProductionTests
                 "background aggregation yields its remaining native calls to the waiting producer");
             Assert.That(await started.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
             permits.Release();
-            Assert.That(await producer.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(producedHash.ToByteArray()));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await producer.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(producedHash.ToByteArray()));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+            }
         }
         finally
         {
@@ -670,8 +713,11 @@ public class Eip8288BlockProductionTests
             cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
                 new() { Deps = [next], Witnesses = [new byte[] { 1 }] });
         }
-        Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
+        }
     }
 
     [Test]
@@ -681,35 +727,42 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
         FrameDependency a = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-a"), default);
         FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-b"), default);
-        Transaction first = CreateTransaction(chain, a, [UInt256.Zero]);
+        Transaction first = CreateTransaction(chain, a, []);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         Assert.That((await AcceptWrapper(service, EncodeWrapper(a, first), first)).IsSuccess, Is.True);
         Flood();
         Assert.That(proofs.Covers(first), Is.True);
-        Transaction replacement = CreateTransaction(chain, b, [UInt256.Zero]);
+        Transaction replacement = CreateTransaction(chain, b, []);
         replacement.GasPrice = 2.GWei;
         replacement.DecodedMaxFeePerGas = 200.GWei;
+        replacement.MaxFee = 2.Ether;
         FrameTxTestFrames.SignSecp256k1(replacement, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         replacement.Hash = replacement.CalculateHash();
         Assert.That((await AcceptWrapper(service, EncodeWrapper(b, replacement), replacement)).IsSuccess, Is.True);
         Flood();
-        Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
-        Assert.That(proofs.Covers(first), Is.False);
-        Assert.That(proofs.Covers(replacement), Is.True);
-        Assert.That(chain.TxPool.RemoveTransaction(replacement.Hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
+            Assert.That(proofs.Covers(first), Is.False);
+            Assert.That(proofs.Covers(replacement), Is.True);
+            Assert.That(chain.TxPool.RemoveTransaction(replacement.Hash), Is.True);
+        }
         Flood();
         Assert.That(proofs.Covers(replacement), Is.False);
         FrameDependency c = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shutdown"), default);
         FrameDependency unrelated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other-owner"), default);
-        Transaction shuttingDown = CreateTransaction(chain, c, [UInt256.Zero]);
-        Transaction otherOwner = CreateTransaction(chain, unrelated, [UInt256.Zero]);
+        Transaction shuttingDown = CreateTransaction(chain, c, []);
+        Transaction otherOwner = CreateTransaction(chain, unrelated, []);
         proofs.AddVerified([unrelated], [[1]], null);
         proofs.PinPending(otherOwner);
         Assert.That((await AcceptWrapper(service, EncodeWrapper(c, shuttingDown), shuttingDown)).IsSuccess, Is.True);
         await ((IAsyncDisposable)chain.TxPool).DisposeAsync();
         Flood();
-        Assert.That(proofs.Covers(shuttingDown), Is.False);
-        Assert.That(proofs.Covers(otherOwner), Is.True, "shutdown releases only this pool's witness pins");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs.Covers(shuttingDown), Is.False);
+            Assert.That(proofs.Covers(otherOwner), Is.True, "shutdown releases only this pool's witness pins");
+        }
 
 
         void Flood()
@@ -727,7 +780,7 @@ public class Eip8288BlockProductionTests
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-recursive"), default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [transaction],
@@ -735,13 +788,19 @@ public class Eip8288BlockProductionTests
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(hash.ToByteArray(), new Hash256(hash))
         }).Bytes;
-        Assert.That((await AcceptWrapper(chain.Container.Resolve<ProofWrapperService>(), wrapper, transaction)).IsSuccess, Is.True);
-        Assert.That(chain.TxPool.RemoveTransaction(transaction.Hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(chain.Container.Resolve<ProofWrapperService>(), wrapper, transaction)).IsSuccess, Is.True);
+            Assert.That(chain.TxPool.RemoveTransaction(transaction.Hash), Is.True);
+        }
         byte[] witness = new byte[64 * 1024];
         for (int i = 0; i < 1100; i++)
             proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"evict:{i}"), default)], [witness], null);
-        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? proof), Is.True);
-        Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? proof), Is.True);
+            Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+        }
     }
 
     [Test]
@@ -758,8 +817,11 @@ public class Eip8288BlockProductionTests
         proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
         Transaction covered = CreateTransaction(chain, proven, [1]);
         Transaction uncovered = CreateTransaction(chain, pending, [2]);
-        Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
         try
         {
             using CancellationTokenSource deadline = new();
@@ -881,14 +943,14 @@ public class Eip8288BlockProductionTests
         // The proven transactions wait behind the added one's nonce, so the statement covers the whole body.
         FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
         proofs.AddVerified([added], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, []), TxHandlingOptions.PersistentBroadcast),
             Is.EqualTo(AcceptTxResult.Accepted));
         FrameDependency[] proven = new FrameDependency[provenCount];
         for (int i = 0; i < proven.Length; i++)
         {
             proven[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"extend-proven:{i}"), default);
             proofs.AddVerified([proven[i]], [[1]], null);
-            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [UInt256.Zero], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.Accepted));
         }
         List<FrameDependency> provenSet = Eip8288Dependencies.Canonicalize(proven);
@@ -1002,8 +1064,8 @@ public class Eip8288BlockProductionTests
         proofs.AddCachedRecursive([second], Eip8288Dependencies.ComputeDepsHash([second]).ToByteArray());
         proofs.AddCachedRecursive([shared], Eip8288Dependencies.ComputeDepsHash([shared]).ToByteArray());
         Transaction sharedTransaction = CreateTransaction(chain, shared, [1]);
-        Transaction blocking = CreateTransaction(chain, first, [UInt256.Zero]);
-        Transaction blocked = CreateTransaction(chain, second, [UInt256.Zero], nonce: 1);
+        Transaction blocking = CreateTransaction(chain, first, []);
+        Transaction blocked = CreateTransaction(chain, second, [], nonce: 1);
         foreach (Transaction transaction in (Transaction[])[sharedTransaction, blocking, blocked])
             Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1030,8 +1092,8 @@ public class Eip8288BlockProductionTests
         List<FrameDependency> gapped = Eip8288Dependencies.Canonicalize([a, c]);
         proofs.AddCachedRecursive(gapped, Eip8288Dependencies.ComputeDepsHash(gapped).ToByteArray());
         Transaction includable = CreateTransaction(chain, a, [1]);
-        Transaction first = CreateTransaction(chain, b, [UInt256.Zero]);
-        Transaction second = CreateTransaction(chain, c, [UInt256.Zero], nonce: 1);
+        Transaction first = CreateTransaction(chain, b, []);
+        Transaction second = CreateTransaction(chain, c, [], nonce: 1);
         foreach (Transaction transaction in (Transaction[])[includable, first, second])
             Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1052,16 +1114,19 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(template, Is.Not.Null);
         Block plain = new(template!.Header, [transaction], [], template.Withdrawals);
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
         Block? processed = environment.ChainProcessor.Process(plain, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
         Assert.That(processed, Is.Not.Null);
-        Assert.That(processed!.Transactions, Is.Empty);
-        Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
-        Assert.That(processed.StarkProof, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Is.Empty);
+            Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
+            Assert.That(processed.StarkProof, Is.Empty);
+        }
     }
 
     // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
@@ -1088,7 +1153,7 @@ public class Eip8288BlockProductionTests
         }
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("inclusion-list"), default);
         proofs.AddVerified([dependency], null, [1]);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
         Assert.That(proofs.Covers(transaction), Is.False);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-surplus"), default);
@@ -1165,8 +1230,11 @@ public class Eip8288BlockProductionTests
         Transaction first = CreateTransaction(chain, dependency, [1, 7]);
         Transaction independent = CreateTransaction(chain, dependency, [9]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, first, independent), first, independent)).IsSuccess, Is.True);
-        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, first, independent), first, independent)).IsSuccess, Is.True);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        }
         Block block = await ProduceAndImport(chain, slot: 1);
         Assert.That(block.Transactions, Has.Length.EqualTo(2));
         using (chain.MainWorldState.BeginScope(block.Header))
@@ -1181,6 +1249,60 @@ public class Eip8288BlockProductionTests
         Assert.That(result.IsSuccess, Is.False);
     }
 
+    // EIP-8288: aggregation covers only transactions executable at the head, with fees down to 49/64 of the next base fee. An
+    // underpriced or nonce-gapped transaction stays pooled with its direct witness until a base-fee drop or the missing nonce.
+    [Test]
+    public async Task Aggregation_waits_for_pending_transactions_to_become_executable([Values] bool gapped)
+    {
+        const long SignatureGasMargin = 1_000;
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, static builder => builder.AddSingleton<IGenesisPostProcessor>(
+            new FunctionalGenesisPostProcessor(static genesis => genesis.Header.BaseFeePerGas = 64.GWei)));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        UInt256 lowestFee = BaseFeeCalculator.Calculate(chain.BlockTree.Head!.Header, Eip8288Prototype.Instance) * 49 / 64;
+        Transaction withinMargin = Priced(CreateTransaction(chain, dependency, []), TestItem.PrivateKeyB, SignatureGasMargin);
+        Transaction waiting = CreateTransaction(chain, dependency, [], nonce: gapped ? 1UL : 0, key: TestItem.PrivateKeyC);
+        if (!gapped) waiting = Priced(waiting, TestItem.PrivateKeyC, -SignatureGasMargin);
+
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, withinMargin, waiting), withinMargin, waiting)).Data,
+            Is.EquivalentTo(new[] { withinMargin.Hash, waiting.Hash }), "received wrappers are admitted whether or not executable");
+        Hash256[] before = Aggregated(service);
+        Transaction? gapFill = null;
+        if (gapped)
+        {
+            gapFill = CreateTransaction(chain, dependency, [], nonce: 0, key: TestItem.PrivateKeyC);
+            Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, gapFill), gapFill)).IsSuccess, Is.True);
+        }
+        else Assert.That((await ProduceAndImport(chain, slot: 1)).Transactions, Is.Empty);
+        Hash256[] after = Aggregated(service);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(new[] { withinMargin.Hash }));
+            Assert.That(after, Is.EquivalentTo(gapped ? [withinMargin.Hash, waiting.Hash, gapFill!.Hash] : new[] { withinMargin.Hash, waiting.Hash }));
+        }
+
+        // max_fee over max_gas, off by a margin since re-signing changes the signature bytes max_gas prices.
+        Transaction Priced(Transaction tx, PrivateKey key, long gasMargin)
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Eip8288Prototype.Instance, out _, out _, out ulong maxGas), Is.True);
+            tx.MaxFee = lowestFee * (ulong)((long)maxGas + gasMargin);
+            FrameTxTestFrames.SignSecp256k1(tx, key, key.Address);
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        static Hash256[] Aggregated(ProofWrapperService wrappers)
+        {
+            Result<byte[]> built = wrappers.BuildWrapper();
+            if (!built.IsSuccess) return [];
+            RlpReader reader = new(built.Data!);
+            return [.. MempoolWrapperDecoder.Instance.Decode(ref reader)!.Transactions.Select(static tx => tx.Hash!)];
+        }
+    }
+
     // EIP-8437: a blob-carrying dependency-bearing transaction that reached the blob pool with its blob data is produced like a
     // type-3 blob transaction: it is included, its blob gas is charged, and its dependency is proven in the block.
     [Test]
@@ -1192,21 +1314,23 @@ public class Eip8288BlockProductionTests
         ((TestBlockProducer)chain.BlockProducer).PrepareBlobFields = true;
         await KzgPolynomialCommitments.InitializeAsync();
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], static tx =>
+        Transaction transaction = CreateTransaction(chain, dependency, [], static tx =>
         {
             IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
             ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]]);
             proofsManager.ComputeProofsAndCommitments(wrapper);
             tx.NetworkWrapper = wrapper;
             tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
-            tx.MaxFeePerBlobGas = 1.GWei;
         });
         Assert.That(transaction.CarriesBlobs, Is.True);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
 
         Result<Hash256[]> admitted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
-        Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
-        Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
+            Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        }
         Block block = await ProduceAndImport(chain, slot: 1);
 
         using (Assert.EnterMultipleScope())
@@ -1242,7 +1366,7 @@ public class Eip8288BlockProductionTests
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
         Action<Transaction>? beforeSigning, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
-        ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
+        ulong stateGas = keys.Length == 0 ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
         [
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
@@ -1262,7 +1386,8 @@ public class Eip8288BlockProductionTests
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         beforeSigning?.Invoke(transaction);
         FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);

@@ -39,7 +39,7 @@ jobs:
       BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
       - name: Set artifact directory

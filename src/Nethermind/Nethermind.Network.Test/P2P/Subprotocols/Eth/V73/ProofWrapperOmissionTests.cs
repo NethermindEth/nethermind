@@ -93,8 +93,12 @@ public class ProofWrapperOmissionTests
         Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
         byte[] first = Wrapper(64, a, b), second = Wrapper(64, a, c);
         using WrapperTestNode node = new();
-        Assert.That(node.Transport.PublishWrapper(first), Is.True);
-        Assert.That(node.Transport.PublishWrapper(second), Is.True);
+        node.AddPending(a, b, c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(first), Is.True);
+            Assert.That(node.Transport.PublishWrapper(second), Is.True);
+        }
         FakeWrapperLink link = new(), other = new("other");
         WrapperPeer peer = node.Connect(link), otherPeer = node.Connect(other);
         node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(first).Hash]));

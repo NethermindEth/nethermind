@@ -52,19 +52,20 @@ async Task<int> Send(string rpc, string fixtures, string outDir)
         new(FrameMode.DepVerify, FrameFlags.None, null, unbound.VerificationGas + stark.VerificationGas, UInt256.Zero,
             Eip8288Dependencies.Serialize([unbound, stark])),
     ];
+    var gasLimit = FrameTxValidation.TotalGasLimit(frames);
     var tx = new Transaction
     {
         Type = TxType.FrameTx,
         ChainId = chainId,
-        NonceKeys = [UInt256.Zero],
+        NonceKeys = [],
         Nonce = nonce,
         SenderAddress = key.Address,
         Frames = frames,
-        GasLimit = FrameTxValidation.TotalGasLimit(frames),
+        GasLimit = gasLimit,
         GasPrice = 1.GWei,
-        DecodedMaxFeePerGas = 100.GWei,
+        MaxFee = (UInt256)gasLimit * 100.GWei,
     };
-    tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, default, default)];
+    tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
     var signature = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
     var raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
     raw[0] = signature.RecoveryId;

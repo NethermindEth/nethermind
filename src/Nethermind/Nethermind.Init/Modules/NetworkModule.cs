@@ -76,7 +76,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                     .MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
 
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
-            .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
             .Bind<IWrappedBlobTransactionAdmission, Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry>()
@@ -133,8 +132,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V63.GetReceiptsMessage, V63.GetReceiptsMessageSerializer>()
             .AddMessageSerializer<V63.NodeDataMessage, V63.NodeDataMessageSerializer>()
             .AddMessageSerializer<V63.ReceiptsMessage, V63.ReceiptsMessageSerializer>()
-            .AddSingleton<IZeroInnerMessageSerializer<V63.ReceiptsMessage>, V63.ReceiptsMessageSerializer>() // For v66 receipt
-            .AddSingleton<IZeroInnerMessageSerializer<V63.GetReceiptsMessage>, V63.GetReceiptsMessageSerializer>() // For v70
 
             // V65
             .AddMessageSerializer<V65.GetPooledTransactionsMessage, V65.GetPooledTransactionsMessageSerializer>()

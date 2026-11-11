@@ -26,6 +26,7 @@ public class TxPoolConfig : ITxPoolConfig
     public ulong FrameTxMaxVerifyGas { get; set; } = DefaultFrameTxMaxVerifyGas;
     public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
     public int FrameTxMaxPendingPerDelegatingCode { get; set; } = 16;
+    public int FrameTxMaxCodeDependencies { get; set; } = 8;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
     public bool FrameTxPeerSimulationFairShare { get; set; } = false;
@@ -35,7 +36,7 @@ public class TxPoolConfig : ITxPoolConfig
     public bool FrameTxWidthEnabled { get; set; } = false;
     public ulong FrameTxWidthSafetyFactorPermille { get; set; } = 1000;
     public ulong FrameTxWidthCap { get; set; } = 0;
-    public int HashCacheSize { get; set; } = 512 * 1024;
+    public int HashCacheSize { get; set; } = 128 * 1024;
     public ulong? GasLimit { get; set; } = null;
     public long? MaxTxSize { get; set; } = 128.KiB;
     public long? MaxBlobTxSize { get; set; } = 1.MiB;

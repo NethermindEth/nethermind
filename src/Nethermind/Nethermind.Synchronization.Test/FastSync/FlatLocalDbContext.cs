@@ -90,7 +90,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     /// <summary>
     /// Read-only trie store for reading state trie nodes from flat persistence.
     /// </summary>
-    private class ReadOnlyTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
+    internal class ReadOnlyTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);

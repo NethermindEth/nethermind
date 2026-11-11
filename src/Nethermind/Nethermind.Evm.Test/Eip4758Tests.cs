@@ -196,9 +196,12 @@ public class Eip4758Tests : VirtualMachineTestsBase
         InstallCode(OtherEntry, CallFactoryForSlots(2, 3));
 
         // The retry in the creating transaction collides, and so do both attempts after the sweep.
-        Assert.That(Run(Entry, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(Run(victim, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(Run(OtherEntry, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run(Entry, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(Run(victim, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(Run(OtherEntry, EnabledSpec).StatusCode, Is.EqualTo(StatusCode.Success));
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -228,8 +231,11 @@ public class Eip4758Tests : VirtualMachineTestsBase
         InstallCode(Entry, CallFactoryForSlots(0));
         InstallCode(OtherEntry, CallFactoryForSlots(1));
 
-        Assert.That(Run(Entry, spec).StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(Run(OtherEntry, spec).StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Run(Entry, spec).StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(Run(OtherEntry, spec).StatusCode, Is.EqualTo(StatusCode.Success));
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -534,8 +540,11 @@ public class Eip4758Tests : VirtualMachineTestsBase
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(victim);
         AccountChangesAtIndex? beneficiaryChanges = bal.GetAccountChanges(Existing);
-        Assert.That(victimChanges, Is.Not.Null);
-        Assert.That(beneficiaryChanges, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(victimChanges, Is.Not.Null);
+            Assert.That(beneficiaryChanges, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -626,7 +635,9 @@ public class Eip4758Tests : VirtualMachineTestsBase
 
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value;
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(diff.post.TryGetValue(victim, out NativePrestateTracerAccount? victimPost), Is.EqualTo(enabled));
+#pragma warning restore NUnit2045
         Assert.That(diff.post.TryGetValue(Existing, out NativePrestateTracerAccount? beneficiaryPost), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -771,10 +782,13 @@ public class Eip4758Tests : VirtualMachineTestsBase
 
     private void AssertPersisted(Address address, byte[] code, in UInt256 balance, UInt256? slot0 = null)
     {
-        Assert.That(TestState.AccountExists(address), Is.True, "the account is never destroyed");
-        Assert.That(TestState.GetNonce(address), Is.EqualTo(1UL), "nonce kept");
-        Assert.That(TestState.GetCodeHash(address), Is.EqualTo(Keccak.Compute(code).ValueHash256), "code kept");
-        Assert.That(TestState.GetBalance(address), Is.EqualTo(balance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(address), Is.True, "the account is never destroyed");
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(1UL), "nonce kept");
+            Assert.That(TestState.GetCodeHash(address), Is.EqualTo(Keccak.Compute(code).ValueHash256), "code kept");
+            Assert.That(TestState.GetBalance(address), Is.EqualTo(balance));
+        }
         if (slot0 is not null)
         {
             Assert.That(Storage(address, 0), Is.EqualTo(slot0.Value), "storage kept");
@@ -783,11 +797,14 @@ public class Eip4758Tests : VirtualMachineTestsBase
 
     private void AssertBalanceOnly(Address address, in UInt256 balance)
     {
-        Assert.That(TestState.AccountExists(address), Is.True);
-        Assert.That(TestState.GetBalance(address), Is.EqualTo(balance));
-        Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL));
-        Assert.That(TestState.IsContract(address), Is.False);
-        Assert.That(Storage(address, 0), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(address), Is.True);
+            Assert.That(TestState.GetBalance(address), Is.EqualTo(balance));
+            Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL));
+            Assert.That(TestState.IsContract(address), Is.False);
+            Assert.That(Storage(address, 0), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     private sealed class LogTracer : TxTracer

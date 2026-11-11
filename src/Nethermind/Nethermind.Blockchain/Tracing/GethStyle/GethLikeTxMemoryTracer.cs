@@ -14,15 +14,18 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
     private readonly long _limit;
+    private readonly long _stepLimit;
     private long _resultSize;
     private int _storageUpdates;
 
-    private bool LimitReached => _limit != 0 && _resultSize > _limit;
+    private bool LimitReached => (_limit != 0 && _resultSize > _limit)
+        || (_stepLimit > 0 && Trace.Entries.Count >= _stepLimit);
 
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options, long destroyRefund = 0) : base(options, destroyRefund)
     {
         _transaction = transaction;
         _limit = options.Limit;
+        _stepLimit = options.OpcodeStepLimit;
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;

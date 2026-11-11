@@ -100,21 +100,33 @@ public class InputData
             return;
         }
 
+        bool[] fillable = new bool[transaction.FrameSignatures.Length];
+        for (int i = 0; i < fillable.Length; i++)
+        {
+            TxFrameSignature entry = transaction.FrameSignatures[i];
+            if (entry.Signature.IsEmpty && entry.Scheme == TxFrameSignature.SchemeSecp256k1 && entry.SignsCanonicalHash)
+            {
+                fillable[i] = true;
+                transaction.FrameSignatures[i] = new TxFrameSignature(entry.Scheme, entry.Signer, entry.Msg,
+                    new byte[TxFrameSignature.Secp256k1SignatureLength]);
+            }
+        }
+
         Ecdsa ecdsa = new();
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(transaction);
 
         for (int i = 0; i < transaction.FrameSignatures.Length; i++)
         {
             TxFrameSignature signature = transaction.FrameSignatures[i];
-            if (!signature.Signature.IsEmpty || signature.Scheme == TxFrameSignature.SchemeArbitrary)
+            if (!fillable[i])
             {
-                continue;
-            }
+                if (!signature.Signature.IsEmpty || signature.Scheme == TxFrameSignature.SchemeArbitrary)
+                {
+                    continue;
+                }
 
-            // An explicit-digest entry's bytes stay in the sigHash preimage, so filling one here would
-            // invalidate every canonical signature this loop has already produced.
-            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 || !signature.SignsCanonicalHash)
-            {
+                // An explicit-digest entry's bytes stay in the sigHash preimage, so filling one here would
+                // invalidate every canonical signature this loop has already produced.
                 throw new T8nException($"cannot fill frame signature {i}: only canonical-hash secp256k1 entries are fillable",
                     T8nErrorCodes.ErrorJson);
             }

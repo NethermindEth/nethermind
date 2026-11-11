@@ -25,9 +25,12 @@ public class BlockBodyDecoderTests
         }
         RlpReader reader = new(encoded);
         BlockBody decoded = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader);
-        Assert.That(decoded.StarkProof, Is.EqualTo(body.StarkProof));
-        Assert.That(decoded.Withdrawals, Is.EqualTo(body.Withdrawals));
-        Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.StarkProof, Is.EqualTo(body.StarkProof));
+            Assert.That(decoded.Withdrawals, Is.EqualTo(body.Withdrawals));
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        }
     }
 
     [Test, NonParallelizable]
