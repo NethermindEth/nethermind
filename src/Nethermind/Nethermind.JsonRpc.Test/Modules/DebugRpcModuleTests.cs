@@ -2114,7 +2114,7 @@ public partial class DebugRpcModuleTests
         }
         string expected = scenario switch
         {
-            "source-before-destination" => $"Account {source} is not a precompile",
+            "source-before-destination" => "account 0x0000000000000000000000000000000000000000 is not a precompile",
             "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
             _ => $"account {destination} is already overridden"
         };
@@ -2124,11 +2124,18 @@ public partial class DebugRpcModuleTests
         AssertTraceCallInputError(response, expected);
     }
 
+    private static readonly (string Input, string Expected)[] TraceCallPrecompileSourceCases =
+    [
+        ("0x0000000000000000000000000000000000010001", "0x0000000000000000000000000000000000010001"),
+        ("0x000000000000000000000000000000000000dead", "0x000000000000000000000000000000000000dEaD")
+    ];
+
     [Test]
     public async Task Debug_traceCall_uses_the_trace_repository_for_custom_precompile_preflight(
-        [Values] bool streaming, [Values] bool indexed)
+        [Values] bool streaming, [Values] bool indexed,
+        [ValueSource(nameof(TraceCallPrecompileSourceCases))] (string Input, string Expected) sourceCase)
     {
-        Address source = new("0x0000000000000000000000000000000000010001");
+        Address source = new(sourceCase.Input);
         Address destination = new("0x0000000000000000000000000000000000020000");
         TestSpecProvider specs = new(Berlin.Instance)
         {
@@ -2182,7 +2189,7 @@ public partial class DebugRpcModuleTests
         };
         string inactive = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest",
             new { stateOverrides = collision });
-        AssertTraceCallInputError(inactive, $"Account {source} is not a precompile");
+        AssertTraceCallInputError(inactive, $"account {sourceCase.Expected} is not a precompile");
         object collisionOptions = new
         {
             txIndex = indexed ? "0x0" : null,
@@ -2819,6 +2826,23 @@ public partial class DebugRpcModuleTests
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         }
+    }
+
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Debug_traceCall_runs_a_signed_call_as_its_from([Values] bool fromOmitted, [Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Cancun.Instance));
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(chain.EthereumEcdsa, chain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer = "callTracer" });
+
+        string? caller = (string?)JToken.Parse(response)["result"]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
     }
 
     private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter

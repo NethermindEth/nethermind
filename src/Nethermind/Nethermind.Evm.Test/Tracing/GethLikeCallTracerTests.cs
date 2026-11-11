@@ -568,6 +568,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_decodes_non_ascii_and_padded_offset_revert_reasons(
+        [Values("réverted ✓", "a\nb\tc")] string reason, [Values(32, 64)] int offset, [Values] bool nested)
+    {
+        byte[] payload = TransactionSubstateTests.ErrorStringPayload(reason, offset);
+        byte[] revertCode = Prepare.EvmCode.StoreDataInMemory(0, payload).Revert(payload.Length, 0).Done;
+        byte[] code = revertCode;
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, revertCode, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).STOP().Done;
+        }
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+        JsonElement frame = nested ? trace.RootElement.GetProperty("calls")[0] : trace.RootElement;
+        Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(reason));
+    }
+
     private static TestCaseData[] ActionDiagnosticCompositionCases =>
     [
         new("01", 100000UL, "stack underflow (0 <=> 2)"),
@@ -1477,17 +1496,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (outcome == CreateOutcome.AddressCollision)
-        {
-            Assert.That(trace.CustomTracerResult, Is.Null,
-                "address-collision path never enters the EVM; no call frame should be produced");
-            return;
-        }
-
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (outcome == CreateOutcome.Success)
+        if (outcome == CreateOutcome.AddressCollision)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.EqualTo("contract address collision"));
+                Assert.That(frame.To, Is.Null);
+                Assert.That(frame.Gas, Is.EqualTo(100000UL));
+                Assert.That(frame.GasUsed, Is.EqualTo(100000UL), "a collision consumes all the gas");
+                Assert.That(frame.Input.ToArray(), Is.EqualTo(initCode));
+            }
+        }
+        else if (outcome == CreateOutcome.Success)
         {
             using (Assert.EnterMultipleScope())
             {

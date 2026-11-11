@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Nethermind.Serialization.Json;
@@ -42,6 +43,10 @@ namespace Nethermind.JsonRpc.Modules
         public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 
         public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Null;
+
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared, CancellationToken cancellationToken) => Null;
+
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken) => Null;
 
         public void Return(string methodName, IRpcModule rpcModule) { }
 

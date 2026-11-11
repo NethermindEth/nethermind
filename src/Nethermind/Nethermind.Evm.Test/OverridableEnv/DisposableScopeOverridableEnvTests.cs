@@ -153,7 +153,7 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { MovePrecompileToAddress = TestItem.AddressB } }
             });
 
-        Assert.That(invalidOverride, Throws.TypeOf<ArgumentException>().With.Message.Contains($"Account {TestItem.AddressA} is not a precompile"));
+        Assert.That(invalidOverride, Throws.TypeOf<ArgumentException>().With.Message.Contains($"account {TestItem.AddressA.ToString(withEip55Checksum: true)} is not a precompile"));
 
         using Scope<Components> scope = ctx.Env.BuildAndOverride(
             Build.A.BlockHeader.TestObject,
@@ -168,13 +168,14 @@ public class DisposableScopeOverridableEnvTests
     [Test]
     public void PrecompileMoveError_ChecksSourceBeforeDestination([Values] bool isPrecompile, [Values] bool destinationOverridden)
     {
+        Address source = new("0x000000000000000000000000000000000000dead");
         Dictionary<Address, AccountOverride> overrides = [];
         if (destinationOverridden) overrides.Add(TestItem.AddressB, new());
-        string? expected = !isPrecompile ? $"Account {TestItem.AddressA} is not a precompile"
+        string? expected = !isPrecompile ? "account 0x000000000000000000000000000000000000dEaD is not a precompile"
             : destinationOverridden ? $"account {TestItem.AddressB} is already overridden" : null;
 
         string? actual = StateOverridesExtensions.GetPrecompileMoveError(
-            TestItem.AddressA, TestItem.AddressB, isPrecompile, overrides);
+            source, TestItem.AddressB, isPrecompile, overrides);
 
         using (Assert.EnterMultipleScope())
         {

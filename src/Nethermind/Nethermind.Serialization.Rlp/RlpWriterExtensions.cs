@@ -305,7 +305,7 @@ public static class RlpWriterExtensions
         writer.WriteIntegerBytes(bytes);
     }
 
-    /// <summary>Writes ASCII text as a byte string; <see langword="null"/> writes <c>0x80</c>.</summary>
+    /// <summary>Writes UTF-8 text as a byte string; <see langword="null"/> writes <c>0x80</c>.</summary>
     public static void Encode(this ref RlpWriter writer, string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -314,8 +314,8 @@ public static class RlpWriterExtensions
             return;
         }
 
-        using ArrayPoolSpan<byte> bytes = new(value.Length);
-        Encoding.ASCII.GetBytes(value.AsSpan(), bytes);
+        using ArrayPoolSpan<byte> bytes = new(Encoding.UTF8.GetByteCount(value));
+        Encoding.UTF8.GetBytes(value.AsSpan(), bytes);
         writer.Write(bytes);
     }
 

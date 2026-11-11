@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
@@ -262,6 +263,22 @@ namespace Nethermind.Core.Test
             writer.Encode((ReadOnlySpan<byte>)value);
 
             AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
+        }
+
+        [TestCase("", "80")]
+        [TestCase("a", "61")]
+        [TestCase("eth", "83657468")]
+        [TestCase("é", "82c3a9")]
+        [TestCase("réverted ✓", "8d72c3a976657274656420e29c93")]
+        public void RlpWriter_encodes_strings_as_utf8(string value, string expectedHex)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(value)];
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
+            writer.Encode(value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, Bytes.FromHexString(expectedHex));
+            RlpReader reader = new(buffer);
+            Assert.That(reader.DecodeString(), Is.EqualTo(value));
         }
 
         [Test]
