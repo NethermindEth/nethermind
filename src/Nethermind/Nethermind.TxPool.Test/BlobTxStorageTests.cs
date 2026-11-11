@@ -376,7 +376,10 @@ public class BlobTxStorageTests
                 return storage.TryGetBlobTransactionsFromBlock(358, out _);
             },
                 CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+#pragma warning disable NUnit2045 // The control wait is meaningful only once the locked read has started.
             Assert.That(lockedReadStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the whole-block read waits for the lock");
+#pragma warning restore NUnit2045
 
             Transaction[] results = new Transaction[1];
             read = Task.Factory.StartNew(() => batched
