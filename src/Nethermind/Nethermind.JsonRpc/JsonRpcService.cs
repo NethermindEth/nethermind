@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -38,7 +39,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context) =>
+        SendRequestAsync(rpcRequest, context, default);
+
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken)
     {
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
             gcKeeper.CancelPendingGC();
@@ -58,28 +62,32 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context, cancellationToken);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
-                : AwaitRequestAsync(responseTask, rpcRequest);
+                : AwaitRequestAsync(responseTask, rpcRequest, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
         {
             return ValueTask.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
 
-        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest, CancellationToken cancellationToken)
         {
             try
             {
                 return await responseTask;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!IsTransportCancellation(ex, cancellationToken))
             {
                 return ReturnErrorResponse(rpcRequest, ex);
             }
         }
     }
+
+    /// <summary>Whether <paramref name="ex"/> is the caller abandoning the request, which is not answered: nobody is left to read the answer.</summary>
+    private static bool IsTransportCancellation(Exception ex, CancellationToken cancellationToken) =>
+        ex is OperationCanceledException canceled && cancellationToken.IsCancellationRequested && canceled.CancellationToken == cancellationToken;
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
@@ -125,12 +133,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (_logger.IsDebug) _logger.Debug($"Internal error cause, request: {DescribeRequestForLog(request)}, exception chain: {ex.DescribeChain(MaxLoggedExceptionChainDepth):hide}");
     }
 
-    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
         // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method, cancellationToken);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
             contextAwareModule.Context = context;
