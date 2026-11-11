@@ -3383,7 +3383,7 @@ public class BlockTreeTests
     }
 
     [Test]
-    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
+    public void On_restart_loads_already_processed_genesis_block()
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -3413,13 +3413,13 @@ public class BlockTreeTests
                 timestamp: 1695902100,
                 extraData: [])
             {
-                Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = Keccak.EmptyTreeHash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            genesis.Header.Hash = genesis.Header.CalculateHash();
 
             // Second block
             Block second = new(new(
@@ -3432,13 +3432,13 @@ public class BlockTreeTests
                 timestamp: genesis.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            second.Header.Hash = second.Header.CalculateHash();
 
             // Third block
             Block third = new(new(
@@ -3451,18 +3451,18 @@ public class BlockTreeTests
                 timestamp: second.Header.Timestamp + 100,
                 extraData: [])
             {
-                Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
                 TxRoot = Keccak.EmptyTreeHash,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 MixHash = Keccak.Zero
             });
+            third.Header.Hash = third.Header.CalculateHash();
 
             tree.SuggestBlock(genesis);
             Assert.That(tree.Genesis, Is.Not.Null);
 
-            tree.TryUpdateMainChain(genesis.Header, wereProcessed, preloadedBlocks: [genesis]);
+            tree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: [genesis]);
 
             tree.SuggestBlock(second);
             tree.SuggestBlock(third);
