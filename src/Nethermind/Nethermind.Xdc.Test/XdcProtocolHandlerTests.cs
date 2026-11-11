@@ -78,7 +78,7 @@ public class XdcProtocolHandlerTests
     private static ZeroPacket CreatePacket(int packetType)
     {
         IByteBuffer buffer = Unpooled.Buffer();
-        ZeroPacket packet = new(buffer);
+        NettyBufferPacket packet = new(buffer);
         packet.PacketType = (byte)packetType;
         return packet;
     }
@@ -95,7 +95,7 @@ public class XdcProtocolHandlerTests
     private static void HandleIncomingStatus(XdcProtocolHandler handler, IMessageSerializationService serializer)
     {
         ZeroPacket packet = CreatePacket(Eth62MessageCode.Status);
-        serializer.Deserialize<StatusMessage>(packet.Content).Returns(new StatusMessage());
+        serializer.Deserialize<StatusMessage>(packet).Returns(new StatusMessage());
         handler.HandleMessage(packet);
     }
 
@@ -117,7 +117,7 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 5);
             ZeroPacket packet = CreatePacket(XdcMessageCode.VoteMsg);
-            serializer.Deserialize<VoteMsg>(packet.Content).Returns(new VoteMsg { Vote = vote });
+            serializer.Deserialize<VoteMsg>(packet).Returns(new VoteMsg { Vote = vote });
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
@@ -135,7 +135,7 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 3);
             ZeroPacket packet = CreatePacket(XdcMessageCode.TimeoutMsg);
-            serializer.Deserialize<TimeoutMsg>(packet.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            serializer.Deserialize<TimeoutMsg>(packet).Returns(new TimeoutMsg { Timeout = timeout });
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
@@ -153,7 +153,7 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            serializer.Deserialize<SyncInfoMsg>(packet).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
@@ -172,7 +172,7 @@ public class XdcProtocolHandlerTests
         using (handler)
         {
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = null });
+            serializer.Deserialize<SyncInfoMsg>(packet).Returns(new SyncInfoMsg { SyncInfo = null });
 
             HandleIncomingStatus(handler, serializer);
             Assert.DoesNotThrow(() => handler.HandleMessage(packet));
@@ -197,7 +197,7 @@ public class XdcProtocolHandlerTests
             syncPeerPool.AllPeers.Returns([new PeerInfo(handler), new PeerInfo(otherHandler)]);
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            serializer.Deserialize<SyncInfoMsg>(packet).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
 
             // One accepted half is enough to pass the message on.
             syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns((string?)null);
@@ -224,7 +224,7 @@ public class XdcProtocolHandlerTests
             syncPeerPool.AllPeers.Returns([new PeerInfo(otherHandler)]);
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            serializer.Deserialize<SyncInfoMsg>(packet).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns("QC is stale");
             syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert).Returns("TC is stale");
 
@@ -391,12 +391,12 @@ public class XdcProtocolHandlerTests
 
             Vote vote = CreateVote(round: 3);
             ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
-            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            serializer.Deserialize<VoteMsg>(votePacket).Returns(new VoteMsg { Vote = vote });
             handler.HandleMessage(votePacket);
 
             Timeout timeout = CreateTimeout(round: 3);
             ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
-            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket).Returns(new TimeoutMsg { Timeout = timeout });
             handler.HandleMessage(timeoutPacket);
 
             votesManager.Received(1).OnReceiveVote(vote);
@@ -442,7 +442,7 @@ public class XdcProtocolHandlerTests
 
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
 
             handler.HandleMessage(syncInfoPacket);
 
@@ -467,17 +467,17 @@ public class XdcProtocolHandlerTests
 
             Vote vote = CreateVote(round: 5);
             ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
-            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            serializer.Deserialize<VoteMsg>(votePacket).Returns(new VoteMsg { Vote = vote });
             handler.HandleMessage(votePacket);
 
             Timeout timeout = CreateTimeout(round: 5);
             ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
-            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket).Returns(new TimeoutMsg { Timeout = timeout });
             handler.HandleMessage(timeoutPacket);
 
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             handler.HandleMessage(syncInfoPacket);
 
             votesManager.Received(1).OnReceiveVote(vote);

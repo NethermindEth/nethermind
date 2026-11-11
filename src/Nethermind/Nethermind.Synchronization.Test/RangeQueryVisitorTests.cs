@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -27,6 +26,7 @@ using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -48,7 +48,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
-        _inputTree.Accept(visitor, _inputTree.RootHash, CreateVisitingOptions());
+        _inputTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), _inputTree.RootHash, CreateVisitingOptions());
 
         Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
@@ -76,7 +76,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
-        tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
+        tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), tree.RootHash, CreateVisitingOptions());
 
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary(static (it) => it.Item1, static (it) => it.Item2);
         Assert.That(nodes.Count, Is.EqualTo(3));
@@ -103,7 +103,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
-        tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
+        tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), tree.RootHash, CreateVisitingOptions());
 
         Assert.That(leafCollector.Leafs.Count, Is.EqualTo(0));
         Action act = () => visitor.GetProofs();
@@ -132,7 +132,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
-        stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
+        stateTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), stateTree.RootHash, CreateVisitingOptions());
         Assert.That(leafCollector.Leafs.Count, Is.EqualTo(3));
     }
 
@@ -168,7 +168,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
-        stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
+        stateTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), stateTree.RootHash, CreateVisitingOptions());
 
         Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
@@ -206,7 +206,7 @@ public class RangeQueryVisitorTests
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, leafCollector);
-        inputStateTree.Accept(visitor, inputStateTree.RootHash, CreateVisitingOptions(), storageAddr: account);
+        inputStateTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), inputStateTree.RootHash, CreateVisitingOptions(), storageAddr: account);
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary((it) => it.Item1, (it) => it.Item2);
         Assert.That(nodes.Count, Is.EqualTo(6));
 
@@ -221,7 +221,7 @@ public class RangeQueryVisitorTests
     {
         public ArrayPoolList<(ValueHash256, byte[]?)> Leafs { get; } = new(0);
 
-        public int Collect(in ValueHash256 path, CappedArray<byte> value)
+        public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
         {
             Leafs.Add((path, value.ToArray()));
             return 32 + Rlp.LengthOfByteString(value.Length, 0);

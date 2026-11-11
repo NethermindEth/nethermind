@@ -4984,16 +4984,17 @@ public partial class FrameTxProcessorTests
             JsonElement verifyFrame = frames[0];
             Assert.That(verifyFrame.GetProperty("type").GetString(), Is.EqualTo("STATICCALL"));
             Assert.That(verifyFrame.GetProperty("to").GetString(), Is.EqualTo(Sender.ToString()));
-            Assert.That(HexValue(verifyFrame, "gas"), Is.EqualTo(tx.Frames![0].GasLimit),
+            Assert.That(HexValue(verifyFrame, "gas"), Is.EqualTo(tx.Frames![0].ExecutionGasLimit),
                 "a dispatched frame's gas is the limit it declared, as an undispatched one's is");
-            Assert.That(HexValue(verifyFrame, "gasUsed"), Is.EqualTo(receipts[0].GasUsed),
-                "and its gasUsed is what its receipt records, across both dimensions");
+            Assert.That(HexValue(verifyFrame, "gasUsed"), Is.EqualTo(receipts[0].ExecutionGasUsed),
+                "and its gasUsed is the execution gas its receipt records");
 
             JsonElement senderFrame = frames[1];
             Assert.That(senderFrame.GetProperty("type").GetString(), Is.EqualTo("CALL"));
             Assert.That(senderFrame.GetProperty("to").GetString(), Is.EqualTo(Observer.ToString()));
-            Assert.That(HexValue(senderFrame, "gas"), Is.EqualTo(tx.Frames![1].GasLimit));
-            Assert.That(HexValue(senderFrame, "gasUsed"), Is.EqualTo(receipts[1].GasUsed)
+            Assert.That(HexValue(senderFrame, "gas"), Is.EqualTo(tx.Frames![1].ExecutionGasLimit));
+            Assert.That(receipts[1].StateGasUsed, Is.GreaterThan(0UL), "the SENDER frame's new slot draws state gas");
+            Assert.That(HexValue(senderFrame, "gasUsed"), Is.EqualTo(receipts[1].ExecutionGasUsed)
                 .And.Not.EqualTo(HexValue(root, "gasUsed")),
                 "each frame spends its own gas; the transaction's total belongs to the synthetic root");
 

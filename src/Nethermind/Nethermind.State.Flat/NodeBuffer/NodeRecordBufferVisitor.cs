@@ -134,14 +134,15 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
     INodeRecordVisitor<TNodeContext> visitor,
     VisitingOptions options,
     VisitingStats? diagnostics)
-    : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsFullDbScan ? ReadFlags.HintReadAhead : ReadFlags.None))
+    : NodeRecordBufferVisitor(bundle, stateSnapshot, diagnostics, visitor.ExtraReadFlag | (visitor.IsRangeScan ? ReadFlags.HintReadAhead : ReadFlags.None))
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
     private readonly ConcurrencyController _workers = new(options.MaxDegreeOfParallelism);
     private readonly DecodeBuffer _buffer = new();
 
-    public void Accept(Hash256 rootHash)
+    /// <param name="address">The address hash of the storage trie at <paramref name="rootHash"/>, to visit that trie alone as <see cref="PatriciaTree.Accept{TNodeContext}"/> does given a storage address; null for the state trie.</param>
+    public void Accept(Hash256 rootHash, Hash256? address)
     {
         if (!visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
         if (rootHash == Keccak.EmptyTreeHash)
@@ -150,14 +151,14 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext>(
             return;
         }
 
-        if (!TryLoadRoot(null, rootHash, _buffer, out NodeRecord root))
+        if (!TryLoadRoot(address, rootHash, _buffer, out NodeRecord root))
         {
             visitor.VisitMissingNode(default, rootHash);
             return;
         }
 
         if (visitor.IsFullDbScan) visitor.VisitTree(default, rootHash);
-        Visit(root, default, null, TreePath.Empty, long.MaxValue, _buffer);
+        Visit(root, default, address, TreePath.Empty, long.MaxValue, _buffer);
         _buffer.Dispose();
     }
 

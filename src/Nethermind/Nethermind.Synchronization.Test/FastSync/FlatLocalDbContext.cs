@@ -9,6 +9,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -64,12 +65,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        remote.StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);
         if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        localTree.Accept(dumper, localTree.RootHash);
+        localTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), localTree.RootHash);
         string localStr = dumper.ToString();
         if (!skipLogs) logger.Info(localStr);
 

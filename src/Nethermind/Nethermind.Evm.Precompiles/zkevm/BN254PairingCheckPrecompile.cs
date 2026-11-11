@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -25,7 +26,7 @@ public partial class BN254PairingCheckPrecompile
             return output;
         }
 
-        Accelerators.Status status = Accelerators.BN254Pairing(
+        Accelerators.Status status = CurveAccelerators.BN254Pairing(
             inputData.Span,
             (nuint)inputData.Length / BN254.PairSize,
             out bool verified

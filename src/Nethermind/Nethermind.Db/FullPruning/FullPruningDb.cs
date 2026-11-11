@@ -98,7 +98,7 @@ namespace Nethermind.Db.FullPruning
             // Copies rather than wrapping the callback: passing a TArg-wrapping type to the interface's TryGet is generic recursion
             // through a Nethermind.Core parameter, which bflat's ILC fails to compile in the zkVM guests.
             byte[]? value = Get(key, flags);
-            if (value is not { Length: > 0 }) return false;
+            if (value is null) return false;
 
             action(value, arg);
             return true;

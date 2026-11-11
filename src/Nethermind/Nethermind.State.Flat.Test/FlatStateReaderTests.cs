@@ -43,7 +43,7 @@ public class FlatStateReaderTests
     [
         new TestCaseData((Action<FlatStateReader>)(reader => reader.TryGetAccount(_header, TestItem.AddressA, out _))) { TestName = "TryGetAccount" },
         new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1, out _))) { TestName = "GetStorage" },
-        new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header))) { TestName = "RunTreeVisitor" },
+        new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null))) { TestName = "RunTreeVisitor" },
     ];
 
     [TestCaseSource(nameof(UnavailableStateReads))]
@@ -59,7 +59,7 @@ public class FlatStateReaderTests
     {
         FlatStateReader reader = CreateReader(new HistoricalStateFlatDbManager());
 
-        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null));
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
@@ -68,7 +68,7 @@ public class FlatStateReaderTests
     {
         FlatStateReader reader = CreateReader(new LateHistoricalFlatDbManager());
 
-        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header, visitingOptions: null, diagnostics: null));
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
@@ -80,7 +80,7 @@ public class FlatStateReaderTests
         CurrentBundleFlatDbManager flatDbManager = new(trieReader, snapshot: null, persisted: null);
         FlatStateReader reader = CreateReader(flatDbManager);
 
-        if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
+        if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header, visitingOptions: null, diagnostics: null);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
 
         using (Assert.EnterMultipleScope())
@@ -213,10 +213,10 @@ public class FlatStateReaderTests
         using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         using (Assert.EnterMultipleScope())
@@ -231,7 +231,7 @@ public class FlatStateReaderTests
         if (fullScan)
         {
             TreeDumper dumper = new();
-            reader.RunTreeVisitor(dumper, header);
+            reader.RunTreeVisitor(dumper, header, visitingOptions: null, diagnostics: null);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(dumper.ToString(), Does.Contain("STATE TREE"));
@@ -281,6 +281,7 @@ public class FlatStateReaderTests
     {
         public int Nodes;
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public bool ExpectAccounts => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }

@@ -291,8 +291,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TContinuable : struct, IFlag
         {
             bool carriesExecutionGas = CarriesExecutionGas<TTracingInst>();
-            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody
-                && TOpcode.StackInputs > 0 && state.Vm.IsTracingActions ? stack.Head : 0;
+            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 ? stack.Head : 0;
 
             // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
@@ -378,19 +377,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 if (carriesExecutionGas)
                 {
-                    // Each failed check leaves straight from here. Through an OpcodeResult, every checked opcode would
-                    // pack the counter and the status into one register and test the status again on its success path.
                     LoadFixedGas(out TGasPolicy localGas, gas);
-                    if (!TOpcode.TryConsumeGas(ref localGas))
-                        return ExitOpcode(ref state, carriesExecutionGas, GetExecutionGas(ref localGas), pc, opCodeCount, EvmExceptionType.OutOfGas);
-
-                    gas = GetExecutionGas(ref localGas);
-                    if (!CheckedStackFits<TOpcode>(in stack))
+                    if (!TOpcode.TryConsumeGas(ref localGas) || !CheckedStackFits<TOpcode>(in stack))
                     {
-                        EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
-                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
-                            state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
-                        return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, stackFailure);
+                        // A failed check leaves through a tail call. Reporting it here would put a call into the
+                        // handler, and RyuJIT then saves callee-saved registers on every path, including the one
+                        // every checked opcode takes.
+                        nint failure = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&FailCheckedOpcode<TOpcode>;
+                        IL.EnsureLocal(in failure);
+
+                        IL.Emit.Ldarg(nameof(stack));
+                        IL.Emit.Ldarg(nameof(gas));
+                        IL.Emit.Ldarg(nameof(state));
+                        IL.Emit.Ldarg(nameof(pc));
+                        IL.Emit.Ldarg(nameof(opCodeCount));
+                        IL.Push(failure);
+                        IL.Emit.Tail();
+                        IL.Emit.Calli(new StandAloneMethodSig(
+                            CallingConventions.Standard,
+                            TypeRef.Type<EvmExceptionType>(),
+                            TypeRef.Type<EvmStack>().MakeByRefType(),
+                            TypeRef.Type<ulong>(),
+                            TypeRef.Type<DispatchState>().MakeByRefType(),
+                            TypeRef.Type<nint>(),
+                            TypeRef.Type<nint>()));
+                        IL.Emit.Ret();
+                        throw IL.Unreachable();
                     }
 
                     ExecuteCheckedBodyAfterChecks<TOpcode>(ref stack, ref localGas, ref state, ref pc);
@@ -478,13 +490,77 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         Exit:
             if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
-                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
+                exceptionType == EvmExceptionType.StackUnderflow)
+            {
+                // Reported through a tail call for the same reason as a failed check: the trace string is the only
+                // call site in an otherwise leaf unchecked handler such as JUMP.
+                ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+                nint underflow = (nint)(delegate*<ref EvmStack, ref DispatchState, nint, nint, EvmExceptionType>)&ReportUncheckedUnderflow<TOpcode>;
+                IL.EnsureLocal(in underflow);
+                IL.EnsureLocal(in traceStackHead);
+
+                IL.Emit.Ldarg(nameof(stack));
+                IL.Emit.Ldarg(nameof(state));
+                IL.Push(traceStackHead);
+                IL.Emit.Ldarg(nameof(pc));
+                IL.Push(underflow);
+                IL.Emit.Tail();
+                IL.Emit.Calli(new StandAloneMethodSig(
+                    CallingConventions.Standard,
+                    TypeRef.Type<EvmExceptionType>(),
+                    TypeRef.Type<EvmStack>().MakeByRefType(),
+                    TypeRef.Type<DispatchState>().MakeByRefType(),
+                    TypeRef.Type<nint>(),
+                    TypeRef.Type<nint>()));
+                IL.Emit.Ret();
+                throw IL.Unreachable();
+            }
+            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+        }
+
+        /// <summary>
+        /// Emits the action-trace detail for an unchecked opcode that underflowed the stack, after the chain has
+        /// already recorded its exit, and returns the underflow status.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ReportUncheckedUnderflow<TOpcode>(
+            ref EvmStack stack,
+            ref DispatchState state,
+            nint traceStackHead,
+            nint pc)
+            where TOpcode : struct, IOpcodeBody
+        {
+            if (state.Vm.IsTracingActions)
             {
                 Instruction opcode = (Instruction)Unsafe.Add(ref stack.Code, pc - 1);
                 if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
                     state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
             }
-            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        /// <summary>
+        /// Leaves the chain for a checked opcode that failed its gas or stack check under carried execution gas, from
+        /// the counters already advanced past it, charging and reporting as the checks do one by one.
+        /// </summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType FailCheckedOpcode<TOpcode>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            nint pc,
+            nint opCodeCount)
+            where TOpcode : struct, IOpcodeBody
+        {
+            LoadFixedGas(out TGasPolicy localGas, gas);
+            if (!TOpcode.TryConsumeGas(ref localGas))
+                return ExitOpcode(ref state, carriesExecutionGas: true, GetExecutionGas(ref localGas), pc, opCodeCount, EvmExceptionType.OutOfGas);
+
+            EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
+            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
+                state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
+            return ExitOpcode(ref state, carriesExecutionGas: true, GetExecutionGas(ref localGas), pc, opCodeCount, stackFailure);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -522,24 +598,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             opCodeCount++;
             nint fallthroughPc = pc;
-            OpcodeResult result;
+            EvmExceptionType exceptionType;
             if (carriesExecutionGas)
             {
                 LoadFixedGas(out TGasPolicy localGas, gas);
-                result = TTracingInst.IsActive
-                    ? EvmInstructions.InstructionJumpIf(ref stack, ref localGas, vm, pc)
-                    : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref localGas, vm, pc);
+                exceptionType = EvmInstructions.InstructionJumpIfCore(ref stack, ref localGas, ref pc, ref opCodeCount);
                 gas = GetExecutionGas(ref localGas);
             }
             else
             {
-                result = TTracingInst.IsActive
+                OpcodeResult result = TTracingInst.IsActive
                     ? EvmInstructions.InstructionJumpIf(ref stack, ref state.Gas, vm, pc)
                     : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref state.Gas, vm, pc);
+                pc = result.ProgramCounter;
+                exceptionType = result.Exception;
             }
-            pc = result.ProgramCounter;
 
-            if (result.Exception != EvmExceptionType.None)
+            if (exceptionType != EvmExceptionType.None)
                 goto Exit;
 
             Debug.Assert(vm.ReturnData is null,
@@ -608,7 +683,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             throw IL.Unreachable();
 
         Exit:
-            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, result.Exception);
+            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
     }
 }
