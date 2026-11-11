@@ -91,6 +91,42 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("0x9", null, 0, false, true)]
+    [TestCase(null, "0x0", 0, false, true)]
+    [TestCase("0x9", null, 5, false, false)]
+    [TestCase("0x9", null, 5, true, true)]
+    public async Task Debug_traceCall_blob_fee_override_reads_prevrandao_or_difficulty(
+        string? blobBaseFee, string? maxFeePerBlobGas, int difficulty, bool isPostMerge, bool expectMixHash)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        head.ExcessBlobGas = 0;
+        head.Difficulty = (UInt256)difficulty;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = isPostMerge;
+        const string address = "0xc200000000000000000000000000000000000000";
+        Dictionary<string, object> transaction = new() { ["to"] = address, ["gas"] = "0x186a0" };
+        Dictionary<string, object> options = new()
+        {
+            ["stateOverrides"] = new Dictionary<string, object> { [address] = new { code = "0x4460005260206000f3" } }
+        };
+        if (blobBaseFee is not null) options["blockOverrides"] = new { blobBaseFee };
+        if (maxFeePerBlobGas is not null)
+        {
+            transaction["maxFeePerBlobGas"] = maxFeePerBlobGas;
+            transaction["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest", options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]!["failed"]!.Value<bool>(), Is.False, response);
+            Assert.That(ParseReturnValue(response),
+                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()));
+        }
+    }
+
     private sealed class BlobFeeObservingAdapter(ITransactionProcessorAdapter inner,
         GethStyleTracer.TraceCallRequestState? request, List<UInt256?> observedFees) : ITransactionProcessorAdapter
     {
