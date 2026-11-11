@@ -177,17 +177,23 @@ public class PersistedSnapshotSharedBloomTests
         bool reload = donor is Donor.ReloadedCompactSized or Donor.ReloadedLarge;
         using TempPath dir = TempPath.GetTempDirectory();
         MemDb catalog = new();
+        RefCountedBloomFilter? ownerBloom = null;
         using (FlatTestContainer run = new(Config(), baseDbPath: dir.Path, catalogDb: catalog))
         {
             for (ulong block = 1; block <= (donor == Donor.ReloadedCompactSized ? 6ul : 8ul); block++)
                 ConvertAndCompact(run, block, scenario, largeMerge: donor != Donor.CompactSized);
-            if (!reload) AssertMechanism(run.Repository, donor, shares);
+            if (!reload) ownerBloom = AssertMechanism(run.Repository, donor, shares);
         }
 
-        if (!reload) return;
-        // After the loader has returned: a bloom it released too early fails the owner's probes.
-        using FlatTestContainer restarted = new(Config(), baseDbPath: dir.Path, catalogDb: catalog);
-        AssertMechanism(restarted.Repository, donor, shares);
+        if (reload)
+        {
+            // After the loader has returned: a bloom it released too early fails the owner's probes.
+            using FlatTestContainer restarted = new(Config(), baseDbPath: dir.Path, catalogDb: catalog);
+            ownerBloom = AssertMechanism(restarted.Repository, donor, shares);
+        }
+
+        // Every lease on the owner's bloom went with its container: a leaked lease or snapshot would keep it alive.
+        Assert.That(ownerBloom?.ToString(), Is.EqualTo("Disposed"), "the owner's bloom once its container is disposed");
     }
 
     /// <summary>
@@ -252,7 +258,8 @@ public class PersistedSnapshotSharedBloomTests
         }
     }
 
-    private static void AssertMechanism(SnapshotRepository repository, Donor donor, bool shares)
+    // Returns the owner's bloom.
+    private static RefCountedBloomFilter? AssertMechanism(SnapshotRepository repository, Donor donor, bool shares)
     {
         (ulong to, SnapshotTier tier) = donor switch
         {
@@ -262,19 +269,20 @@ public class PersistedSnapshotSharedBloomTests
         };
         using (Assert.EnterMultipleScope())
         {
-            AssertSharing(repository, State(to), tier, shares);
+            RefCountedBloomFilter? ownerBloom = AssertSharing(repository, State(to), tier, shares);
             if (donor == Donor.ReloadedCompactSized) AssertSharing(repository, State(6), SnapshotTier.PersistedSmallCompacted, shares: true);
             AssertEveryBloomCoversItsTable(repository);
+            return ownerBloom;
         }
     }
 
     // The owner has a real bloom that admits its keys, and every other persisted snapshot inside its range is on that
-    // bloom exactly when it shares.
-    private static void AssertSharing(SnapshotRepository repository, StateId to, SnapshotTier tier, bool shares)
+    // bloom exactly when it shares. Returns the owner's bloom.
+    private static RefCountedBloomFilter? AssertSharing(SnapshotRepository repository, StateId to, SnapshotTier tier, bool shares)
     {
         bool leased = repository.TryLeasePersistedState(to, tier, out PersistedSnapshot? owner);
         Assert.That(leased, Is.True, $"precondition: {tier} at {to.BlockNumber}");
-        if (!leased) return;
+        if (!leased) return null;
         using (owner)
         {
             BloomFilter bloom = owner!.Bloom;
@@ -292,7 +300,11 @@ public class PersistedSnapshotSharedBloomTests
                 }
 
                 Assert.That(contained, Is.Not.Empty, $"precondition: snapshots inside {range}");
+                // One lease per snapshot on the bloom: the owner's, and each sharer's.
+                Assert.That(owner.BloomRef.ToString(), Is.EqualTo($"Leases: {(shares ? 1 + contained.Count : 1)}"), $"{range}: leases on its bloom");
             }
+
+            return owner.BloomRef;
         }
     }
 
