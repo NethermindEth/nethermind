@@ -1299,18 +1299,25 @@ namespace Nethermind.Core.Test
         public void CountZerosWordAtATime_matches_naive(
             [Values(0, 7, 8, 31, 32, 39, 223, 224, 225, 231, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
             [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill,
-            [Values(0, 1, 7)] int start)
+            [Values(0, 1, 2, 3, 7)] int start)
         {
             Random rng = new(length);
-            byte[] data = new byte[start + length];
+            byte[] buffer = new byte[start + length];
+            buffer.AsSpan(0, start).Fill(0xFF);
             int expected = 0;
-            for (int i = start; i < data.Length; i++)
+            for (int i = start; i < buffer.Length; i++)
             {
-                data[i] = fill >= 0 ? (byte)fill : rng.Next(3) == 0 ? (byte)0 : (byte)rng.Next(256);
-                if (data[i] == 0) expected++;
+                buffer[i] = fill >= 0 ? (byte)fill : rng.Next(3) == 0 ? (byte)0 : (byte)rng.Next(256);
+                if (buffer[i] == 0) expected++;
             }
 
-            Assert.That(Bytes.CountZerosWordAtATime(data.AsSpan(start)), Is.EqualTo(expected));
+            ReadOnlySpan<byte> data = buffer.AsSpan(start);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bytes.CountZerosWordAtATime(data), Is.EqualTo(expected));
+                // The 32-bit form the guest takes, which reads the bytes before a word boundary one by one.
+                Assert.That(Bytes.CountZerosInAlignedWords(data), Is.EqualTo(expected));
+            }
         }
 
         private static IEnumerable<TestCaseData> LeadingZerosCountCases()

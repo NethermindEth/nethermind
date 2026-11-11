@@ -277,7 +277,7 @@ namespace Nethermind.Trie
                 previousRlp = item.FullRlp.AsSpan();
                 if (previousRlp.Length == FullBranchRlpLength)
                 {
-                    result = RentBranchRlp(pool, FullBranchRlpLength, path);
+                    result = RentPatchedBranchRlp(pool, previousRlp, path);
                     if (TryPatchFullBranch(tree, ref path, item, previousRlp, result.AsSpan()[..FullBranchRlpLength], pool, canBeParallel))
                         return result;
 
@@ -1241,9 +1241,12 @@ namespace Nethermind.Trie
                 // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
                 Debug.Assert(nodeRlp[^1] == 128);
                 Debug.Assert(nodeRlp[0] == 0xf9);
+                NoteFullBranchPatched(destination, -1);
                 Bytes.Copy(nodeRlp, destination);
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
+                // Slots are patched in order, so the bytes before the first patched hash are the previous ones.
+                int unchanged = FullBranchRlpLength;
                 ushort taken = TakenChildren(item);
                 for (; Unsafe.IsAddressLessThan(ref child, ref end) && (!TracksTakenChildren || taken != 0); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
                 {
@@ -1252,6 +1255,7 @@ namespace Nethermind.Trie
                     if (data is null) continue;
                     if (ReferenceEquals(data, _nullNode)) return false;
                     int i = ChildIndex(ref child, ref end);
+                    if (unchanged == FullBranchRlpLength) unchanged = headerLength + i * Rlp.LengthOfKeccakRlp + 1;
                     Hash256? hash = data as Hash256;
                     if (hash is null)
                     {
@@ -1268,6 +1272,7 @@ namespace Nethermind.Trie
                     }
                     Rlp.Encode(destination, headerLength + i * Rlp.LengthOfKeccakRlp, hash);
                 }
+                NoteFullBranchPatched(destination, unchanged);
                 return true;
             }
         }
