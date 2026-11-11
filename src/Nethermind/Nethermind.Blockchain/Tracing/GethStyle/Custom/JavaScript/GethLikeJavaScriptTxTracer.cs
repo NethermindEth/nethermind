@@ -50,6 +50,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _pendingStep;
     private bool _pendingPostStep;
     private bool _gasCostIsStatic;
+    private bool _pendingSelfDestruct;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -271,9 +272,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
         }
 
-        _log.contract = callType == ExecutionType.DELEGATECALL
-            ? new Log.Contract(_log.contract.Caller, from, value, input)
-            : new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        _log.contract = callType switch
+        {
+            ExecutionType.DELEGATECALL => new Log.Contract(_log.contract.Caller, from, value, input),
+            // CALLCODE runs the callee's code in the caller's account.
+            ExecutionType.CALLCODE => new Log.Contract(from, from, value, input),
+            _ => new Log.Contract(from, to, value, isAnyCreate ? null : input)
+        };
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -351,6 +356,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
+        // A transaction that runs no opcode, such as a top-level precompile call, faults no step; Geth reports it through ctx.error only.
+        if (_log.op is null)
+            return;
         if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded && _log.op?.Value is
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
             return;
@@ -430,8 +438,44 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Geth reports SELFDESTRUCT to <c>enter</c> and <c>exit</c> as a frame of its own. The frame is reported when the
+    /// halted frame ends, since the opcode can still run out of gas after this call, and Geth reports no frame then.
+    /// </remarks>
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        if (!_functions.HasFlag(TracerFunctions.enter))
+            return;
+
+        _frame.Type = nameof(Instruction.SELFDESTRUCT);
+        _frame.From = address;
+        _frame.To = refundAddress;
+        _frame.Input = ReadOnlyMemory<byte>.Empty;
+        _frame.Value = balance;
+        _frame.Gas = 0;
+        _pendingSelfDestruct = true;
+    }
+
+    private void InvokeSelfDestructFrame()
+    {
+        Invoke(TracerFunctions.enter);
+        _result.GasUsed = 0;
+        _result.Output = [];
+        _result.Error = null;
+        Invoke(TracerFunctions.exit);
+    }
+
     private void InvokeExit(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
     {
+        if (_pendingSelfDestruct)
+        {
+            _pendingSelfDestruct = false;
+            if (error is null)
+                InvokeSelfDestructFrame();
+        }
+
         if (_contracts?.TryPop(out Log.Contract contract) == true)
         {
             _log.contract = contract;
