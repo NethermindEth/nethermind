@@ -10,13 +10,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
-[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
-[assembly: InternalsVisibleTo("Nethermind.State.Test")]
-
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 
 /// <remarks>
 /// Records only while <see cref="SetGeneratingBlockAccessList"/> holds a slice, so the decorator can sit

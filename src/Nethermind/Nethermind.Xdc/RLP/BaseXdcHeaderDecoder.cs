@@ -86,7 +86,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.ReceiptsRoot = receiptsRoot;
         header.Bloom = bloom;
         header.GasUsed = gasUsed;
-        header.Hash = Keccak.Compute(headerRlp);
+        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0) header.Hash = Keccak.Compute(headerRlp);
 
         header.MixHash = fields.DecodeKeccak();
         header.Nonce = (ulong)fields.DecodeUInt256<TCanonicalChecks>(NonceLength);

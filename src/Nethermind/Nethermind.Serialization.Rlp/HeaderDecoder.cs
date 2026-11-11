@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.ReceiptsRoot = receiptsRoot;
             blockHeader.Bloom = bloom;
             blockHeader.GasUsed = gasUsed;
-            blockHeader.Hash = Keccak.Compute(headerRlp);
+            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0) blockHeader.Hash = Keccak.Compute(headerRlp);
 
             if (fields.HasNext) blockHeader.BaseFeePerGas = fields.DecodeUInt256<TCanonicalChecks>();
             if (fields.HasNext) blockHeader.WithdrawalsRoot = fields.DecodeKeccak();
