@@ -317,6 +317,8 @@ internal static class PrimeFieldInverse
         /// </summary>
         private void UpdateDe(ref Signed62 d, ref Signed62 e, in Transition t)
         {
+            // Adding p to a negative d or e first is what proves the (-2p, p) bound for every transition; without it
+            // the bound widens by p per batch. Searches over millions of bases found none that needs it, so no test reaches it.
             long sd = d.V4 >> 63;
             long se = e.V4 >> 63;
             long md = (t.U & sd) + (t.V & se);
