@@ -344,8 +344,8 @@ public partial class EthRpcModuleTests
     {
         JsonObject request = JsonNode.Parse("""{"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01"}""")!.AsObject();
         request["data"] = data;
-        request["blobVersionedHashes"] = emptyHashes ? new JsonArray()
-            : new JsonArray("0x0100000000000000000000000000000000000000000000000000000000000000");
+        JsonArray hashes = emptyHashes ? [] : ["0x0100000000000000000000000000000000000000000000000000000000000000"];
+        request["blobVersionedHashes"] = hashes;
 
         Assert.That(await FeeDefaultsError(method, request.ToJsonString(), london: true), Is.EqualTo("maxFeePerGas must be non-zero"));
     }
