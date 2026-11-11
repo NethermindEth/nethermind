@@ -978,6 +978,37 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 n.Port == 30304));
         }
 
+        [TestCase(30302, 30304)]
+        [TestCase(30399, 30303)]
+        [CancelAfter(10000)]
+        public async Task Refreshed_record_keeps_the_scope_of_a_link_local_bonded_endpoint(
+            int enrUdpPort,
+            int expectedTcpPort,
+            CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            // A link-local source carries the interface scope; the record lists only the address bytes.
+            _receiver = new Node(TestItem.PublicKeyB, new IPEndPoint(IPAddress.Parse("fe80::2%3"), 30303), 30302);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: IPAddress.Parse("fe80::2"),
+                configureExtras: record => record.SetEntry(new Udp6Entry(enrUdpPort)),
+                responseEndpoint: _receiver.DiscoveryAddress);
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            _kademliaMessageReceiver.Received(1).AddOrRefresh(Arg.Is<Node>(n =>
+                HasNodeRecord(n, _receiver, remoteRecord) &&
+                n.DiscoveryAddress.Equals(_receiver.DiscoveryAddress) &&
+                n.Address.Equals(new IPEndPoint(_receiver.Address.Address, expectedTcpPort))));
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task Timed_out_response_handler_should_not_consume_later_unsolicited_message(CancellationToken token)

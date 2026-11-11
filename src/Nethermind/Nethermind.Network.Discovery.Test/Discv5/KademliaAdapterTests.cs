@@ -346,11 +346,13 @@ public class KademliaAdapterTests
     [TestCase("[64:ff9b::808:808]:30304", null, "8.8.8.8", "64:ff9b::808:808")]
     [TestCase("198.18.0.1:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
     [TestCase("[::ffff:198.18.0.1]:30304", null, "198.18.0.1", "2606:4700:4700::1111")]
+    [TestCase("[2002:c000:204::1]:30304", null, "8.8.8.8", "2002:c000:204::1", false)]
     public void TryGetAcceptableNode_RequiresRecordToAdvertiseSourceEndpoint(
         string source,
         string? expectedHost,
         string recordIp = "8.8.8.8",
-        string recordIp6 = "fe80::1")
+        string recordIp6 = "fe80::1",
+        bool allowNonRoutable = true)
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyB,
@@ -361,7 +363,7 @@ public class KademliaAdapterTests
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: true,
+            allowNonRoutable,
             localIp: IPAddress.IPv6Any,
             sourceEndpoint: IPEndPoint.Parse(source),
             node: out Node? node);

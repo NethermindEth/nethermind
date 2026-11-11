@@ -957,7 +957,8 @@ public sealed class KademliaAdapter(
     /// <remarks>
     /// A signed record proves the node identity, not the endpoint. A record from a handshake or an ENR refresh must
     /// advertise the endpoint that sent it, so that the peer cannot bind its identity to another address. The node is
-    /// created only at that endpoint: when the source address itself is not acceptable, such as a special-use address,
+    /// created only in the source's address family, so it has the source's normalized IP address bytes and UDP port; the
+    /// IPv6 scope ID is not compared. When the source address itself is not acceptable, such as a special-use address,
     /// the record's endpoint in the other address family was never verified and is not used.
     /// </remarks>
     internal static bool TryGetAcceptableNode(
@@ -1042,20 +1043,6 @@ public sealed class KademliaAdapter(
         return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
                HasSameAddressBytes(discoveryEndpoint.Address, normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;
-    }
-
-    /// <remarks>
-    /// <see cref="IPAddress.Equals(object)"/> also compares the IPv6 scope, which the socket sets for a link-local
-    /// source but a record never carries.
-    /// </remarks>
-    [SkipLocalsInit]
-    private static bool HasSameAddressBytes(IPAddress left, IPAddress right)
-    {
-        Span<byte> leftBytes = stackalloc byte[16];
-        Span<byte> rightBytes = stackalloc byte[16];
-        return left.TryWriteBytes(leftBytes, out int leftLength) &&
-               right.TryWriteBytes(rightBytes, out int rightLength) &&
-               leftBytes[..leftLength].SequenceEqual(rightBytes[..rightLength]);
     }
 
     private void SetSentChallenge(ChallengeKey challengeKey, byte[] packet)

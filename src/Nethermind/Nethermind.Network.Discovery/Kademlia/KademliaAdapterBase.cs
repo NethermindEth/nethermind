@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
@@ -31,6 +32,20 @@ public abstract class KademliaAdapterBase(
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
+
+    /// <remarks>
+    /// <see cref="IPAddress.Equals(object)"/> also compares the IPv6 scope, which the socket sets for a link-local
+    /// source but a record never carries.
+    /// </remarks>
+    [SkipLocalsInit]
+    internal static bool HasSameAddressBytes(IPAddress left, IPAddress right)
+    {
+        Span<byte> leftBytes = stackalloc byte[16];
+        Span<byte> rightBytes = stackalloc byte[16];
+        return left.TryWriteBytes(leftBytes, out int leftLength) &&
+               right.TryWriteBytes(rightBytes, out int rightLength) &&
+               leftBytes[..leftLength].SequenceEqual(rightBytes[..rightLength]);
+    }
 
     protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
         => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
