@@ -447,7 +447,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Should_have_file_names_matching_block_and_transactions()
+    public void Should_have_file_names_matching_block_and_transactions([Values] bool zeroTxHash)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
@@ -459,7 +459,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, Spec);
+        GethTraceOptions options = zeroTxHash ? GethTraceOptions.Default with { TxHash = Hash256.Zero } : GethTraceOptions.Default;
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, Spec);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -474,6 +475,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(fileName, Does.Contain($"block_{block.Hash.Bytes[..4].ToHexString(true)}-{i}-{tx.Hash.Bytes[..4].ToHexString(true)}-"));
             Assert.That(fileName, Does.EndWith(".jsonl"));
         }
+
+        Assert.That(tracer.FileNames, Has.Count.EqualTo(block.Transactions.Length));
     }
 
     [Test]
