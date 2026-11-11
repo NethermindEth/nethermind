@@ -1394,6 +1394,8 @@ public partial class DebugRpcModuleTests
             ("fee_order_before_authorization_fork", Cancun.Instance, new() { ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
                 $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
             ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode")),
+            ("blob_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.TxMissingTo),
+            ("authorization_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.NotAllowedCreateTransaction),
             ("blob_recipient_before_fork", Shanghai.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes }, TxErrorMessages.TxMissingTo),
             ("authorization_recipient_before_fork", Cancun.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList }, TxErrorMessages.NotAllowedCreateTransaction),
             ("unsupported_type_sender_checksum", Cancun.Instance, new() { ["from"] = TestItem.AddressA.ToString(), ["authorizationList"] = authorizationList },
