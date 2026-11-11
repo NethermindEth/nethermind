@@ -349,7 +349,7 @@ public class ImporterTests
         MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), chunkNodes: 1_000, rejectedWrites: 0)
         {
             AfterLease = duringCommit ? null : static persistence => persistence.Clear(),
-            BeforeCommit = duringCommit ? () => { committing.SetResult(); commit.Wait(); } : null,
+            BeforeCommit = duringCommit ? WaitForWipe : null,
         };
 
         bool wipedFirst = false;
@@ -373,6 +373,12 @@ public class ImporterTests
             {
                 Assert.That(Contents(_columnsDb, column), Is.Empty, column.ToString());
             }
+        }
+
+        void WaitForWipe()
+        {
+            committing.SetResult();
+            commit.Wait();
         }
     }
 
