@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -21,8 +20,7 @@ internal static partial class WitnessNodeStorage
     public static ITrieStore CreateTrieStore(IOwnedReadOnlyList<byte[]> state, out WitnessTriePaths paths)
     {
         HashKeyedNodeStorage nodes = (HashKeyedNodeStorage)Create(state);
-        paths = new WitnessTriePaths(nodes, state.AsSpan());
-        if (AirbenderFlag.IsActive) nodes.StorageNodeLoading = paths;
+        nodes.StorageNodeLoading = paths = new WitnessTriePaths(nodes, state.AsSpan());
         return new RawTrieStore(nodes);
     }
 }

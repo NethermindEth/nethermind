@@ -73,6 +73,23 @@ public class SecuredTriePathTests
 
     public enum StorageAccess { Read, Write, Clear, ClearThenWrite }
 
+    /// <remarks>Uses the guest's hash-keyed storage hook with the host's enabled walk gate, so the Airbender load path
+    /// is covered without changing the compile-time guest flags.</remarks>
+    [Test]
+    public void Hash_keyed_storage_walks_pending_roots_on_load([Values] bool overlong, [Values] bool pending)
+    {
+        byte[] leaf = Leaf(new byte[KeyNibbles + (overlong ? 1 : 0)], StorageValue);
+        byte[][] state = [leaf];
+        Hash256 root = Keccak.Compute(leaf);
+        HashKeyedNodeStorage nodes = new(state);
+        WitnessTriePaths paths = new(nodes, state);
+        nodes.StorageNodeLoading = paths;
+        if (pending) paths.AddStorageRoot(root);
+
+        Assert.That(() => nodes.Get(TestItem.KeccakA, TreePath.Empty, root.ValueHash256),
+            pending && overlong ? Throws.TypeOf<TrieException>() : Is.EqualTo(leaf));
+    }
+
     /// <remarks>The slot's leaf is checked once a read or a write decodes the storage trie; a clear discards the old storage
     /// undecoded.</remarks>
     [Test]
