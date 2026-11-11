@@ -35,6 +35,7 @@ namespace Nethermind.Init;
 /// opened at its parent, once per requested trace. At most one dump runs at a time: a block rejected meanwhile
 /// is dropped, so invalid blocks sent back to back cannot queue up work, and each block is dumped once.
 /// Disposal lets a running dump finish, so the files of the block a node exits on are still written.
+/// Once a dump ends, every <see cref="IInvalidBlockDumpHandler"/> receives the files it wrote.
 /// </remarks>
 public sealed class InvalidBlockDiagnostics(
     IInitConfig initConfig,
@@ -43,6 +44,7 @@ public sealed class InvalidBlockDiagnostics(
     IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationModules,
+    IInvalidBlockDumpHandler[] dumpHandlers,
     ILogManager logManager) : IDisposable
 {
     private const int DumpedBlocksCacheSize = 64;
@@ -82,14 +84,18 @@ public sealed class InvalidBlockDiagnostics(
     {
         // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
         if (!OperatingSystem.IsLinux()) Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+        List<string> files = [];
         try
         {
-            BlockTraceDumper.LogDiagnosticRlp(block, _logger,
-                (dumpOptions & DumpOptions.Rlp) != 0,
-                (dumpOptions & DumpOptions.RlpLog) != 0);
+            if (BlockTraceDumper.LogDiagnosticRlp(block, _logger,
+                    (dumpOptions & DumpOptions.Rlp) != 0,
+                    (dumpOptions & DumpOptions.RlpLog) != 0) is { } rlpFile)
+            {
+                files.Add(rlpFile);
+            }
 
             List<IBlockTracer> tracers = CreateTracers(dumpOptions);
-            if (tracers.Count > 0) Replay(block, tracers);
+            if (tracers.Count > 0) Replay(block, tracers, files);
         }
         catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
         {
@@ -98,6 +104,23 @@ public sealed class InvalidBlockDiagnostics(
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Diagnostics of invalid block {block.ToString(Block.Format.FullHashAndNumber)} failed", exception);
+        }
+
+        if (files.Count > 0) NotifyDumped(block, files);
+    }
+
+    private void NotifyDumped(Block block, List<string> files)
+    {
+        foreach (IInvalidBlockDumpHandler handler in dumpHandlers)
+        {
+            try
+            {
+                handler.OnDumped(block, files);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) _logger.Error($"Handling diagnostics of invalid block {block.ToString(Block.Format.FullHashAndNumber)} failed", exception);
+            }
         }
     }
 
@@ -110,7 +133,7 @@ public sealed class InvalidBlockDiagnostics(
         return tracers;
     }
 
-    private void Replay(Block block, List<IBlockTracer> tracers)
+    private void Replay(Block block, List<IBlockTracer> tracers, List<string> files)
     {
         BlockHeader? parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         (IOverridableEnv env, ILifetimeScope scope) = _replayEnv ??= CreateReplayEnv();
@@ -150,7 +173,7 @@ public sealed class InvalidBlockDiagnostics(
                 }
             }
 
-            BlockTraceDumper.LogDiagnosticTrace(tracer, outcome, _logger);
+            if (BlockTraceDumper.LogDiagnosticTrace(tracer, outcome, _logger) is { } traceFile) files.Add(traceFile);
         }
 
         if (validOnRerun)

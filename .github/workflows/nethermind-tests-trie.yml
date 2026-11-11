@@ -103,6 +103,7 @@ jobs:
               Nethermind.Facade.Test
               Nethermind.Flashbots.Test
               Nethermind.HealthChecks.Test
+              Nethermind.InvalidChainDump.Test
               Nethermind.Logging.NLog.Test
               Nethermind.Merge.Plugin.Test
               Nethermind.Network.Discovery.Test
