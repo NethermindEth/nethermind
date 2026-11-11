@@ -199,7 +199,7 @@
           </div><p class="small"><strong class="blue">newHeads</strong> — authenticated execution tips<br><strong class="blue">logs</strong> — verified events, with reorg removal notifications</p><p class="small"><code>ws://127.0.0.1:8545/ws</code></p></div>
         </div>
         <div class="api-foot"><span><strong>latest</strong> = optimistic, reorgable</span><span><strong>finalized</strong> = proven finalized state</span><span>History and lookup are explicitly bounded.</span></div>
-        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/README.md#verified-rpc-contract" target="_blank" rel="noopener">Run guide &amp; RPC contract</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/VerifiedRpc.cs" target="_blank" rel="noopener">RPC implementation</a></div><span class="page">03 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/README.md#verified-rpc-contract" target="_blank" rel="noopener">Run guide &amp; RPC contract</a><a href="https://github.com/NethermindEth/nethermind/blob/6bbcd9b1f8dcf7ec00c8f7bb7761d857cdd5e53d/src/Nethermind/Nethermind.LightClient/VerifiedRpc.cs" target="_blank" rel="noopener">RPC implementation</a></div><span class="page">03 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="4" aria-label="4. Extending the client for heads and reorgs">
@@ -224,7 +224,7 @@
         </div>
         <div class="rules"><span class="pill">Durable consumer cursor</span><span class="pill">Gap recovery</span><span class="pill">Idempotent rollback</span><span class="pill warm">Finality for irreversible actions</span></div>
         <p class="hook-note">Heads are sampled once per second and can skip intermediate tips. Subscription repair covers 32 blocks; reconnect and recover when the stream cannot repair a gap.</p>
-        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/Program.cs" target="_blank" rel="noopener">Head publication point</a><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/VerifiedSubscriptions.cs" target="_blank" rel="noopener">Reorg reconstruction</a></div><span class="page">04 / 05</span></footer>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/light-client-verified-p2p/src/Nethermind/Nethermind.LightClient/Program.cs" target="_blank" rel="noopener">Head publication point</a><a href="https://github.com/NethermindEth/nethermind/blob/6bbcd9b1f8dcf7ec00c8f7bb7761d857cdd5e53d/src/Nethermind/Nethermind.LightClient/VerifiedSubscriptions.cs" target="_blank" rel="noopener">Reorg reconstruction</a></div><span class="page">04 / 05</span></footer>
       </section>
 
       <section class="slide" data-slide="5" aria-label="5. Running the client and remaining gaps">

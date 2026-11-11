@@ -7,7 +7,7 @@ using DotNetty.Buffers;
 using Nethermind.Init.Steps;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 internal static class LightClientHost
 {

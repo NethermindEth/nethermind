@@ -3,6 +3,7 @@
 
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.LightClient.Rpc;
 
 namespace Nethermind.LightClient.Consensus;
 

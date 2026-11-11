@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.LightClient;

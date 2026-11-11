@@ -28,6 +28,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.KeyStore.Config;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;

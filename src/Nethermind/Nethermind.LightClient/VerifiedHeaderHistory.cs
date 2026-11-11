@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 

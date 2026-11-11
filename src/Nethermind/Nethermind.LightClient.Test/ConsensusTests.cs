@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Int256;
 using NSubstitute;
+using Nethermind.LightClient.Rpc;
 
 namespace Nethermind.LightClient.Test;
 

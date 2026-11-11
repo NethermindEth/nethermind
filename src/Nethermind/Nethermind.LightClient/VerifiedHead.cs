@@ -10,9 +10,3 @@ internal sealed record VerifiedHead(ulong Slot, ulong Number, Hash256 BlockHash,
     internal bool IsFresh(ulong currentSlot, ulong maximumAgeSlots) =>
         currentSlot >= Slot && currentSlot - Slot <= maximumAgeSlots;
 }
-
-internal sealed class RpcException(int code, string message, string? data = null) : Exception(message)
-{
-    public int Code { get; } = code;
-    public string? RevertData { get; } = data;
-}

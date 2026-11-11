@@ -12,7 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
     VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,

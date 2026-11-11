@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;

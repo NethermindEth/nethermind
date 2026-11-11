@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;

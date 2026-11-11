@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 internal static class BoundedJson
 {

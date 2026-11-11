@@ -4,9 +4,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -25,7 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
 internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null) : IDisposable
@@ -36,7 +34,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
     private readonly IContainer _processing = new ContainerBuilder()
-        .AddModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()))
+        .AddModule(new TransactionProcessingModule(initialAccountCapacity: 32))
         .AddSingleton<ISpecProvider>(specs)
         .AddSingleton<ILogManager>(logs)
         .AddScoped<IWorldStateScopeProvider, ILifetimeScope>(static scope =>

@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Streams authenticated execution heads and logs over bounded, connection-owned WebSocket subscriptions.</summary>
 internal sealed class VerifiedSubscriptions : IAsyncDisposable

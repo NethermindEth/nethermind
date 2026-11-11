@@ -32,15 +32,15 @@ internal sealed class LightPeerRequestScheduler : IBackgroundTaskScheduler, IAsy
             TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero) cancellation.Cancel();
             else cancellation.CancelAfter(remaining);
-            await fulfill(request, cancellation.Token);
+            await fulfill(request, cancellation.Token).ConfigureAwait(false);
         });
     }
 
     private async Task RunAsync()
     {
-        await foreach (Func<CancellationToken, Task> request in _requests.Reader.ReadAllAsync())
+        await foreach (Func<CancellationToken, Task> request in _requests.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            try { await request(_stop.Token); }
+            try { await request(_stop.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             catch (Exception exception)
             {
@@ -52,8 +52,8 @@ internal sealed class LightPeerRequestScheduler : IBackgroundTaskScheduler, IAsy
     public async ValueTask DisposeAsync()
     {
         _requests.Writer.TryComplete();
-        await _stop.CancelAsync();
-        await Task.WhenAll(_workers);
+        await _stop.CancelAsync().ConfigureAwait(false);
+        await Task.WhenAll(_workers).ConfigureAwait(false);
         _stop.Dispose();
     }
 }

@@ -17,7 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId) : IDisposable
 {

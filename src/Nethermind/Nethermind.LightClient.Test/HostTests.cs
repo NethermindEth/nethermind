@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;

@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.LightClient.Rpc;
 using Nethermind.LightClient;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Logging.Microsoft;

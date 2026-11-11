@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;

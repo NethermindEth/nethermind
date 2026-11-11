@@ -4,7 +4,7 @@
 using Prometheus;
 using PrometheusMetrics = Prometheus.Metrics;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Exports bounded process, synchronization and RPC metrics from the existing HTTP listener.</summary>
 internal sealed class LightClientMetrics

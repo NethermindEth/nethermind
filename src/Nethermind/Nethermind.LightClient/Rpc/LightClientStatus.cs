@@ -4,7 +4,7 @@
 using System.Text.Json;
 using Nethermind.Core;
 
-namespace Nethermind.LightClient;
+namespace Nethermind.LightClient.Rpc;
 
 internal enum StartupStage { Checkpoint, Beacon, Bootstrap, Execution, Running, Stopping, Failed }
 

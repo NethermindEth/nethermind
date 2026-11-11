@@ -32,6 +32,9 @@ namespace Nethermind.State
 {
     public sealed partial class WorldState : IWorldState
     {
+        /// <summary>The initial account-map capacity used for block processing.</summary>
+        public const int DefaultInitialAccountCapacity = 4_096;
+
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
@@ -55,11 +58,12 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            int initialAccountCapacity = DefaultInitialAccountCapacity)
         {
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager, _localMetrics);
-            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
+            _stateProvider = new StateProvider(logManager, _localMetrics, initialAccountCapacity);
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics, initialAccountCapacity);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
             _onAccountUpdated = (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);

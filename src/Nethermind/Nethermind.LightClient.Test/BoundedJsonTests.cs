@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.LightClient.Test;

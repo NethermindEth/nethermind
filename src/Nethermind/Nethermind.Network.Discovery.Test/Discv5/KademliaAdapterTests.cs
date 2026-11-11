@@ -103,6 +103,69 @@ public class KademliaAdapterTests
     }
 
     [Test]
+    public void AddressBurstLimiter_AllocatesFiltersAsBurstGrows()
+    {
+        const int filterSize = 8192;
+        const int burst = 16;
+        TimeSpan window = TimeSpan.FromHours(1);
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+        _ = NodeFilter.CreateExact(filterSize, window).TryAccept(address);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        NodeFilter filter = NodeFilter.CreateExact(filterSize, window);
+        long filterBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        GC.KeepAlive(filter);
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        AddressBurstLimiter limiter = new(burst, filterSize, window);
+        long constructionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(constructionBytes, Is.LessThan(filterBytes));
+
+        for (int i = 0; i < burst; i++)
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            bool accepted = limiter.TryAccept(address);
+            long acceptanceBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accepted, Is.True);
+                Assert.That(acceptanceBytes, Is.InRange(filterBytes, filterBytes * 2));
+            }
+        }
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        bool rejected = !limiter.TryAccept(address);
+        long rejectionBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.True);
+            Assert.That(rejectionBytes, Is.LessThan(filterBytes));
+        }
+    }
+
+    [Test]
+    public void AddressBurstLimiter_ConcurrentFirstUsePreservesBurstPerAddress([Values(1, 8, 16)] int burst)
+    {
+        AddressBurstLimiter limiter = new(burst, 8192, TimeSpan.FromHours(1));
+        IPAddress[] addresses = [IPAddress.Parse("192.0.2.1"), IPAddress.Parse("192.0.2.2")];
+        IPAddress[] mappedAddresses = [addresses[0].MapToIPv6(), addresses[1].MapToIPv6()];
+        int[] accepted = new int[addresses.Length];
+
+        Parallel.For(0, 256, i =>
+        {
+            int addressIndex = i % addresses.Length;
+            IPAddress address = i % 4 < 2 ? addresses[addressIndex] : mappedAddresses[addressIndex];
+            if (limiter.TryAccept(address))
+            {
+                Interlocked.Increment(ref accepted[addressIndex]);
+            }
+        });
+
+        Assert.That(accepted, Is.All.EqualTo(burst));
+    }
+
+    [Test]
     public void TryGetKnownNode_ShouldUseExactHashLookup()
     {
         Node target = CreateNode(TestItem.PublicKeyB, 2);
