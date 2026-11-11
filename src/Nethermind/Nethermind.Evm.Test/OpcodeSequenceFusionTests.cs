@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -32,6 +33,19 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
     {
         public override bool IsTracingInstructions => false;
+    }
+
+    /// <summary>A cancelable tracer that counts its polls.</summary>
+    /// <remarks>Untraced, it runs the cancelable tables with the fused handlers; traced, the ones with only the plain handlers.</remarks>
+    private sealed class PollCountingTracer(bool traceInstructions, int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    {
+        public int PollCount { get; private set; }
+
+        public override bool IsTracingInstructions => traceInstructions;
+
+        bool ITxTracer.IsCancelable => true;
+
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
     }
 
     private readonly record struct Outcome(byte StatusCode, ulong GasSpent, string ReturnValue, string? Error, int OpCodeCount);
@@ -145,6 +159,64 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
 
         Outcome outcome = AssertSameAsPlain(code);
         Assert.That(outcome.ReturnValue, Does.EndWith("11"));
+    }
+
+    /// <summary>
+    /// Endless loops whose back edge is a taken fused branch, each written with <c>PUSH2</c>, which the fused handlers
+    /// take, and with <c>PUSH3</c>, which they do not. Both forms keep the stack height and cost the same gas per opcode.
+    /// </summary>
+    private static readonly (string Name, string Fused, string Unfused)[] TakenBranchLoops =
+    [
+        ("GT PUSH2 JUMPI", "5b600160021161000057", "5b60016002116200000057"),
+        ("ISZERO ISZERO PUSH2 JUMPI", "5b6001151561000057", "5b600115156200000057"),
+        ("DUP1 PUSH4 EQ PUSH2 JUMPI", "63123456785b8063123456781461000557", "63123456785b806312345678146200000557"),
+    ];
+
+    private static IEnumerable<TestCaseData> TakenBranchLoopCases()
+    {
+        foreach ((string name, string fused, string unfused) in TakenBranchLoops)
+            yield return new TestCaseData(Bytes.FromHexString(fused), Bytes.FromHexString(unfused)).SetArgDisplayNames(name);
+    }
+
+    private static IEnumerable<TestCaseData> FusedLoopCases()
+    {
+        foreach ((string name, string fused, _) in TakenBranchLoops)
+            yield return new TestCaseData(Bytes.FromHexString(fused)).SetArgDisplayNames(name);
+    }
+
+    /// <summary>
+    /// On the cancelable tables, which <c>eth_call</c> runs, a taken fused branch polls cancellation where the plain
+    /// <c>JUMPI</c> does, and execution resumes at the jump destination after the poll.
+    /// </summary>
+    [TestCaseSource(nameof(TakenBranchLoopCases))]
+    public void Taken_branch_on_a_cancelable_table_polls_as_plain_execution(byte[] fusedCode, byte[] unfusedCode)
+    {
+        PollCountingTracer plain = Execute(new PollCountingTracer(traceInstructions: true), fusedCode);
+        int plainOpcodes = Machine.OpCodeCount;
+        PollCountingTracer unfused = Execute(new PollCountingTracer(traceInstructions: false), unfusedCode);
+        int unfusedOpcodes = Machine.OpCodeCount;
+        PollCountingTracer fused = Execute(new PollCountingTracer(traceInstructions: false), fusedCode);
+        int fusedOpcodes = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fused.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)), "precondition: the loop only ends by running out of gas");
+            Assert.That(fused.Error, Is.EqualTo(plain.Error));
+            Assert.That(fused.GasSpent, Is.EqualTo(plain.GasSpent));
+            Assert.That(fusedOpcodes, Is.EqualTo(plainOpcodes));
+            Assert.That(fusedOpcodes, Is.EqualTo(unfusedOpcodes));
+            Assert.That(fused.PollCount, Is.GreaterThan(2), "the loop passes the poll interval several times");
+            Assert.That(fused.PollCount, Is.EqualTo(unfused.PollCount), "taken fused branches poll where unfused taken branches do");
+        }
+    }
+
+    [TestCaseSource(nameof(FusedLoopCases))]
+    public void Taken_branch_on_a_cancelable_table_stops_a_cancelled_loop(byte[] fusedCode)
+    {
+        PollCountingTracer tracer = new(traceInstructions: false, cancelAtPoll: 2);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, fusedCode));
+        Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a taken fused branch");
     }
 
     [TestCase(1)]
