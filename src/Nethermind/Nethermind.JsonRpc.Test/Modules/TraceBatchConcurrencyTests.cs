@@ -64,14 +64,22 @@ public class TraceBatchConcurrencyTests
     public bool Debug_trace_runs_concurrently_only_while_the_window_fits_the_debug_module_pool(string method, string parameters, int debugModuleInstances, int windowSize) =>
         CanExecuteConcurrently(new DebugTraceBatchConcurrency(new JsonRpcConfig { DebugModuleConcurrentInstances = debugModuleInstances }), method, parameters, windowSize);
 
-    [TestCase(null, false, 2, ExpectedResult = true, TestName = "Default pool of two fits a window of two")]
-    [TestCase(null, false, 3, ExpectedResult = false, TestName = "Default pool of two does not fit a window of three")]
+    [TestCase(2, false, 2, ExpectedResult = true, TestName = "Pool of two fits a window of two")]
+    [TestCase(2, false, 3, ExpectedResult = false, TestName = "Pool of two does not fit a window of three")]
     [TestCase(4, false, 4, ExpectedResult = true, TestName = "Configured pool fits the window")]
     [TestCase(4, true, 4, ExpectedResult = false, TestName = "Streamed trace executes while written")]
     public bool Trace_transaction_runs_concurrently_only_buffered_and_while_the_window_fits_the_trace_module_pool(int? traceModuleInstances, bool streamMode, int windowSize) =>
         CanExecuteConcurrently(
             new TraceTransactionBatchConcurrency(new JsonRpcConfig { TraceModuleConcurrentInstances = traceModuleInstances, EnableTracingStreamMode = streamMode }),
             "trace_transaction", """["0x01"]""", windowSize);
+
+    [Test]
+    public void Trace_transaction_default_window_is_the_processor_count([Values] bool fits) =>
+        Assert.That(
+            CanExecuteConcurrently(
+                new TraceTransactionBatchConcurrency(new JsonRpcConfig { EnableTracingStreamMode = false }),
+                "trace_transaction", """["0x01"]""", Environment.ProcessorCount + (fits ? 0 : 1)),
+            Is.EqualTo(fits));
 
     [Test]
     public async Task Concurrent_batch_of_transaction_traces_matches_sequential_byte_for_byte()
@@ -134,6 +142,7 @@ public class TraceBatchConcurrencyTests
         BatchProcessingConcurrency = batchProcessingConcurrency,
         EthModuleConcurrentInstances = 4,
         DebugModuleConcurrentInstances = 4,
+        TraceModuleConcurrentInstances = 4,
         EnableTracingStreamMode = false
     };
 
