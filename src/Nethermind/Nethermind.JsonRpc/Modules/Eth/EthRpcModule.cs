@@ -1377,12 +1377,30 @@ public partial class EthRpcModule(
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
         return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart));
     }
+
+    /// <summary>
+    /// Answers a receipt lookup by transaction hash that found no receipt. When the transaction index still places the
+    /// transaction in a canonical block below the served floor, that block's history is pruned, and the answer is the
+    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error a block search below the floor gives. Every other miss is
+    /// a <c>null</c> result: no index entry, an entry naming a side-chain block or a header that is not stored, or a block
+    /// at or above the floor.
+    /// </summary>
+    /// <remarks>
+    /// History pruning deletes bodies and receipts but leaves the transaction index to a background sweep, so an entry
+    /// can outlive its block's history; with <see cref="IReceiptConfig.TxLookupLimit"/> 0 nothing removes it.
+    /// </remarks>
+    protected ResultWrapper<ReceiptForRpc?> GetMissingTransactionReceiptResult(Hash256 txHash) =>
+        _receiptFinder.FindBlockHash(txHash) is { } blockHash
+        && _blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is { } header
+        && _blockFinder.IsBlockPruned(new BlockParameter(header.Number))
+            ? ResultWrapper<ReceiptForRpc?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<ReceiptForRpc?>.Success(null);
 
     public virtual ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {

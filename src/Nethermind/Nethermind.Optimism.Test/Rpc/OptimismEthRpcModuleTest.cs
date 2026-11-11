@@ -79,9 +79,10 @@ public class OptimismEthRpcModuleTest
         return rf;
     }
 
-    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null) =>
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null, IBlockchainBridge? bridge = null) =>
         TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockchainBridge(bridge!)
             .WithBlockFinder(blockFinder)
             .WithReceiptFinder(receiptFinder)
             .WithOptimismEthRpcModule(
@@ -1721,6 +1722,30 @@ public class OptimismEthRpcModuleTest
         string serialized = await CallWithBlock(rpc, method, byHash ? block.Hash! : new BlockParameter(block.Number));
 
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{(byHash ? block.Hash : block.Number)}}"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Transaction_receipt_of_a_block_pruned_below_the_lowest_served_block_returns_pruned_history([Values] bool bodyPrunedAfterTheReceiptRead)
+    {
+        Block block = Build.A.Block.WithNumber(LowestServedBlock - 2).TestObject;
+        IBlockFinder blockFinder = FinderWithoutTheBodyOf(block);
+        blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.RequireCanonical).Returns(block.Header);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(TestItem.KeccakA).Returns(block.Hash);
+        // The bridge finds no receipt, or finds one whose block the module then no longer finds.
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        if (bodyPrunedAfterTheReceiptRead)
+            bridge.GetTxReceiptInfo(TestItem.KeccakA).Returns((Build.A.Receipt.WithBlockHash(block.Hash).TestObject, 0UL, new TxGasInfo(1), 0));
+        using TestRpcBlockchain rpc = await BuildOptimismRpc(blockFinder, receiptFinder, bridge: bridge);
+
+        string pruned = await rpc.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA);
+        string unknown = await rpc.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
+            Assert.That(unknown, Is.EqualTo(NullResult), "an unknown transaction");
+        }
     }
 
     private const string UnknownHash = "0x0000000000000000000000000000000000000000000000000000000000000001";
