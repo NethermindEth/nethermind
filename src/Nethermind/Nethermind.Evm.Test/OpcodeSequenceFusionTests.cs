@@ -219,13 +219,8 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a taken fused branch");
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(9)]
-    public void Pop_run_matches_plain_execution(int pops)
+    [Test]
+    public void Pop_run_matches_plain_execution([Values(1, 2, 3, 4, 5, 9)] int pops)
     {
         byte[] pushes = new byte[2 * (pops + 1)];
         for (int i = 0; i < pops + 1; i++)
@@ -239,10 +234,8 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         AssertSameAsPlainAtEveryGasLimit(code);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(3)]
-    public void Pop_run_longer_than_the_stack_underflows_at_the_same_opcode(int depth)
+    [Test]
+    public void Pop_run_longer_than_the_stack_underflows_at_the_same_opcode([Values(0, 1, 3)] int depth)
     {
         byte[] pushes = new byte[2 * depth];
         for (int i = 0; i < depth; i++)
@@ -255,10 +248,9 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         Assert.That(outcome.Error, Is.EqualTo(EvmExceptionType.StackUnderflow.ToString()));
     }
 
-    [TestCase(Instruction.EQ)]
-    [TestCase(Instruction.LT)]
-    [TestCase(Instruction.ISZERO)]
-    public void Condition_branch_on_a_short_stack_underflows_at_the_same_opcode(Instruction condition)
+    [Test]
+    public void Condition_branch_on_a_short_stack_underflows_at_the_same_opcode(
+        [Values(Instruction.EQ, Instruction.LT, Instruction.ISZERO)] Instruction condition)
     {
         // One word short of the condition's inputs, then the branch shape.
         byte[] operands = condition == Instruction.ISZERO ? [] : Push1(1);
@@ -294,10 +286,9 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
         AssertSameAsPlain(code, 1_000_000);
     }
 
-    [TestCase(Instruction.EQ)]
-    [TestCase(Instruction.ISZERO)]
-    [TestCase(Instruction.DUP1)]
-    public void Taken_branch_to_a_byte_that_is_not_a_jump_destination_fails_at_the_same_opcode(Instruction first)
+    [Test]
+    public void Taken_branch_to_a_byte_that_is_not_a_jump_destination_fails_at_the_same_opcode(
+        [Values(Instruction.EQ, Instruction.ISZERO, Instruction.DUP1)] Instruction first)
     {
         // The destination is the immediate of a PUSH1 whose value is the JUMPDEST byte.
         byte[] head = first switch
@@ -341,9 +332,8 @@ public class OpcodeSequenceFusionTests : VirtualMachineTestsBase
     {
         Random random = new(seed);
         byte[] code = RandomProgram(random);
-        AssertSameAsPlain(code);
+        Outcome full = AssertSameAsPlain(code);
         // A tight limit that runs out somewhere inside the program.
-        Outcome full = Run(code, 100_000, traced: true);
         if (full.GasSpent > IntrinsicGas)
             AssertSameAsPlain(code, IntrinsicGas + (ulong)random.NextInt64(0, (long)(full.GasSpent - IntrinsicGas)));
     }
