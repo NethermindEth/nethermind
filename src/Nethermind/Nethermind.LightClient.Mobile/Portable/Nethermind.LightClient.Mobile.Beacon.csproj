@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.BeaconChain</RootNamespace>
+    <AssemblyName>Nethermind.BeaconChain</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.BeaconChain/Types/**/*.cs;../../Nethermind.BeaconChain/Spec/**/*.cs;../../Nethermind.BeaconChain/P2P/**/*.cs;../../Nethermind.BeaconChain/Storage/**/*.cs;../../Nethermind.BeaconChain/StateTransition/**/*.cs;../../Nethermind.BeaconChain/Crypto/**/*.cs;../../Nethermind.BeaconChain/ForkChoice/**/*.cs;../../Nethermind.BeaconChain/Threading/**/*.cs;../../Nethermind.BeaconChain/DataAvailability/**/*.cs" Exclude="../../Nethermind.BeaconChain/StateTransition/*.forks.cs;../../Nethermind.BeaconChain/DataAvailability/LocalBlobColumns.cs" Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../Nethermind.BeaconChain/BeaconChainConfig.cs;../../Nethermind.BeaconChain/IBeaconChainConfig.cs;../../Nethermind.BeaconChain/Metrics.cs;../../Nethermind.BeaconChain/Sync/SlotClock.cs;../../Nethermind.BeaconChain/Sync/HeadSnapshot.cs;../../Nethermind.BeaconChain/Sync/PostStateCache.cs" Link="%(Filename)%(Extension)" />
+    <AdditionalFiles Include="../../Nethermind.BeaconChain/StateTransition/*.forks.cs" />
+    <Compile Include="../../Nethermind.BeaconChain/Engine/PayloadConverter.cs;../../Nethermind.BeaconChain/Sync/DataAvailabilityAdapters.cs" Link="%(Filename)%(Extension)" />
+    <Using Include="Nethermind.Merge.Plugin.SszRest" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Merge.csproj" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Discovery.csproj" />
+    <ProjectReference Include="../../Nethermind.Network.Libp2p/Nethermind.Network.Libp2p.csproj" />
+    <ProjectReference Include="../../Nethermind.BeaconChain.Generators/Nethermind.BeaconChain.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <InternalsVisibleTo Include="Nethermind.LightClient.Mobile.Core" />
+    <InternalsVisibleTo Include="Nethermind.LightClient.Mobile.Test" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Crypto.Bls" />
+    <PackageReference Include="Snappier" />
+  </ItemGroup>
+</Project>

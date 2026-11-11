@@ -10,7 +10,11 @@ namespace Nethermind.Core
     {
         public static string GetPlatformName()
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            if (OperatingSystem.IsAndroid())
+            {
+                return "Android";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 return "Linux";
             }

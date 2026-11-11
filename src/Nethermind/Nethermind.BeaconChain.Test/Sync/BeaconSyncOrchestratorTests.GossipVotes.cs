@@ -111,7 +111,7 @@ public partial class BeaconSyncOrchestratorTests
 
         static async Task DrainVotes(Harness harness)
         {
-            for (int pass = 0; pass <= BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
+            for (int pass = 0; pass <= DeferredGossipValidation.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
                 await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
     }
@@ -182,8 +182,8 @@ public partial class BeaconSyncOrchestratorTests
     {
         (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
-        const ulong member = BeaconSyncOrchestrator.VoteQueueCapacity;
-        for (ulong validator = 0; validator < BeaconSyncOrchestrator.VoteQueueCapacity; validator++)
+        const ulong member = DeferredGossipValidation.VoteQueueCapacity;
+        for (ulong validator = 0; validator < DeferredGossipValidation.VoteQueueCapacity; validator++)
         {
             PtcVote(router, slot, validator);
         }
@@ -196,7 +196,7 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
-        for (int pass = 0; pass < BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass + 1; pass++)
+        for (int pass = 0; pass < DeferredGossipValidation.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass + 1; pass++)
         {
             await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
@@ -207,8 +207,8 @@ public partial class BeaconSyncOrchestratorTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(dropped, Is.EqualTo((ulong)refusedCopies), "fixture: every copy reached the full channel and was refused");
-        Assert.That(verifiedBefore, Is.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity), "fixture: the refused copies were never queued");
-        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity + 1), "the later copy is verified");
+        Assert.That(verifiedBefore, Is.EqualTo(DeferredGossipValidation.VoteQueueCapacity), "fixture: the refused copies were never queued");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(DeferredGossipValidation.VoteQueueCapacity + 1), "the later copy is verified");
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.Zero);
     }
 
@@ -368,7 +368,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(pendingTick.IsCompleted, Is.False, "fixture: the tick waits on the full work channel");
 
         ulong droppedBefore = Metrics.BeaconChainGossipDropped;
-        for (ulong validator = earlyVotes; validator < earlyVotes + BeaconSyncOrchestrator.VoteQueueCapacity; validator++)
+        for (ulong validator = earlyVotes; validator < earlyVotes + DeferredGossipValidation.VoteQueueCapacity; validator++)
         {
             PtcVote(router, slot, validator);
         }
@@ -382,7 +382,7 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");
+        Assert.That(dropped, Is.EqualTo((ulong)(DeferredGossipValidation.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");
         Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(earlyVotes + BeaconSyncOrchestrator.MaxVotesAheadOfTick), "the votes queued before the tick and the bounded ones are verified");
     }
 
@@ -416,7 +416,7 @@ public partial class BeaconSyncOrchestratorTests
 
         async Task DrainAsync()
         {
-            for (int pass = 0; pass < 2 + BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
+            for (int pass = 0; pass < 2 + DeferredGossipValidation.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
             {
                 await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
             }
@@ -430,7 +430,7 @@ public partial class BeaconSyncOrchestratorTests
 
         await DrainAsync();
 
-        for (int i = 0; i < BeaconSyncOrchestrator.VoteQueueCapacity; i++)
+        for (int i = 0; i < DeferredGossipValidation.VoteQueueCapacity; i++)
         {
             PtcVote(router, slot, validator++);
         }
@@ -483,20 +483,20 @@ public partial class BeaconSyncOrchestratorTests
         const int overflow = 10;
 
         ulong droppedBefore = Metrics.BeaconChainGossipDropped;
-        for (ulong validator = 0; validator < BeaconSyncOrchestrator.VoteQueueCapacity + overflow; validator++)
+        for (ulong validator = 0; validator < DeferredGossipValidation.VoteQueueCapacity + overflow; validator++)
         {
             PtcVote(router, slot, validator);
         }
 
         ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
-        for (int pass = 0; pass < BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass + 2; pass++)
+        for (int pass = 0; pass < DeferredGossipValidation.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass + 2; pass++)
         {
             await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(dropped, Is.EqualTo((ulong)overflow));
-        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity));
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(DeferredGossipValidation.VoteQueueCapacity));
     }
 
     // These tests are about queueing, so every validator index is a member of the slot's PTC; membership is covered with the router.

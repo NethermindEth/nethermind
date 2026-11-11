@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Db.Rocks</RootNamespace>
+    <AssemblyName>Nethermind.Db.Rocks</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.Db.Rocks/**/*.cs" Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Api.csproj" />
+    <ProjectReference Include="../../Nethermind.Db/Nethermind.Db.csproj" />
+    <PackageReference Include="ConcurrentHashSet" />
+    <PackageReference Include="Nethermind.RocksDbBindings" />
+    <PackageReference Include="NonBlocking" />
+  </ItemGroup>
+</Project>

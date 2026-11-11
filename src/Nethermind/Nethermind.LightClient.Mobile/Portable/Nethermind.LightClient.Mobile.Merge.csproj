@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Merge.Plugin</RootNamespace>
+    <AssemblyName>Nethermind.Merge.Plugin</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.Merge.Plugin/SszRest/SszWireTypes.cs;../../Nethermind.Merge.Plugin/SszRest/SszKzgCommitment.cs;../../Nethermind.Merge.Plugin/SszRest/SszBlobCell.cs;../../Nethermind.Merge.Plugin/SszRest/Handlers/SszRestLimits.cs;../../Nethermind.Merge.Plugin/SszRest/SszKzgCommitmentVectorTypeConverter.cs;../../Nethermind.Merge.Plugin/SszRest/SszBlobCellVectorTypeConverter.cs;../../Nethermind.Merge.Plugin/SszRest/SszExecutionPayload.cs;../../Nethermind.Merge.Plugin/Data/ExecutionPayload.cs;../../Nethermind.Merge.Plugin/Data/ExecutionPayloadV3.cs;../../Nethermind.Merge.Plugin/Data/ExecutionPayloadV4.cs;../../Nethermind.Merge.Plugin/Data/IExecutionPayloadParams.cs;../../Nethermind.Merge.Plugin/Data/PayloadTransactionCountGuard.cs" Link="%(Filename)%(Extension)" />
+    <ProjectReference Include="../../Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="../../Nethermind.Consensus/Nethermind.Consensus.csproj" />
+    <ProjectReference Include="../../Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Api</RootNamespace>
+    <AssemblyName>Nethermind.Api</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.Api/IInitConfig.cs;../../Nethermind.Api/InitConfig.cs" Link="%(Filename)%(Extension)" />
+    <ProjectReference Include="../../Nethermind.Config/Nethermind.Config.csproj" />
+    <ProjectReference Include="../../Nethermind.Consensus/Nethermind.Consensus.csproj" />
+  </ItemGroup>
+</Project>

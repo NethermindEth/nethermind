@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Globalization;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 
 namespace Nethermind.BeaconChain.Api;
@@ -77,12 +75,12 @@ internal sealed class StateRequestLimiter : IDisposable
         int perClient = _maxPerClient = config.MaxConcurrentStateRequestsPerClient;
         _inFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
         _inFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
-            ClientKey(c.Connection.RemoteIpAddress),
+            ClientNetworkKey.Create(c.Connection.RemoteIpAddress),
             _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
 
         _downloadInFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
         _downloadInFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
-            ClientKey(c.Connection.RemoteIpAddress),
+            ClientNetworkKey.Create(c.Connection.RemoteIpAddress),
             _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
         _downloadsPerClient = CreatePerMinuteLimiter(config.StateDownloadsPerMinutePerClient);
         _queriesPerClient = CreatePerMinuteLimiter(config.StateQueriesPerMinutePerClient);
@@ -90,7 +88,7 @@ internal sealed class StateRequestLimiter : IDisposable
 
     private static PartitionedRateLimiter<HttpContext>? CreatePerMinuteLimiter(int perMinute) => perMinute <= 0 ? null
         : PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetTokenBucketLimiter(
-            ClientKey(c.Connection.RemoteIpAddress),
+            ClientNetworkKey.Create(c.Connection.RemoteIpAddress),
             _ => new TokenBucketRateLimiterOptions
             {
                 TokenLimit = perMinute,
@@ -287,20 +285,6 @@ internal sealed class StateRequestLimiter : IDisposable
             || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase))
             ? StateRouteKind.Download
             : StateRouteKind.Query;
-    }
-
-    /// <summary>One partition per IPv4 address and per IPv6 /64, so a client cannot mint fresh budgets by rotating the addresses of one IPv6 subnet.</summary>
-    internal static UInt128 ClientKey(IPAddress? address)
-    {
-        if (address is null) return UInt128.MaxValue;
-        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
-
-        Span<byte> bytes = stackalloc byte[16];
-        address.TryWriteBytes(bytes, out int written);
-        // An IPv6 key's low half is above every IPv4 key, so the two families never share a partition.
-        return address.AddressFamily == AddressFamily.InterNetworkV6
-            ? new UInt128(BinaryPrimitives.ReadUInt64BigEndian(bytes), 1UL << 32)
-            : BinaryPrimitives.ReadUInt32BigEndian(bytes[..written]);
     }
 
     public void Dispose()

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.LightClient</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.LightClient/*.cs" Exclude="../../Nethermind.LightClient/Program.cs;../../Nethermind.LightClient/LightClientBanner.cs;../../Nethermind.LightClient/*.Desktop.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="../../Nethermind.LightClient/Consensus/*.cs" Link="Consensus/%(Filename)%(Extension)" />
+    <Compile Include="../../Nethermind.LightClient/Rpc/RpcException.cs" Link="Rpc/RpcException.cs" />
+    <Compile Include="../../Nethermind.LightClient/Rpc/VerifiedCall.cs" Link="Rpc/VerifiedCall.cs" />
+    <Compile Include="../../Nethermind.Init/Modules/TransactionProcessingModule.cs" Link="Modules/TransactionProcessingModule.cs" />
+    <Compile Include="../*.cs" Link="Mobile/%(Filename)%(Extension)" />
+    <Compile Include="ExecutionPeerTransport.Mobile.cs" />
+    <Compile Include="../../Nethermind.Init/Modules/NetworkModule.cs;../../Nethermind.Init/Modules/DiscoveryModule.cs;../../Nethermind.Init/Modules/ContainerBuilderExtensions.cs" Link="Modules/%(Filename)%(Extension)" />
+    <Using Include="Microsoft.Extensions.Logging" />
+    <InternalsVisibleTo Include="Nethermind.LightClient.Mobile.Test" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Beacon.csproj" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Rocks.csproj" />
+    <ProjectReference Include="Nethermind.LightClient.Mobile.Ethash.csproj" />
+    <ProjectReference Include="../../Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
+    <ProjectReference Include="../../Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+    <ProjectReference Include="../../Nethermind.Facade/Nethermind.Facade.csproj" />
+    <ProjectReference Include="../../Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

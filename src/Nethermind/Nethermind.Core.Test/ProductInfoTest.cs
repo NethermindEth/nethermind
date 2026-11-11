@@ -1,12 +1,42 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Reflection;
+using System.Runtime.Loader;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
 public class ProductInfoTest
 {
+    [Test, NonParallelizable]
+    public void Metadata_initializes_with_or_without_managed_entry_assembly([Values] bool managedEntry)
+    {
+        Assembly? entry = Assembly.GetEntryAssembly();
+        AssemblyLoadContext context = new(nameof(ProductInfoTest), isCollectible: true);
+        try
+        {
+            Assembly core = context.LoadFromAssemblyPath(typeof(ProductInfo).Assembly.Location);
+            Assembly.SetEntryAssembly(managedEntry ? typeof(ProductInfoTest).Assembly : null);
+            Type product = core.GetType(typeof(ProductInfo).FullName!, throwOnError: true)!;
+            string expectedName = (managedEntry ? typeof(ProductInfoTest).Assembly : core)
+                .GetCustomAttribute<AssemblyProductAttribute>()!.Product;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(product.GetProperty(nameof(ProductInfo.Name))!.GetValue(null), Is.EqualTo(expectedName));
+                Assert.That(product.GetProperty(nameof(ProductInfo.ClientId))!.GetValue(null),
+                    Does.StartWith(expectedName + "/v"));
+            }
+        }
+        finally
+        {
+            Assembly.SetEntryAssembly(entry);
+            context.Unload();
+        }
+    }
+
     [TearDown]
     public void TearDown()
     {

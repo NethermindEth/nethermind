@@ -14,7 +14,7 @@ public static class ProductInfo
 {
     static ProductInfo()
     {
-        Assembly assembly = Assembly.GetEntryAssembly()!;
+        Assembly assembly = Assembly.GetEntryAssembly() ?? typeof(ProductInfo).Assembly;
         IEnumerable<AssemblyMetadataAttribute> metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
         AssemblyProductAttribute productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
         AssemblyInformationalVersionAttribute versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;

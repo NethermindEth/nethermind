@@ -45,6 +45,8 @@ internal sealed class DeferredGossipValidation(
     CancellationToken stopping,
     TimeProvider? time = null)
 {
+    internal const int VoteQueueCapacity = 1024;
+
     /// <summary>The largest message counted as a vote; anything larger is no legal aggregate or payload attestation and is held to the main bounds.</summary>
     internal const int MaxVoteMessageBytes = 32 * 1024;
 

@@ -76,9 +76,10 @@ public class TransportTests
 {
     [Test]
     [CancelAfter(30_000)]
-    public async Task Payload_downloads_are_shared_without_sharing_caller_cancellation([Values] bool cancelLeader, CancellationToken token)
+    public async Task Payload_downloads_are_shared_without_sharing_caller_cancellation([Values] bool cancelLeader,
+        [Values(1024L, VerifiedMemoryCache.DefaultCapacity)] long capacity, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token, capacity);
         using CancellationTokenSource leader = CancellationTokenSource.CreateLinkedTokenSource(token);
         using CancellationTokenSource follower = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -133,16 +134,16 @@ public class TransportTests
     [Test]
     [CancelAfter(30_000)]
     public async Task Payload_cache_returns_oversized_values_without_retaining_them(
-        [Values(VerifiedPayloadCache<int>.Capacity, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+        [Values(1024L, VerifiedMemoryCache.DefaultCapacity)] long capacity, [Values] bool oversized, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        await using VerifiedPayloadCache<int> cache = new(_ => capacity + (oversized ? 1 : 0), token, capacity);
         int fetched = 0;
         Task<int> Fetch(CancellationToken _) => Task.FromResult(++fetched);
         Hash256 hash = Keccak.Compute("bounded verified payload");
 
         Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(1));
-        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
-        Assert.That(fetched, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+        Assert.That(await cache.GetAsync(hash, Fetch, token), Is.EqualTo(oversized ? 2 : 1));
+        Assert.That(fetched, Is.EqualTo(oversized ? 2 : 1));
     }
 
     [Test]
@@ -3431,9 +3432,9 @@ public class TransportTests
     [Test]
     [CancelAfter(30_000)]
     public async Task Payload_batch_retention_preserves_per_value_size_bounds(
-        [Values(VerifiedPayloadCache<int>.Capacity / 2, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+        [Values(2048L, VerifiedMemoryCache.DefaultCapacity)] long capacity, [Values] bool oversized, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        await using VerifiedPayloadCache<int> cache = new(_ => oversized ? capacity + 1 : capacity / 2, token, capacity);
         Hash256[] hashes = [Keccak.Compute("bounded batch0"), Keccak.Compute("bounded batch1")];
         int fetches = 0;
         Task<int>[] Fetch(Hash256[] requested, CancellationToken stopping)
@@ -3443,7 +3444,7 @@ public class TransportTests
         }
         Assert.That(await Task.WhenAll(cache.GetManyAsync(hashes, Fetch, token)), Is.EqualTo(new[] { 10, 11 }));
         Assert.That(await Task.WhenAll(cache.GetManyAsync(hashes, Fetch, token)), Is.EqualTo(new[] { 10, 11 }));
-        Assert.That(fetches, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+        Assert.That(fetches, Is.EqualTo(oversized ? 2 : 1));
     }
 
     [Test]

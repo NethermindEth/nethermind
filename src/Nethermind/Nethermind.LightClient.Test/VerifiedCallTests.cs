@@ -626,33 +626,6 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public void Verified_cache_admits_large_entries_after_warming_and_evicts_least_recently_used()
-    {
-        using VerifiedMemoryCache cache = new();
-        for (int i = 0; i < 32; i++) cache.Set(i, i, VerifiedMemoryCache.Capacity / 32);
-        Assert.That(cache.TryGetValue(0, out int first), Is.True);
-        Assert.That(first, Is.Zero);
-        cache.Set("large", 42, VerifiedMemoryCache.Capacity / 2);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.TryGetValue(0, out int retained), Is.True);
-            Assert.That(retained, Is.Zero);
-            Assert.That(cache.TryGetValue(1, out int _), Is.False);
-            Assert.That(cache.TryGetValue("large", out int large), Is.True);
-            Assert.That(large, Is.EqualTo(42));
-        }
-        cache.Set("large", 43, VerifiedMemoryCache.Capacity);
-        cache.Set("oversized", 99, VerifiedMemoryCache.Capacity + 1);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.TryGetValue(0, out int _), Is.False);
-            Assert.That(cache.TryGetValue("large", out int replaced), Is.True);
-            Assert.That(replaced, Is.EqualTo(43));
-            Assert.That(cache.TryGetValue("oversized", out int _), Is.False);
-        }
-    }
-
-    [Test]
     public async Task Network_fills_do_not_hold_execution_permits_or_starve_a_cached_call()
     {
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);

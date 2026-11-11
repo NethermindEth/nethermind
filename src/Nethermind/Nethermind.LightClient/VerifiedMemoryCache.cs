@@ -5,12 +5,19 @@ namespace Nethermind.LightClient;
 
 internal sealed class VerifiedMemoryCache : IDisposable
 {
-    internal const long Capacity = 32 * 1024 * 1024;
+    internal const long DefaultCapacity = 32 * 1024 * 1024;
+    private readonly long _capacity;
     private readonly Lock _gate = new();
     private readonly Dictionary<object, LinkedListNode<Entry>> _entries = [];
     private readonly LinkedList<Entry> _recent = new();
     private long _weight;
     private bool _disposed;
+
+    internal VerifiedMemoryCache(long capacity = DefaultCapacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
+        _capacity = capacity;
+    }
 
     internal bool TryGetValue<T>(object key, out T? value)
     {
@@ -39,8 +46,8 @@ internal sealed class VerifiedMemoryCache : IDisposable
                 _recent.Remove(previous);
                 _weight -= previous.Value.Weight;
             }
-            if (weight > Capacity) return;
-            while (_weight > Capacity - weight)
+            if (weight > _capacity) return;
+            while (_weight > _capacity - weight)
             {
                 LinkedListNode<Entry> oldest = _recent.First!;
                 _recent.RemoveFirst();

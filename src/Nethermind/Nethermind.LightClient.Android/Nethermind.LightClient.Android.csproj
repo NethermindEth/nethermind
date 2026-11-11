@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationId>io.nethermind.lightclient</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+    <UseMonoRuntime>false</UseMonoRuntime>
+    <!-- CoreCLR preserves the existing client's runtime behavior; Android support is experimental in .NET 10. -->
+    <NoWarn>$(NoWarn);XA1040</NoWarn>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <AndroidPackageFormats>apk</AndroidPackageFormats>
+    <AndroidNativeLibraryDirectory Condition="'$(AndroidNativeLibraryDirectory)' == ''">../artifacts/android-native/arm64-v8a</AndroidNativeLibraryDirectory>
+    <AndroidBlsBinding>$(AndroidNativeLibraryDirectory)/../managed/Nethermind.Crypto.Bls.dll</AndroidBlsBinding>
+  </PropertyGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <RuntimeHostConfigurationOption Include="Nethermind.Crypto.KeccakCache.Small" Value="true" />
+    <ProjectReference Include="../Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Core.csproj" />
+    <AndroidNativeLibrary Include="$(AndroidNativeLibraryDirectory)/libblst.so" Abi="arm64-v8a" />
+    <AndroidNativeLibrary Include="$(AndroidNativeLibraryDirectory)/libsecp256k1.so" Abi="arm64-v8a" />
+    <AndroidNativeLibrary Include="$(AndroidNativeLibraryDirectory)/libsodium.so" Abi="arm64-v8a" />
+    <AndroidAsset Include="$(AndroidNativeLibraryDirectory)/licenses/*" Link="licenses/native/%(Filename)%(Extension)" />
+    <AndroidAsset Include="$(AndroidNativeLibraryDirectory)/../managed/licenses/*" Link="licenses/bls-binding/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="SelectAndroidRuntimeAssets" AfterTargets="ComputeFilesToPublish">
+    <Error Condition="!Exists('$(AndroidBlsBinding)')"
+      Text="Build the Android BLS binding with tools/LightClient/android/prepare-bls.py before packaging." />
+    <ItemGroup>
+      <!-- NuGet's Android RID fallback selects glibc libraries. Package only the explicit Bionic builds. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="'%(ResolvedFileToPublish.AssetType)' == 'native' And $([System.String]::Copy('%(ResolvedFileToPublish.PathInPackage)').StartsWith('runtimes/linux'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Filename)' == 'Nethermind.Crypto.Bls'" />
+      <ResolvedFileToPublish Include="$(AndroidBlsBinding)"
+        RelativePath="Nethermind.Crypto.Bls.dll" RuntimeIdentifier="$(RuntimeIdentifier)" AssetType="runtime" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+  <Target Name="InvalidateChangedAndroidBlsBinding" BeforeTargets="_LinkAssembliesNoShrink">
+    <PropertyGroup>
+      <_AndroidBlsStaged>$(MonoAndroidIntermediateAssemblyDir)arm64-v8a/Nethermind.Crypto.Bls.dll</_AndroidBlsStaged>
+      <_AndroidBlsCompressed>$(IntermediateOutputPath)android/lz4/arm64-v8a/Nethermind.Crypto.Bls.dll.lz4</_AndroidBlsCompressed>
+      <_AndroidBlsHashFile>$(IntermediateOutputPath)android-bls.sha256</_AndroidBlsHashFile>
+    </PropertyGroup>
+    <GetFileHash Files="$(AndroidBlsBinding)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_AndroidBlsSourceHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(_AndroidBlsStaged)" Algorithm="SHA256" Condition="Exists('$(_AndroidBlsStaged)')">
+      <Output TaskParameter="Items" ItemName="_AndroidBlsStagedHash" />
+    </GetFileHash>
+    <ReadLinesFromFile File="$(_AndroidBlsHashFile)" Condition="Exists('$(_AndroidBlsHashFile)')">
+      <Output TaskParameter="Lines" PropertyName="_AndroidBlsPreviousHash" />
+    </ReadLinesFromFile>
+    <!-- Android's timestamp cache must not retain the desktop binding when an older, patched DLL is selected. -->
+    <Delete Files="$(_AndroidBlsStaged);$(_AndroidBlsCompressed)"
+      Condition="'@(_AndroidBlsSourceHash->'%(FileHash)')' != '@(_AndroidBlsStagedHash->'%(FileHash)')' Or '@(_AndroidBlsSourceHash->'%(FileHash)')' != '$(_AndroidBlsPreviousHash)'" />
+    <WriteLinesToFile File="$(_AndroidBlsHashFile)" Lines="@(_AndroidBlsSourceHash->'%(FileHash)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

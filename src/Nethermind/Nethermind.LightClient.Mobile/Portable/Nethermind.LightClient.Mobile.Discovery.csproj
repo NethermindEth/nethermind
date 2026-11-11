@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Network.Discovery</RootNamespace>
+    <AssemblyName>Nethermind.Network.Discovery</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.Network.Discovery/**/*.cs" Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../Nethermind.Network.Discovery/Discv5/discv5-bootnodes.json" LogicalName="Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json" />
+    <ProjectReference Include="../../Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
+    <ProjectReference Include="../../Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
+    <ProjectReference Include="../../Nethermind.Network/Nethermind.Network.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+  </ItemGroup>
+</Project>

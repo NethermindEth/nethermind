@@ -91,10 +91,9 @@ public sealed class BeaconSyncOrchestrator(
 
     internal const int WorkQueueCapacity = 512;
 
-    internal const int VoteQueueCapacity = 1024;
 
     /// <summary>The most queued votes that wait for a slot tick the worker has not reached.</summary>
-    internal const int MaxVotesAheadOfTick = VoteQueueCapacity / 4;
+    internal const int MaxVotesAheadOfTick = DeferredGossipValidation.VoteQueueCapacity / 4;
 
     /// <summary>The most gossip votes and slashings verified per worker pass, so a flood of them delays queued blocks by one batch at most.</summary>
     internal const int VotesPerPass = 64;
@@ -120,7 +119,7 @@ public sealed class BeaconSyncOrchestrator(
 
     // Each queued vote costs a BLS verify and a forged one is never penalized, so votes wait apart: a flood of them must not fill _work and drop gossip blocks.
     private readonly Channel<QueuedVote> _votes = Channel.CreateBounded<QueuedVote>(
-        new BoundedChannelOptions(VoteQueueCapacity) { SingleReader = true });
+        new BoundedChannelOptions(DeferredGossipValidation.VoteQueueCapacity) { SingleReader = true });
 
     /// <summary>1 while a <see cref="VoteWakeItem"/> may be queued in the work channel, so a vote flood adds at most one item there.</summary>
     private int _voteWakeQueued;

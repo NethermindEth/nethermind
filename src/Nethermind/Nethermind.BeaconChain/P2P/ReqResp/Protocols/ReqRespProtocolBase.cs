@@ -7,7 +7,6 @@ using System.IO;
 using System.Net;
 using Multiformats.Address;
 using Multiformats.Address.Protocols;
-using Nethermind.BeaconChain.Api;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Metric;
@@ -168,7 +167,7 @@ public abstract class ReqRespProtocolBase
         if (address is null) return null;
         foreach (MultiaddressProtocol protocol in address.Protocols)
         {
-            if (protocol is IP4 or IP6 && protocol.Value is IPAddress ip) return StateRequestLimiter.ClientKey(ip);
+            if (protocol is IP4 or IP6 && protocol.Value is IPAddress ip) return ClientNetworkKey.Create(ip);
         }
 
         return null;

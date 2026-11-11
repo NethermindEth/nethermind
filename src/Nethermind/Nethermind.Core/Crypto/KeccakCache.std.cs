@@ -13,8 +13,8 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto;
 
-// The client's cache: 64 MB of native memory holding 512k entries. Everything is aligned both to
-// cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
+// The client's cache: 64 MiB for 512k entries, or 4 MiB for memory-constrained hosts. Everything is
+// aligned both to cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
 // lock-free through a seqlock — read the sequence, speculatively read the entry, then verify the
 // sequence has not moved — and a write takes a single CAS to lock plus a Volatile.Write to unlock.
 // A failed CAS just moves on rather than waiting: a skipped cache write costs one keccak, nothing
@@ -22,17 +22,17 @@ namespace Nethermind.Core.Crypto;
 // which compiles into the zkEVM guest image too.
 public static unsafe partial class KeccakCache
 {
-    /// <summary>
-    /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
-    /// </summary>
-    public const nuint Count = BucketMask + 1;
+    /// <summary>The entry count selected when the cache is first used.</summary>
+    /// <remarks>The startup switch <c>Nethermind.Crypto.KeccakCache.Small</c> selects 32k entries instead of 512k.</remarks>
+    public static readonly nuint Count;
 
-    private const int BucketMask = 0x0007_FFFF;
-    private const uint HashMask = unchecked((uint)~BucketMask);
+    private static readonly uint BucketMask;
+    // The fingerprint must not overlap the lock/version bits when the physical bucket count is reduced.
+    private const uint HashMask = 0xFFF8_0000;
     private const uint LockMarker = 0x0000_8000;
     private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
     private const uint VersionIncrement = 0x0000_0080;  // Bit 7: increment step for version
-    private const uint HashLengthMask = HashMask | 0x7F;  // Hash (bits 17-31) + Length (bits 0-6)
+    private const uint HashLengthMask = HashMask | 0x7F;  // Hash (bits 19-31) + Length (bits 0-6)
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
@@ -42,7 +42,9 @@ public static unsafe partial class KeccakCache
 
     static KeccakCache()
     {
-        const nuint size = Count * Entry.Size;
+        Count = AppContext.TryGetSwitch("Nethermind.Crypto.KeccakCache.Small", out bool small) && small ? 32u * 1024 : 512u * 1024;
+        BucketMask = (uint)Count - 1;
+        nuint size = Count * Entry.Size;
 
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
         Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
@@ -108,8 +110,7 @@ public static unsafe partial class KeccakCache
             Sse.PrefetchNonTemporal((byte*)Unsafe.AsPointer(ref e) + CacheLineSizeBytes);
         }
 
-        // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
-        // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
+        // The upper hash bits leave room for length and synchronization metadata; the full payload is compared on hits.
         combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
         return ref e;

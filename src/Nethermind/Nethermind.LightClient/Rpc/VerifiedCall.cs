@@ -26,11 +26,12 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
-internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null) : IDisposable
+internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
+    long cacheCapacity = VerifiedMemoryCache.DefaultCapacity) : IDisposable
 {
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
-    private readonly VerifiedMemoryCache _cache = new();
+    private readonly VerifiedMemoryCache _cache = new(cacheCapacity);
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
     private readonly IContainer _processing = new ContainerBuilder()

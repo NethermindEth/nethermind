@@ -3,11 +3,16 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -15,6 +20,64 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakCacheTests
     {
+        [Test]
+        public void Capacity_matches_the_startup_switch()
+        {
+            bool small = AppContext.TryGetSwitch("Nethermind.Crypto.KeccakCache.Small", out bool enabled) && enabled;
+            Assert.That(KeccakCache.Count, Is.EqualTo((nuint)(small ? 32 * 1024 : 512 * 1024)));
+        }
+
+        [Test]
+        public async Task Small_cache_preserves_hashes_in_an_isolated_process()
+        {
+            using TempPath temporary = TempPath.GetTempDirectory();
+            Directory.CreateDirectory(temporary.Path);
+            string assembly = typeof(KeccakCacheTests).Assembly.Location;
+            JsonNode config = JsonNode.Parse(await File.ReadAllTextAsync(Path.ChangeExtension(assembly, "runtimeconfig.json")))!;
+            config["runtimeOptions"]!["configProperties"]!["Nethermind.Crypto.KeccakCache.Small"] = true;
+            string runtimeConfig = Path.Combine(temporary.Path, "small.runtimeconfig.json");
+            await File.WriteAllTextAsync(runtimeConfig, config.ToJsonString());
+            ProcessStartInfo start = new(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (string argument in new[]
+            {
+                "exec", "--runtimeconfig", runtimeConfig, assembly,
+                "--filter", $"FullyQualifiedName~{nameof(KeccakCacheTests)}&FullyQualifiedName!~{nameof(Small_cache_preserves_hashes_in_an_isolated_process)}",
+                "--results-directory", temporary.Path,
+            }) start.ArgumentList.Add(argument);
+            using Process child = new() { StartInfo = start };
+            Assert.That(child.Start(), Is.True);
+            Task<string> output = child.StandardOutput.ReadToEndAsync();
+            Task<string> error = child.StandardError.ReadToEndAsync();
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+            try { await child.WaitForExitAsync(timeout.Token); }
+            catch (OperationCanceledException)
+            {
+                child.Kill(entireProcessTree: true);
+                await child.WaitForExitAsync();
+                Assert.Fail($"Small-cache tests timed out.\n{await output}\n{await error}");
+            }
+            Assert.That(child.ExitCode, Is.Zero, $"{await output}\n{await error}");
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Hash_bits_reserved_for_synchronization_do_not_prevent_a_hit([Values(20, 32, 64, 92)] int length)
+        {
+            byte[] input = new byte[length];
+            Random random = new(1319);
+            do { random.NextBytes(input); } while ((((ReadOnlySpan<byte>)input).FastHash() & 0x8000) == 0);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            KeccakCache.Compute(input);
+            Assert.That(KeccakCache.TryGet(input, out ValueHash256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
         [Test]
         public void Multiple()
         {

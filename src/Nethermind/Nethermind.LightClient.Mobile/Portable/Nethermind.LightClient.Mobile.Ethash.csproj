@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Nethermind.Consensus.Ethash</RootNamespace>
+    <AssemblyName>Nethermind.Consensus.Ethash</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Nethermind.Consensus.Ethash/EthashChainSpecEngineParameters.cs" Link="EthashChainSpecEngineParameters.cs" />
+    <ProjectReference Include="../../Nethermind.Specs/Nethermind.Specs.csproj" />
+  </ItemGroup>
+</Project>

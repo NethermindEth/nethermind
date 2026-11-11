@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../tests.props" />
+  <PropertyGroup>
+    <RootNamespace>Nethermind.LightClient.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+    <Using Include="NUnit.Framework" />
+    <ProjectReference Include="../Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Core.csproj" />
+    <Compile Include="../Nethermind.LightClient.Test/BlockAccessListProofTests.cs" Link="BlockAccessListProofTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/CheckpointSourceTests.cs" Link="CheckpointSourceTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/ConsensusSpecFixtureTests.cs" Link="ConsensusSpecFixtureTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/ExecutionProofVerifierTests.cs" Link="ExecutionProofVerifierTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/FuluFixtureTests.cs" Link="FuluFixtureTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/ReferenceStateProofTests.cs" Link="ReferenceStateProofTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/SnapProofTests.cs" Link="SnapProofTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/VerifiedHeadTests.cs" Link="VerifiedHeadTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/VerifiedCacheTests.cs" Link="VerifiedCacheTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/LightPeerRequestSchedulerTests.cs" Link="LightPeerRequestSchedulerTests.cs" />
+    <Content Include="../Nethermind.LightClient.Test/TestData/**/*" Link="TestData/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

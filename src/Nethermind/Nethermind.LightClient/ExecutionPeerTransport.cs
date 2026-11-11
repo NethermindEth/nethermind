@@ -25,7 +25,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.KeyStore.Config;
 using Nethermind.LightClient.Rpc;
@@ -59,7 +58,7 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient;
 
 /// <summary>Connects to execution peers without starting block or state synchronization.</summary>
-internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisposable
+internal sealed partial class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisposable
 {
     private const int ExecutionRequestLimit = 4;
     private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
@@ -124,17 +123,17 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead? head = null, ulong timestamp = 0,
         string? dataDirectory = null, Address[]? hostedAccounts = null, int port = 30307,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null, long cacheCapacity = VerifiedMemoryCache.DefaultCapacity)
     {
         _clock = clock ?? TimeProvider.System;
-        _bodies = new(BodySize, _stop.Token);
-        _receipts = new(ReceiptsSize, _stop.Token);
-        _headers = new(static header => 2048 + header.ExtraData.LongLength, _stop.Token);
-        _accounts = new(static _ => 1024, _stop.Token);
-        _storage = new(static _ => 1024, _stop.Token);
-        _code = new(static bytes => bytes.Length, _stop.Token);
+        _bodies = new(BodySize, _stop.Token, cacheCapacity);
+        _receipts = new(ReceiptsSize, _stop.Token, cacheCapacity);
+        _headers = new(static header => 2048 + header.ExtraData.LongLength, _stop.Token, cacheCapacity);
+        _accounts = new(static _ => 1024, _stop.Token, cacheCapacity);
+        _storage = new(static _ => 1024, _stop.Token, cacheCapacity);
+        _code = new(static bytes => bytes.Length, _stop.Token, cacheCapacity);
         _blockAccessLists = new(static list => 1024 + 4L * BlockAccessListDecoder.Instance.GetLength(list, RlpBehaviors.None)
-            + 512L * list.ItemCount + 128L * list.TotalStorageChangeEvents, _stop.Token);
+            + 512L * list.ItemCount + 128L * list.TotalStorageChangeEvents, _stop.Token, cacheCapacity);
         _logManager = logManager;
         _logger = logManager.GetClassLogger<ExecutionPeerTransport>();
         if (hostedAccounts is { Length: > 0 })
@@ -175,7 +174,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         KeyStoreConfig keyStore = new() { KeyStoreDirectory = Path.GetFullPath(dataDirectory ?? init.DataDir) };
         ConfigProvider config = new(init, net, sync, discovery, keyStore, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
-        builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
+        builder.RegisterModule(CreateModule(chainSpec, config, logManager));
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
         if (dataDirectory is not null)
         {

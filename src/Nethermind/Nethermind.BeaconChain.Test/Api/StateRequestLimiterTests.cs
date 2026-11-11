@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core.Crypto;
@@ -167,7 +168,7 @@ public class StateRequestLimiterTests
     [TestCase("192.0.2.7", "192.0.2.8", false, TestName = "Each IPv4 address has its own budget")]
     [TestCase("::", "0.0.0.0", false, TestName = "IPv6 and IPv4 keys never collide")]
     public void Clients_are_counted_per_IPv4_address_and_per_IPv6_64(string first, string second, bool shared) =>
-        Assert.That(StateRequestLimiter.ClientKey(IPAddress.Parse(first)) == StateRequestLimiter.ClientKey(IPAddress.Parse(second)), Is.EqualTo(shared));
+        Assert.That(ClientNetworkKey.Create(IPAddress.Parse(first)) == ClientNetworkKey.Create(IPAddress.Parse(second)), Is.EqualTo(shared));
 
     [Test]
     public async Task A_client_with_a_state_request_in_flight_is_refused_a_second_while_other_clients_are_served()

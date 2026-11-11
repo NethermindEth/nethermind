@@ -213,12 +213,12 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The router's own bound on messages awaiting a verdict: the node's bound and the vote queue, each reserved by DeferredGossipValidation, twice over.</summary>
     /// <remarks>The margin covers a message the router still holds for a moment after the node released its reservation.</remarks>
     internal static int PendingValidationMessagesBackstop(IBeaconChainConfig config) =>
-        checked(2 * (2 * config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
+        checked(2 * (2 * config.GossipMaxPendingValidations + DeferredGossipValidation.VoteQueueCapacity));
 
     /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound, a full vote queue of the largest votes and a full set of parked Gloas sidecars, which hold no reservation, twice over.</summary>
     /// <remarks>A parked sidecar arrived by gossip, so it is at most <see cref="Eth2MessageId.MaxGossipSize"/> whatever the blob schedule; the sum saturates at <see cref="int.MaxValue"/>.</remarks>
     internal static int PendingValidationBytesBackstop(IBeaconChainConfig config, BeaconChainSpec spec) =>
-        (int)Math.Min(int.MaxValue, 2 * (2L * config.GossipMaxPendingValidationBytes + (long)BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
+        (int)Math.Min(int.MaxValue, 2 * (2L * config.GossipMaxPendingValidationBytes + (long)DeferredGossipValidation.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
             + DataColumnSidecarPool.MaxPendingGloasSidecars * (long)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize)));
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
@@ -338,7 +338,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             {
                 PubsubSettings settings = _serviceProvider.GetRequiredService<PubsubSettings>();
                 _deferredValidation = new DeferredGossipValidation(_router, _messageValidator, _config.GossipMaxPendingValidations, _config.GossipMaxPendingValidationBytes,
-                    BeaconSyncOrchestrator.VoteQueueCapacity, settings.PendingValidationTimeout, _logger, _startCts.Token)
+                    DeferredGossipValidation.VoteQueueCapacity, settings.PendingValidationTimeout, _logger, _startCts.Token)
                 {
                     ReportRejectedMessage = (source, detail) =>
                     {

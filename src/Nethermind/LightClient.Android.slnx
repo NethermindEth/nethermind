@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="Nethermind.LightClient.Android/Nethermind.LightClient.Android.csproj" />
+  <Project Path="Nethermind.LightClient.Mobile.Test/Nethermind.LightClient.Mobile.Test.csproj" />
+  <Folder Name="/Portable/">
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Api.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Beacon.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Core.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Discovery.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Ethash.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Merge.csproj" />
+    <Project Path="Nethermind.LightClient.Mobile/Portable/Nethermind.LightClient.Mobile.Rocks.csproj" />
+  </Folder>
+</Solution>
