@@ -61,7 +61,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     };
 
     [Test]
-    public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", "reason")] string reason)
+    public void Call_tracer_omits_empty_decoded_revert_reason([Values] bool nested, [Values("", " ", "reason")] string reason)
     {
         const int abiWordLength = 32;
         int selectorLength = TransactionSubstate.ErrorFunctionSelector.Length;
