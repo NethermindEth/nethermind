@@ -40,7 +40,7 @@ public class OpcodeChainBenchmarks
     private int _codeIndex;
     private byte[] _input = new byte[96];
 
-    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating")]
+    [Params("BalanceColdExistingPair", "BalanceColdSingle", "DivIsZero", "MulDup", "SarAnd", "MemoryCopy", "MemoryHash", "BalanceColdPair", "ExpOne", "ExpCompute", "CallEmpty", "CallIdentity", "StaticIdentity", "StorageWrite", "StorageRead", "TransientRead", "BalanceRead", "SelfBalanceRead", "ExtCodeSizeRead", "DivOne", "ModOne", "DivZero", "ModZero", "DivSmall", "ModSmall", "DivWide", "ModWide", "JumpScattered", "JumpScatteredRotating", "JumpScatteredPush3", "Arithmetic", "AddMod", "MulMod", "AddModZero", "MulModZero", "Bitwise", "Predicate", "Stack", "Byte", "Shift", "Sar", "Clz", "Environment", "SmallValue", "CallData", "CallDataPartial", "CallDataMissing", "Context", "ReturnDataSize", "PrevRandao", "Memory", "MemoryByte", "MemoryBoundary", "CallReturn", "CallRevert", "CallInput", "JumpTaken", "JumpUntaken", "JumpAlternating", "LessThanPop", "EqualPop", "GreaterThanIsZeroPop")]
     public string Chain { get; set; } = "Arithmetic";
 
     [Params(false, true)]
@@ -224,6 +224,11 @@ public class OpcodeChainBenchmarks
                     (byte)Instruction.PUSH1, Chain == "ExpOne" ? (byte)1 : (byte)3, (byte)Instruction.EXP, (byte)Instruction.POP], 4),
                 "Bitwise" => ([(byte)Instruction.DUP1, (byte)Instruction.AND], 2),
                 "Predicate" => ([(byte)Instruction.ISZERO, (byte)Instruction.NOT], 2),
+                // A comparison that does not feed a branch, the case a handler that looks for one has to skip.
+                "LessThanPop" => ([(byte)Instruction.DUP1, (byte)Instruction.DUP1, (byte)Instruction.LT, (byte)Instruction.POP], 4),
+                "EqualPop" => ([(byte)Instruction.DUP1, (byte)Instruction.DUP1, (byte)Instruction.EQ, (byte)Instruction.POP], 4),
+                "GreaterThanIsZeroPop" => ([(byte)Instruction.DUP1, (byte)Instruction.DUP1, (byte)Instruction.GT,
+                    (byte)Instruction.ISZERO, (byte)Instruction.POP], 5),
                 "Stack" => ([(byte)Instruction.DUP1, (byte)Instruction.SWAP1, (byte)Instruction.POP], 3),
                 "Byte" => ([(byte)Instruction.PUSH1, 0, (byte)Instruction.BYTE], 2),
                 "Shift" => ([(byte)Instruction.PUSH1, 1, (byte)Instruction.SHL], 2),
