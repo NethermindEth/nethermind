@@ -34,11 +34,9 @@ internal static partial class WitnessNodeStorage
         return new ValidatingNodeStorage(new NodeStorage(db, INodeStorage.KeyScheme.Hash));
     }
 
-    /// <remarks>Re-implements <see cref="ITrieStore.GetTrieStore"/>, which <see cref="RawTrieStore"/> does not let a
-    /// subclass override.</remarks>
-    private sealed class ValidatingTrieStore(ValidatingNodeStorage nodeStorage) : RawTrieStore(nodeStorage), ITrieStore
+    private sealed class ValidatingTrieStore(ValidatingNodeStorage nodeStorage) : RawTrieStore(nodeStorage)
     {
-        IScopedTrieStore ITrieStore.GetTrieStore(Hash256? address) => new ValidatingScopedTrieStore(nodeStorage, address);
+        public override IScopedTrieStore GetTrieStore(Hash256? address) => new ValidatingScopedTrieStore(nodeStorage, address);
     }
 
     /// <summary>Checks each node a trie walk resolves from its parent's RLP, which <see cref="ValidatingNodeStorage"/> never serves.</summary>
