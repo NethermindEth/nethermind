@@ -77,7 +77,9 @@ public class ChainSpecHardforkLabelTests
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
     {
-        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"");
+        // EIP-8272 activates at or after EIP-7843, so a label carrying it is loaded with slot numbers scheduled.
+        string slotNumbers = label.Eips.Contains(8272) ? $", \"eip7843TransitionTimestamp\": \"0x{ActivationValue:x}\"" : "";
+        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"{slotNumbers}");
 
         foreach (string propName in label.EipPropertyNames)
         {

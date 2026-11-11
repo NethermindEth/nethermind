@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test;
@@ -18,6 +22,71 @@ namespace Nethermind.KeyStore.Test;
 [Parallelizable(ParallelScope.All)]
 public class KeyStoreTests
 {
+    private static IEnumerable<TestCaseData> IoFailureCases()
+    {
+        foreach (bool maskSensitiveData in new[] { false, true })
+        {
+            foreach (string operation in new[] { nameof(FileKeyStore.GetKeyData), nameof(FileKeyStore.GetKeyAddresses), nameof(FileKeyStore.StoreKey), nameof(FileKeyStore.DeleteKey) })
+                yield return new TestCaseData(operation, maskSensitiveData, false);
+            yield return new TestCaseData(nameof(FileKeyStore.GetKeyData), maskSensitiveData, true);
+        }
+    }
+
+    [TestCaseSource(nameof(IoFailureCases))]
+    [NonParallelizable]
+    public void Io_failure_diagnostics_follow_sensitive_masking(string operation, bool maskSensitiveData, bool lockedFile)
+    {
+        using TempPath directory = TempPath.GetTempDirectory($"private-keystore-{Guid.NewGuid():N}");
+        string keyPath = Path.Combine(directory.Path, $"UTC--test--{TestItem.AddressA.ToString(false, false)}");
+        if (lockedFile)
+        {
+            Directory.CreateDirectory(directory.Path);
+            File.WriteAllText(keyPath, "key file contents");
+        }
+        using FileStream keyLock = lockedFile ? File.Open(keyPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null;
+        IKeyStoreIOSettingsProvider settings = Substitute.For<IKeyStoreIOSettingsProvider>();
+        if (lockedFile) settings.StoreDirectory.Returns(directory.Path);
+        else settings.StoreDirectory.Returns(_ => throw new UnauthorizedAccessException($"Access to {directory.Path} is denied."));
+        TestErrorLogManager logs = new();
+        using ICryptoRandom random = Substitute.For<ICryptoRandom>();
+        FileKeyStore store = new(new KeyStoreConfig(), new EthereumJsonSerializer(), Substitute.For<ISymmetricEncrypter>(), random, logs, settings);
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            Result result = operation switch
+            {
+                nameof(FileKeyStore.GetKeyData) => store.GetKeyData(TestItem.AddressA).Result,
+                nameof(FileKeyStore.GetKeyAddresses) => store.GetKeyAddresses().Result,
+                nameof(FileKeyStore.StoreKey) => store.StoreKey(TestItem.AddressA, new KeyStoreItem()),
+                _ => store.DeleteKey(TestItem.AddressA)
+            };
+
+            TestErrorLogManager.Error error = logs.Errors.Single();
+            string message = operation switch
+            {
+                nameof(FileKeyStore.GetKeyData) => $"Error during reading key for address: {TestItem.AddressA}",
+                nameof(FileKeyStore.GetKeyAddresses) => "Error during getting addresses",
+                nameof(FileKeyStore.StoreKey) => $"Error during persisting key for address: {TestItem.AddressA}",
+                _ => $"Error during deleting key for address: {TestItem.AddressA}"
+            };
+            string exceptionType = lockedFile ? nameof(IOException) : nameof(UnauthorizedAccessException);
+            string rendered = $"{error.Text}{Environment.NewLine}{error.Exception}";
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(result.Error, Is.EqualTo(operation == nameof(FileKeyStore.GetKeyData) ? "Cannot find key" : message));
+                Assert.That(error.Text, Is.EqualTo(maskSensitiveData ? $"{message}: {exceptionType}" : message));
+                Assert.That(error.Exception is null, Is.EqualTo(maskSensitiveData));
+                Assert.That(rendered.Contains(directory.Path), Is.EqualTo(!maskSensitiveData));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
     private class TestContext
     {
         public FileKeyStore Store { get; }
@@ -118,8 +187,11 @@ public class KeyStoreTests
         try
         {
             (PrivateKey key, Result result) = test.Store.GetKey(new Address(item.Address), securePassword);
-            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
-            Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
+                Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            }
         }
         finally
         {
@@ -184,10 +256,13 @@ public class KeyStoreTests
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "generate key 2");
 
             (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
-            Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
-            Assert.That(addresses.Count >= 2, Is.True);
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
+                Assert.That(addresses.Count >= 2, Is.True);
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            }
 
             result = test.Store.DeleteKey(key1.Address);
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "delete key 1");
@@ -209,8 +284,11 @@ public class KeyStoreTests
         Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-        Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        }
 
         Result result = test.Store.DeleteKey(key.Item1.Address);
         Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
@@ -238,8 +316,11 @@ public class KeyStoreTests
         test.Store.StoreKey(key.Address, keyData);
 
         (_, Result loadResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
-        Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
+            Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        }
 
         test.Store.DeleteKey(key.Address);
     }
@@ -252,12 +333,18 @@ public class KeyStoreTests
         Assert.That(generateResult.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey keyRestored, Result getResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        }
 
         (PrivateKey _, Result wrongResult) = test.Store.GetKey(key.Address, test.WrongPasswordSecured);
-        Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        }
 
         Result deleteResult = test.Store.DeleteKey(key.Address);
         Assert.That(deleteResult.ResultType, Is.EqualTo(ResultType.Success));

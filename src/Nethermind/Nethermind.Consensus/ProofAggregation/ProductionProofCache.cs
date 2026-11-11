@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -132,16 +131,14 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
 
     private static ValueHash256 VerifiedKey(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(depsHash.Bytes);
+        KeccakHash hash = KeccakHash.Create();
+        hash.Update(depsHash.Bytes);
         Span<byte> length = stackalloc byte[4];
         BitConverter.TryWriteBytes(length, aggregatedVk.Length);
-        hash.AppendData(length);
-        hash.AppendData(aggregatedVk);
-        hash.AppendData(proof);
-        Span<byte> digest = stackalloc byte[32];
-        hash.GetHashAndReset(digest);
-        return new ValueHash256(digest);
+        hash.Update(length);
+        hash.Update(aggregatedVk);
+        hash.Update(proof);
+        return hash.GenerateValueHash();
     }
 
     /// <inheritdoc/>
@@ -344,10 +341,12 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         finally { if (entered) Monitor.Exit(_provingLock); }
     }
 
+    internal const string BackgroundBusyMessage = "Proof production is busy; retry background aggregation on the next cadence.";
+
     private static InvalidOperationException BackgroundBusy()
     {
         Interlocked.Increment(ref Metrics.LeanBackgroundProofsSkipped);
-        return new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
+        return new InvalidOperationException(BackgroundBusyMessage);
     }
 
     private bool TryGet(ValueHash256 key, out byte[]? proof)
@@ -378,8 +377,8 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
 
     private static ValueHash256 Key(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        hash.AppendData(depsHash.Bytes);
+        KeccakHash hash = KeccakHash.Create();
+        hash.Update(depsHash.Bytes);
         Blob(aggregatedVk);
         Count(input.Deps.Count);
         foreach (FrameDependency dependency in input.Deps) Dependency(dependency);
@@ -394,28 +393,26 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         }
         Count(input.Discards.Count);
         foreach (FrameDependency dependency in input.Discards) Dependency(dependency);
-        Span<byte> digest = stackalloc byte[32];
-        hash.GetHashAndReset(digest);
-        return new ValueHash256(digest);
+        return hash.GenerateValueHash();
 
         void Count(int count)
         {
             Span<byte> bytes = stackalloc byte[4];
             BitConverter.TryWriteBytes(bytes, count);
-            hash.AppendData(bytes);
+            hash.Update(bytes);
         }
 
         void Blob(ReadOnlySpan<byte> bytes)
         {
             Count(bytes.Length);
-            hash.AppendData(bytes);
+            hash.Update(bytes);
         }
 
         void Dependency(FrameDependency dependency)
         {
             Span<byte> bytes = stackalloc byte[Eip8288Constants.DependencyTripleLength];
             dependency.WriteTo(bytes);
-            hash.AppendData(bytes);
+            hash.Update(bytes);
         }
     }
 }

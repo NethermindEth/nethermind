@@ -37,11 +37,17 @@ public class DependencyProofTxFilterTests
         TxFilteringState filtering = new(candidate, Substitute.For<IAccountStateProvider>(), Eip8288Prototype.Instance);
         try
         {
-            Assert.That(coverage.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(quota.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.MissingDependencyProof));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(coverage.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(quota.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.MissingDependencyProof));
+            }
             store.UnpinPending(first.Hash!.ValueHash256);
-            Assert.That(quota.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(store.PinPending(candidate), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(quota.Accept(candidate, ref filtering, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(store.PinPending(candidate), Is.True);
+            }
         }
         finally
         {

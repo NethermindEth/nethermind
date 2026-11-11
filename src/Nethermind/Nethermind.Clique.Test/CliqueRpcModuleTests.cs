@@ -76,8 +76,11 @@ namespace Nethermind.Clique.Test
             blockFinder.FindHeader(Arg.Any<Hash256>()).Returns(header);
             snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
-            Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Data, Is.EqualTo(TestItem.AddressA));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Data, Is.EqualTo(TestItem.AddressA));
+            }
         }
 
         [Test]

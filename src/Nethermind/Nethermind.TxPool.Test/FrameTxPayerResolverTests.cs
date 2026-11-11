@@ -128,13 +128,13 @@ public class FrameTxPayerResolverTests
                 return tx;
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // The set [0] aliases the account nonce and writes no NONCE_MANAGER slot, so it owes no state gas.
+        // The empty set selects the account nonce and writes no NONCE_MANAGER slot, so it owes no state gas.
         yield return Case("SelfVerify_AccountNonceKeySet_PayerIsSender",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
-                tx.NonceKeys = [UInt256.Zero];
+                tx.NonceKeys = [];
                 return tx;
             }, FrameTxPayerOutcome.Resolved, Sender);
 

@@ -231,8 +231,11 @@ public class HostMemoryFastPathTests
             {
                 byte[]? backing = memory.BackingArray;
                 Assert.That(backing, Is.Not.Null);
-                Assert.That(backing!.Length, Is.EqualTo(Harness.DirtyArrayLength));
-                Assert.That(backing[^1], Is.EqualTo(Harness.StaleByte), "the frame must spill into the stale array the setup pooled");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(backing!.Length, Is.EqualTo(Harness.DirtyArrayLength));
+                    Assert.That(backing[^1], Is.EqualTo(Harness.StaleByte), "the frame must spill into the stale array the setup pooled");
+                }
             });
 
         using (Assert.EnterMultipleScope())
@@ -740,7 +743,9 @@ public class HostMemoryFastPathTests
         {
             ThreadCacheField.SetValue(null, Activator.CreateInstance(ThreadCacheField.FieldType));
             EvmPooledMemory pooled = new(new EvmFrameMemory());
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(pooled.TrySave(UInt256.Zero, Filled(DirtyArrayLength, StaleByte)), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(pooled.BackingArray, Has.Length.EqualTo(DirtyArrayLength));
             pooled.Dispose();
         }

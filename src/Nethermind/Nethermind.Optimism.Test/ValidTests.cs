@@ -39,7 +39,10 @@ public class ValidTests
     [TestCaseSource(nameof(TestCases))]
     public void CombinesCorrectly(Valid[] values, string expected)
     {
-        Assert.That($"{values.Aggregate((v1, v2) => v1 | v2)}", Is.EqualTo(expected));
-        Assert.That($"{values.Reverse().Aggregate((v1, v2) => v1 | v2)}", Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That($"{values.Aggregate((v1, v2) => v1 | v2)}", Is.EqualTo(expected));
+            Assert.That($"{values.Reverse().Aggregate((v1, v2) => v1 | v2)}", Is.EqualTo(expected));
+        }
     }
 }

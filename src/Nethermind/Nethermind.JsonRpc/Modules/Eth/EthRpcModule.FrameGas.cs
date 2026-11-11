@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -57,6 +60,8 @@ public partial class EthRpcModule
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
+        if ((BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
+            return Result<FrameForRpc[]>.Fail(overrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
         FrameForRpc[]? requested = request.Frames;
         FrameForRpc[]? input = WithDependencyFrameGas(requested);
@@ -74,6 +79,8 @@ public partial class EthRpcModule
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
         if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return Result<FrameForRpc[]>.Fail(error!);
+        ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
+        Func<ulong, UInt256>? maxFeeAt = request.PerGasBudget(tx, gasCap) is null ? null : maxGas => request.PerGasBudget(tx, maxGas)!.Value;
 
         bool[] fillExecution = new bool[input!.Length];
         bool[] fillState = new bool[input.Length];
@@ -89,7 +96,7 @@ public partial class EthRpcModule
             if (blockOverride?.BaseFeePerGas is not null) blockOverride = blockOverride.WithBaseFee(0);
         }
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, token, out bool executionReverted);
+            gasCap, _rpcConfig.EstimateErrorMargin, maxFeeAt, stateOverride, blockOverride, token, out bool executionReverted);
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -36,6 +37,8 @@ public sealed partial class ProofWrapperTransport
             long now = _clock.GetTimestamp();
             // Announcements beyond the rate limit are ignored, not penalized.
             if (!peer.AnnouncementsIn.TryTake(1)) return;
+            bool evictable = true;
+            int share = Math.Max(WrapperTransportLimits.MinPendingAnnouncementsPerPeer, WrapperTransportLimits.MaxPendingAnnouncements / _peers.Count);
             foreach (WrapperAnnouncement announcement in message.Announcements)
             {
                 WrapperMetrics.Record(WrapperEvent.AnnouncementReceived);
@@ -54,10 +57,15 @@ public sealed partial class ProofWrapperTransport
                     WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
                     continue;
                 }
-                // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
-                // never serves cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
-                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
-                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
+                // The pending cache is bounded, and each peer holds at most an equal share of it, so peers announcing wrappers
+                // they never serve cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
+                if (peer.PendingFetches >= share) continue;
+                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements && (!evictable || !EvictPending(peer, share)))
+                {
+                    // Nothing becomes evictable while the rest of the message is handled.
+                    evictable = false;
+                    continue;
+                }
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
                 fetch.AddSource(peer, announcement);
@@ -66,6 +74,26 @@ public sealed partial class ProofWrapperTransport
             Schedule(outbox);
         }
         outbox.Flush();
+    }
+
+    /// <summary>Makes room in the full pending cache for <paramref name="announcer"/> by dropping an unrequested wrapper every open
+    /// source of which is deprioritized or holds at least its share.</summary>
+    /// <returns>Whether room was made; never for an announcer that is itself deprioritized.</returns>
+    private bool EvictPending(WrapperPeer announcer, int share)
+    {
+        if (announcer.IsDeprioritized) return false;
+        foreach (WrapperFetch fetch in _fetches.Values)
+        {
+            if (fetch.Requested || fetch.Wrapper is not null || fetch.Announcer is not { } holder || !Yields(holder, share)) continue;
+            bool evictable = true;
+            foreach (WrapperPeer source in fetch.Sources) evictable &= Yields(source, share);
+            if (!evictable) continue;
+            Remove(fetch, "evicted for another peer's announcement");
+            return true;
+        }
+        return false;
+
+        static bool Yields(WrapperPeer peer, int share) => peer.Closed || peer.IsDeprioritized || peer.PendingFetches >= share;
     }
 
     /// <summary>Requests queued wrappers from their next untried source, up to four outstanding requests per peer.</summary>
@@ -146,8 +174,21 @@ public sealed partial class ProofWrapperTransport
     internal void OnProofWrappers(WrapperPeer peer, ProofWrappersMessage message)
     {
         ProofWrapperEntry[] entries = message.Entries;
-        Returned[] returned = Resolve(peer, message);
         Outbox outbox = new();
+        bool outstanding;
+        lock (_gate)
+        {
+            if (peer.Closed) return;
+            // Resolution parses and hashes every body, so a response to no outstanding request is settled before it.
+            outstanding = peer.Requests.ContainsKey(message.RequestId);
+            if (!outstanding) TakeRequest(peer, message.RequestId, outbox);
+        }
+        if (!outstanding)
+        {
+            outbox.Flush();
+            return;
+        }
+        Returned[] returned = Resolve(peer, message);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -188,7 +229,7 @@ public sealed partial class ProofWrapperTransport
                 return;
             }
             int last = entries.Length == 0 ? -1 : matched[^1];
-            int next = 0;
+            int next = 0, unavailable = 0;
             for (int position = 0; position < fetches.Length; position++)
             {
                 WrapperFetch fetch = fetches[position];
@@ -205,7 +246,13 @@ public sealed partial class ProofWrapperTransport
                         fetch.Tried.Remove(peer);
                         continue;
                     }
-                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, item.Charge)) continue;
+                    if (fetch.Removed || fetch.Wrapper is not null) continue;
+                    if (!TryCharge(peer, item.Charge))
+                    {
+                        WrapperMetrics.Record(WrapperEvent.BudgetDropped);
+                        if (_logger.IsDebug) _logger.Debug($"eth/73 dropped {fetch.Announcement} from {peer}: byte budget exhausted");
+                        continue;
+                    }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = item.Charge;
                     fetch.Server = peer;
@@ -214,7 +261,12 @@ public sealed partial class ProofWrapperTransport
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
                 else if (position > last && entries.Length > 0) fetch.Tried.Remove(peer);
+                else if (entries.Length == 0) fetch.AnsweredEmpty.Add(peer);
+                else unavailable++;
             }
+            // Requested wrappers withheld count toward the failure score in proportion, so serving one of many does not evade it;
+            // an empty response is a spent serving budget.
+            if (unavailable > 0 && entries.Length > 0) peer.RecordFailure(WrapperTransportLimits.UnservedFailureWeight * unavailable / fetches.Length);
             WrapperMetrics.Record(WrapperEvent.Received, entries.Length);
             Schedule(outbox);
         }
@@ -337,11 +389,49 @@ public sealed partial class ProofWrapperTransport
     private void Enqueue(WrapperFetch fetch)
     {
         fetch.Processing = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
-        _validation.Enqueue(fetch);
+        WrapperPeer server = fetch.Server!;
+        if (!_validation.TryGetValue(server, out Queue<WrapperFetch>? queued))
+        {
+            _validation[server] = queued = [];
+            // A dropped backlog may have left the server's turn queued.
+            if (!_validationTurns.Contains(server)) _validationTurns.Enqueue(server);
+        }
+        queued.Enqueue(fetch);
         if (_validationWorkers < WrapperTransportLimits.MaxValidationWorkers)
         {
             _validationWorkers++;
             _ = Task.Run(ValidateQueueAsync);
+        }
+    }
+
+    /// <summary>Takes the next received wrapper of the next server in turn.</summary>
+    private bool TryDequeueValidation([NotNullWhen(true)] out WrapperFetch? fetch)
+    {
+        while (_validationTurns.TryDequeue(out WrapperPeer? server))
+        {
+            if (!_validation.TryGetValue(server, out Queue<WrapperFetch>? queued)) continue;
+            fetch = queued.Dequeue();
+            if (queued.Count == 0) _validation.Remove(server);
+            else _validationTurns.Enqueue(server);
+            return true;
+        }
+        fetch = null;
+        return false;
+    }
+
+    /// <summary>Returns the wrappers a deprioritized peer served that await validation to their fetches, which ask the next
+    /// source, so its backlog does not hold validation or byte budgets.</summary>
+    private void DropBacklog(WrapperPeer server)
+    {
+        if (!server.IsDeprioritized || !_validation.Remove(server, out Queue<WrapperFetch>? queued)) return;
+        foreach (WrapperFetch fetch in queued)
+        {
+            fetch.Processing?.Dispose();
+            fetch.Processing = null;
+            Release(server, fetch.ChargedBytes);
+            fetch.ChargedBytes = 0;
+            fetch.Wrapper = null;
+            fetch.Server = null;
         }
     }
 
@@ -353,7 +443,7 @@ public sealed partial class ProofWrapperTransport
             {
                 WrapperFetch? fetch;
                 lock (_gate)
-                    if (_disposed || !_validation.TryDequeue(out fetch)) return;
+                    if (_disposed || !TryDequeueValidation(out fetch)) return;
                 await ValidateAndReleaseAsync(fetch).ConfigureAwait(false);
             }
         }
@@ -451,7 +541,11 @@ public sealed partial class ProofWrapperTransport
                 lock (_gate)
                 {
                     if (verifier is { } judgedUnder) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
-                    fetch.Server?.RecordVerificationFailure();
+                    if (fetch.Server is { } server)
+                    {
+                        server.RecordFailure();
+                        DropBacklog(server);
+                    }
                 }
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;

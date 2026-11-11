@@ -57,8 +57,11 @@ public class ProofWrapperTransportTests
 
         node.Transport.OnAnnounce(peer, holderLink.Sent<NewProofWrapperHashesMessage>().Single());
         GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
-        Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
-        Assert.That(request.Compact, Is.False, "nothing was exchanged in full on this connection yet");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
+            Assert.That(request.Compact, Is.False, "nothing was exchanged in full on this connection yet");
+        }
         holder.Transport.OnGetProofWrappers(requester, request);
         ProofWrappersMessage response = holderLink.Sent<ProofWrappersMessage>().Single();
         Assert.That(response.Entries.Single().Hash, Is.EqualTo(announcement.Hash));
@@ -194,12 +197,20 @@ public class ProofWrapperTransportTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(Wrapper(64, FrameTransaction(1)))]));
+        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, 64).Select(FrameTransaction)]);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
         long issued = link.Sent<GetProofWrappersMessage>().Single().RequestId;
         node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
-        node.Transport.OnProofWrappers(peer, new(issued, []));
-        Assert.That(link.Penalties, Is.Empty, "a response after expiry is discarded");
-        node.Transport.OnProofWrappers(peer, new(issued + 100, []));
+        ProofWrappersMessage late = new(issued, [Entry(wrapper)]);
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        node.Transport.OnProofWrappers(peer, late);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty, "a response after expiry is discarded");
+            Assert.That(allocated, Is.LessThan(wrapper.Length / 4), "a late response is discarded before its bodies are parsed");
+        }
+        node.Transport.OnProofWrappers(peer, new(issued + 100, [Entry(wrapper)]));
         Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
 
@@ -321,29 +332,143 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // Each peer's announcements hold an equal share of the pending cache, so silent announcers that filled it make room for a
+    // peer connecting later.
     [Test]
-    public void One_silent_announcer_cannot_fill_the_pending_cache_for_other_peers()
+    public void Silent_announcers_cannot_fill_the_pending_cache_for_a_new_peer()
     {
         using WrapperTestNode node = new();
-        FakeWrapperLink silent = new("silent"), honest = new("honest");
-        WrapperPeer silentPeer = node.Connect(silent), honestPeer = node.Connect(honest);
+        WrapperPeer[] silent = [.. Enumerable.Range(0, 4).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
         int announced = 0;
-        for (int message = 0; message < 6; message++)
+        for (int message = 0; message < 5; message++)
         {
-            WrapperAnnouncement[] batch = [.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
-                .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256))
-                .OrderBy(a => a.Hash)];
-            node.Transport.OnAnnounce(silentPeer, new(batch));
+            foreach (WrapperPeer peer in silent)
+                node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                    .Select(_ => Announcement(1, 64, Keccak.Compute($"silent:{announced++}").ValueHash256)).OrderBy(static a => a.Hash)]));
             node.Tick(TimeSpan.FromSeconds(1));
         }
-        Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncementsPerPeer));
+        Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncements));
+        FakeWrapperLink honest = new("honest");
+        WrapperPeer honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
+
         node.Transport.OnAnnounce(honestPeer, new([Describe(wrapper)]));
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncementsPerPeer + 1));
+            Assert.That(node.Transport.FetchCount, Is.EqualTo(WrapperTransportLimits.MaxPendingAnnouncements));
             Assert.That(honest.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { Describe(wrapper).Hash }));
         }
+    }
+
+    // A peer that leaves requests unanswered, or withholds requested wrappers, is eventually fetched from as one whose wrappers
+    // fail verification; an empty response signals a spent serving budget and never deprioritizes an honest peer.
+    [TestCase("timeout", true)]
+    [TestCase("empty", false)]
+    [TestCase("partial", true)]
+    public void Unserved_requests_deprioritize_the_peer(string scenario, bool deprioritized)
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        int seed = 0;
+        for (int round = 0; round < 5; round++)
+        {
+            for (int request = 0; request < WrapperTransportLimits.MaxRequestsPerPeer; request++)
+            {
+                byte[][] wrappers = [.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest).Select(_ => Wrapper(64, FrameTransaction(seed++)))];
+                node.Transport.OnAnnounce(peer, new([.. wrappers.Select(Describe)]));
+                GetProofWrappersMessage sent = link.Sent<GetProofWrappersMessage>()[^1];
+                Assert.That(sent.Hashes, Has.Length.EqualTo(wrappers.Length));
+                if (scenario == "timeout") continue;
+                // Only the last requested wrapper is returned, so every other one was withheld rather than cut.
+                byte[] last = wrappers.Single(w => Describe(w).Hash == sent.Hashes[^1]);
+                node.Transport.OnProofWrappers(peer, new(sent.RequestId, scenario == "empty" ? [] : [Entry(last)]));
+            }
+            node.Tick(scenario == "timeout" ? WrapperTransportLimits.RequestTimeout : TimeSpan.FromSeconds(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.IsDeprioritized, Is.EqualTo(deprioritized));
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
+    // Sources that answer empty, having spent their serving budget, are not penalized and do not use up the sources asked, so
+    // a later announcer is still asked.
+    [Test]
+    public void Later_announcer_is_asked_after_earlier_ones_answered_empty()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink[] spent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(static i => new FakeWrapperLink($"spent {i}"))];
+        WrapperPeer[] spentPeers = [.. spent.Select(node.Connect)];
+        FakeWrapperLink late = new("late");
+        WrapperPeer latePeer = node.Connect(late);
+        WrapperAnnouncement announcement = Describe(Wrapper(64, FrameTransaction(1)));
+        foreach (WrapperPeer peer in spentPeers.Append(latePeer)) node.Transport.OnAnnounce(peer, new([announcement]));
+
+        for (int i = 0; i < spent.Length; i++)
+            node.Transport.OnProofWrappers(spentPeers[i], new(spent[i].Sent<GetProofWrappersMessage>().Single().RequestId, []));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { announcement.Hash }));
+            Assert.That(spentPeers.Select(static p => p.IsDeprioritized), Has.All.False);
+        }
+    }
+
+    // Eviction leaves a wanted wrapper that a peer within its share also announced.
+    [Test]
+    public void Eviction_spares_a_wrapper_with_a_source_within_its_share()
+    {
+        using WrapperTestNode node = new();
+        WrapperPeer[] silent = [.. Enumerable.Range(0, 4).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
+        // Large announced lengths keep each request to one wrapper, so the shared one stays unrequested.
+        WrapperAnnouncement shared = Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute("shared").ValueHash256,
+            new WrapperCoverage(Keccak.Compute("shared deps").ValueHash256, default));
+        int announced = 0;
+        WrapperAnnouncement Filler() => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"silent:{announced++}").ValueHash256);
+        for (int message = 0; message < 5; message++)
+        {
+            foreach (WrapperPeer peer in silent)
+                node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
+                    .Select(i => message == 0 && i == WrapperTransportLimits.MaxRequestsPerPeer && peer == silent[0] ? shared : Filler())]));
+            node.Tick(TimeSpan.FromSeconds(1));
+        }
+        node.Transport.OnAnnounce(node.Connect(new FakeWrapperLink("co-source")), new([shared]));
+        FakeWrapperLink honest = new("honest");
+
+        node.Transport.OnAnnounce(node.Connect(honest), new([Describe(Wrapper(64, FrameTransaction(1)))]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(honest.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1));
+            Assert.That(node.Transport.IsDependencySetOffered(shared.Coverage.DepsHash), Is.True);
+        }
+    }
+
+    // A wrapper first announced by peers that leave requests unserved is fetched from a later announcer, which is tracked
+    // although as many peers announced it before as are ever asked.
+    [Test]
+    public void Later_announcer_is_asked_before_earlier_ones_that_left_requests_unserved()
+    {
+        using WrapperTestNode node = new();
+        WrapperPeer[] silent = [.. Enumerable.Range(0, WrapperTransportLimits.MaxSourcesPerWrapper).Select(i => node.Connect(new FakeWrapperLink($"silent {i}")))];
+        foreach (WrapperPeer peer in silent)
+            node.Transport.OnAnnounce(peer, new([.. Enumerable.Range(0, WrapperTransportLimits.MaxRequestsPerPeer)
+                .Select(i => Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:{i}").ValueHash256))]));
+        node.Tick(WrapperTransportLimits.RequestTimeout);
+        // Their one remaining request slot each is taken, so the wanted wrapper can only be requested from another source.
+        foreach (WrapperPeer peer in silent)
+            node.Transport.OnAnnounce(peer, new([Announcement(1, Eth73Protocol.MaxWrapperBytes, Keccak.Compute($"{peer}:busy").ValueHash256)]));
+        FakeWrapperLink late = new("late");
+        WrapperPeer latePeer = node.Connect(late);
+        WrapperAnnouncement announcement = Describe(Wrapper(64, FrameTransaction(1)));
+
+        foreach (WrapperPeer peer in silent.Append(latePeer)) node.Transport.OnAnnounce(peer, new([announcement]));
+
+        Assert.That(late.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { announcement.Hash }));
     }
 
     [Test]
@@ -374,8 +499,12 @@ public class ProofWrapperTransportTests
         byte[] first = Wrapper(Eip8288Constants.MaxAggregateProofBytes, a), second = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 1, b),
             third = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 2, c);
         using WrapperTestNode node = Holder(first);
-        Assert.That(node.Transport.PublishWrapper(second), Is.True);
-        Assert.That(node.Transport.PublishWrapper(third), Is.True);
+        node.AddPending(a, b, c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(second), Is.True);
+            Assert.That(node.Transport.PublishWrapper(third), Is.True);
+        }
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         ValueHash256 unknown = TestItem.KeccakA.ValueHash256;
@@ -395,6 +524,32 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // Each peer stays within its own serving budget, and all of them together within the global one, which greedy peers cannot
+    // spend on behalf of another.
+    [Test]
+    public void Serving_stays_within_the_global_budget_across_peers()
+    {
+        Transaction[] pooled = [.. Enumerable.Range(0, 8).Select(FrameTransaction)];
+        byte[][] wrappers = [.. pooled.Select(static t => Wrapper(Eip8288Constants.MaxAggregateProofBytes, t))];
+        using WrapperTestNode node = new();
+        node.AddPending(pooled);
+        foreach (byte[] wrapper in wrappers) Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        FakeWrapperLink[] links = [.. Enumerable.Range(0, 6).Select(static i => new FakeWrapperLink($"peer {i}"))];
+        WrapperPeer[] peers = [.. links.Select(node.Connect)];
+
+        foreach (WrapperPeer peer in peers[..^1])
+            for (int i = 0; i < 2 * wrappers.Length; i++) node.Transport.OnGetProofWrappers(peer, new(i + 1, false, [Describe(wrappers[i % wrappers.Length]).Hash]));
+        node.Transport.OnGetProofWrappers(peers[^1], new(1, false, [Describe(wrappers[0]).Hash]));
+
+        long[] served = [.. links.Select(static l => l.Sent<ProofWrappersMessage>().SelectMany(static m => m.Entries).Sum(static e => (long)e.Wrapper.Length))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Has.All.LessThanOrEqualTo(WrapperTransportLimits.ServeBytesPerSecond));
+            Assert.That(served.Sum(), Is.LessThanOrEqualTo(WrapperTransportLimits.GlobalServeBytesPerSecond));
+            Assert.That(served[^1], Is.EqualTo(wrappers[0].Length), "the last peer still gets its share");
+        }
+    }
+
     // EIP-8437: responders treat hashes they have not announced on the connection as unavailable, including held wrappers
     // still queued behind the announcement rate limit and hashes the peer announced to them.
     [Test]
@@ -407,13 +562,33 @@ public class ProofWrapperTransportTests
         WrapperPeer peer = node.Connect(link);
         Assert.That(node.Transport.PublishWrapper(announced), Is.True);
         for (int i = 1; i < WrapperTransportLimits.AnnouncementsPerSecond; i++) Assert.That(node.Transport.PublishWrapper(Wrapper(64, 10 + i, a)), Is.True);
-        Assert.That(node.Transport.PublishWrapper(queued), Is.True);
-        Assert.That(node.Transport.PublishWrapper(peerOwn), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(queued), Is.True);
+            Assert.That(node.Transport.PublishWrapper(peerOwn), Is.True);
+        }
         node.Transport.OnAnnounce(peer, new([Describe(peerOwn)]));
 
         node.Transport.OnGetProofWrappers(peer, new(9, true, [Describe(announced).Hash, Describe(queued).Hash, Describe(peerOwn).Hash]));
 
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { announced }));
+    }
+
+    // A request for a wrapper this node does not hold yet must not suppress announcing it once held, since only announced
+    // wrappers are served.
+    [Test]
+    public void Wrapper_requested_before_it_is_held_is_announced_once_held()
+    {
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnGetProofWrappers(peer, new(1, false, [Describe(wrapper).Hash]));
+
+        node.Transport.PublishWrapper(wrapper);
+
+        Assert.That(link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Select(static a => a.Hash),
+            Is.EqualTo(new[] { Describe(wrapper).Hash }));
     }
 
     // EIP-8437: a proof failure discards the wrapper without penalizing the peer that served it.
@@ -484,6 +659,85 @@ public class ProofWrapperTransportTests
 
         node.Tick(4 * WrapperTransportLimits.FailureHalfLife);
         Assert.That(badPeer.IsDeprioritized, Is.False, "the score decays");
+    }
+
+    // Received wrappers are validated round-robin across the peers that served them, so one peer's backlog does not delay
+    // another's wrapper.
+    [Test]
+    public async Task Validation_alternates_between_serving_peers()
+    {
+        Transaction[] many = [.. Enumerable.Range(0, 8).Select(FrameTransaction)];
+        Transaction one = FrameTransaction(100);
+        byte[][] backlog = [.. many.Select(static t => Wrapper(64, t))];
+        byte[] single = Wrapper(64, one);
+        using WrapperTestNode node = new();
+        using System.Threading.ManualResetEventSlim hold = new();
+        node.Verifier.Hold = hold;
+        FakeWrapperLink busy = new("busy"), other = new("other");
+        WrapperPeer busyPeer = node.Connect(busy), otherPeer = node.Connect(other);
+        node.Transport.OnAnnounce(busyPeer, new([.. backlog.Select(Describe)]));
+        node.Transport.OnProofWrappers(busyPeer, new(busy.Sent<GetProofWrappersMessage>().Single().RequestId,
+            [.. busy.Sent<GetProofWrappersMessage>().Single().Hashes.Select(h => Entry(backlog.Single(w => Describe(w).Hash == h)))]));
+        node.Transport.OnAnnounce(otherPeer, new([Describe(single)]));
+        Answer(node, otherPeer, other, single);
+
+        hold.Set();
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+
+        Transaction[] admitted;
+        lock (node.Pending) admitted = [.. node.Pending];
+        Assert.That(Array.FindIndex(admitted, t => t.Hash == one.Hash), Is.LessThan(admitted.Length - 1), "the other peer's wrapper is not validated last");
+    }
+
+    // A peer that becomes deprioritized has the wrappers it served that still await validation returned to their fetches,
+    // which ask another source.
+    [Test]
+    public async Task Deprioritized_peer_backlog_is_fetched_from_another_source()
+    {
+        byte[][] wrappers = [.. Enumerable.Range(0, 8).Select(static i => Wrapper(64, FrameTransaction(i)))];
+        using WrapperTestNode node = new();
+        using System.Threading.ManualResetEventSlim hold = new();
+        node.Verifier.Hold = hold;
+        FakeWrapperLink bad = new("bad"), good = new("good");
+        WrapperPeer badPeer = node.Connect(bad), goodPeer = node.Connect(good);
+        WrapperAnnouncement[] announcements = [.. wrappers.Select(Describe)];
+        node.Transport.OnAnnounce(badPeer, new(announcements));
+        node.Transport.OnAnnounce(goodPeer, new(announcements));
+        GetProofWrappersMessage request = bad.Sent<GetProofWrappersMessage>().Single();
+        node.Transport.OnProofWrappers(badPeer, new(request.RequestId, [.. request.Hashes.Select(h => Entry(wrappers.Single(w => Describe(w).Hash == h)))]));
+        await WrapperTestNode.Until(() => node.Verifier.Calls == 1);
+        // One more failure makes the peer deprioritized.
+        badPeer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore - 0.5);
+        node.Verifier.Valid = false;
+
+        hold.Set();
+        await WrapperTestNode.Until(() => good.Sent<GetProofWrappersMessage>().Length != 0 || node.Transport.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(good.Sent<GetProofWrappersMessage>(), Is.Not.Empty);
+            Assert.That(node.Verifier.Calls, Is.LessThan(wrappers.Length));
+            Assert.That(bad.Penalties, Is.Empty);
+        }
+    }
+
+    // A peer's failure score is kept by node ID, so reconnecting does not lift its deprioritization.
+    [Test]
+    public void Failure_score_survives_reconnection()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new() { NodeId = TestItem.PublicKeyA };
+        WrapperPeer peer = node.Connect(link);
+        peer.RecordFailure(WrapperTransportLimits.DeprioritizedFailureScore + 1);
+        node.Transport.Remove(peer);
+
+        WrapperPeer reconnected = node.Connect(new FakeWrapperLink { NodeId = TestItem.PublicKeyA });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reconnected.IsDeprioritized, Is.True);
+            Assert.That(node.Connect(new FakeWrapperLink { NodeId = TestItem.PublicKeyB }).IsDeprioritized, Is.False);
+        }
     }
 
     // EIP-8437: malformed transport encodings remain penalizable, unlike proof failures.
@@ -567,6 +821,40 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A wrapper charged above its reservation, as many small transactions are, is dropped once the global budget is spent; the
+    // drop is counted rather than silent.
+    [Test]
+    public void Wrapper_beyond_the_byte_budget_is_dropped_and_counted()
+    {
+        byte[] wrapper = Wrapper(64, [.. Enumerable.Range(1, Eth73Protocol.MaxAnnouncements).Select(FrameTransaction)]);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        long reserved = node.Transport.ChargedBytes;
+        // Peers that never answer reserve the rest of the global budget.
+        for (int filler = 0; WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes > Eth73Protocol.ResponseFramingBytes + 64; filler++)
+        {
+            long headroom = WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes;
+            int length = (int)Math.Min(Eth73Protocol.MaxWrapperBytes, headroom);
+            while (ProofWrapperTransport.EntryLength(length) + Eth73Protocol.ResponseFramingBytes > headroom) length--;
+            node.Transport.OnAnnounce(node.Connect(new($"filler {filler}")), new([Announcement(1, length, Keccak.Compute($"filler:{filler}").ValueHash256)]));
+        }
+        Assert.That(reserved + WrapperTransportLimits.MaxGlobalBytes - node.Transport.ChargedBytes,
+            Is.LessThan(InboundTransactionBudget.TransactionCharge * (long)Eth73Protocol.MaxAnnouncements));
+        static long Dropped() => Metrics.ProofWrapperEvents.TryGetValue("budget_dropped", out long count) ? count : 0;
+        long dropped = Dropped();
+
+        Answer(node, peer, link, wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Dropped(), Is.EqualTo(dropped + 1));
+            Assert.That(node.Verifier.Calls, Is.Zero);
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
     // EIP-8437: a validation cancelled at the fetch deadline releases its request-scoped buffer without admitting anything.
     [Test]
     public async Task Timed_out_validation_releases_its_buffer_without_admission()
@@ -621,8 +909,12 @@ public class ProofWrapperTransportTests
         byte[] mode0 = DirectWrapper(direct);
         using WrapperTestNode node = new(UpgradingChain());
         node.SetHead(10, 100);
-        Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
-        Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
+        node.AddPending(aggregated, direct);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
+            Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
+        }
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
 
@@ -785,6 +1077,7 @@ public class ProofWrapperTransportTests
         FakeWrapperLink early = new("early");
         node.Connect(early);
         Transaction[] transactions = [.. Enumerable.Range(0, 6).Select(FrameTransaction)];
+        node.AddPending(transactions);
         foreach (Transaction transaction in transactions) Assert.That(node.Transport.PublishWrapper(Wrapper(64, transaction)), Is.True);
         Assert.That(early.Sent<NewProofWrapperHashesMessage>(), Has.Length.EqualTo(WrapperTransportLimits.AnnouncementsPerSecond));
         node.Tick(TimeSpan.FromSeconds(1));
@@ -799,6 +1092,29 @@ public class ProofWrapperTransportTests
         NewProofWrapperHashesMessage initial = late.Sent<NewProofWrapperHashesMessage>().Single();
         Assert.That(initial.Announcements, Has.Length.EqualTo(6));
         Assert.That(initial.Announcements.Select(d => d.Hash), Is.Ordered);
+    }
+
+    // A new peer is announced at most one message of the most recent held wrappers, skipping and dropping any none of whose
+    // transactions is still pending.
+    [Test]
+    public void New_peer_is_announced_only_recent_wrappers_with_pending_transactions()
+    {
+        using WrapperTestNode node = new();
+        Transaction[] pooled = [.. Enumerable.Range(0, WrapperTransportLimits.MaxConnectAnnouncements + 1).Select(FrameTransaction)];
+        node.AddPending(pooled);
+        byte[][] wrappers = [.. pooled.Select(static t => Wrapper(64, t))];
+        byte[] stale = Wrapper(64, FrameTransaction(1_000));
+        foreach (byte[] wrapper in wrappers.Append(stale)) Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        FakeWrapperLink link = new();
+
+        node.Connect(link);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>().SelectMany(static m => m.Announcements).Select(static a => a.Hash),
+                Is.EquivalentTo(wrappers[1..].Select(static w => Describe(w).Hash)));
+            Assert.That(node.Transport.IsStored(Describe(stale).Hash), Is.False);
+        }
     }
 
     [Test]

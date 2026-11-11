@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Test.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -23,11 +24,11 @@ internal static class PersistedSnapshotBuilderTestExtensions
     /// </summary>
     public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
     {
-        int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
-        using PooledByteBufferWriter pooled = new(estimatedSize);
-        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
-            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+        // The writer grows, and the estimate takes the buffer's generations to be production-sized, which test buffers are not.
+        using PooledByteBufferWriter pooled = new((int)Math.Min(PersistedSnapshotBuilder.EstimateSize(snapshot), 1.MiB));
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(PersistedSnapshotBuilder.EstimateTotalRlpSize(snapshot));
+        using Nethermind.Core.Collections.BloomFilter bloom =
+            Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer>(
             snapshot, ref pooled.GetWriter(), blobWriter, bloom);
         blobWriter.Complete();
@@ -56,7 +57,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
             for (int i = 0; i < n; i++)
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
             PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
-                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
+                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom: Nethermind.Core.Collections.BloomFilter.AlwaysTrue());
         }
         finally
         {

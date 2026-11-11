@@ -44,8 +44,11 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(9u));
-        Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(10u));
+            Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
+        }
     }
 
     [TestCase("sphincs")]
@@ -120,9 +123,12 @@ public class NativeLeanProofVerifierTests
             caller.Start();
             caller.Join();
         }
-        Assert.That(callers[0], Is.Not.EqualTo(callers[1]));
-        Assert.That(provers[1], Is.EqualTo(provers[0]));
-        Assert.That(provers[0], Is.Not.EqualTo(callers[0]).And.Not.EqualTo(callers[1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callers[0], Is.Not.EqualTo(callers[1]));
+            Assert.That(provers[1], Is.EqualTo(provers[0]));
+            Assert.That(provers[0], Is.Not.EqualTo(callers[0]).And.Not.EqualTo(callers[1]));
+        }
     }
 
     [Test]

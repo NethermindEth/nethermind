@@ -55,8 +55,11 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent), attributes);
         Assert.That(build.Result.ResultType, Is.EqualTo(ResultType.Success), build.Result.Error);
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
-        Assert.That(produced.ExecutionPayload.InclusionLists, Is.Null, "per-list proofs are inputs, not echoed by getPayload");
-        Assert.That(produced.ExecutionPayload.Transactions, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(produced.ExecutionPayload.InclusionLists, Is.Null, "per-list proofs are inputs, not echoed by getPayload");
+            Assert.That(produced.ExecutionPayload.Transactions, Is.Empty);
+        }
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV7(produced.ExecutionPayload,
             [], Keccak.Zero, produced.ExecutionRequests, lists);
@@ -83,8 +86,11 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes([]));
         ResultWrapper<ForkchoiceUpdatedV2Result> perList = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent),
             BuildPerListPayloadAttributes([]));
-        Assert.That(flattened.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
-        Assert.That(perList.Result.ResultType, Is.EqualTo(ResultType.Success), perList.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flattened.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+            Assert.That(perList.Result.ResultType, Is.EqualTo(ResultType.Success), perList.Result.Error);
+        }
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(perList.Data.PayloadId!))).Data!;
 
         ResultWrapper<PayloadStatusV2> v6 = await rpc.engine_newPayloadV6(produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, []);
@@ -435,12 +441,13 @@ public partial class EngineModuleTests
             Type = TxType.FrameTx,
             ChainId = chainId,
             SenderAddress = TestItem.AddressA,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
     }
 
@@ -459,11 +466,12 @@ public partial class EngineModuleTests
             Type = TxType.FrameTx,
             ChainId = chainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();

@@ -79,6 +79,9 @@ public class TaikoPayloadPreparationService(
 
                 // Write L1Origin and HeadL1Origin even if the payload is already in the cache.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
+
+                // The resent attributes carry the driver's zero block hash, so keep the hash of the block already built.
+                l1Origin.L2BlockHash = existing.CurrentBestBlock?.Hash ?? l1Origin.L2BlockHash;
                 l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
 
                 if (!l1Origin.IsPreconfBlock)

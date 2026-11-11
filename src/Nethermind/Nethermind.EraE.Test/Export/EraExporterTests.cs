@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
@@ -61,9 +62,46 @@ public class EraExporterTests
 
         await sut.Export(tmpDirectory, 0, 15);
 
-        Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
-        Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
-            "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
+            Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
+                "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
+        }
+    }
+
+    [TestCase(0UL, 31UL, 32UL, 63UL, false)]
+    [TestCase(32UL, 63UL, 0UL, 31UL, false)]
+    [TestCase(0UL, 47UL, 16UL, 63UL, false)]
+    [TestCase(0UL, 31UL, 32UL, 63UL, true)]
+    public async Task Export_IntoDirectoryWithEarlierExport_WritesManifestsOfWholeDirectory(
+        ulong firstFrom, ulong firstTo, ulong secondFrom, ulong secondTo, bool removeFirstEraFile)
+    {
+        const ulong eraSize = 16;
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(64).Build();
+        string directory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(directory, firstFrom, firstTo);
+        ulong from = Math.Min(firstFrom, secondFrom);
+        if (removeFirstEraFile)
+        {
+            File.Delete(Directory.GetFiles(directory, $"*{EraPathUtils.FileExtension}").Order().First());
+            from += eraSize;
+        }
+
+        await sut.Export(directory, secondFrom, secondTo);
+
+        using TempPath reference = TempPath.GetTempDirectory();
+        await sut.Export(reference.Path, from, Math.Max(firstTo, secondTo));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string manifest in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsSHA256FileName, EraExporter.ChecksumsFileName })
+            {
+                Assert.That(await File.ReadAllLinesAsync(Path.Combine(directory, manifest)),
+                    Is.EqualTo(await File.ReadAllLinesAsync(Path.Combine(reference.Path, manifest))), manifest);
+            }
+        }
     }
 
     [Test]
@@ -92,8 +130,11 @@ public class EraExporterTests
         {
             ReadOnlySpan<char> span = line.AsSpan();
             int spaceIdx = span.IndexOf(' ');
-            Assert.That(spaceIdx, Is.GreaterThan(0), "each line should be '<hash> <filename>'");
-            Assert.That(span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(spaceIdx, Is.GreaterThan(0), "each line should be '<hash> <filename>'");
+                Assert.That(span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()), Is.True);
+            }
         }
     }
 

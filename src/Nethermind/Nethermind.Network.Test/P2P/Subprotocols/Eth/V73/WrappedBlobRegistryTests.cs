@@ -69,10 +69,13 @@ public class WrappedBlobRegistryTests
         Transaction blob = BlobFrameTransaction(1);
         Hash256 hash = blob.Hash!;
 
-        Assert.That(_registry.RecordAnnouncement(framePeer, hash, BlobCellMask.Full, TxType.FrameTx), Is.True);
-        Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, framePeer.Id), Is.False, "frame cells wait for the body");
-        Assert.That(_registry.RecordAnnouncement(blobPeer, hash, BlobCellMask.Full, TxType.Blob), Is.True);
-        Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, framePeer.Id), Is.True, "a type-3 claim is not gated by the other");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_registry.RecordAnnouncement(framePeer, hash, BlobCellMask.Full, TxType.FrameTx), Is.True);
+            Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, framePeer.Id), Is.False, "frame cells wait for the body");
+            Assert.That(_registry.RecordAnnouncement(blobPeer, hash, BlobCellMask.Full, TxType.Blob), Is.True);
+            Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, framePeer.Id), Is.True, "a type-3 claim is not gated by the other");
+        }
 
         using Pin pin = new();
         Assert.That(_registry.Admit(blob, framePeer, pin), Is.EqualTo(AcceptTxResult.Accepted));
@@ -140,8 +143,11 @@ public class WrappedBlobRegistryTests
         Peer peer = Connect(0);
         Transaction blob = BlobFrameTransaction(1);
         Hash256 hash = blob.Hash!;
-        Assert.That(_registry.RestoreAnnouncement(peer, hash, BlobCellMask.Full, null), Is.True);
-        Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, peer.Id), Is.False, "an unknown claim does not open the frame gate");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_registry.RestoreAnnouncement(peer, hash, BlobCellMask.Full, null), Is.True);
+            Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, peer.Id), Is.False, "an unknown claim does not open the frame gate");
+        }
 
         using Pin pin = new();
         Assert.That(_registry.Admit(blob, peer, pin), Is.EqualTo(AcceptTxResult.Accepted));
@@ -230,8 +236,11 @@ public class WrappedBlobRegistryTests
         Transaction blob = BlobFrameTransaction(1);
         Pin pin = new(), duplicate = new();
         _registry.Admit(blob, first, pin);
-        Assert.That(_registry.Admit(blob, second, duplicate), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(duplicate.Disposed, Is.True, "the first pin already holds the coverage");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_registry.Admit(blob, second, duplicate), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(duplicate.Disposed, Is.True, "the first pin already holds the coverage");
+        }
 
         _registry.RemovePeer(first);
         using (Assert.EnterMultipleScope())

@@ -42,8 +42,11 @@ public class ProofInclusionListPayloadTests
         TestSpecProvider provider = new(PerListSpec);
         PayloadAttributesValidationResult expected = attributes.Validate(provider, 4, out string? expectedError);
         attributes.InclusionLists = [new() { Transactions = [] }];
-        Assert.That(attributes.Validate(provider, 4, out string? actualError), Is.EqualTo(expected));
-        Assert.That(actualError, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attributes.Validate(provider, 4, out string? actualError), Is.EqualTo(expected));
+            Assert.That(actualError, Is.EqualTo(expectedError));
+        }
     }
 
     // EIPs#12475: PayloadAttributesV6 carries the per-list form once EIP-8288 and EIP-7805 are both active; the flattened
@@ -108,17 +111,20 @@ public class ProofInclusionListPayloadTests
             _ => [new() { Transactions = [], RecursiveStark = proof }]
         };
         string? listError = InclusionListV1.Validate(lists);
-        Assert.That(listError is not null, Is.EqualTo(rejected));
-        Assert.That(Attributes(lists).Validate(new TestSpecProvider(PerListSpec), 6, out _),
-            Is.EqualTo(rejected ? PayloadAttributesValidationResult.InvalidPayloadAttributes : PayloadAttributesValidationResult.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listError is not null, Is.EqualTo(rejected));
+            Assert.That(Attributes(lists).Validate(new TestSpecProvider(PerListSpec), 6, out _),
+                Is.EqualTo(rejected ? PayloadAttributesValidationResult.InvalidPayloadAttributes : PayloadAttributesValidationResult.Success));
 
-        // The test payload fails a later, unrelated check, so an accepted list must reach the same error as a well-formed one.
-        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
-        new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [], null, [new() { Transactions = [], RecursiveStark = RecursiveStarkV1.Empty }])
-            .ValidateParams(PerListSpec, 7, out string? wellFormedError);
-        ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], null, lists);
-        Assert.That(parameters.ValidateParams(PerListSpec, 7, out string? error), Is.EqualTo(ValidationResult.Fail));
-        Assert.That(error, Is.EqualTo(rejected ? listError : wellFormedError));
+            // The test payload fails a later, unrelated check, so an accepted list must reach the same error as a well-formed one.
+            ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
+            new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [], null, [new() { Transactions = [], RecursiveStark = RecursiveStarkV1.Empty }])
+                .ValidateParams(PerListSpec, 7, out string? wellFormedError);
+            ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], null, lists);
+            Assert.That(parameters.ValidateParams(PerListSpec, 7, out string? error), Is.EqualTo(ValidationResult.Fail));
+            Assert.That(error, Is.EqualTo(rejected ? listError : wellFormedError));
+        }
     }
 
     [Test]
@@ -207,8 +213,11 @@ public class ProofInclusionListPayloadTests
     {
         PayloadAttributes attributes = Attributes([new() { Transactions = [[1], [2]] }, new() { Transactions = [[3]] }]);
         byte[][] combined = attributes.CombinedInclusionListTransactions!;
-        Assert.That(combined, Is.EqualTo(new byte[][] { [1], [2], [3] }));
-        Assert.That(attributes.CombinedInclusionListTransactions, Is.SameAs(combined), "the array identifies the build");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined, Is.EqualTo(new byte[][] { [1], [2], [3] }));
+            Assert.That(attributes.CombinedInclusionListTransactions, Is.SameAs(combined), "the array identifies the build");
+        }
     }
 
     private static byte[] Encode(Transaction transaction) => Nethermind.Serialization.Rlp.TxDecoder.Instance

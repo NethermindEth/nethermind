@@ -29,11 +29,14 @@ public class BlockDecoderTests
         byte[] encoded = decoder.Encode(block).Bytes;
         RlpReader reader = new(encoded);
         Block decoded = decoder.DecodeGuardNotNull(ref reader);
-        Assert.That(decoded.StarkProof, Is.EqualTo(block.StarkProof));
-        Assert.That(decoded.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
-        Assert.That(decoded.IsBodyMissing, Is.False);
-        Assert.That(reader.Position, Is.EqualTo(encoded.Length));
-        Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.StarkProof, Is.EqualTo(block.StarkProof));
+            Assert.That(decoded.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
+            Assert.That(decoded.IsBodyMissing, Is.False);
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
+        }
         ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)!.Value;
         try
         {
@@ -206,8 +209,11 @@ public class BlockDecoderTests
         // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
         // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
-        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+            Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));

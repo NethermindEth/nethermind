@@ -24,19 +24,29 @@ namespace Nethermind.Consensus.Processing
 
         public class AddingTxEventArgs(int index, Transaction transaction, Block block, IReadOnlyCollection<Transaction> transactionsInBlock) : TxEventArgs(index, transaction)
         {
+            /// <summary>Stands in for a reason that a derived class formats only when <see cref="Reason"/> is read; compared by reference.</summary>
+            private static readonly string DeferredReason = new('?', 1);
+
+            private string _reason = string.Empty;
+
             public Block Block { get; } = block;
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; } = transactionsInBlock;
             internal AggregationInput? LeanProofInput { get; set; }
             internal IReadOnlyList<FrameDependency> LeanDependencies { get; set; } = [];
             public TxAction Action { get; private set; } = TxAction.Add;
-            public string Reason { get; private set; } = string.Empty;
+            public string Reason => ReferenceEquals(_reason, DeferredReason) ? _reason = FormatDeferredReason() : _reason;
 
             public AddingTxEventArgs Set(TxAction action, string reason)
             {
                 Action = action;
-                Reason = reason;
+                _reason = reason;
                 return this;
             }
+
+            /// <summary>Sets <paramref name="action"/> with a reason <see cref="FormatDeferredReason"/> builds on the first read of <see cref="Reason"/>.</summary>
+            private protected void SetDeferred(TxAction action) => Set(action, DeferredReason);
+
+            private protected virtual string FormatDeferredReason() => throw new InvalidOperationException("No deferred reason to format.");
         }
     }
 }

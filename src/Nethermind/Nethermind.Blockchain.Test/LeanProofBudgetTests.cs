@@ -23,17 +23,23 @@ public class LeanProofBudgetTests
         for (int i = 0; i < 1000; i++)
         {
             FrameDependency[] required = [dependencies[i % dependencies.Length]];
-            Assert.That(budget.TryUseInclusionList(verified, budget.Missing(required), out AggregationInput candidate), Is.True);
-            Assert.That(budget.TryPrepare(candidate, required, out AggregationInput contribution, out string? error), Is.True, error);
-            budget.Commit(contribution, required);
-            Assert.That(budget.Missing(dependencies), Is.Empty, "the retained parent already proves later candidates");
-            if (contribution.RecursiveProofs.Count != 0) contributions.Add(contribution);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(budget.TryUseInclusionList(verified, budget.Missing(required), out AggregationInput candidate), Is.True);
+                Assert.That(budget.TryPrepare(candidate, required, out AggregationInput contribution, out string? error), Is.True, error);
+                budget.Commit(contribution, required);
+                Assert.That(budget.Missing(dependencies), Is.Empty, "the retained parent already proves later candidates");
+                if (contribution.RecursiveProofs.Count != 0) contributions.Add(contribution);
+            }
         }
         AggregationInput combined = RecursiveStarkAggregator.Combine(contributions, dependencies);
-        Assert.That(contributions, Has.Count.EqualTo(1));
-        Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
-        Assert.That(combined.Discards, Is.Empty);
-        Assert.That(budget.TryUseInclusionList(verified, [Dependency(99)], out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contributions, Has.Count.EqualTo(1));
+            Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(combined.Discards, Is.Empty);
+            Assert.That(budget.TryUseInclusionList(verified, [Dependency(99)], out _), Is.False);
+        }
     }
 
     [Test]
@@ -51,9 +57,12 @@ public class LeanProofBudgetTests
         budget.Commit(accepted, [first]);
         Assert.That(budget.TryPrepare(secondInput, [second], out AggregationInput appended, out string? error), Is.True, error);
         budget.Commit(appended, [second]);
-        Assert.That(budget.Missing([first, second]), Is.Empty);
-        Assert.That(budget.TryPrepare(secondInput, [second], out AggregationInput repeat, out _), Is.True);
-        Assert.That(repeat.RecursiveProofs, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Missing([first, second]), Is.Empty);
+            Assert.That(budget.TryPrepare(secondInput, [second], out AggregationInput repeat, out _), Is.True);
+            Assert.That(repeat.RecursiveProofs, Is.Empty);
+        }
     }
 
     [Test]
@@ -68,9 +77,12 @@ public class LeanProofBudgetTests
         budget.Commit(previous, [second]);
         Assert.That(budget.TryPrepare(new(), [first, sphincs], out _, out _), Is.False);
         AggregationInput publicParent = new() { RecursiveProofs = [new([first, sphincs], LeanProofTestEnvelope.Create([first, sphincs]))] };
-        Assert.That(budget.TryUseInclusionList(publicParent, [first, sphincs], out AggregationInput candidate), Is.True);
-        Assert.That(budget.TryPrepare(candidate, [first, sphincs], out AggregationInput contribution, out string? error), Is.True, error);
-        Assert.That(contribution.RecursiveProofs, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryUseInclusionList(publicParent, [first, sphincs], out AggregationInput candidate), Is.True);
+            Assert.That(budget.TryPrepare(candidate, [first, sphincs], out AggregationInput contribution, out string? error), Is.True, error);
+            Assert.That(contribution.RecursiveProofs, Has.Count.EqualTo(1));
+        }
     }
 
     [Test]
@@ -78,9 +90,12 @@ public class LeanProofBudgetTests
     {
         LeanProofBudget budget = new();
         FrameDependency dependency = Dependency(1);
-        Assert.That(budget.TryPrepare(new(), [dependency], out _, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo("Missing verified dependency witnesses"));
-        Assert.That(budget.Missing([dependency]), Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryPrepare(new(), [dependency], out _, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo("Missing verified dependency witnesses"));
+            Assert.That(budget.Missing([dependency]), Has.Count.EqualTo(1));
+        }
     }
 
     [Test]
@@ -110,8 +125,11 @@ public class LeanProofBudgetTests
         budget.Commit(contribution, dependencies);
         Assert.That(budget.TryPrepare(new(), [dependencies[0]], out _, out _), Is.True);
         FrameDependency extra = new(scheme, ValueKeccak.Compute("extra"), default);
-        Assert.That(budget.TryPrepare(new() { Deps = [extra], Witnesses = [new byte[] { 1 }] }, [extra], out _, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(generic ? "Generic STARK proof count limit exceeded" : "Dependency proof count limit exceeded"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryPrepare(new() { Deps = [extra], Witnesses = [new byte[] { 1 }] }, [extra], out _, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(generic ? "Generic STARK proof count limit exceeded" : "Dependency proof count limit exceeded"));
+        }
     }
 
     private static FrameDependency Dependency(int index) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(index.ToString()), default);

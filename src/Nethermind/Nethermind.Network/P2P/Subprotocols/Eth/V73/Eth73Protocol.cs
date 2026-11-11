@@ -74,7 +74,11 @@ public static class WrapperTransportLimits
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     /// <summary>How long a wanted wrapper may take from its first request to the end of its validation.</summary>
     public static readonly TimeSpan FetchDeadline = TimeSpan.FromSeconds(120);
+    /// <summary>Sources asked for one wrapper before it is abandoned.</summary>
     public const int MaxSourcesPerWrapper = 3;
+
+    /// <summary>Announcers of one wrapper tracked as sources, from which the <see cref="MaxSourcesPerWrapper"/> asked are chosen.</summary>
+    public const int MaxAnnouncersPerWrapper = 16;
 
     /// <summary>Outstanding GetProofWrappers requests per peer.</summary>
     public const int MaxRequestsPerPeer = 4;
@@ -82,8 +86,14 @@ public static class WrapperTransportLimits
     /// <summary>Outstanding GetProofWrappers requests to a peer whose wrappers repeatedly failed verification.</summary>
     public const int MaxRequestsPerFailingPeer = 1;
 
-    /// <summary>The verification-failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
+    /// <summary>The failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
     public const double DeprioritizedFailureScore = 3;
+
+    /// <summary>What a response withholding every requested wrapper but some adds to a peer's failure score, against 1 for a
+    /// timeout or a wrapper failing verification.</summary>
+    /// <remarks>Fractional, since an honest responder may have evicted a wrapper; an empty response, which signals a spent
+    /// serving budget (EIP-8437), adds nothing.</remarks>
+    public const double UnservedFailureWeight = 0.25;
 
     /// <summary>The cap on a peer's verification-failure score, so it recovers within a few half-lives.</summary>
     public const double MaxFailureScore = 16;
@@ -94,14 +104,19 @@ public static class WrapperTransportLimits
     /// <summary>ProofWrappers data served per peer per second, which is also the burst.</summary>
     public const long ServeBytesPerSecond = 8 * 1024 * 1024;
 
+    /// <summary>ProofWrappers data served across all peers per second, split equally between them once each peer's
+    /// <see cref="ServeBytesPerSecond"/> would exceed it.</summary>
+    public const long GlobalServeBytesPerSecond = 4 * ServeBytesPerSecond;
+
     /// <summary>NewProofWrapperHashes messages per peer per second, in either direction.</summary>
     public const int AnnouncementsPerSecond = 4;
 
     /// <summary>Wanted announced wrappers kept while no request slot is free, across all peers.</summary>
     public const int MaxPendingAnnouncements = 1024;
 
-    /// <summary>Wanted announced wrappers one peer's announcements may hold in the pending cache.</summary>
-    public const int MaxPendingAnnouncementsPerPeer = MaxPendingAnnouncements / 4;
+    /// <summary>The least share of the pending cache one peer's announcements may hold; the share is otherwise an equal split
+    /// across connected peers.</summary>
+    public const int MinPendingAnnouncementsPerPeer = 32;
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromSeconds(60);
 
     /// <summary>Bytes charged to one peer's outstanding responses and received wrappers awaiting validation.</summary>
@@ -114,6 +129,9 @@ public static class WrapperTransportLimits
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
 
+    /// <summary>Held wrappers announced to a newly connected peer, most recent first.</summary>
+    public const int MaxConnectAnnouncements = Eth73Protocol.MaxAnnouncements;
+
     /// <summary>Bytes of encodings cached from one peer for resolving its hash references.</summary>
     public const long MaxCachedEncodingBytesPerPeer = 2L * Eth73Protocol.MaxWrapperBytes;
 
@@ -121,7 +139,10 @@ public static class WrapperTransportLimits
     public const long MaxCachedEncodingBytes = 64L * 1024 * 1024;
 
     public const int MaxTombstones = 4096;
-    public const int MaxKnownPerPeer = 4096;
+
+    /// <summary>Disconnected peers whose failure scores are kept for their reconnection.</summary>
+    public const int MaxDepartedScores = 1024;
+    public const int MaxKnownPerPeer = 1024;
     public static readonly TimeSpan SoftTombstone = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan BusyRetry = TimeSpan.FromMilliseconds(200);
     public static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(250);

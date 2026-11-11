@@ -7,9 +7,11 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
@@ -17,6 +19,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
+using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -38,8 +41,11 @@ public class ExecutionPayloadV4Tests
 
         Result<Block> result = payload.TryGetBlock();
 
-        Assert.That(result.Data, Is.Null);
-        Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Null);
+            Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        }
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
@@ -66,8 +72,11 @@ public class ExecutionPayloadV4Tests
         Result<Block> result = payload.TryGetBlock();
         Result<Block> cachedResult = payload.TryGetBlock();
 
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(cachedResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(cachedResult.Data, Is.Not.Null);
+        }
         Block block = result.Data!;
         Assert.That(cachedResult.Data!.BlockAccessList, Is.SameAs(block.BlockAccessList));
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
@@ -84,7 +93,11 @@ public class ExecutionPayloadV4Tests
     {
         string genesis = $$"""
             {
-              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
+              "config": {
+                "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
+                "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
+                "shanghaiTime": 0, "amsterdamTime": 15, "{{label}}": 15
+              },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
               "alloc": {}
@@ -111,6 +124,79 @@ public class ExecutionPayloadV4Tests
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V5));
             Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
+        }
+    }
+
+    // A Prague devnet that schedules EIP-8288 without Amsterdam keeps the Prague Engine API: newPayloadV4 carries an
+    // ExecutionPayloadV3 and forkchoiceUpdatedV3 its attributes, neither with a slot, so EIP-8288 must not enable EIP-7843, nor
+    // the EIP-8272 recent roots that read it.
+    [Test]
+    public void Prague_engine_api_accepts_eip8288_payloads_without_a_slot_number()
+    {
+        const ulong eip8288Time = 15;
+        string genesis = $$"""
+            {
+              "config": {
+                "chainId": 1, "homesteadBlock": 0, "eip150Block": 0, "eip155Block": 0, "eip158Block": 0, "byzantiumBlock": 0,
+                "constantinopleBlock": 0, "petersburgBlock": 0, "istanbulBlock": 0, "berlinBlock": 0, "londonBlock": 0,
+                "mergeNetsplitBlock": 0, "terminalTotalDifficulty": 0,
+                "shanghaiTime": 0, "cancunTime": 0, "pragueTime": 0,
+                "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
+                "blobSchedule": {
+                  "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                  "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 }
+                },
+                "eip8141PrototypeTime": 0, "eip8288PrototypeTime": {{eip8288Time}}
+              },
+              "timestamp": 0,
+              "difficulty": "0x0",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(genesis));
+        ChainSpecBasedSpecProvider specProvider = new(new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream));
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(1, eip8288Time));
+
+        ExecutionPayloadV3 payload = new()
+        {
+            ParentHash = Keccak.Zero,
+            FeeRecipient = TestItem.AddressA,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            LogsBloom = Bloom.Empty,
+            PrevRandao = Keccak.Zero,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            Timestamp = eip8288Time,
+            ExtraData = [],
+            BaseFeePerGas = 7,
+            BlockHash = Keccak.Zero,
+            Transactions = [],
+            Withdrawals = [],
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            StarkProof = [],
+        };
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = eip8288Time,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = TestItem.AddressA,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8288Enabled, Is.True);
+            Assert.That(spec.IsEip7843Enabled, Is.False);
+            Assert.That(spec.IsEip8272Enabled, Is.False);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V4), Is.True);
+            Assert.That(new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [])
+                .ValidateParams(spec, EngineApiVersions.NewPayload.V4, out string? payloadError), Is.EqualTo(ValidationResult.Success), payloadError);
+            Assert.That(attributes.Validate(specProvider, EngineApiVersions.Fcu.V3, out string? attributesError),
+                Is.EqualTo(PayloadAttributesValidationResult.Success), attributesError);
         }
     }
 
@@ -165,8 +251,11 @@ public class ExecutionPayloadV4Tests
 
         Block block = payload.TryGetBlock().Data!;
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(block.StarkProof, Is.EqualTo(proof));
-        Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.EqualTo(depsHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.StarkProof, Is.EqualTo(proof));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(depsHash));
+        }
 
         // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
         // survives the payload boundary, so the block hash reconciles (it would not if the field
@@ -231,8 +320,11 @@ public class ExecutionPayloadV4Tests
 
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
 
-        Assert.That(payload.StarkProof, Is.Null);
-        Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.StarkProof, Is.Null);
+            Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
+        }
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

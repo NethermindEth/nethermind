@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <Import Project="../tests.props" />
-
-  <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" />
-  </ItemGroup>
-
-</Project>

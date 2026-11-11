@@ -26,4 +26,7 @@ public static partial class EvmInstructions
 
     /// <summary>Computes <c>a mod b</c>, for a <paramref name="b"/> above one.</summary>
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result);
+
+    /// <summary>Computes the signed <c>a / b</c>, for a non-zero <paramref name="b"/> and not -2^255 / -1.</summary>
+    private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result);
 }

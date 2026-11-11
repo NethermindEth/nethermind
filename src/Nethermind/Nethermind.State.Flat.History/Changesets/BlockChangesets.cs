@@ -75,12 +75,10 @@ internal sealed class BlockChangesets
         return true;
     }
 
-    /// <summary>The whole block folded, what the state looks like once its last transaction has run.</summary>
-    public MidBlockOverlay FoldAll()
+    /// <summary>The whole block folded into an emptied <paramref name="overlay"/>, what the state looks like once its
+    /// last transaction has run.</summary>
+    public void FoldAll(MidBlockOverlay overlay)
     {
-        MidBlockOverlay overlay = new();
-        overlay.Reset(Number);
         for (int i = 0; i < Rows.Length; i++) overlay.Fold((ushort)i, Rows[i]);
-        return overlay;
     }
 }

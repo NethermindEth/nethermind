@@ -30,7 +30,7 @@ public class ReceiptsMessageSerializerTests
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        byte[] serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.SerializeToArray(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
         if (txReceipts is null)
@@ -79,7 +79,7 @@ public class ReceiptsMessageSerializerTests
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         ReceiptsMessageSerializer serializer = new(new TestSingleReleaseSpecProvider(spec));
         using ReceiptsMessage message = new(new TxReceipt[][] { [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject] }.ToPooledList());
-        byte[] serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.SerializeToArray(message);
 
         if (eip7668)
         {
@@ -183,7 +183,7 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message) + 1).AsDisposable();
         buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 
@@ -199,7 +199,7 @@ public class ReceiptsMessageSerializerTests
         byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
         using ReceiptsMessage message = serializer.Deserialize(bytes);
-        byte[] serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.SerializeToArray(message);
         Assert.That(serialized, Is.EqualTo(bytes));
     }
 
@@ -241,7 +241,7 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt receipt = new() { StatusCode = 1, GasUsedTotal = 21_000, Bloom = Bloom.Empty, Logs = [] };
         using ReceiptsMessage message = new(new TxReceipt[][] { Enumerable.Repeat(receipt, receiptCount).ToArray() }.ToPooledList());
-        return new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message);
+        return new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).SerializeToArray(message);
     }
 
     [Test]
@@ -254,7 +254,7 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(txReceipts.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        byte[] serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.SerializeToArray(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
         Assert.That(deserialized.TxReceipts[0][0].Logs.Length, Is.EqualTo(FormerFixedLogsLimit + 1));
     }

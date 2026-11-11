@@ -138,7 +138,9 @@ public class McpAbiTests
             "74776f0000000000000000000000000000000000000000000000000000000000" +
             "0000000000000000000000000000000000000000000000000000000000000005" +
             "7468726565000000000000000000000000000000000000000000000000000000";
+#pragma warning disable NUnit2045 // Decoding must succeed before the returned values are enumerated.
         Assert.That(data.ToHexString(true), Is.EqualTo(expected));
+#pragma warning restore NUnit2045
 
         Assert.That(McpAbiCodec.TryDecode(signature.Inputs, data.AsSpan(4), out object?[]? values, out string? error), Is.True, error);
         Assert.That(McpAbiCodec.FormatValue(new List<object?>(values!)), Is.EqualTo("[[[1, 2], [3]], [one, two, three]]"));
@@ -156,7 +158,9 @@ public class McpAbiTests
             """;
         byte[] data = Encode(signature, args);
 
+#pragma warning disable NUnit2045 // Decoded values must exist before constructing their list.
         Assert.That(McpAbiCodec.TryDecode(signature.Inputs, data.AsSpan(4), out object?[]? values, out string? error), Is.True, error);
+#pragma warning restore NUnit2045
         Assert.That(McpAbiCodec.FormatValue(new List<object?>(values!)), Is.EqualTo(
             "[0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed, true, 255, -8388608, -16, 0xdeadbeef, 0x, héllo, " +
             "[[0x1111111111111111111111111111111111111111, 79228162514264337593543950335], [0x2222222222222222222222222222222222222222, 0]], " +
@@ -183,8 +187,11 @@ public class McpAbiTests
     {
         bool encoded = McpAbiCodec.TryEncodeCall(McpAbiSignature.Parse(signature), Parse(args), 4096, out _, out string? error);
 
-        Assert.That(encoded, Is.False);
-        Assert.That(error, Does.Contain(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.False);
+            Assert.That(error, Does.Contain(expected));
+        }
     }
 
     [Test]
@@ -193,9 +200,12 @@ public class McpAbiTests
         McpAbiSignature signature = McpAbiSignature.Parse("f(bytes)");
         string payload = "0x" + new string('a', 2 * 200);
 
-        Assert.That(McpAbiCodec.TryEncodeCall(signature, Parse($"[\"{payload}\"]"), 4 + 32 * 9, out _, out _), Is.True, "exactly at the limit");
-        Assert.That(McpAbiCodec.TryEncodeCall(signature, Parse($"[\"{payload}\"]"), 4 + 32 * 9 - 1, out _, out string? error), Is.False);
-        Assert.That(error, Does.Contain("exceeds the"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpAbiCodec.TryEncodeCall(signature, Parse($"[\"{payload}\"]"), 4 + 32 * 9, out _, out _), Is.True, "exactly at the limit");
+            Assert.That(McpAbiCodec.TryEncodeCall(signature, Parse($"[\"{payload}\"]"), 4 + 32 * 9 - 1, out _, out string? error), Is.False);
+            Assert.That(error, Does.Contain("exceeds the"));
+        }
     }
 
     [TestCase(1, false)]
@@ -224,8 +234,11 @@ public class McpAbiTests
     {
         bool decoded = McpAbiCodec.TryDecode([McpAbiType.String], Bytes.FromHexString(hex), out _, out string? error);
 
-        Assert.That(decoded, Is.False);
-        Assert.That(error, Does.Contain(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.False);
+            Assert.That(error, Does.Contain(expected));
+        }
     }
 
     [TestCase("address", "0x0000000000000000000000010000000000000000000000000000000000000001")]
@@ -238,7 +251,9 @@ public class McpAbiTests
     [TestCase("(uint256,string)", "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000")]
     public void Decoding_rejects_non_canonical_values(string type, string hex)
     {
+#pragma warning disable NUnit2045 // Type parsing must succeed before the decoded type is used.
         Assert.That(McpAbiSignature.TryParseType(type, out McpAbiType? abiType, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(McpAbiCodec.TryDecode([abiType!], Bytes.FromHexString(hex), out _, out _), Is.False);
     }
 
@@ -253,9 +268,12 @@ public class McpAbiTests
         bool decoded = McpAbiCodec.TryDecode([type], data, out _, out string? error);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
-        Assert.That(decoded, Is.False);
-        Assert.That(error, Does.Contain("claims 4096 elements"));
-        Assert.That(allocated, Is.LessThan(16 * 1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.False);
+            Assert.That(error, Does.Contain("claims 4096 elements"));
+            Assert.That(allocated, Is.LessThan(16 * 1024));
+        }
     }
 
     [Test]
@@ -272,8 +290,11 @@ public class McpAbiTests
 
         bool decoded = McpAbiCodec.TryDecode([McpAbiType.ArrayOf(McpAbiType.ArrayOf(McpAbiType.UInt256))], data.ToArray(), out _, out string? error);
 
-        Assert.That(decoded, Is.False);
-        Assert.That(error, Does.Contain($"more than {McpAbiCodec.MaxDecodedValues} values"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.False);
+            Assert.That(error, Does.Contain($"more than {McpAbiCodec.MaxDecodedValues} values"));
+        }
     }
 
     [Test]
@@ -429,8 +450,11 @@ public class McpAbiTests
     [TestCase("a-b.eth", "a-b.eth")]
     public void Normalizes_ascii_names(string input, string expected)
     {
-        Assert.That(McpEns.TryNormalize(input, out string? normalized, out string? error), Is.True, error);
-        Assert.That(normalized, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpEns.TryNormalize(input, out string? normalized, out string? error), Is.True, error);
+            Assert.That(normalized, Is.EqualTo(expected));
+        }
     }
 
     [TestCase("", "empty")]
@@ -442,15 +466,21 @@ public class McpAbiTests
     [TestCase("vitàlik.eth", "non-ASCII")]
     public void Rejects_invalid_names(string input, string expected)
     {
-        Assert.That(McpEns.TryNormalize(input, out _, out string? error), Is.False);
-        Assert.That(error, Does.Contain(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpEns.TryNormalize(input, out _, out string? error), Is.False);
+            Assert.That(error, Does.Contain(expected));
+        }
     }
 
     [Test]
     public void Dns_encodes_names()
     {
-        Assert.That(McpEns.DnsEncode("foo.eth").ToHexString(true), Is.EqualTo("0x03666f6f0365746800"));
-        Assert.That(McpEns.ReverseName(new Address("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")), Is.EqualTo("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed.addr.reverse"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpEns.DnsEncode("foo.eth").ToHexString(true), Is.EqualTo("0x03666f6f0365746800"));
+            Assert.That(McpEns.ReverseName(new Address("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")), Is.EqualTo("5aaeb6053f3e94c9b9a09f33669435e7ef1beaed.addr.reverse"));
+        }
     }
 
     [TestCase("0", 18, "0")]

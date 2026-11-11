@@ -63,8 +63,11 @@ public class PoppedAddressCacheTests
 
         for (int i = 0; i < 4; i++)
         {
-            Assert.That(cache.GetOrCreate(AddressA), Is.SameAs(firstA));
-            Assert.That(cache.GetOrCreate(AddressB), Is.SameAs(firstB));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.GetOrCreate(AddressA), Is.SameAs(firstA));
+                Assert.That(cache.GetOrCreate(AddressB), Is.SameAs(firstB));
+            }
         }
     }
 

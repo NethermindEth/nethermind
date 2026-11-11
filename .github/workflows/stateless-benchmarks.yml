@@ -13,11 +13,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   # Superseded pull request runs are waste, but every master push must reach its save step: a merge
   # burst that cancels its predecessors leaves those commits without a baseline, and the pull requests
-  # based on them fall back to whichever older master cache `restore-keys` happens to match.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # based on them fall back to whichever older master cache `restore-keys` happens to match. A shared
+  # group is not enough even without cancel-in-progress, because a new run replaces a pending one.
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -46,7 +47,7 @@ jobs:
           filter: blob:none
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
 

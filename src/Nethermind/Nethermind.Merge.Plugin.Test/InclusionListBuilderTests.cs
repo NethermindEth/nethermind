@@ -109,8 +109,11 @@ public class InclusionListBuilderTests
 
         using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
-        Assert.That(il, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(il, Is.Not.Empty);
+        }
     }
 
     // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
@@ -440,10 +443,21 @@ public class InclusionListBuilderTests
     [TestCase("invalid-proof", false)]
     [TestCase("no-proof-service", false)]
     [TestCase("next-nonce-only", false)]
+    [TestCase("max-fee-covers-max-gas", true)]
+    [TestCase("max-fee-covers-frame-gas-only", false)]
     public void Dependency_bearing_tx_is_listed_only_under_a_covering_held_proof(string scenario, bool listed)
     {
-        Transaction ordinary = TxOfSize(50, 0, TestItem.PrivateKeyB);
+        // EIP-8141: max_fee must cover max_gas, intrinsic gas included, at the next block's base fee.
+        UInt256 baseFee = scenario.StartsWith("max-fee") ? 1.GWei : UInt256.Zero;
+        Transaction ordinary = TxOfSize(50, 0, TestItem.PrivateKeyB, maxFeePerGas: baseFee);
         Transaction dependencyBearing = DependencyBearingTx("listed", nonce: scenario == "next-nonce-only" ? 1UL : 0);
+        if (!baseFee.IsZero)
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(dependencyBearing, Eip8288Prototype.Instance, out _, out _, out ulong maxGas), Is.True);
+            dependencyBearing.MaxFee = baseFee * (scenario == "max-fee-covers-max-gas" ? maxGas : dependencyBearing.GasLimit);
+            dependencyBearing.DecodedMaxFeePerGas = baseFee;
+            dependencyBearing.Hash = dependencyBearing.CalculateHash();
+        }
         FrameDependency dependency = Eip8288Dependencies.ForTransaction(dependencyBearing, FrameTxSigHash.ComputeValue).Single();
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default);
@@ -452,7 +466,7 @@ public class InclusionListBuilderTests
         InclusionListProofService? proofs = scenario == "no-proof-service" ? null
             : new InclusionListProofService(new HeldProofVerifier(scenario != "invalid-proof"), store);
 
-        (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([ordinary], [dependencyBearing]), proofs)
+        (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([ordinary], [dependencyBearing]), proofs, baseFee: baseFee)
             .GetInclusionListWithProof();
         using InclusionListBytes owned = il;
 
@@ -547,12 +561,13 @@ public class InclusionListBuilderTests
             ChainId = BlockchainIds.Mainnet,
             SenderAddress = sender ?? TestItem.AddressC,
             Nonce = nonce,
-            NonceKeys = [UInt256.Zero],
+            NonceKeys = [],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
         };
         tx.Hash = tx.CalculateHash();
         return tx;
@@ -571,10 +586,12 @@ public class InclusionListBuilderTests
     }
 
     /// <summary>A builder whose target fork enables EIP-8288.</summary>
-    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs, IReadOnlyStateProvider? headState = null)
+    /// <remarks>The head sits at its gas target, so <paramref name="baseFee"/> is also the next block's.</remarks>
+    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs, IReadOnlyStateProvider? headState = null,
+        UInt256 baseFee = default)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(0).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(baseFee).WithGasLimit(30_000_000).WithGasUsed(15_000_000).TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Eip8288Prototype.Instance);
         return new InclusionListBuilder(pool, blockTree, specProvider, headState ?? Substitute.For<IReadOnlyStateProvider>(), proofs);

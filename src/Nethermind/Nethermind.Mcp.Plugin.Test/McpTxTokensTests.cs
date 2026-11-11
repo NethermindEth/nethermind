@@ -134,10 +134,13 @@ public class McpTxTokensTests
         };
         List<McpTokenMovement> movements = [];
         McpTokenTally tally = new();
-        Assert.That(McpTxTokens.Extract(log.ToLogEntry(), movements, null, tally), Is.Null);
-        Assert.That(movements, Is.Empty, "an unsupported layout cannot establish whether 42 is an NFT id or a fungible amount");
-        Assert.That(tally.Undecodable, Is.EqualTo(1));
-        Assert.That(McpTxTokens.UndecodableNote(tally.Undecodable), Does.Contain("non-standard"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpTxTokens.Extract(log.ToLogEntry(), movements, null, tally), Is.Null);
+            Assert.That(movements, Is.Empty, "an unsupported layout cannot establish whether 42 is an NFT id or a fungible amount");
+            Assert.That(tally.Undecodable, Is.EqualTo(1));
+            Assert.That(McpTxTokens.UndecodableNote(tally.Undecodable), Does.Contain("non-standard"));
+        }
 
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getBlockReceipts(Arg.Any<BlockParameter>()).Returns(ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(
@@ -145,8 +148,11 @@ public class McpTxTokensTests
         List<string> notes = [];
         JsonObject stats = _node.Chain.Container.Resolve<McpTransactionTools>().ReceiptStats(eth,
             new BlockParameter(1), null, notes, static () => true, CancellationToken.None)!;
-        Assert.That(stats["tokenTransfers"]!.GetValue<int>(), Is.Zero);
-        Assert.That(notes, Has.Some.Contains("non-standard"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stats["tokenTransfers"]!.GetValue<int>(), Is.Zero);
+            Assert.That(notes, Has.Some.Contains("non-standard"));
+        }
     }
 
     [Test]
@@ -219,8 +225,11 @@ public class McpTxTokensTests
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(metadata, eth, [TestItem.AddressA],
             new BlockParameter(1), 1, CancellationToken.None);
 
-        Assert.That(found[TestItem.AddressA].Symbol, Is.EqualTo("OLD"));
-        Assert.That(skipped, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[TestItem.AddressA].Symbol, Is.EqualTo("OLD"));
+            Assert.That(skipped, Is.Zero);
+        }
         eth.Received(1).eth_getCode(TestItem.AddressA, Arg.Is<BlockParameter?>(block => block!.Type == BlockParameterType.BlockNumber));
     }
 
@@ -289,9 +298,12 @@ public class McpTxTokensTests
             CallToolResult call = await McpToolCalls.Call(client, "address_activity",
                 [("address", TestItem.AddressB.ToString()), ("token", weth.ToString()), ("fromBlock", block), ("toBlock", block), ("includeUsd", true)]);
             JsonElement result = McpAssert.Success(call);
-            Assert.That(result.GetProperty("usdNotes").GetRawText(),
-                Does.Contain(spent ? "metadata not read within the time budget" : "decimals() not available"));
-            Assert.That(result.TryGetProperty("tokenMetadataOmitted", out _), Is.EqualTo(spent));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetProperty("usdNotes").GetRawText(),
+                    Does.Contain(spent ? "metadata not read within the time budget" : "decimals() not available"));
+                Assert.That(result.TryGetProperty("tokenMetadataOmitted", out _), Is.EqualTo(spent));
+            }
             await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
         }
         finally

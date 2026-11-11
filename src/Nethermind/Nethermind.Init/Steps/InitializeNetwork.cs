@@ -24,17 +24,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
-public static class NettyMemoryEstimator
-{
-    private const uint PageSize = 8192;
-
-    public static void SetPageSize() =>
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-
-    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
-}
-
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
@@ -92,6 +81,7 @@ public class InitializeNetwork : IStep
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager,
+        ProofWrapperTransport proofWrapperTransport, // Resolved so wrappers validated before the first eth/73 session are offered
         ProofWrapperGossip? proofWrapperGossip = null
     )
     {
@@ -206,11 +196,11 @@ public class InitializeNetwork : IStep
         ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatStateActivationPolicy, _flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ", sensitive: true);
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
-        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
+        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ", sensitive: true);
+        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)", sensitive: true);
     }
 
     private static string GetDbLayoutPostfix(FlatStateActivationPolicy flatStateActivationPolicy, IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)

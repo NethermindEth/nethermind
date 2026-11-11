@@ -238,6 +238,30 @@ public class InclusionListValidatorTests
             _txValidator, lists, frameCanInclude: static _ => true);
     }
 
+    // EIP-8141: an entry is appendable once its max_fee covers required_max_fee, which prices max_gas, intrinsic gas included.
+    [TestCase(true, ExpectedResult = false, TestName = "Entry whose max_fee covers max_gas is required")]
+    [TestCase(false, ExpectedResult = true, TestName = "Entry whose max_fee covers only its frame gas imposes no obligation")]
+    public bool Frame_entry_is_required_only_when_its_max_fee_covers_max_gas(bool coversMaxGas)
+    {
+        UInt256 baseFee = 1.GWei;
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        ulong frameGas = FrameTxValidation.TotalGasLimit(entry.Frames);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(entry, spec, out _, out _, out ulong maxGas), Is.True);
+        entry.MaxFee = baseFee * (coversMaxGas ? maxGas : frameGas);
+        entry.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(entry.MaxFee, frameGas);
+        entry.Hash = entry.CalculateHash();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).WithBaseFeePerGas(baseFee)
+            .WithInclusionListTransactions([entry]).TestObject;
+
+        return InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+            [Counted([entry], Proven)], frameCanInclude: static _ => true);
+    }
+
     private static Transaction BuildFrameTx() => new()
     {
         Type = TxType.FrameTx,

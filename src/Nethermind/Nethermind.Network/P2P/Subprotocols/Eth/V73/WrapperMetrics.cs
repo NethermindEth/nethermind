@@ -23,7 +23,8 @@ internal enum WrapperEvent
     ReferenceResolved,
     ReferenceMissed,
     ReferenceSent,
-    EquivalentSkipped
+    EquivalentSkipped,
+    BudgetDropped
 }
 
 internal static class WrapperMetrics
@@ -32,7 +33,7 @@ internal static class WrapperMetrics
     [
         "announced", "announcement_received", "requested", "received", "validated", "invalid", "malformed", "local_failure",
         "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "announcement_suppressed",
-        "reference_resolved", "reference_missed", "reference_sent", "equivalent_skipped"
+        "reference_resolved", "reference_missed", "reference_sent", "equivalent_skipped", "budget_dropped"
     ];
 
     public static void Record(WrapperEvent wrapperEvent, long count = 1) =>

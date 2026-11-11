@@ -96,8 +96,9 @@ public class NativeFrameAssertionsTests
     {
         (byte[] code, UInt256 expected)[] checks =
         [
-            (Prepare.EvmCode.PushData(0).PushData(Body).PushData(0).Op(Instruction.TXDIFF).Done, UInt256.Zero),
-            (Prepare.EvmCode.PushData(0).PushData(Body).PushData(1).Op(Instruction.TXDIFF).Done, expectedAfter)
+            (TxTraceSlot(0x07), new UInt256(Body.Bytes, isBigEndian: true)),
+            (TxTraceSlot(0x08), UInt256.Zero),
+            (TxTraceSlot(0x09), expectedAfter)
         ];
         int fail = 1;
         foreach ((byte[] code, _) in checks) fail += code.Length + 39;
@@ -123,4 +124,6 @@ public class NativeFrameAssertionsTests
         result.Add((byte)Instruction.REVERT);
         return [.. result];
     }
+
+    private static byte[] TxTraceSlot(byte param) => Prepare.EvmCode.PushData(0).PushData(param).Op(Instruction.TXTRACE).Done;
 }

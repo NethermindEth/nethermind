@@ -1919,7 +1919,7 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             : _txPool.SubmitTx(transaction, TxHandlingOptions.None);
         if (_logger.IsTrace)
         {
-            _logger.Trace($"{peer?.Id} sent sparse blob tx {transaction.Hash} and it was {result}");
+            _logger.Trace($"{peer?.Id:hide} sent sparse blob tx {transaction.Hash} and it was {result}");
         }
 
         return result;

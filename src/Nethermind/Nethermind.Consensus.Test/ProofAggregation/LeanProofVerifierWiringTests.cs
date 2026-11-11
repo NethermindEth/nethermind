@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -23,6 +26,23 @@ namespace Nethermind.Consensus.Test.ProofAggregation;
 [NonParallelizable]
 public class LeanProofVerifierWiringTests
 {
+    // The stateless guests link Nethermind.Consensus without the native crypto shim behind the BCL digests.
+    [Test]
+    public void Guest_referenced_consensus_code_uses_no_platform_digest()
+    {
+        using FileStream stream = File.OpenRead(typeof(ProductionProofCache).Assembly.Location);
+        using PEReader pe = new(stream);
+        MetadataReader metadata = pe.GetMetadataReader();
+        foreach (TypeReferenceHandle handle in metadata.TypeReferences)
+        {
+            TypeReference type = metadata.GetTypeReference(handle);
+            if (metadata.GetString(type.Namespace) != "System.Security.Cryptography") continue;
+            string name = metadata.GetString(type.Name);
+            Assert.That(name is "IncrementalHash" or "HashAlgorithm" or "HashAlgorithmName" || name.StartsWith("SHA", StringComparison.Ordinal)
+                || name.StartsWith("MD5", StringComparison.Ordinal), Is.False, name);
+        }
+    }
+
     [Test]
     public async Task Startup_checks_a_decorated_backend_through_its_interface()
     {
@@ -70,8 +90,11 @@ public class LeanProofVerifierWiringTests
     {
         ILeanProofVerifier verifier = chain.Container.Resolve<ILeanProofVerifier>();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope();
-        Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
-        Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
+            Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+        }
         return verifier;
     }
 

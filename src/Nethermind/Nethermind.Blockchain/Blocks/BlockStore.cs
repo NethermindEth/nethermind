@@ -4,7 +4,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -18,6 +22,9 @@ public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
     internal const int MaxCachedProofBytes = 64 * 1024;
+    /// <summary>Entries of the cache of blocks carrying a proof above <see cref="MaxCachedProofBytes"/>, bounding it to about
+    /// 20 MiB of <see cref="Eip8288Constants.MaxAggregateProofBytes"/> proofs.</summary>
+    internal const int ProofCacheSize = 16;
 
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
@@ -28,6 +35,8 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
+
+    private readonly AssociativeCache<ValueHash256, Block> _proofBlockCache = new(ProofCacheSize);
 
     public BlockStore(
         [KeyFilter(DbNames.Blocks)] IDb blockDb,
@@ -118,6 +127,7 @@ public class BlockStore : IBlockStore, IClearableCache
     private void DeleteFromDb(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(in blockHash.ValueHash256);
+        _proofBlockCache.Delete(in blockHash.ValueHash256);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
     }
@@ -152,6 +162,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
         // disk must stop being served whatever the reclaim does.
         _blockCache.Clear();
+        _proofBlockCache.Clear();
         foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
         {
             if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
@@ -161,7 +172,7 @@ public class BlockStore : IBlockStore, IClearableCache
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;
-        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock)) return cachedBlock;
+        if (TryGetCached(in cacheKey, out Block? cachedBlock)) return cachedBlock;
 
         // Served from the pending snapshot - a distinct instance from the live block - until the write lands.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
@@ -174,9 +185,9 @@ public class BlockStore : IBlockStore, IClearableCache
             ?? _blockDb.Get(blockHash, _blockDecoder,
                 cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
 
-        if (shouldCache && block is not null && (block.StarkProof?.Length ?? 0) <= MaxCachedProofBytes)
+        if (shouldCache && block is not null)
         {
-            _blockCache.Set(in cacheKey, block);
+            CacheFor(block)?.Set(in cacheKey, block);
         }
 
         return block;
@@ -200,7 +211,7 @@ public class BlockStore : IBlockStore, IClearableCache
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;
-        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock))
+        if (TryGetCached(in cacheKey, out Block? cachedBlock))
         {
             return new ReceiptRecoveryBlock(cachedBlock);
         }
@@ -213,8 +224,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadRecoveryBlockMemory(keyWithBlockNumber);
+        memoryOwner ??= ReadRecoveryBlockMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -229,10 +240,58 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
+    private MemoryManager<byte>? ReadRecoveryBlockMemory(ReadOnlySpan<byte> key)
+    {
+        if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
+
+        ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
+        try
+        {
+            if (bytes.IsEmpty) return null;
+            if (handle == 0) return ArrayMemoryManager.From(bytes.ToArray());
+
+            PinnedBlockMemory owner = new(native, handle, bytes);
+            handle = 0;
+            return owner;
+        }
+        finally
+        {
+            if (handle != 0) native.DangerousReleaseHandle(handle);
+        }
+    }
+
+    // Only the recovery decoder reads this memory; a nonzero native lease keeps the pointer valid until disposal.
+    private sealed unsafe class PinnedBlockMemory(IReadOnlyNativeKeyValueStore db, nint handle, ReadOnlySpan<byte> bytes) : MemoryManager<byte>
+    {
+        private nint _handle = handle;
+        private readonly byte* _pointer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(bytes));
+        private readonly int _length = bytes.Length;
+
+        public override Span<byte> GetSpan()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            return new Span<byte>(_pointer, _length);
+        }
+
+        public override MemoryHandle Pin(int elementIndex = 0)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _handle) == 0, this);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)_length);
+            return new MemoryHandle(_pointer + elementIndex);
+        }
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing)
+        {
+            nint released = Interlocked.Exchange(ref _handle, 0);
+            if (released != 0) db.DangerousReleaseHandle(released);
+        }
+    }
+
     public void Cache(Block block)
     {
-        // Blocks with large proofs stay out of this count-bounded cache, keeping its memory bounded.
-        if ((block.StarkProof?.Length ?? 0) > MaxCachedProofBytes) return;
+        if (CacheFor(block) is not { } cache) return;
 
         ValueHash256 cacheKey = block.Hash.ValueHash256;
         Block cachedBlock = _pending is not null && _pending.TryGet(block.Hash!, out Block? pendingBlock)
@@ -241,8 +300,24 @@ public class BlockStore : IBlockStore, IClearableCache
             // the original block, which downstream consumers may still use and dispose.
             : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
-        _blockCache.Set(in cacheKey, cachedBlock);
+        cache.Set(in cacheKey, cachedBlock);
     }
 
-    void IClearableCache.ClearCache() => _blockCache.Clear();
+    /// <summary>The count-bounded cache sized for <paramref name="block"/>'s proof, so proof-carrying blocks keep the memory of
+    /// the caches bounded; null for a proof no valid block carries.</summary>
+    private AssociativeCache<ValueHash256, Block>? CacheFor(Block block) => (block.StarkProof?.Length ?? 0) switch
+    {
+        <= MaxCachedProofBytes => _blockCache,
+        <= Eip8288Constants.MaxAggregateProofBytes => _proofBlockCache,
+        _ => null
+    };
+
+    private bool TryGetCached(in ValueHash256 key, out Block? block) =>
+        _blockCache.TryGet(in key, out block) || _proofBlockCache.TryGet(in key, out block);
+
+    void IClearableCache.ClearCache()
+    {
+        _blockCache.Clear();
+        _proofBlockCache.Clear();
+    }
 }

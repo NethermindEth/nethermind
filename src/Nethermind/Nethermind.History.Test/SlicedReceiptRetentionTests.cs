@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -32,6 +33,70 @@ namespace Nethermind.History.Test;
 
 public class SlicedReceiptRetentionTests
 {
+    [TestCase(false, TestName = "Pruned_orphan_with_sliced_address_fails_closed_in_LogFinder")]
+    [TestCase(true, TestName = "Pruned_orphan_with_sliced_address_fails_closed_in_IndexedLogFinder")]
+    public async Task Pruned_orphan_receipts_are_not_covered_by_canonical_address_slices(bool indexedFinder)
+    {
+        Address slicedAddress = TestItem.AddressE;
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+        ILogIndexStorage index = Substitute.For<ILogIndexStorage>();
+        index.Enabled.Returns(true);
+        index.MinBlockNumber.Returns(0);
+        index.MaxBlockNumber.Returns(int.MaxValue - 1);
+        // Canonical index has no entry for the orphan, even though its header bloom matches.
+        index.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Enumerable.Empty<int>().GetEnumerator());
+
+        using BasicTestBlockchain chain = await BuildBlockchain(historyConfig, flatDbConfig, index, builder =>
+        {
+            builder.AddSingleton<IPrunedLogsRetention, IPrunedReceiptRetention>(retention => (IPrunedLogsRetention)retention);
+            if (indexedFinder)
+                builder.RegisterType<IndexedLogFinder>().As<ILogFinder>().SingleInstance()
+                    .WithParameter("minBlocksToUseIndex", 1).WithAttributeFiltering();
+            else
+                builder.RegisterType<LogFinder>().As<ILogFinder>().SingleInstance().WithAttributeFiltering();
+        });
+        for (int i = 0; i < 20; i++) await chain.AddBlock();
+
+        IBlockTree tree = chain.BlockTree;
+        Block orphan = HistoryTestHelpers.CreateProcessedOrphan(chain, 19, slicedAddress);
+
+        Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.True,
+            "the orphan's receipts must exist before the production pruner runs");
+
+        for (int i = 0; i < 80; i++) await chain.AddBlock();
+        tree.SyncPivot = (tree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner pruner = (HistoryPruner)chain.Container.Resolve<IHistoryPruner>();
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        IPrunedLogsRetention retention = chain.Container.Resolve<IPrunedLogsRetention>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsMainChain(orphan.Header), Is.False);
+            Assert.That(tree.GetInfo(orphan.Number, orphan.Hash!).Info?.WasProcessed, Is.True);
+            Assert.That(chain.ReceiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
+            Assert.That(tree.FindBlock(orphan.Hash, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(tree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(retention.RetainsLogsFor([slicedAddress], orphan.Number, orphan.Number), Is.True,
+                "the address/height retention gate must report coverage to reproduce the false-empty result");
+        }
+
+        ILogFinder logFinder = chain.Container.Resolve<ILogFinder>();
+        Assert.That(logFinder, Is.TypeOf(indexedFinder ? typeof(IndexedLogFinder) : typeof(LogFinder)));
+
+        BlockParameter hash = new(orphan.Hash!);
+        LogFilter filter = new(0, hash, hash, new AddressFilter(slicedAddress), new SequenceTopicsFilter());
+        Assert.That(() => logFinder.FindLogs(filter).ToArray(),
+            Throws.TypeOf<ResourceNotFoundException>().With.Message.Contains("Receipt not available"));
+    }
+
     // Both retention paths, because the pruner reclaims by range: with the index it answers for a whole span at
     // once, and without it falls back to asking block by block. A real sliced node runs the first.
     [TestCase(false, TestName = "Retains_receipts_for_a_sliced_address_asking_block_by_block")]
@@ -115,8 +180,11 @@ public class SlicedReceiptRetentionTests
         FilterLog[] logs = logFinder.FindLogs(filter).ToArray();
 
         Assert.That(logs.Length, Is.EqualTo(1));
-        Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
-        Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
+            Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+        }
 
         TxReceipt[] retained = testBlockchain.ReceiptStorage.Get(slicedBlockHash);
         using (Assert.EnterMultipleScope())
@@ -529,9 +597,12 @@ public class SlicedReceiptRetentionTests
         SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
         reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
-        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
-            "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
-        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+                "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
+            Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+        }
     }
 
     [Test]
@@ -878,7 +949,7 @@ public class SlicedReceiptRetentionTests
     }
 
     private static async Task<BasicTestBlockchain> BuildBlockchain(
-        IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage = null)
+        IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage = null, Action<ContainerBuilder> configure = null)
     {
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 0 });
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -896,6 +967,7 @@ public class SlicedReceiptRetentionTests
             {
                 containerBuilder.AddSingleton(logIndexStorage);
             }
+            configure?.Invoke(containerBuilder);
         });
     }
 }
