@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -412,12 +410,6 @@ namespace Nethermind.Trie
             int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
             if (itemsStart == 0) _nodeData = new BranchData();
             else DecodeLeafOrExtension(span, itemsStart, null);
-
-            [DoesNotReturn, StackTraceHidden]
-            static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
-
-            [DoesNotReturn, StackTraceHidden]
-            byte[] ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
         }
 
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>

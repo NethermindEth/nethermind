@@ -363,16 +363,16 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
-
-            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) => throw new TrieNodeException(
                     $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})",
                     path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
+
+        [DoesNotReturn, StackTraceHidden]
+        private byte[] ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
 
         /// <summary>
         /// Highly optimized
