@@ -1079,14 +1079,14 @@ public sealed partial class KeccakHash
     }
 
     /// <remarks>On ZisK a direct DMA call: the struct copy the JIT emits reaches the same precompile through a wrapper
-    /// and corelib's copy routine, which spill registers around it. The refs are not pinned: no GC can run before the
-    /// call returns, as it suppresses the GC transition.</remarks>
+    /// and corelib's copy routine, which spill registers around it. The refs are not pinned: the guest is single-threaded
+    /// and collects only when it allocates, so no GC can run between taking their addresses and the call returning.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void CopyState(ref ulong lane, ref ulong source)
     {
         if (ZiskFlag.IsActive)
         {
-            Accelerators.Memmove(Unsafe.AsPointer(ref lane), Unsafe.AsPointer(ref source), (nuint)sizeof(KeccakState));
+            Bytes.Memmove(Unsafe.AsPointer(ref lane), Unsafe.AsPointer(ref source), (nuint)sizeof(KeccakState));
             return;
         }
 
