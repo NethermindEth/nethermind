@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using InlineIL;
@@ -18,9 +17,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <remarks>
     /// <para>
     /// The untraced tables under <see cref="EthereumGasPolicy"/> get fused handlers that run a short opcode sequence compilers
-    /// emit over and over as one dispatch with one gas check: a comparison or ISZERO followed by <c>PUSH2</c> <c>JUMPI</c>,
-    /// with or without an ISZERO in between, the <c>DUP1</c> <c>PUSH4</c> <c>EQ</c> <c>PUSH2</c> <c>JUMPI</c> of a
-    /// selector dispatch, and runs of POP.
+    /// emit over and over as one dispatch with one gas check: a comparison (<c>LT</c>, <c>GT</c>, <c>SLT</c>, <c>SGT</c>,
+    /// <c>EQ</c>) followed by <c>PUSH2</c> <c>JUMPI</c>, with or without an ISZERO in between. Only comparisons get a fused
+    /// handler: compilers branch on nearly every one, so the check for a following branch rarely goes unused.
     /// </para>
     /// <para>
     /// The handler of the first opcode reads the bytes after it when it runs, so the code, its jump destinations and the
@@ -43,8 +42,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (!TablesHaveFastPaths<TTracingInst>()) return;
 
-        SetFusedHandler<Math1Opcode<EvmInstructions.OpIsZero, OffFlag>>(lookup, Instruction.ISZERO,
-            AsTableEntry(&RawCalliHelper.ExecuteBranchCondition<RawCalliHelper.IsZeroCondition, Math1Opcode<EvmInstructions.OpIsZero, OffFlag>, TCancelable>));
         SetFusedHandler<BitwiseOpcode<EvmInstructions.OpBitwiseEq, OffFlag>>(lookup, Instruction.EQ,
             AsTableEntry(&RawCalliHelper.ExecuteBranchCondition<RawCalliHelper.EqualCondition, BitwiseOpcode<EvmInstructions.OpBitwiseEq, OffFlag>, TCancelable>));
         SetFusedHandler<Math2Opcode<EvmInstructions.OpLt, OffFlag>>(lookup, Instruction.LT,
@@ -55,10 +52,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             AsTableEntry(&RawCalliHelper.ExecuteBranchCondition<RawCalliHelper.SignedLessThanCondition, Math2Opcode<EvmInstructions.OpSLt, OffFlag>, TCancelable>));
         SetFusedHandler<Math2Opcode<EvmInstructions.OpSGt, OffFlag>>(lookup, Instruction.SGT,
             AsTableEntry(&RawCalliHelper.ExecuteBranchCondition<RawCalliHelper.SignedGreaterThanCondition, Math2Opcode<EvmInstructions.OpSGt, OffFlag>, TCancelable>));
-        SetFusedHandler<DupOpcode<EvmInstructions.Op1, OffFlag>>(lookup, Instruction.DUP1,
-            AsTableEntry(&RawCalliHelper.ExecuteSelectorBranch<DupOpcode<EvmInstructions.Op1, OffFlag>, TCancelable>));
-        SetFusedHandler<PopOpcode>(lookup, Instruction.POP,
-            AsTableEntry(&RawCalliHelper.ExecutePopRun));
     }
 
     /// <summary>Installs a fused handler for <paramref name="opcode"/>, recorded as the body it runs when no sequence follows.</summary>
@@ -85,16 +78,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <summary>The comparison of the top word, at <paramref name="top"/>, with the word below it where there is one.</summary>
             static abstract bool Evaluate(ref byte top);
-        }
-
-        internal readonly struct IsZeroCondition : IBranchCondition
-        {
-            public static Instruction Opcode => Instruction.ISZERO;
-
-            public static int Inputs => 1;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref byte top) => EvmStack.IsSlotZero(ref top);
         }
 
         internal readonly struct EqualCondition : IBranchCondition
@@ -162,7 +145,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static uint ReadCode(ref byte code, nint offset) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref code, offset));
 
         /// <summary>
-        /// A comparison or ISZERO followed by <c>PUSH2</c> <c>JUMPI</c>, or by <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, goes to
+        /// A comparison followed by <c>PUSH2</c> <c>JUMPI</c>, or by <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, goes to
         /// <see cref="ExecuteConditionBranch{TCondition, TInverted, TCancelable}"/>; any other comparison runs alone here.
         /// </summary>
         /// <remarks>
@@ -326,252 +309,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Fallback:
             // The arguments are unchanged: the unfused handler starts the opcode over.
             nint fallback = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[(int)TCondition.Opcode];
-            IL.EnsureLocal(in fallback);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(fallback);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-        }
-
-        /// <summary>
-        /// DUP1 followed by <c>PUSH4</c> <c>EQ</c> <c>PUSH2</c> <c>JUMPI</c> goes to <see cref="ExecuteSelectorJump{TCancelable}"/>;
-        /// any other DUP1 runs alone here.
-        /// </summary>
-        /// <remarks>
-        /// A contract's entry point tests the call's selector against each function it has with this sequence. As in
-        /// <see cref="ExecuteBranchCondition{TCondition, TOpcode, TCancelable}"/>, every outcome leaves through one tail call.
-        /// </remarks>
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSelectorBranch<TOpcode, TCancelable>(
-            ref EvmStack stack,
-            ulong gas,
-            ref DispatchState state,
-            nint pc,
-            nint opCodeCount)
-            where TOpcode : struct, IOpcodeBody
-            where TCancelable : struct, IFlag
-        {
-            nint target;
-            nint head = stack.Head;
-            uint branch = ReadCode(ref stack.Code, pc + 6);
-            // DUP1 and PUSH4 each grow the stack before EQ shrinks it.
-            if (head >= 1 && head < EvmStack.MaxStackSize - 2
-                && Unsafe.Add(ref stack.Code, pc + 1) == (byte)Instruction.PUSH4
-                && (byte)branch == (byte)Instruction.EQ
-                && (byte)(branch >> 8) == (byte)Instruction.PUSH2
-                && Unsafe.Add(ref stack.Code, pc + 10) == (byte)Instruction.JUMPI)
-            {
-                target = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)
-                    &ExecuteSelectorJump<TCancelable>;
-            }
-            else if (TryExecuteCheckedInPlace<TOpcode>(ref stack, ref gas, ref state, ref pc))
-            {
-                opCodeCount++;
-                target = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
-            }
-            else
-            {
-                // Indexed by the known opcode, as in the branch condition handler.
-                target = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[(int)Instruction.DUP1];
-            }
-
-            IL.EnsureLocal(in target);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(target);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-        }
-
-        /// <summary>DUP1, <c>PUSH4</c>, <c>EQ</c>, <c>PUSH2</c> and <c>JUMPI</c>, run as one opcode with one gas check.</summary>
-        /// <remarks>
-        /// Reached only from <see cref="ExecuteSelectorBranch{TOpcode, TCancelable}"/> once the shape and the stack are known to fit.
-        /// The selector is compared with the top word in place, so neither the copy nor the selector reaches the stack. With
-        /// too little gas, or a taken branch to a byte that is not a JUMPDEST, DUP1 goes to its unfused handler.
-        /// </remarks>
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static EvmExceptionType ExecuteSelectorJump<TCancelable>(
-            ref EvmStack stack,
-            ulong gas,
-            ref DispatchState state,
-            nint pc,
-            nint opCodeCount)
-            where TCancelable : struct, IFlag
-        {
-            ulong cost = 4 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-            // The PUSH4 immediate is big-endian, the stack limbs little-endian.
-            uint selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref stack.Code, pc + 2)));
-            // Limb layout: the selector can only equal a word whose low limb holds it and whose other limbs are zero.
-            ref ulong limbs = ref Unsafe.As<byte, ulong>(ref stack.PeekBytesByRefUnchecked());
-            bool equal = ((limbs ^ selector) | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) == 0;
-            if (!equal)
-            {
-                if (gas < cost)
-                    goto Fallback;
-
-                gas -= cost;
-                pc += 11;
-                opCodeCount += 5;
-
-                nint next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(opCodeCount));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
-                throw IL.Unreachable();
-            }
-
-            ulong takenCost = cost + JumpDestGasCost.GasCost;
-            uint branch = ReadCode(ref stack.Code, pc + 6);
-            int destination = (int)(((branch >> 16) & 0xFF) << 8 | ((branch >> 24) & 0xFF));
-            if (gas < takenCost || !stack.IsJumpDestination(destination))
-                goto Fallback;
-
-            gas -= takenCost;
-            pc = destination + 1;
-            opCodeCount += 6;
-
-            if (TCancelable.IsActive && opCodeCount >= state.CancellationPollAt)
-                return ExitOpcode(ref state, carriesExecutionGas: true, gas, pc, opCodeCount, EvmExceptionType.None);
-
-            nint taken = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
-            IL.EnsureLocal(in taken);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(taken);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-
-        Fallback:
-            nint fallback = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[(int)Instruction.DUP1];
-            IL.EnsureLocal(in fallback);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(fallback);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-        }
-
-        /// <summary>POP, run with up to three POPs after it as one opcode.</summary>
-        /// <remarks>Compilers drop the words a scope leaves in runs, so a run saves a dispatch per POP after the first.</remarks>
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecutePopRun(
-            ref EvmStack stack,
-            ulong gas,
-            ref DispatchState state,
-            nint pc,
-            nint opCodeCount)
-        {
-            uint following = ReadCode(ref stack.Code, pc + 1);
-            nint count = (byte)following != (byte)Instruction.POP ? 1
-                : (byte)(following >> 8) != (byte)Instruction.POP ? 2
-                : (byte)(following >> 16) != (byte)Instruction.POP ? 3
-                : 4;
-            ulong cost = (ulong)count * BaseGasCost.GasCost;
-            nint head = stack.Head;
-            if (head < count || gas < cost)
-                goto Fallback;
-
-            gas -= cost;
-            stack.Head = head - count;
-            pc += count;
-            opCodeCount += count;
-
-            nint next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
-            IL.EnsureLocal(in next);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(opCodeCount));
-            IL.Push(next);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-
-        Fallback:
-            // Starting over from the first POP: the unfused handler faults on it, or on the POP that runs out. Indexed by the
-            // known opcode, as in the branch condition handler.
-            nint fallback = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[(int)Instruction.POP];
             IL.EnsureLocal(in fallback);
 
             IL.Emit.Ldarg(nameof(stack));
