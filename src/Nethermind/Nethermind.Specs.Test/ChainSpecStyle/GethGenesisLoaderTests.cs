@@ -81,8 +81,7 @@ public class GethGenesisLoaderTests
         return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
     }
 
-    private static ChainSpec LoadHoodiChainSpec() => LoadChainSpec(
-        Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json"));
+    private static ChainSpec LoadHoodiChainSpec() => LoadChainSpec(ChainFile("hoodi.json"));
 
     private sealed class NonSeekableStream(byte[] data) : Stream
     {
