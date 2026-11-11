@@ -100,6 +100,7 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(new TxPoolConfig().InMemoryBlobPoolSize);
         _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(15);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -376,6 +377,30 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(expandedMask.ToBytes())));
+    }
+
+    [Test]
+    public void should_remember_announced_blob_masks_up_to_blob_pool_capacity([Values] bool exceedCapacity)
+    {
+        const int blobPoolSize = 2;
+        _txPoolConfig.InMemoryBlobPoolSize.Returns(blobPoolSize);
+        Transaction[] txs = Enumerable.Range(0, exceedCapacity ? blobPoolSize + 1 : blobPoolSize)
+            .Select(static nonce => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce((ulong)nonce)
+                .SignedAndResolved()
+                .TestObject)
+            .ToArray();
+
+        foreach (Transaction tx in txs)
+        {
+            _handler.SendNewTransaction(tx);
+        }
+
+        _session.ClearReceivedCalls();
+        _handler.SendNewTransaction(txs[0]);
+
+        _session.Received(exceedCapacity ? 1 : 0).DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>());
     }
 
     [Test]
