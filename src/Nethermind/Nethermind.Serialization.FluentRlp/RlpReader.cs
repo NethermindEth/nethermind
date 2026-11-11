@@ -109,8 +109,7 @@ public ref struct RlpReader
         while (reader.HasNext)
         {
             if (count == maxCount) ThrowLimit(maxCount);
-            int headerLength = reader.ReadHeader<TCanonicalChecks>(out int length, out _);
-            reader._position += headerLength + length;
+            reader.ReadEncodedItem<TCanonicalChecks>();
             count++;
         }
 
@@ -159,13 +158,54 @@ public ref struct RlpReader
 
     /// <inheritdoc cref="ReadEncodedItem()"/>
     /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadEncodedItem<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag
     {
+        ReadOnlySpan<byte> buffer = _buffer;
         int start = _position;
-        int headerLength = ReadHeader<TCanonicalChecks>(out int length, out _);
-        _position = start + headerLength + length;
-        return _buffer.Slice(start, headerLength + length);
+        if ((uint)start >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+
+        // A short-form item is the common case, and one table lookup gives its whole length.
+        byte prefix = buffer[start];
+        int length = Unsafe.Add(ref MemoryMarshal.GetReference(ShortItemLengths), prefix);
+        if (length == 0)
+        {
+            int headerLength = ReadHeader<TCanonicalChecks>(out int contentLength, out _);
+            length = headerLength + contentLength;
+        }
+        else
+        {
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+            if (TCanonicalChecks.IsActive && prefix == RlpPrefix.ShortString + 1 && buffer[start + 1] < RlpPrefix.ShortString)
+            {
+                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+            }
+        }
+
+        _position = start + length;
+        return buffer.Slice(start, length);
     }
+
+    /// <summary>The whole length of a short-form item by its prefix byte; zero for a long-form prefix.</summary>
+    private static ReadOnlySpan<byte> ShortItemLengths =>
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+        49, 50, 51, 52, 53, 54, 55, 56, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
 
     /// <summary>Moves past the next item without decoding its payload.</summary>
     /// <inheritdoc cref="ReadEncodedItem" path="/exception"/>
@@ -462,6 +502,7 @@ public ref struct RlpReader
 
     /// <summary>Decodes the prefix of the next item and checks that its payload fits in the buffer.</summary>
     /// <returns>The length of the prefix; zero for a single byte below <c>0x80</c>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly int ReadHeader<TCanonicalChecks>(out int length, out bool isList) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> buffer = _buffer;

@@ -143,9 +143,13 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
     {
-        RlpReader reader = new(_data[position..]);
-        keccak = reader.DecodeKeccak();
-        position += reader.BytesRead;
+        if ((uint)position + 1 + Hash256.Size > (uint)_data.Length || _data[position] != KeccakRlpPrefix)
+        {
+            ThrowInvalid("RLP byte string has another length than expected");
+        }
+
+        keccak = RlpReaderExtensions.InternKeccak(_data.Slice(position + 1, Hash256.Size));
+        position += 1 + Hash256.Size;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -183,7 +187,11 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         {
             // A branch or a leaf with a long value has a one- or two-byte length, so only longer lengths take the call.
             int lengthOfLength = prefix - (prefix < Rlp.EmptyListByte ? ShortStringMaxPrefix : ShortListMaxPrefix);
-            if (lengthOfLength > 2 || position + 1 + lengthOfLength > data.Length) return ReadLongPrefix(data, position, prefix, out contentLength);
+            if (lengthOfLength > 2 || position + 1 + lengthOfLength > data.Length)
+            {
+                (int prefixLength, contentLength) = ReadLongPrefix(data, position, prefix);
+                return prefixLength;
+            }
 
             contentLength = lengthOfLength == 1 ? data[position + 1] : (data[position + 1] << 8) | data[position + 2];
             if (position + 1 + lengthOfLength + contentLength > data.Length) ThrowInvalid("RLP is truncated");
@@ -196,11 +204,15 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadLongItemLength(ReadOnlySpan<byte> data, int position, int prefix) =>
-        ReadLongPrefix(data, position, prefix, out int contentLength) + contentLength;
+    private static int ReadLongItemLength(ReadOnlySpan<byte> data, int position, int prefix)
+    {
+        (int prefixLength, int contentLength) = ReadLongPrefix(data, position, prefix);
+        return prefixLength + contentLength;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadLongPrefix(ReadOnlySpan<byte> data, int position, int prefix, out int contentLength)
+    // Returns a pair: an out argument would give the inlined callers an address-taken local that lives on the stack.
+    private static (int PrefixLength, int ContentLength) ReadLongPrefix(ReadOnlySpan<byte> data, int position, int prefix)
     {
         int lengthOfLength = prefix - (prefix < Rlp.EmptyListByte ? ShortStringMaxPrefix : ShortListMaxPrefix);
         if (lengthOfLength > sizeof(int)) ThrowInvalid("RLP length is too large");
@@ -213,8 +225,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         }
 
         if ((long)position + 1 + lengthOfLength + length > data.Length) ThrowInvalid("RLP is truncated");
-        contentLength = (int)length;
-        return 1 + lengthOfLength;
+        return (1 + lengthOfLength, (int)length);
     }
 
     [DoesNotReturn, StackTraceHidden]
