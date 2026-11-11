@@ -54,6 +54,7 @@ TxFrame[] frames =
     new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([declared])),
     new(FrameMode.Sender, FrameFlags.None, to, 50_000, value, default)
 ];
+var gasLimit = FrameTxValidation.TotalGasLimit(frames);
 var tx = new Transaction
 {
     Type = TxType.FrameTx,
@@ -62,9 +63,9 @@ var tx = new Transaction
     Nonce = nonce,
     NonceKeys = nonceKeys,
     Frames = frames,
-    GasLimit = FrameTxValidation.TotalGasLimit(frames),
+    GasLimit = gasLimit,
     GasPrice = 2.GWei,
-    MaxFee = (UInt256)FrameTxValidation.TotalGasLimit(frames) * 100.GWei
+    MaxFee = (UInt256)gasLimit * 100.GWei
 };
 tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
 var ecdsa = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));

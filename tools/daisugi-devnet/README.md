@@ -38,6 +38,7 @@ Lighthouse, from the pinned archive plus the AA-PQ patch series:
 ```bash
 B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir -p $B
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
+echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
 git -C $B/AA-PQ fetch -q origin f41267e01565bf39ea0c08b27cfeffed18c1822c && git -C $B/AA-PQ checkout -q FETCH_HEAD
 # apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
