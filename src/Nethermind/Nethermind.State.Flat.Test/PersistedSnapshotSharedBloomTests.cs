@@ -65,14 +65,18 @@ public class PersistedSnapshotSharedBloomTests
     /// (<see cref="PersistedSnapshotCompactor"/> → <see cref="ISnapshotRepository.ShareBloomAcrossRange"/>).
     /// </summary>
     /// <remarks>
-    /// The slots are written in the first CompactSize window and cleared in the second, so the (0, 8] merge is the only
-    /// compacted snapshot that drops them; the CompactSized snapshot at 8 shares its bloom over (4, 8] only.
+    /// Cleared in block 6, the slots are written in the first CompactSize window and cleared in the second, so the (0, 8]
+    /// merge is the only compacted snapshot that drops them; the CompactSized snapshot at 8 shares its bloom over (4, 8]
+    /// only. Cleared in block 3, the CompactSized (0, 4] merge has dropped them already, so the (0, 8] merge never sees
+    /// them: what it drops itself is not all its bloom misses.
     /// </remarks>
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Large_merge_keeps_slots_cleared_later_in_its_range_readable_at_the_states_before_the_clear(bool recreated)
+    [TestCase(2ul, 6ul, false)]
+    [TestCase(2ul, 6ul, true)]
+    [TestCase(2ul, 3ul, false)]
+    [TestCase(2ul, 3ul, true)]
+    public async Task Large_merge_keeps_slots_cleared_later_in_its_range_readable_at_the_states_before_the_clear(ulong written, ulong cleared, bool recreated)
     {
-        Scenario scenario = new(Written: 2, Cleared: 6, recreated);
+        Scenario scenario = new(written, cleared, recreated);
         using FlatTestContainer tier = new(Config());
         for (ulong block = 1; block <= 8; block++) ConvertAndCompact(tier, block, scenario, largeMerge: true);
 
