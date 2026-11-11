@@ -71,20 +71,22 @@ the verified chain journal and checkpoint trust anchor.
 A green **Synced** status means ETH and every selected token match a fresh
 authenticated head. Balances are rounded to two decimal places without a ticker
 suffix; their verified integer values are preserved. Compact, borderless rows
-align each asset icon with its amount. Verification status appears beside the
-Balances heading; stale amounts are muted and failed refreshes are amber.
+show each asset icon and ticker beside its amount. The amounts share one
+font size and fixed decimal/fraction columns. Decimal points align vertically,
+and fractional digits start directly after the dot even with proportional fonts. Verification
+status shares the text baseline of the Balances heading; stale amounts are muted and failed refreshes are amber.
 The tracked address shows its first six and last six hexadecimal characters.
-The hamburger menu is in the top right. Tap a row to see the
+The hamburger icon shares the right edge of the verification label and amounts;
+the mainnet/verification subtitle fits on one line. Tap a row to see the
 full address and its proof block, block hash, state root, exact units and request duration. Proof
 details refresh while the popup is open.
 
-**Network details** in the hamburger menu opens a separate screen with live peers, latest/finalized
-heads, bootstrap provider and trust assumptions. Returning to the dashboard
-keeps verification running. All screens request portrait orientation; Android
-16 can override orientation restrictions on displays at least 600 dp wide.
-
-**App usage** in the hamburger menu opens a separate statistics page. It samples
-this app every five seconds only while that page is open.
+**Client stats** in the hamburger menu combines live peers, latest/finalized
+heads, bootstrap provider and trust assumptions with RAM, CPU and traffic usage.
+The top-right back chevron returns to balances while verification keeps running.
+Both screens request portrait orientation; Android 16 can override orientation
+restrictions on displays at least 600 dp wide. Usage is sampled every five seconds
+only while Client stats is open; networking details refresh every second.
 RAM is proportional resident memory (PSS, excluding swap), CPU uses 100% for one
 fully occupied core, and traffic shows receive/send rates plus app totals since
 device boot across network interfaces. The counters use Android's

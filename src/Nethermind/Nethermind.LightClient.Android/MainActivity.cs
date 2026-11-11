@@ -18,13 +18,15 @@ namespace Nethermind.LightClient.Android;
 [Activity(Label = "Nethermind LC", MainLauncher = true, Exported = true, ScreenOrientation = ScreenOrientation.Portrait, WindowSoftInputMode = SoftInput.AdjustResize)]
 public sealed class MainActivity : Activity
 {
+    private const int BalanceTextSize = 22;
+    private const int MinimumBalanceTextSize = 12;
     private static readonly Color Muted = Color.Rgb(156, 174, 189);
     private static readonly Color Ready = Color.Rgb(65, 211, 139);
     private static readonly Color Pending = Color.Rgb(255, 183, 77);
     private TextView _status = null!;
     private TextView _error = null!;
     private TextView _balanceStatus = null!;
-    private readonly Dictionary<string, (LinearLayout Card, TextView Amount)> _assets = [];
+    private readonly Dictionary<string, (LinearLayout Card, TextView Whole, TextView Point, TextView Fraction)> _assets = [];
     private AlertDialog? _proofDialog;
     private TextView? _proofText;
     private string? _proofSymbol;
@@ -63,19 +65,24 @@ public sealed class MainActivity : Activity
         content.AddView(header);
         TextView title = Text(header, "NETHERMIND  LC", 25, Color.Rgb(0, 179, 255));
         title.SetSingleLine(true);
+        title.SetHorizontallyScrolling(false);
         title.SetAutoSizeTextTypeUniformWithConfiguration(16, 25, 1, (int)ComplexUnitType.Sp);
         title.LayoutParameters = new LinearLayout.LayoutParams(0, Dp(48), 1);
         title.Gravity = GravityFlags.CenterVertical;
         if (showMenu)
         {
-            Button menu = new(this) { Text = "\u2630", TextSize = 25, ContentDescription = "Menu" };
-            menu.SetTextColor(Color.White);
-            menu.SetPadding(0, 0, 0, 0);
+            ImageButton menu = new(this) { ContentDescription = "Menu" };
+            menu.SetImageResource(Resource.Drawable.menu_icon);
             menu.Background = new RippleDrawable(ColorStateList.ValueOf(Color.Argb(45, 255, 255, 255)), null, null);
+            menu.SetPadding(Dp(24), Dp(12), 0, Dp(12));
+            menu.SetScaleType(ImageView.ScaleType.FitCenter);
             header.AddView(menu, new LinearLayout.LayoutParams(Dp(48), Dp(48)) { MarginStart = Dp(8) });
             menu.Click += (_, _) => ShowMenu(menu);
         }
-        Text(content, "ETHEREUM MAINNET  ·  ON-DEVICE VERIFICATION", 12, Color.Rgb(255, 153, 0));
+        TextView network = Text(content, "ETHEREUM MAINNET · ON-DEVICE VERIFICATION", 12, Color.Rgb(255, 153, 0));
+        network.SetSingleLine(true);
+        network.SetHorizontallyScrolling(false);
+        network.SetAutoSizeTextTypeUniformWithConfiguration(9, 12, 1, (int)ComplexUnitType.Sp);
         SetContentView(scroll);
         return content;
     }
@@ -147,8 +154,8 @@ public sealed class MainActivity : Activity
         account.ContentDescription = address;
         account.SetSingleLine(true);
         account.Ellipsize = TextUtils.TruncateAt.Middle;
-        LinearLayout balances = new(this) { Orientation = Orientation.Horizontal };
-        balances.SetGravity(GravityFlags.CenterVertical);
+        LinearLayout balances = new(this) { Orientation = Orientation.Horizontal, BaselineAligned = true };
+        balances.SetGravity(GravityFlags.Top);
         balances.SetPadding(0, Dp(20), 0, Dp(8));
         content.AddView(balances);
         TextView heading = Text(balances, "Balances", 23, Color.White);
@@ -176,11 +183,8 @@ public sealed class MainActivity : Activity
         {
             switch (args.Item!.ItemId)
             {
-                case Resource.Id.menu_network:
-                    StartActivity(new Intent(this, typeof(NetworkDetailsActivity)));
-                    break;
-                case Resource.Id.menu_usage:
-                    StartActivity(new Intent(this, typeof(UsageActivity)));
+                case Resource.Id.menu_stats:
+                    StartActivity(new Intent(this, typeof(StatsActivity)));
                     break;
                 case Resource.Id.menu_start:
                     StartClient();
@@ -213,7 +217,13 @@ public sealed class MainActivity : Activity
 
     private void AddAsset(LinearLayout content, string symbol, string glyph, Color accent)
     {
-        LinearLayout card = new(this) { Orientation = Orientation.Horizontal, Clickable = true, Focusable = true };
+        LinearLayout card = new(this)
+        {
+            Orientation = Orientation.Horizontal,
+            LayoutDirection = global::Android.Views.LayoutDirection.Ltr,
+            Clickable = true,
+            Focusable = true
+        };
         card.SetGravity(GravityFlags.CenterVertical);
         card.SetMinimumHeight(Dp(64));
         card.SetPadding(0, Dp(6), 0, Dp(6));
@@ -236,20 +246,96 @@ public sealed class MainActivity : Activity
         iconLayout.MarginEnd = Dp(10);
         card.AddView(icon, iconLayout);
 
-        TextView amount = new(this)
+        TextView ticker = Text(card, symbol, 15, Color.White);
+        ticker.SetTypeface(null, TypefaceStyle.Bold);
+        ticker.SetSingleLine(true);
+        ticker.ImportantForAccessibility = ImportantForAccessibility.No;
+        ticker.LayoutParameters = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent)
         {
-            Text = "\u2014",
-            TextSize = 22,
-            Gravity = GravityFlags.End | GravityFlags.CenterVertical,
-            ImportantForAccessibility = ImportantForAccessibility.No
+            MarginEnd = Dp(12)
         };
-        amount.SetTextColor(Color.White);
-        card.AddView(amount, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1));
-        amount.SetSingleLine(true);
-        amount.Ellipsize = TextUtils.TruncateAt.End;
-        amount.SetAutoSizeTextTypeUniformWithConfiguration(12, 22, 1, (int)ComplexUnitType.Sp);
+
+        TextView whole = Number("\u2014", GravityFlags.Right, 1);
+        TextView point = Number(".", GravityFlags.Left, 0);
+        TextView fraction = Number("", GravityFlags.Left, 0);
+        whole.Ellipsize = TextUtils.TruncateAt.Start;
+        whole.LayoutChange += (_, args) =>
+        {
+            if (args.Right - args.Left != args.OldRight - args.OldLeft) FitAmounts();
+        };
         card.Click += (_, _) => ShowProof(symbol);
-        _assets.Add(symbol, (card, amount));
+        _assets.Add(symbol, (card, whole, point, fraction));
+
+        TextView Number(string text, GravityFlags gravity, float weight)
+        {
+            TextView view = new(this)
+            {
+                Text = text,
+                TextSize = BalanceTextSize,
+                Gravity = gravity | GravityFlags.CenterVertical,
+                ImportantForAccessibility = ImportantForAccessibility.No
+            };
+            view.SetTextColor(Color.White);
+            view.SetSingleLine(true);
+            card.AddView(view, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, weight));
+            return view;
+        }
+    }
+
+    private void FitAmounts()
+    {
+        if (_assets.Count == 0) return;
+        using Paint measurement = new();
+        foreach ((_, TextView whole, _, _) in _assets.Values)
+        {
+            measurement.Set(whole.Paint);
+            break;
+        }
+        int size = BalanceTextSize;
+        int pointWidth;
+        int fractionWidth;
+        while (true)
+        {
+            measurement.TextSize = TypedValue.ApplyDimension(ComplexUnitType.Sp, size, Resources!.DisplayMetrics);
+            pointWidth = (int)MathF.Ceiling(measurement.MeasureText("."));
+            float digitWidth = 0;
+            for (int digit = 0; digit < 10; digit++)
+                digitWidth = Math.Max(digitWidth, measurement.MeasureText("0123456789", digit, digit + 1));
+            fractionWidth = (int)MathF.Ceiling(digitWidth * 2);
+            bool fits = true;
+            foreach ((_, TextView whole, TextView point, TextView fraction) in _assets.Values)
+            {
+                int width = whole.MeasuredWidth;
+                if (point.Visibility == ViewStates.Visible) width += point.MeasuredWidth + fraction.MeasuredWidth;
+                if (width <= 0) return;
+                if (measurement.MeasureText(whole.Text!) + pointWidth + fractionWidth > width)
+                {
+                    fits = false;
+                    break;
+                }
+            }
+            if (fits || size == MinimumBalanceTextSize) break;
+            size--;
+        }
+        // Fixed decimal and fraction columns also work with fonts whose digits have different widths.
+        foreach ((_, TextView whole, TextView point, TextView fraction) in _assets.Values)
+        {
+            whole.SetTextSize(ComplexUnitType.Sp, size);
+            point.SetTextSize(ComplexUnitType.Sp, size);
+            fraction.SetTextSize(ComplexUnitType.Sp, size);
+            ViewGroup.LayoutParams pointLayout = point.LayoutParameters!;
+            if (pointLayout.Width != pointWidth)
+            {
+                pointLayout.Width = pointWidth;
+                point.RequestLayout();
+            }
+            ViewGroup.LayoutParams fractionLayout = fraction.LayoutParameters!;
+            if (fractionLayout.Width != fractionWidth)
+            {
+                fractionLayout.Width = fractionWidth;
+                fraction.RequestLayout();
+            }
+        }
     }
 
     private void ShowProof(string symbol)
@@ -390,7 +476,7 @@ public sealed class MainActivity : Activity
         UpdateMenu();
         bool hasBalance = false;
         bool hasError = progress.Error is not null;
-        foreach ((string symbol, (LinearLayout card, TextView amount)) in _assets)
+        foreach ((string symbol, (LinearLayout card, TextView whole, TextView point, TextView fraction)) in _assets)
         {
             MobileTokenBalance? balance = AssetBalance(progress, symbol);
             bool current = balance is not null && progress.IsCurrent(balance);
@@ -402,16 +488,23 @@ public sealed class MainActivity : Activity
                 _ when current => "Verified",
                 _ => LightClientService.IsRunning ? "Refreshing" : "Last verified",
             };
-            amount.Text = balance?.Units is null ? "—" : balance.AmountText;
-            amount.SetTextColor(current ? Color.White : balance?.Error is not null ? Pending : Muted);
+            string? text = balance?.Units is null ? null : balance.AmountText;
+            whole.Text = text is null ? "\u2014" : text[..^3];
+            fraction.Text = text is null ? "" : text[^2..];
+            point.Visibility = fraction.Visibility = text is null ? ViewStates.Gone : ViewStates.Visible;
+            Color color = current ? Color.White : balance?.Error is not null ? Pending : Muted;
+            whole.SetTextColor(color);
+            point.SetTextColor(color);
+            fraction.SetTextColor(color);
             hasBalance |= balance?.Units is not null;
             hasError |= balance?.Error is not null;
             card.ContentDescription = $"{symbol}, {balance?.AmountText ?? "Waiting for verified state"}, {status}. Show verification details";
         }
+        FitAmounts();
         _balanceStatus.Text = progress.IsSynced ? "Verified" : hasError ? "Update failed" : !hasBalance ? "Waiting"
             : LightClientService.IsRunning ? "Refreshing" : "Last verified";
         _balanceStatus.SetTextColor(progress.IsSynced ? Ready : hasError ? Pending : Muted);
-        _error.Text = progress.Error is null ? "" : "Updates unavailable. See Network details.";
+        _error.Text = progress.Error is null ? "" : "Updates unavailable. See Client stats.";
         _error.Visibility = progress.Error is null ? ViewStates.Gone : ViewStates.Visible;
         if (_proofText is not null && _proofSymbol is { } selected)
         {
