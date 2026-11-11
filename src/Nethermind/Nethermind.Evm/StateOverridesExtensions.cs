@@ -104,7 +104,7 @@ public static class StateOverridesExtensions
     /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
     /// <param name="overrides">The account overrides to apply.</param>
     public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
-        !isPrecompile ? $"Account {source} is not a precompile"
+        !isPrecompile ? $"account {source.ToString(withEip55Checksum: true)} is not a precompile"
         : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
         : null;
 
