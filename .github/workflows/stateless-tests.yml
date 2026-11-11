@@ -61,6 +61,7 @@ jobs:
           dotnet test --project src/Nethermind/Nethermind.Trie.ZkEvm.Test/Nethermind.Trie.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
           dotnet test --project src/Nethermind/Nethermind.State.ZkEvm.Test/Nethermind.State.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
           dotnet test --project src/Nethermind/Nethermind.Evm.ZkEvm.Test/Nethermind.Evm.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
+          dotnet test --project src/Nethermind/Nethermind.Consensus.ZkEvm.Test/Nethermind.Consensus.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
 
   build:
     # The Ssz build keeps the name master's required checks expect.

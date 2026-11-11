@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Collections;
@@ -45,7 +46,7 @@ internal sealed class WitnessTriePaths
     }
 
     /// <summary>Walks the state trie at <paramref name="root"/>.</summary>
-    /// <exception cref="TrieException">A node's path does not end at the key.</exception>
+    /// <exception cref="TrieException">A node's path does not end at the key, or its list does not fill its bytes.</exception>
     public void ValidateStateTrie(Hash256 root)
     {
         lock (_lock) Validate(root.ValueHash256);
@@ -64,7 +65,7 @@ internal sealed class WitnessTriePaths
 
     /// <summary>Walks the storage trie at <paramref name="keccak"/> if it is a noted root not yet loaded.</summary>
     /// <remarks>Called ahead of every load of a storage trie's node, so only a pending root leaves the inlined check.</remarks>
-    /// <exception cref="TrieException">A node's path does not end at the key.</exception>
+    /// <exception cref="TrieException">A node's path does not end at the key, or its list does not fill its bytes.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnStorageNodeLoading(in ValueHash256 keccak)
     {
@@ -93,12 +94,17 @@ internal sealed class WitnessTriePaths
         Walk(rlp, depth);
     }
 
-    /// <remarks>A node that is neither a leaf nor an extension is walked as a branch, of which only the children are read.</remarks>
+    /// <remarks>
+    /// A node that is neither a leaf nor an extension is walked as a branch, of which only the children are read. The trie
+    /// decoder reads a node's items up to the end of its bytes, so a list ending elsewhere could give it a child the walk
+    /// did not reach.
+    /// </remarks>
     private void Walk(ReadOnlySpan<byte> rlp, int depth)
     {
         SecuredTriePath.ValidateAtDepth(rlp, depth);
+        if (!SecuredTriePath.TryReadItem(rlp, 0, out bool isList, out int position, out int end) || end != rlp.Length) ThrowListDoesNotFillNode();
         // Not a list: the empty node.
-        if (!SecuredTriePath.TryReadItem(rlp, 0, out bool isList, out int position, out int end) || !isList) return;
+        if (!isList) return;
 
         if (SecuredTriePath.TryGetPath(rlp, out int nibbles, out bool isLeaf))
         {
@@ -131,6 +137,10 @@ internal sealed class WitnessTriePaths
 
         return end;
     }
+
+    [DoesNotReturn]
+    private static void ThrowListDoesNotFillNode() =>
+        throw new TrieException("A witness trie node's list does not end at the end of its bytes");
 
     private readonly record struct WalkedNode(ValueHash256 Hash, int Depth);
 }

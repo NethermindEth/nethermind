@@ -168,6 +168,18 @@ public class SecuredTriePathTests
         Assert.That(() => OpenScope(root, accountLeaf, unreadLeaf), valid ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
+    /// <remarks>The trie decoder reads a node's items up to the end of its bytes, past a list that ends before them or claims
+    /// more, so a child placed there would be decoded without the walk reaching it.</remarks>
+    [Test]
+    public void Scope_opens_only_when_every_node_s_list_fills_its_bytes([Values(-1, 0, 1)] int extraBytes)
+    {
+        byte[] accountLeaf = AccountLeaf(0);
+        byte[] branch = Branch((AccountKey[0], accountLeaf), (AccountKey[0] ^ 1, AccountLeaf(0)));
+        byte[] root = extraBytes < 0 ? branch[..^1] : [.. branch, .. new byte[extraBytes]];
+
+        Assert.That(() => OpenScope(root, accountLeaf), extraBytes == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
+    }
+
     /// <remarks>Every path to the leaf is checked, yet each node once per depth once the walk has read twice the witness'
     /// bytes: walked path by path, this tree of 16^16 leaves would not finish. The leaf is short enough to be inlined in the
     /// branch above it.</remarks>
