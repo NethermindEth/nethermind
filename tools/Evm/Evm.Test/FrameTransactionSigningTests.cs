@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -181,7 +182,7 @@ public class FrameTransactionSigningTests
     {
         TxDecoder decoder = TxDecoder.Instance;
         byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, transaction, RlpBehaviors.None);
         RlpReader reader = new(bytes);
         return decoder.Decode(ref reader, RlpBehaviors.None)!;
