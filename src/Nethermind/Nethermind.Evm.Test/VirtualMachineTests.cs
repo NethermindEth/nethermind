@@ -775,7 +775,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         BigInteger a = (BigInteger.One << 256) - 1;
         BigInteger b = a - 1;
-        // -2 and -3 make the modulus, whose slot receives the result, equal to an operand.
+        // -2 and -3 give the modulus an operand's value (x mod x, (x * y) mod x); the slots stay distinct.
         BigInteger modulus = modulusValue switch
         {
             -1 => a - 2,
