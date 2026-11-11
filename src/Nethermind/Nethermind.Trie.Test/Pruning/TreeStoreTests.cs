@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -1478,11 +1479,11 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     if (!fullTrieStore.HasRoot(rootsToTest)) continue;
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    readOnlyPTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 }
             }
@@ -1660,7 +1661,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.PrunePersistedNodes();
 
             TrieStatsCollector collector = new(new MemDb(), SimpleConsoleLogManager.Instance, expectAccounts: false);
-            ptree.Accept(collector, rootHash: persistedRootHash);
+            ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: persistedRootHash);
             Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
         }
 
@@ -1713,11 +1714,11 @@ namespace Nethermind.Trie.Test.Pruning
                     Console.Error.WriteLine($"Verify {i}");
                     Hash256 rootsToTest = rootsToTests[i];
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    ptree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    readOnlyPTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), rootHash: rootsToTest);
                     Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
                 }
             }

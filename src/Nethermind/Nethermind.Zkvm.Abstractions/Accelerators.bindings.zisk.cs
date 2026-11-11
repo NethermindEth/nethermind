@@ -45,10 +45,6 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
-    private static unsafe partial void div_rem256_c(ulong* a, ulong* b, ulong* quotient, ulong* remainder);
-
-    [LibraryImport("__Internal")]
-    [SuppressGCTransition]
     private static unsafe partial void mul_mod256_c(ulong* a, ulong* b, ulong* modulus, ulong* result);
 
     [LibraryImport("__Internal")]

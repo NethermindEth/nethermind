@@ -1522,7 +1522,7 @@ public class FlatWorldStateScopeProviderTests
         }
 
         NodeCollector bundleNodes = new();
-        ctx.SnapshotBundle.RunTreeVisitor(bundleNodes, scope.RootHash, VisitingOptions.Default, diagnostics: null);
+        ctx.SnapshotBundle.RunTreeVisitor(new TreeVisitorAdapter<TreePathContextWithStorage>(bundleNodes), scope.RootHash, VisitingOptions.Default, diagnostics: null);
         HashSet<string> expectedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes;
         Assert.That(bundleNodes.Nodes, Is.EquivalentTo(expectedNodes));
 

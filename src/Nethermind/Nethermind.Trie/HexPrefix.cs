@@ -14,6 +14,16 @@ public static partial class HexPrefix
 
     public static int ByteLength(byte[] path) => path.Length / 2 + 1;
 
+    /// <summary>Reads the header of hex-prefix <paramref name="bytes"/>: the number of nibbles they encode, and whether
+    /// they key a leaf.</summary>
+    public static (int NibbleCount, bool IsLeaf) ReadHeader(ReadOnlySpan<byte> bytes)
+    {
+        // The first nibble flags a leaf (0x2, read as any flag from it up) and an odd nibble count (0x1), whose first
+        // nibble then shares the byte.
+        int flags = bytes[0];
+        return (2 * bytes.Length - ((flags & 0x10) != 0 ? 1 : 2), flags >= 0x20);
+    }
+
     public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(ByteLength(path), output.Length, nameof(output));
@@ -45,9 +55,8 @@ public static partial class HexPrefix
 
     public static (byte[] key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
     {
-        bool isEven = (bytes[0] & 16) == 0;
-        bool isLeaf = bytes[0] >= 32;
-        int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
+        (int nibblesCount, bool isLeaf) = ReadHeader(bytes);
+        bool isEven = (nibblesCount & 1) == 0;
         // Return cached arrays for small paths
         switch (nibblesCount)
         {

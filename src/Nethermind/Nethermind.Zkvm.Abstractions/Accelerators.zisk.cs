@@ -92,22 +92,6 @@ public static partial class Accelerators
     public static unsafe void Arith256Mod(Arith256ModParameters* parameters) => syscall_arith256_mod(parameters);
 
     /// <summary>
-    /// Computes <c>a / b</c> and <c>a mod b</c> for 256-bit integers.
-    /// </summary>
-    /// <param name="a">The dividend.</param>
-    /// <param name="b">The divisor. It must not be zero: with a zero divisor the routine never returns.</param>
-    /// <param name="quotient">The buffer to receive the quotient.</param>
-    /// <param name="remainder">The buffer to receive the remainder.</param>
-    /// <remarks>
-    /// The quotient and remainder are hinted, then checked with one <c>arith256</c> precompile call:
-    /// <c>quotient * b + remainder</c> must equal <paramref name="a"/> with a zero high word, and the
-    /// remainder must be less than <paramref name="b"/>, so a prover cannot substitute another pair.
-    /// <inheritdoc cref="MulMod256" path="/remarks"/>
-    /// </remarks>
-    public static unsafe void DivRem256(ulong* a, ulong* b, ulong* quotient, ulong* remainder) =>
-        div_rem256_c(a, b, quotient, remainder);
-
-    /// <summary>
     /// Performs the Keccak-f[1600] permutation on the given state.
     /// </summary>
     /// <param name="state">The state buffer.</param>

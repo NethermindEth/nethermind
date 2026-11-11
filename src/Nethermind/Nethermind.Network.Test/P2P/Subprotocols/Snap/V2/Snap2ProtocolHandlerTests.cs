@@ -48,7 +48,7 @@ public class Snap2ProtocolHandlerTests
         try
         {
             buffer.ReadByte(); // skip the adaptive protocol-type byte
-            ZeroPacket packet = new(buffer) { PacketType = (byte)packetType };
+            NettyBufferPacket packet = new(buffer) { PacketType = (byte)packetType };
             buffer = null;
             try
             {

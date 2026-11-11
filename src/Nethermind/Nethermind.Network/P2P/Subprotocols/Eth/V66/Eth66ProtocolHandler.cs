@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -47,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             static (message, size) => (message.EthMessage.Bodies, size);
         private static readonly Func<ReceiptsMessage, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
             static (message, size) => (message.EthMessage.TxReceipts, size);
-        private static readonly Action<IByteBuffer, GetReceiptsMessage> ValidateReceipts =
+        private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
             static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
         private static readonly Func<NodeDataMessage, int, IByteArrayList> SelectNodeData =
             static (message, _) => message.EthMessage.Data;
@@ -77,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             switch (message.PacketType)
             {
@@ -85,13 +84,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockHeaders:
-                    HandleCorrelatedResponse(_headersRequests66, message.Content, size, SelectBlockHeaders);
+                    HandleCorrelatedResponse(_headersRequests66, message, size, SelectBlockHeaders);
                     return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockBodies:
-                    HandleCorrelatedResponse(_bodiesRequests66, message.Content, size, SelectBlockBodies);
+                    HandleCorrelatedResponse(_bodiesRequests66, message, size, SelectBlockBodies);
                     return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
@@ -99,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                        if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                             throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage)}.");
                         if (Volatile.Read(ref _pooledTransactionRequests)?.Delete(requestId) != true)
                         {
@@ -123,13 +122,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    HandleCorrelatedResponse(_receiptsRequests66, message.Content, size, SelectReceipts, ValidateReceipts);
+                    HandleCorrelatedResponse(_receiptsRequests66, message, size, SelectReceipts, ValidateReceipts);
                     return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     return true;
                 case Eth66MessageCode.NodeData:
-                    HandleCorrelatedResponse(_nodeDataRequests66, message.Content, size, SelectNodeData);
+                    HandleCorrelatedResponse(_nodeDataRequests66, message, size, SelectNodeData);
                     return true;
                 default:
                     return base.HandleMessageCore(message);

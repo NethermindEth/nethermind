@@ -65,9 +65,14 @@ internal static class BufferWarmUp
         {
             if (child.Kind == ChildRefKind.Inline)
             {
-                // Only leaves are embedded in their parent.
-                int length = Key(child.InlineRlp, nodeKey);
-                reachedKey = path.Length + length == MaxKeyNibbles && path.Append(nodeKey[..length]) == keyPath;
+                // Below an embedded branch or extension, only theoretically possible (see NodeRecordCodec.IsInlineLeaf), every node is
+                // embedded too, and deleting a leaf there collapses nothing above it, so there is nothing to load.
+                if (NodeRecordCodec.IsInlineLeaf(child.InlineRlp))
+                {
+                    int length = Key(child.InlineRlp, nodeKey);
+                    reachedKey = path.Length + length == MaxKeyNibbles && path.Append(nodeKey[..length]) == keyPath;
+                }
+
                 break;
             }
 

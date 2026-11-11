@@ -1835,6 +1835,8 @@ namespace Nethermind.Db.Test
                 Assert.That(_db.KeyExists(key), Is.True);
                 Assert.That(_db.Get(key), Is.Empty);
                 Assert.That(_db.Get(key, []), Is.Zero);
+                Assert.That(KeyValueStoreReads.Read(_db, key, ReadFlags.None, spanAction: true), Is.Empty);
+                Assert.That(KeyValueStoreReads.Read(_db, key, ReadFlags.HintReadAhead, spanAction: true), Is.Empty);
             }
 
             Span<byte> span = _db.GetSpan(key);

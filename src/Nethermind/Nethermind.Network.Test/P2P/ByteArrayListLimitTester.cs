@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Network.Test.P2P
             where TMessage : P2PMessage
         {
             MessageSerializationService service = new(SerializerInfo.Create(serializer));
-            AssertLimitEnforced(serializer.Serialize, service.Deserialize<TMessage>, createMessage, itemCount, items, shouldThrow);
+            AssertLimitEnforced(serializer.Serialize, buffer => service.Deserialize<TMessage>(new NettyBufferPacket(buffer)), createMessage, itemCount, items, shouldThrow);
         }
 
         private static void AssertLimitEnforced<TMessage>(

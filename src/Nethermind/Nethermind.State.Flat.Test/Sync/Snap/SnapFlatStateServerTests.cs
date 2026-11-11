@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -187,7 +189,7 @@ public class SnapFlatStateServerTests
         WriteState(stateRootRlp, addressHash, storageRootRlp);
 
         using IPersistence.IPersistenceReader inner = _persistence.CreateReader();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
             .Returns(ci => inner.TryLoadStateRlp((TreePath)ci[0], (ReadFlags)ci[1]));
         reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
@@ -222,6 +224,75 @@ public class SnapFlatStateServerTests
         }
 
         _flatDbManager.Received(1).GatherReadOnlySnapshotBundle(_stateId, ReaderFlags.FullScan);
+    }
+
+    [Test]
+    public void RangeRequests_ServeWhatTheTrieSnapServerServes([Values] bool storageRanges)
+    {
+        TestRawTrieStore trieStore = new(new MemDb());
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
+        StorageTree storageTree = new(trieStore.GetTrieStore(addressHash), LimboLogs.Instance);
+        for (int i = 0; i < 1000; i++)
+        {
+            Hash256 key = Keccak.Compute(i.ToBigEndianByteArray());
+            stateTree.Set(key, Build.An.Account.WithBalance((UInt256)i).TestObject);
+            storageTree.Set(key.Bytes, Rlp.Encode((UInt256)i + 1));
+        }
+        storageTree.Commit();
+        Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+        stateTree.Set(addressHash, account);
+        stateTree.Commit();
+
+        _rootHash = stateTree.RootHash;
+        _stateId = new StateId(0, _rootHash.ValueHash256);
+        IPersistence.IPersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => stateTree.GetNodeByPath(((TreePath)ci[0]).ToNibble()));
+        reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(ci => storageTree.GetNodeByPath(((TreePath)ci[1]).ToNibble()));
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId, Arg.Any<ReaderFlags>())
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null));
+        SnapStateServer trieServer = new(trieStore.AsReadOnly(), LimboLogs.Instance);
+
+        // Starting mid-range and stopping at the byte limit, so both boundaries need proofs.
+        ValueHash256 startingHash = new("0x4000000000000000000000000000000000000000000000000000000000000000");
+        if (storageRanges)
+        {
+            PathWithAccount[] accounts = [new(addressHash, account)];
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> flatSlots, IByteArrayList? flatProofs) =
+                _server.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> trieSlots, IByteArrayList? trieProofs) =
+                trieServer.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
+            using (flatProofs)
+            using (trieProofs)
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(flatSlots.Single().Select(static s => (s.Path, s.SlotRlpValue)), Is.EqualTo(trieSlots.Single().Select(static s => (s.Path, s.SlotRlpValue))));
+                Assert.That(ToArrays(flatProofs!), Is.EqualTo(ToArrays(trieProofs!)).And.Not.Empty);
+            }
+
+            flatSlots.DisposeRecursive();
+            trieSlots.DisposeRecursive();
+        }
+        else
+        {
+            (IOwnedReadOnlyList<PathWithAccount> flatAccounts, IByteArrayList flatProofs) =
+                _server.GetAccountRanges(_rootHash, startingHash, null, 4000, CancellationToken.None);
+            (IOwnedReadOnlyList<PathWithAccount> trieAccounts, IByteArrayList trieProofs) =
+                trieServer.GetAccountRanges(_rootHash, startingHash, null, 4000, CancellationToken.None);
+            using (flatAccounts)
+            using (flatProofs)
+            using (trieAccounts)
+            using (trieProofs)
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(flatAccounts.Select(static a => (a.Path, a.Account!.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account!.Balance))).And.Not.Empty);
+                Assert.That(ToArrays(flatProofs), Is.EqualTo(ToArrays(trieProofs)).And.Not.Empty);
+            }
+        }
+
+        static byte[][] ToArrays(IByteArrayList list) => Enumerable.Range(0, list.Count).Select(i => list[i].ToArray()).ToArray();
     }
 
     /// <summary>

@@ -34,7 +34,7 @@ internal static class UndecodableResponse
     }
 
     public static void AssertRejectedAsUnrequested(Action<ZeroPacket> handle, int packetType) =>
-        AssertRejected(handle, new ZeroPacket(Create()) { PacketType = (byte)packetType }, "has not been requested");
+        AssertRejected(handle, new NettyBufferPacket(Create()) { PacketType = (byte)packetType }, "has not been requested");
 
     /// <summary>
     /// A <c>[request-id, ...fields, [[item, ...]]]</c> receipts response with one block of <paramref name="receipts"/>
@@ -53,7 +53,7 @@ internal static class UndecodableResponse
     /// Asserts that a receipts response with more receipts than the request allows is rejected before it is decoded.
     /// </summary>
     public static void AssertReceiptsRejectedBeforeDecoding(Action<ZeroPacket> handle, IByteBuffer content, int packetType) =>
-        AssertRejected(handle, new ZeroPacket(content) { PacketType = (byte)packetType }, "exceeds the request");
+        AssertRejected(handle, new NettyBufferPacket(content) { PacketType = (byte)packetType }, "exceeds the request");
 
     private static void AssertRejected(Action<ZeroPacket> handle, ZeroPacket packet, string message)
     {

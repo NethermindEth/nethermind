@@ -570,7 +570,8 @@ public sealed class KademliaAdapter(
                 }
 
                 // PacketCodec verified the ENR signature and handshake identity. Preserve its
-                // sequence even when this listener cannot use the record's endpoint.
+                // sequence even when this listener cannot use the record's endpoint or the record
+                // does not advertise the packet source.
                 observedEnrSequence = nodeRecord.EnrSequence;
                 if (TryGetAcceptableNode(
                     nodeRecord,
@@ -950,13 +951,28 @@ public sealed class KademliaAdapter(
         [NotNullWhen(true)] out Node? node)
         => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint: null, out node);
 
+    /// <summary>
+    /// Creates a node from a record received from <paramref name="sourceEndpoint"/>, only when the record advertises that endpoint.
+    /// </summary>
+    /// <remarks>
+    /// A signed record proves the node identity, not the endpoint. A record from a handshake or an ENR refresh must
+    /// advertise the endpoint that sent it, so that the peer cannot bind its identity to another address.
+    /// </remarks>
     internal static bool TryGetAcceptableNode(
         NodeRecord record,
         bool allowNonRoutable,
         IPAddress localIp,
-        IPEndPoint preferredEndpoint,
+        IPEndPoint sourceEndpoint,
         [NotNullWhen(true)] out Node? node)
-        => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint, out node);
+    {
+        if (!HasDiscoveryEndpoint(record, sourceEndpoint))
+        {
+            node = null;
+            return false;
+        }
+
+        return TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, sourceEndpoint, out node);
+    }
 
     private static bool TryGetAcceptableNodeCore(
         NodeRecord record,
@@ -1020,8 +1036,22 @@ public sealed class KademliaAdapter(
         AddressFamily family = DiscoveryAddressSupport.GetFamily(endpointAddress);
         IPAddress normalizedAddress = endpointAddress.NormalizeMappedIPv4();
         return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
-               discoveryEndpoint.Address.Equals(normalizedAddress) &&
+               HasSameAddressBytes(discoveryEndpoint.Address, normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;
+    }
+
+    /// <remarks>
+    /// <see cref="IPAddress.Equals(object)"/> also compares the IPv6 scope, which the socket sets for a link-local
+    /// source but a record never carries.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static bool HasSameAddressBytes(IPAddress left, IPAddress right)
+    {
+        Span<byte> leftBytes = stackalloc byte[16];
+        Span<byte> rightBytes = stackalloc byte[16];
+        return left.TryWriteBytes(leftBytes, out int leftLength) &&
+               right.TryWriteBytes(rightBytes, out int rightLength) &&
+               leftBytes[..leftLength].SequenceEqual(rightBytes[..rightLength]);
     }
 
     private void SetSentChallenge(ChallengeKey challengeKey, byte[] packet)

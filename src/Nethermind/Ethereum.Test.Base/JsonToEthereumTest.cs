@@ -58,6 +58,30 @@ namespace Ethereum.Test.Base
             return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo) * 1000);
         }
 
+        /// <summary>
+        /// Reads the terminal total difficulty of a retesteth <c>AtDiff</c> transition, such as <c>DiffC0000</c> in
+        /// <c>ArrowGlacierToParisAtDiffC0000</c>: hex digits without a <c>0x</c> prefix.
+        /// </summary>
+        /// <exception cref="FormatException">The suffix starts with <c>Diff</c> but is not followed by hex digits.</exception>
+        private static bool TryParseTerminalTotalDifficulty(string transitionInfo, out UInt256 terminalTotalDifficulty)
+        {
+            const string totalDifficultyPrefix = "Diff";
+            terminalTotalDifficulty = default;
+            if (!transitionInfo.StartsWith(totalDifficultyPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string digits = transitionInfo[totalDifficultyPrefix.Length..];
+            if (digits.Length == 0 || digits.Length > 64 || !digits.All(Uri.IsHexDigit))
+            {
+                throw new FormatException($"Total difficulty transition '{transitionInfo}' is not 'Diff' followed by hex digits.");
+            }
+
+            terminalTotalDifficulty = UInt256.Parse(digits, NumberStyles.HexNumber);
+            return true;
+        }
+
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
         {
             if (headerJson is null)
@@ -380,6 +404,7 @@ namespace Ethereum.Test.Base
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
+                TransitionTerminalTotalDifficulty = testJson.TransitionTerminalTotalDifficulty,
                 LastBlockHash = new Hash256(testJson.LastBlockHash),
                 GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp)),
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
@@ -502,7 +527,10 @@ namespace Ethereum.Test.Base
                 testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
                 if (transitionInfo.Length > 1)
                 {
-                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
+                    if (TryParseTerminalTotalDifficulty(transitionInfo[1], out UInt256 terminalTotalDifficulty))
+                        testSpec.TransitionTerminalTotalDifficulty = terminalTotalDifficulty;
+                    else
+                        testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
                     testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
                 }
 
