@@ -60,25 +60,37 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
 
-    [TestCase("99", "unknown panic code: 0x99")]
-    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000")]
-    [TestCase("22", "invalid encoded storage byte array accessed")]
-    public void Call_tracer_decodes_panic_reason(string code, string expected)
+    [TestCase("99", "unknown panic code: 0x99", false)]
+    [TestCase("99", "unknown panic code: 0x99", true)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", false)]
+    [TestCase("10000000000000000", "unknown panic code: 0x10000000000000000", true)]
+    [TestCase("22", "invalid encoded storage byte array accessed", false)]
+    [TestCase("22", "invalid encoded storage byte array accessed", true)]
+    public void Call_tracer_decodes_panic_reason(string code, string expected, bool nested)
     {
         byte[] output = Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0'));
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         tracer.ReportAction(79000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (nested)
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
         tracer.ReportActionRevert(40000, output);
-        tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
+        if (nested)
+        {
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+            tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(49000, 49000), [], []);
+        }
+        else
+            tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(39000, 39000), output, TransactionSubstate.GetErrorMessage(output));
         using GethLikeTxTrace trace = tracer.BuildResult();
         using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult!.Value, SerializerOptions));
+        JsonElement frame = nested ? json.RootElement.GetProperty("calls")[0] : json.RootElement;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(json.RootElement.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
-            Assert.That(json.RootElement.GetProperty("revertReason").GetString(), Is.EqualTo(expected));
-            Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
+            Assert.That(frame.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            Assert.That(frame.GetProperty("revertReason").GetString(), Is.EqualTo(expected));
+            Assert.That(frame.GetProperty("output").GetString(), Is.EqualTo(output.ToHexString(withZeroX: true)));
         }
     }
 
