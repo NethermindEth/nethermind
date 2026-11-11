@@ -55,12 +55,8 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup()
         {
             _block = _scenarios[ScenarioIndex];
-            Check(Current(), Improved());
             Check(Current(), Improved2());
         }
-
-        [Benchmark]
-        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
         public byte[] Improved2() => _blockDecoder.Encode(_block).Bytes;
