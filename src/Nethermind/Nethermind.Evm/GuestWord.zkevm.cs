@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
@@ -224,6 +225,28 @@ internal static unsafe class GuestWord
         Unsafe.Add(ref destination, 1) = Unsafe.Add(ref source, 1);
         Unsafe.Add(ref destination, 2) = Unsafe.Add(ref source, 2);
         Unsafe.Add(ref destination, 3) = Unsafe.Add(ref source, 3);
+    }
+
+    /// <summary>Loads the word of EVM memory at <paramref name="source"/> into a stack slot in limb layout.</summary>
+    /// <remarks>In the memory's own layout: <see cref="SwizzledMemory"/>'s where <see cref="EvmPooledMemory.IsSwizzled"/>, big-endian elsewhere.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void LoadMemoryWord(ref ulong slot, ref byte source)
+    {
+        if (EvmPooledMemory.IsSwizzled)
+            SwizzledMemory.LoadWord(ref slot, ref source);
+        else
+            LoadBigEndian(ref slot, ref source);
+    }
+
+    /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, to the word of EVM memory at <paramref name="destination"/>.</summary>
+    /// <remarks>In the memory's own layout, as <see cref="LoadMemoryWord"/> reads it.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void StoreMemoryWord(ref byte destination, ref ulong end)
+    {
+        if (EvmPooledMemory.IsSwizzled)
+            SwizzledMemory.StoreWord(ref destination, ref end);
+        else
+            StoreBigEndian(ref destination, ref end);
     }
 
     /// <summary>Loads a big-endian word into a stack slot in limb layout.</summary>

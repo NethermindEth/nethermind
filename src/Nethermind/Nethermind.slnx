@@ -51,6 +51,10 @@
     <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
   </Folder>
+  <Folder Name="/Plugins/TrustedInput/">
+    <Project Path="Nethermind.TrustedInput.Test/Nethermind.TrustedInput.Test.csproj" />
+    <Project Path="Nethermind.TrustedInput/Nethermind.TrustedInput.csproj" />
+  </Folder>
   <Folder Name="/Plugins/UPnP/">
     <Project Path="Nethermind.UPnP.Plugin/Nethermind.UPnP.Plugin.csproj" />
   </Folder>
