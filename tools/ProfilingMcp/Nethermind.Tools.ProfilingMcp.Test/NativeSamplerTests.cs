@@ -115,6 +115,9 @@ public class NativeSamplerTests
         string? path = Environment.GetEnvironmentVariable("PATH");
         if (!OperatingSystem.IsLinux() || path is null || !path.Split(':').Any(static folder => File.Exists(Path.Combine(folder, "perf"))))
             Assert.Ignore("perf runs on Linux only and is not installed here.");
+        // Above 2, only root, or a process with CAP_PERFMON, may record even its own processes.
+        if (Environment.UserName != "root" && int.Parse(File.ReadAllText("/proc/sys/kernel/perf_event_paranoid")) > 2)
+            Assert.Ignore("perf_event_paranoid does not allow this user to record.");
 
         DiagnosticsClient runtime = new(Environment.ProcessId);
         runtime.EnablePerfMap(PerfMapType.PerfMap);
