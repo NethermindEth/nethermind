@@ -650,6 +650,14 @@ public partial class DebugRpcModuleTests
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
                 Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
                 Assert.That(json["result"], Is.Null, response);
+                if (knownTag)
+                {
+                    using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
+                        new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 },
+                        selectorKind == "safe" ? BlockParameter.Safe : BlockParameter.Finalized,
+                        new GethTraceOptions { TxIndex = 0UL });
+                    Assert.That(result.IsTemporary, Is.False);
+                }
             }
             else
             {
@@ -682,6 +690,7 @@ public partial class DebugRpcModuleTests
             "safe" or "finalized" => $"{selectorKind} block not found",
             _ => "block #400 not found"
         };
+        bool expectedTemporary = temporary && (!indexed || selectorKind is "number" or "hash");
         using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
             new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 }, selector,
             new GethTraceOptions { TxIndex = indexed ? 0UL : null });
@@ -689,7 +698,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
             Assert.That(result.Result.Error, Is.EqualTo(expected));
-            Assert.That(result.IsTemporary, Is.EqualTo(temporary));
+            Assert.That(result.IsTemporary, Is.EqualTo(expectedTemporary));
         }
     }
 
