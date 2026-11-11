@@ -204,7 +204,8 @@ namespace Nethermind.Facade
                     txIndex: txReceipt!.Index,
                     blockTimestamp: header.Timestamp,
                     baseFee: header.BaseFeePerGas,
-                    receipt: txReceipt);
+                    receipt: txReceipt,
+                    spec: specProvider.GetSpec(header));
 
 
                 result = new TransactionLookupResult(tx, extraData);
@@ -302,7 +303,7 @@ namespace Nethermind.Facade
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 
-        private static bool HasBlockOverrides(BlockOverride blockOverride) =>
+        internal static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
             blockOverride.Time is not null ||
@@ -331,7 +332,7 @@ namespace Nethermind.Facade
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
             SimulateReadOnlyBlocksProcessingScope env = pooled.Scope;
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header, cancellationToken);
             try
             {
                 return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);

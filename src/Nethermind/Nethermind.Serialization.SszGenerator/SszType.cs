@@ -97,6 +97,10 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
+
+    /// <summary>Whether the struct declares its own parameterless constructor, which <c>new()</c> runs.</summary>
+    public bool HasExplicitParameterlessConstructor { get; private set; }
+
     public SszTypeConverterKind? ConverterKind { get; set; }
     public bool IsSszBasicType => ConverterKind == SszTypeConverterKind.BasicType;
     public SszType? EnumType { get; set; }
@@ -187,6 +191,8 @@ class SszType
         if ((result.Kind & (Kind.Container | Kind.ProgressiveContainer | Kind.CompatibleUnion)) != Kind.None && type.TypeKind == TypeKind.Struct)
         {
             result.IsStruct = true;
+            result.HasExplicitParameterlessConstructor = type is INamedTypeSymbol namedType
+                && namedType.InstanceConstructors.Any(c => c is { Parameters.Length: 0, IsImplicitlyDeclared: false });
         }
 
         if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List or Kind.ProgressiveList })

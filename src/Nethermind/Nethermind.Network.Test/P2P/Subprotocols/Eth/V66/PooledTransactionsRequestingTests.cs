@@ -187,13 +187,13 @@ public class PooledTransactionsRequestingTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
     {
         using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 }

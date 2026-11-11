@@ -156,6 +156,9 @@ public class OverlayRpcModule(
         if (maxRange > 0 && to - from >= (ulong)maxRange)
             return ResultWrapper<IEnumerable<FilterLog>>.Fail($"exceed maximum block range: {maxRange}", ErrorCodes.LimitExceeded);
 
+        if (StateOverrideValidation.GetStorageConflictError(stateOverride) is { } storageError)
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(storageError, ErrorCodes.InvalidInput);
+
         LogFilter logFilter = filterStore.CreateLogFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics, setId: false);
         ArrayPoolList<FilterLog> logs = new(0);
         bool transferred = false;

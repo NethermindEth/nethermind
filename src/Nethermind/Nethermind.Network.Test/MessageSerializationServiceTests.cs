@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -37,20 +38,16 @@ public class MessageSerializationServiceTests
     }
 
     [Test]
-    public void Deserialize_from_a_byte_buffer_reads_the_rest_of_it_with_a_span_serializer()
+    public void Deserialize_reads_the_readable_bytes_of_a_byte_buffer_packet()
     {
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        using DisposableByteBuffer packet = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
-        packet.WriteBytes(Bytes.FromHexString("01c104"));
-        packet.SkipBytes(1);
+        using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        buffer.WriteBytes(Bytes.FromHexString("01c104"));
+        buffer.SkipBytes(1);
 
-        DisconnectMessage message = container.Resolve<IMessageSerializationService>().Deserialize<DisconnectMessage>(packet);
+        DisconnectMessage message = container.Resolve<IMessageSerializationService>().Deserialize<DisconnectMessage>(new NettyBufferPacket(buffer));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(message.Reason, Is.EqualTo((int)EthDisconnectReason.TooManyPeers));
-            Assert.That(packet.IsReadable(), Is.False);
-        }
+        Assert.That(message.Reason, Is.EqualTo((int)EthDisconnectReason.TooManyPeers));
     }
 
     [Test]
@@ -61,6 +58,11 @@ public class MessageSerializationServiceTests
         Action use = serialize ? () => service.ZeroSerialize(new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
         Assert.That(use, Throws.InvalidOperationException.With.Message.EqualTo($"No serializer registered for {nameof(SpanMessage)}."));
     }
+
+    [Test]
+    public void Rejects_a_serializer_of_another_message_type() =>
+        Assert.That(() => new MessageSerializationService(new SerializerInfo(typeof(PingMessage), new SpanSerializer())),
+            Throws.ArgumentException.With.Message.EqualTo($"Serializer of type {nameof(SpanSerializer)} must implement IMessageSerializer<{nameof(PingMessage)}>."));
 
     [TestCaseSource(nameof(P2PMessages))]
     public void ZeroSerialize_writes_the_packet_type_then_the_message(Func<IMessageSerializationService, IByteBuffer> zeroSerialize, string expected)
@@ -96,23 +98,16 @@ public class MessageSerializationServiceTests
     }
 
     [Test]
-    public void AddMessageSerializer_registers_the_interface_the_serializer_implements()
+    public void AddMessageSerializer_registers_the_serializer_as_its_interface()
     {
         using IContainer container = new ContainerBuilder()
             .AddMessageSerializer<SpanMessage, SpanSerializer>()
-            .AddMessageSerializer<ZeroMessage, ZeroSerializer>()
             .Build();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<IMessageSerializer<SpanMessage>>(), Is.InstanceOf<SpanSerializer>());
-            Assert.That(container.Resolve<IZeroMessageSerializer<ZeroMessage>>(), Is.InstanceOf<ZeroSerializer>());
-        }
+        Assert.That(container.Resolve<IMessageSerializer<SpanMessage>>(), Is.InstanceOf<SpanSerializer>());
     }
 
     private sealed class SpanMessage : MessageBase;
-
-    private sealed class ZeroMessage : MessageBase;
 
     private sealed class SpanSerializer : IMessageSerializer<SpanMessage>
     {
@@ -125,12 +120,5 @@ public class MessageSerializationServiceTests
         public int Serialize(Span<byte> destination, SpanMessage message) => Length + LengthError;
 
         public SpanMessage Deserialize(ReadOnlySpan<byte> data) => new();
-    }
-
-    private sealed class ZeroSerializer : IZeroMessageSerializer<ZeroMessage>
-    {
-        public void Serialize(IByteBuffer byteBuffer, ZeroMessage message) { }
-
-        public ZeroMessage Deserialize(IByteBuffer byteBuffer) => new();
     }
 }

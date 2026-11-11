@@ -68,14 +68,14 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth71MessageCode.GetBlockAccessLists:
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                HandleCorrelatedResponse(_balRequests, message.Content, size, SelectBlockAccessLists);
+                HandleCorrelatedResponse(_balRequests, message, size, SelectBlockAccessLists);
                 return true;
             default:
                 return base.HandleMessageCore(message);

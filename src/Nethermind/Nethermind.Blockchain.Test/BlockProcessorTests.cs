@@ -3254,6 +3254,29 @@ public partial class BlockProcessorTests
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks([Values(1, 2)] int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
+    [TestCase(true, true, true, true, ProcessingOptions.None, ExpectedResult = null)]
+    [TestCase(false, true, true, true, ProcessingOptions.None, ExpectedResult = "pre-amsterdam")]
+    [TestCase(true, false, true, true, ProcessingOptions.None, ExpectedResult = "disabled")]
+    [TestCase(true, true, true, true, ProcessingOptions.ForceSequentialBlockAccessList, ExpectedResult = "forced")]
+    [TestCase(true, true, false, true, ProcessingOptions.None, ExpectedResult = "no-access-list")]
+    [TestCase(true, true, true, false, ProcessingOptions.None, ExpectedResult = "no-scope")]
+    public string? PrepareForProcessing_reports_the_first_condition_that_rules_out_parallel_execution(
+        bool amsterdam, bool parallelExecution, bool withAccessList, bool scoped, ProcessingOptions options)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable? scope = scoped ? stateProvider.BeginScope(IWorldState.PreGenesis) : null;
+        RecordingExecutionObserver observer = new();
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider, parallelExecution, observer);
+        BlockBuilder blockBuilder = Build.A.Block.WithNumber(1).WithTransactions(1, Amsterdam.Instance);
+        Block block = (withAccessList ? blockBuilder.WithBlockAccessList(new ReadOnlyBlockAccessList()) : blockBuilder).TestObject;
+
+        balManager.PrepareForProcessing(block, amsterdam ? Amsterdam.Instance : Prague.Instance, options);
+
+        Assert.That(observer.Paths, Has.Count.EqualTo(1));
+        Assert.That(observer.Paths[0].Reason is null, Is.EqualTo(balManager.ParallelExecutionEnabled));
+        return observer.Paths[0].Reason;
+    }
+
     [Test]
     public void PrepareForProcessing_disables_parallel_bal_execution_when_state_provider_is_not_scoped()
     {
@@ -4133,14 +4156,20 @@ public partial class BlockProcessorTests
         return CreateAmsterdamBalManager(stateProvider);
     }
 
-    private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
+    private static BlockAccessListManager CreateAmsterdamBalManager(
+        IWorldState stateProvider,
+        bool parallelExecution = true,
+        IBlockAccessListExecutionObserver? executionObserver = null) =>
         new(
             stateProvider,
             LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = true },
+            new BlocksConfig { ParallelExecution = parallelExecution },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
-            readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
+            readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>())
+        {
+            ExecutionObserver = executionObserver
+        };
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
     {
@@ -4899,6 +4928,13 @@ public partial class BlockProcessorTests
             }
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
+    }
+
+    private sealed class RecordingExecutionObserver : IBlockAccessListExecutionObserver
+    {
+        public List<(Block Block, string? Reason)> Paths { get; } = [];
+
+        public void OnExecutionPathChosen(Block block, string? sequentialReason) => Paths.Add((block, sequentialReason));
     }
 
     private sealed class ProcessingOptionsRecordingBlockProcessor(IBlockProcessor inner) : IBlockProcessor

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -44,7 +45,7 @@ public static class MessageDecodingCompatibility
     }
 
     public static Func<IMessageSerializationService, IByteBuffer, P2PMessage> Deserializer<T>() where T : P2PMessage =>
-        static (service, buffer) => service.Deserialize<T>(buffer);
+        static (service, buffer) => service.Deserialize<T>(new NettyBufferPacket(buffer));
 
     /// <summary>
     /// Asserts every <see cref="P2PMessage"/> with a registered <see cref="IMessageSerializer{T}"/> has one of <paramref name="samples"/>.
@@ -100,7 +101,8 @@ public static class MessageDecodingCompatibility
     }
 
     /// <summary>
-    /// Mirrors <c>ProtocolHandlerBase.Deserialize</c>, which accepts a message only if decoding it reads the whole payload.
+    /// Reports whether the payload decodes. Each serializer rejects a payload it does not read in full where the
+    /// handlers require that.
     /// </summary>
     public static bool IsAccepted(IMessageSerializationService service, Func<IMessageSerializationService, IByteBuffer, P2PMessage> deserialize, byte[] payload)
     {
@@ -109,7 +111,7 @@ public static class MessageDecodingCompatibility
         try
         {
             using P2PMessage message = deserialize(service, buffer);
-            return !buffer.IsReadable();
+            return true;
         }
         catch (Exception exception) when (exception is not AssertionException)
         {

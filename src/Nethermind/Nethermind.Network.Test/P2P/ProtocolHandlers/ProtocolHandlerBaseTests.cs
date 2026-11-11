@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -29,10 +32,10 @@ namespace Nethermind.Network.Test.P2P.ProtocolHandlers;
 public class ProtocolHandlerBaseTests
 {
     private static readonly Func<TestRequestMessage, CancellationToken, Task<TestResponseMessage>> SyncServeTaskHandler =
-        static (_, _) => Task.FromResult(new TestResponseMessage());
+        static (r, _) => Task.FromResult(r.Serve());
 
     private static readonly Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> SyncServeValueTaskHandler =
-        static (_, _) => ValueTask.FromResult(new TestResponseMessage());
+        static (r, _) => ValueTask.FromResult(r.Serve());
 
     private class TestProtocolHandler(
         ISession session,
@@ -61,11 +64,13 @@ public class ProtocolHandlerBaseTests
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
         public void ScheduleHandlerSyncServeTask(TestRequestMessage request) =>
             BackgroundTaskScheduler.TryScheduleSyncServe<TestProtocolHandler, TestRequestMessage, TestResponseMessage, TestSyncServeRequestHandler>(this, request);
+        public void ScheduleTransactionServe(GetPooledTransactionsMessage request) =>
+            BackgroundTaskScheduler.TryScheduleSyncServe(request, static (_, _) => ValueTask.FromResult(new TestResponseMessage()));
         public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
         public void HandleProjectionFailure(MessageDictionary<ProjectionRequestMessage, int> requests, IByteBuffer content) =>
             HandleCorrelatedResponse<ProjectionRequestMessage, ProjectionResponseMessage, int>(
                 requests,
-                content,
+                new NettyBufferPacket(content),
                 content.ReadableBytes,
                 static (_, _) => throw new InvalidOperationException("projection failed"));
         public override void Init() { }
@@ -86,10 +91,30 @@ public class ProtocolHandlerBaseTests
         }
     }
 
+    /// <summary>Keeps each scheduled task until the test runs it.</summary>
+    private sealed class QueuingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        private readonly Queue<Func<Task>> _tasks = new();
+
+        public int Count => _tasks.Count;
+
+        public bool Accept { get; set; } = true;
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            if (!Accept) return false;
+            _tasks.Enqueue(() => fulfillFunc(request, CancellationToken.None));
+            return true;
+        }
+
+        public Task RunNext() => _tasks.Dequeue()();
+    }
+
     private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
     {
         public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new TestResponseMessage());
+            Task.FromResult(request.Serve());
     }
 
     /// <summary>
@@ -124,10 +149,26 @@ public class ProtocolHandlerBaseTests
         }
     }
 
-    private sealed class TestRequestMessage : P2PMessage
+    private sealed class TestRequestMessage(bool fail = false) : P2PMessage
     {
         public override int PacketType => 1;
         public override string Protocol => "test";
+        public bool IsDisposed { get; private set; }
+
+        public bool Served { get; private set; }
+
+        public TestResponseMessage Serve()
+        {
+            if (fail) throw new InvalidOperationException("serve failed");
+            Served = true;
+            return new TestResponseMessage();
+        }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
+        }
     }
 
     public enum SchedulingPath
@@ -210,6 +251,113 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
+    public async Task Sync_serve_requests_over_the_in_flight_limit_are_dropped(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path,
+        [Values] bool requestFails)
+    {
+        const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
+        QueuingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        long droppedBefore = Metrics.SyncServeRequestsDroppedOverPeerLimit;
+
+        for (int i = 0; i < limit; i++) Schedule(handler, path, new TestRequestMessage(requestFails));
+        TestRequestMessage overLimit = new();
+        Schedule(handler, path, overLimit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduler.Count, Is.EqualTo(limit));
+            Assert.That(overLimit.IsDisposed, Is.True);
+            Assert.That(Metrics.SyncServeRequestsDroppedOverPeerLimit, Is.GreaterThan(droppedBefore));
+        }
+
+        await scheduler.RunNext();
+        Schedule(handler, path, new TestRequestMessage());
+        Schedule(handler, path, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit));
+
+        Schedule(handler, SchedulingPath.BackgroundTask, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit + 1), "Other background tasks are not limited");
+    }
+
+    [Test]
+    public void Sync_serve_requests_refused_by_the_scheduler_do_not_keep_their_slot(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
+    {
+        const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
+        QueuingBackgroundTaskScheduler scheduler = new() { Accept = false };
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i < limit; i++) Schedule(handler, path, new TestRequestMessage());
+
+        scheduler.Accept = true;
+        for (int i = 0; i < limit; i++) Schedule(handler, path, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(limit));
+    }
+
+    [Test]
+    public async Task Transaction_requests_have_their_own_in_flight_limit()
+    {
+        const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
+        QueuingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i <= limit; i++) handler.ScheduleTransactionServe(new GetPooledTransactionsMessage(new ArrayPoolList<ValueHash256>(0)));
+        Assert.That(scheduler.Count, Is.EqualTo(limit));
+
+        for (int i = 0; i < limit; i++) Schedule(handler, SchedulingPath.SyncServeTask, new TestRequestMessage());
+        Assert.That(scheduler.Count, Is.EqualTo(2 * limit), "Transaction requests do not use the slots of sync requests");
+
+        await scheduler.RunNext();
+        handler.ScheduleTransactionServe(new GetPooledTransactionsMessage(new ArrayPoolList<ValueHash256>(0)));
+        Assert.That(scheduler.Count, Is.EqualTo(2 * limit), "A finished transaction request gives back its own slot");
+    }
+
+    [Test]
+    public async Task Sync_serve_request_is_skipped_when_the_outbound_buffer_is_full(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path,
+        [Values] bool bufferFull)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(bufferFull);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+        TestRequestMessage request = new();
+
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        session.Received(bufferFull ? 0 : 1).DeliverMessage(Arg.Any<TestResponseMessage>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.IsDisposed, Is.EqualTo(bufferFull));
+            Assert.That(request.Served, Is.EqualTo(!bufferFull));
+        }
+    }
+
+    [Test]
+    public async Task Skipped_sync_serve_requests_give_back_their_slot(
+        [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.IsOutboundBufferFull.Returns(true);
+        ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
+        TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
+
+        for (int i = 0; i < BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight; i++)
+        {
+            Schedule(handler, path, new TestRequestMessage());
+            await scheduler.ScheduledTask;
+        }
+
+        session.IsOutboundBufferFull.Returns(false);
+        TestRequestMessage request = new();
+        Schedule(handler, path, request);
+        await scheduler.ScheduledTask;
+
+        Assert.That(request.Served, Is.True);
+    }
+
+    [Test]
     public async Task Late_init_message_after_timeout_does_not_throw()
     {
         ISession session = Substitute.For<ISession>();
@@ -271,12 +419,7 @@ public class ProtocolHandlerBaseTests
     {
         IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
         ProjectionResponseMessage response = new(111);
-        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<IByteBuffer>()).Returns(callInfo =>
-        {
-            IByteBuffer content = (IByteBuffer)callInfo[0];
-            content.SkipBytes(content.ReadableBytes);
-            return response;
-        });
+        serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<ZeroPacket>()).Returns(response);
         TestProtocolHandler handler = new(
             Substitute.For<ISession>(),
             TimeSpan.FromMilliseconds(50),
