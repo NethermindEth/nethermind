@@ -29,7 +29,7 @@ public class XdcBaseFeeCalculatorTests
             .WithGasLimit(30_000_000)
             .TestObject;
 
-        UInt256 actualBaseFee = _calculator.Calculate(parent, releaseSpec);
+        UInt256 actualBaseFee = _calculator.Calculate(parent, parent.Timestamp + 2, null, releaseSpec);
 
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }

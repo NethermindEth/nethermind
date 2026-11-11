@@ -170,7 +170,7 @@ public class DevBlockProducerTests
         {
             BlockHeader head = BlockTree.Head!.Header;
             IReleaseSpec spec = SpecProvider.GetSpec(head);
-            return spec.BaseFeeCalculator.Calculate(head, spec);
+            return BaseFeeCalculator.CalculateForReferenceSlot(head, spec);
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() => [new BlocksConfig { MinGasPrice = minGasPrice }];

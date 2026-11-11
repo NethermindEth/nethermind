@@ -96,12 +96,14 @@ public partial class EthRpcModuleTests
         }
     }
 
-    // The EIP-8198 spec activates by timestamp; the next block is taken to land one slot after the head.
-    [TestCase(0UL, 30_000_000UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_at_fork_full_block")]
-    [TestCase(0UL, 0UL, "0x356554f6", TestName = "Eth_baseFee_Eip8198_head_at_fork_empty_block")]
-    [TestCase(12UL, 30_000_000UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_one_slot_before_fork")]
-    [TestCase(13UL, 30_000_000UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_more_than_a_slot_before_fork")]
-    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, string expected)
+    // The EIP-8198 spec activates by timestamp; the next block is taken to land one slot after the head, and its base fee
+    // follows that spacing: 10 s slots after the fork give 5/48, the last 12 s slot into the fork gives 1/8.
+    [TestCase(0UL, 30_000_000UL, 100UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_at_fork_full_block")]
+    [TestCase(0UL, 0UL, 100UL, "0x356554f6", TestName = "Eth_baseFee_Eip8198_head_at_fork_empty_block")]
+    [TestCase(12UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_one_slot_before_fork")]
+    [TestCase(13UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_more_than_a_slot_before_fork")]
+    [TestCase(0UL, 30_000_000UL, null, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_without_slot_number")]
+    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, ulong? slotNumber, string expected)
     {
         const ulong forkTimestamp = 1_000;
         ISpecProvider specProvider = new CustomSpecProvider(
@@ -112,7 +114,7 @@ public partial class EthRpcModuleTests
         };
         using Context ctx = await Context.Create(specProvider);
         Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
-            .WithGasLimit(30_000_000).WithGasUsed(gasUsed).TestObject;
+            .WithGasLimit(30_000_000).WithGasUsed(gasUsed).WithSlotNumber(slotNumber).TestObject;
         BlockTree blockTree = Build.A.BlockTree(head).WithBlocks(head).TestObject;
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
 

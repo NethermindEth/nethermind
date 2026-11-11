@@ -191,7 +191,7 @@ public partial class EthRpcModuleTests
         string serialized = await test.TestEthRpc("eth_sendTransaction", JsonSerializer.Deserialize<object>(request.ToJsonString()));
 
         BlockHeader head = test.BlockTree.Head!.Header;
-        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, test.SpecProvider.GetSpecFor1559(head.Number + 1));
+        UInt256 nextBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(head, test.SpecProvider.GetSpecFor1559(head.Number + 1));
 
         Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
         using (Assert.EnterMultipleScope())

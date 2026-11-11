@@ -854,7 +854,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             adjusted.BaseFeePerGas = spec.IsEip1559Enabled
                 ? adjusted.BaseFeePerGas.IsZero
-                    ? BaseFeeCalculator.Calculate(parentHeader, spec)
+                    ? BaseFeeCalculator.Calculate(parentHeader, adjusted, spec)
                     : adjusted.BaseFeePerGas
                 : UInt256.Zero;
 

@@ -924,13 +924,11 @@ public class GethGenesisLoaderTests
         {
             Assert.That(before.IsEip7805Enabled, Is.False);
             Assert.That(before.IsEip8198Enabled, Is.False);
-            Assert.That(before.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
             Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
             Assert.That(before.MaxBlobCount, Is.EqualTo(21));
             Assert.That(after.IsEip7805Enabled, Is.True);
             Assert.That(after.IsEip8198Enabled, Is.True);
-            Assert.That(after.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
-            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
             Assert.That(after.TargetBlobCount, Is.EqualTo(12));
             Assert.That(after.MaxBlobCount, Is.EqualTo(18));
             Assert.That(after.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
@@ -953,7 +951,6 @@ public class GethGenesisLoaderTests
         {
             Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
             Assert.That(final.IsEip8198Enabled, Is.False);
-            Assert.That(final.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
             Assert.That(final.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
             Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
             Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
@@ -980,11 +977,11 @@ public class GethGenesisLoaderTests
     public void Bogota_time_alone_loads() =>
         Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
 
-    // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain sets.
-    [TestCase(null, 12UL, TestName = "Bogota_without_a_slot_duration_keeps_12s_slots_and_five_forty_eighths")]
-    [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_keeps_five_forty_eighths")]
-    [TestCase(10_000UL, 10UL, TestName = "Bogota_with_a_10s_slot_duration_keeps_five_forty_eighths")]
-    [TestCase(12_000UL, 12UL, TestName = "Bogota_with_a_12s_slot_duration_keeps_five_forty_eighths")]
+    // The base fee follows the block spacing whatever slot length the chain sets.
+    [TestCase(null, 12UL, TestName = "Bogota_without_a_slot_duration_keeps_12s_slots_and_follows_block_spacing")]
+    [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_follows_block_spacing")]
+    [TestCase(10_000UL, 10UL, TestName = "Bogota_with_a_10s_slot_duration_follows_block_spacing")]
+    [TestCase(12_000UL, 12UL, TestName = "Bogota_with_a_12s_slot_duration_follows_block_spacing")]
     public void Bogota_activates_eip8198_at_the_configured_timestamp(ulong? slotDurationMs, ulong expectedSecondsPerSlot)
     {
         const ulong bogotaTimestamp = 1_792_416_379;
@@ -996,10 +993,11 @@ public class GethGenesisLoaderTests
             "beaconChainGenesisTimestamp": {{bogotaTimestamp - 120}}{{slotDuration}}
             """);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, bogotaTimestamp - 1, [])
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, bogotaTimestamp - 10, [])
         {
             GasUsed = 30_000_000,
-            BaseFeePerGas = 1_000_000_000
+            BaseFeePerGas = 1_000_000_000,
+            SlotNumber = 100
         };
         IReleaseSpec before = provider.GetSpec(new ForkActivation(11, bogotaTimestamp - 1));
         IReleaseSpec after = provider.GetSpec(new ForkActivation(11, bogotaTimestamp));
@@ -1013,8 +1011,9 @@ public class GethGenesisLoaderTests
             Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp), Is.EqualTo(expectedSecondsPerSlot));
             Assert.That(before.IsEip8198Enabled, Is.False);
             Assert.That(after.IsEip8198Enabled, Is.True);
-            Assert.That(BaseFeeCalculator.Calculate(parent, before), Is.EqualTo((UInt256)1_125_000_000));
-            Assert.That(BaseFeeCalculator.Calculate(parent, after), Is.EqualTo((UInt256)1_104_166_666));
+            Assert.That(BaseFeeCalculator.Calculate(parent, bogotaTimestamp, 101, before), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, bogotaTimestamp, 101, after), Is.EqualTo((UInt256)1_104_166_666));
+            Assert.That(BaseFeeCalculator.Calculate(parent, bogotaTimestamp + 2, 101, after), Is.EqualTo((UInt256)1_125_000_000));
         }
     }
 

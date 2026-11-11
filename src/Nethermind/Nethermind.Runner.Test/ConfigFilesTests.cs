@@ -516,7 +516,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         IReleaseSpec spec = specProvider.GetXdcSpec(chainSpec.Parameters.Eip1559Transition!.Value);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
+        UInt256 baseFee = BaseFeeCalculator.CalculateForReferenceSlot(parent, spec);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Legacy)

@@ -374,7 +374,7 @@ public class HeaderValidatorTests
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
             .WithGasLimit(gasLimit)
             .WithNumber(_parentBlock.Number + 1)
-            .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
+            .WithBaseFeePerGas(BaseFeeCalculator.CalculateForReferenceSlot(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
@@ -531,7 +531,7 @@ public class HeaderValidatorTests
         // gasDelta = 150000000 - 0 = 150000000
         // feeDelta = 10 * 150000000 / 150000000 / 8 = 1
         // expectedBaseFee = 10 - 1 = 9
-        UInt256 expectedBaseFee = BaseFeeCalculator.Calculate(
+        UInt256 expectedBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(
             _parentBlock.Header,
             specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
         );
@@ -566,17 +566,23 @@ public class HeaderValidatorTests
             "Validation should log baseFee mismatch error");
     }
 
-    [TestCase(0UL, 895_833_334UL, true, TestName = "Eip8198_empty_parent_five_forty_eighths_decrease_is_valid")]
-    [TestCase(0UL, 895_833_333UL, false, TestName = "Eip8198_empty_parent_one_below_is_invalid")]
-    [TestCase(0UL, 895_833_335UL, false, TestName = "Eip8198_empty_parent_one_above_is_invalid")]
-    [TestCase(0UL, 875_000_000UL, false, TestName = "Eip8198_empty_parent_one_eighth_decrease_is_invalid")]
-    [TestCase(30_000_000UL, 1_104_166_666UL, true, TestName = "Eip8198_full_parent_five_forty_eighths_increase_is_valid")]
-    [TestCase(30_000_000UL, 1_104_166_665UL, false, TestName = "Eip8198_full_parent_one_below_is_invalid")]
-    [TestCase(30_000_000UL, 1_104_166_667UL, false, TestName = "Eip8198_full_parent_one_above_is_invalid")]
-    [TestCase(30_000_000UL, 1_125_000_000UL, false, TestName = "Eip8198_full_parent_one_eighth_increase_is_invalid")]
-    public void Eip8198_base_fee_is_validated_with_five_forty_eighths(ulong parentGasUsed, ulong baseFee, bool expected)
+    [TestCase(0UL, 10UL, 1UL, 895_833_334UL, true, TestName = "Eip8198_10s_empty_parent_five_forty_eighths_decrease_is_valid")]
+    [TestCase(0UL, 10UL, 1UL, 895_833_333UL, false, TestName = "Eip8198_10s_empty_parent_one_below_is_invalid")]
+    [TestCase(0UL, 10UL, 1UL, 895_833_335UL, false, TestName = "Eip8198_10s_empty_parent_one_above_is_invalid")]
+    [TestCase(0UL, 10UL, 1UL, 875_000_000UL, false, TestName = "Eip8198_10s_empty_parent_one_eighth_decrease_is_invalid")]
+    [TestCase(30_000_000UL, 10UL, 1UL, 1_104_166_666UL, true, TestName = "Eip8198_10s_full_parent_five_forty_eighths_increase_is_valid")]
+    [TestCase(30_000_000UL, 10UL, 1UL, 1_104_166_665UL, false, TestName = "Eip8198_10s_full_parent_one_below_is_invalid")]
+    [TestCase(30_000_000UL, 10UL, 1UL, 1_104_166_667UL, false, TestName = "Eip8198_10s_full_parent_one_above_is_invalid")]
+    [TestCase(30_000_000UL, 10UL, 1UL, 1_125_000_000UL, false, TestName = "Eip8198_10s_full_parent_one_eighth_increase_is_invalid")]
+    [TestCase(30_000_000UL, 30UL, 3UL, 1_104_166_666UL, true, TestName = "Eip8198_10s_two_missed_slots_keep_five_forty_eighths")]
+    [TestCase(30_000_000UL, 12UL, 1UL, 1_125_000_000UL, true, TestName = "Eip8198_12s_full_parent_one_eighth_increase_is_valid")]
+    [TestCase(30_000_000UL, 12UL, 1UL, 1_104_166_666UL, false, TestName = "Eip8198_12s_full_parent_five_forty_eighths_increase_is_invalid")]
+    [TestCase(30_000_000UL, 6UL, 1UL, 1_062_500_000UL, true, TestName = "Eip8198_6s_full_parent_one_sixteenth_increase_is_valid")]
+    [TestCase(30_000_000UL, 8UL, 1UL, 1_083_333_333UL, true, TestName = "Eip8198_8s_full_parent_one_twelfth_increase_is_valid")]
+    [TestCase(30_000_000UL, 10UL, 0UL, 1_125_000_000UL, false, TestName = "Eip8198_same_slot_as_parent_is_invalid")]
+    public void Eip8198_base_fee_is_validated_from_block_spacing(ulong parentGasUsed, ulong secondsElapsed, ulong slotsElapsed, ulong baseFee, bool expected)
     {
-        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip8198Enabled = true });
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip7843Enabled = true, IsEip8198Enabled = true });
         _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider, new OneLoggerLogManager(new(_testLogger)));
 
         _parentBlock = Build.A.Block
@@ -585,7 +591,10 @@ public class HeaderValidatorTests
             .WithGasUsed(parentGasUsed)
             .WithGasLimit(30_000_000)
             .WithNumber(5)
+            .WithTimestamp(1_000)
             .TestObject;
+        _parentBlock.Header.SlotNumber = 100;
+        _parentBlock.Header.Hash = _parentBlock.CalculateHash();
 
         _block = Build.A.Block
             .WithParent(_parentBlock)
@@ -593,10 +602,35 @@ public class HeaderValidatorTests
             .WithBaseFeePerGas(baseFee)
             .WithGasLimit(30_000_000)
             .WithNumber(_parentBlock.Number + 1)
+            .WithTimestamp(_parentBlock.Timestamp + secondsElapsed)
             .TestObject;
+        _block.Header.SlotNumber = _parentBlock.Header.SlotNumber + slotsElapsed;
         _block.Header.Hash = _block.CalculateHash();
 
-        Assert.That(_validator.Validate(_block.Header, _parentBlock.Header), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error), Is.EqualTo(expected), error);
+            if (slotsElapsed == 0) Assert.That(error, Does.StartWith("SlotNumberNotAfterParent"));
+        }
+    }
+
+    [Test]
+    public void Eip8198_off_ignores_block_spacing_and_slot_order()
+    {
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip7843Enabled = true });
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider, new OneLoggerLogManager(new(_testLogger)));
+
+        _parentBlock = Build.A.Block.WithDifficulty(0).WithBaseFeePerGas(1_000_000_000).WithGasUsed(30_000_000)
+            .WithGasLimit(30_000_000).WithNumber(5).WithTimestamp(1_000).TestObject;
+        _parentBlock.Header.SlotNumber = 100;
+        _parentBlock.Header.Hash = _parentBlock.CalculateHash();
+
+        _block = Build.A.Block.WithParent(_parentBlock).WithDifficulty(0).WithBaseFeePerGas(1_125_000_000)
+            .WithGasLimit(30_000_000).WithNumber(6).WithTimestamp(1_010).TestObject;
+        _block.Header.SlotNumber = 100;
+        _block.Header.Hash = _block.CalculateHash();
+
+        Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error), Is.True, error);
     }
 
     [Test]
@@ -620,7 +654,7 @@ public class HeaderValidatorTests
             .TestObject;
 
         // Calculate CORRECT baseFee
-        UInt256 correctBaseFee = BaseFeeCalculator.Calculate(
+        UInt256 correctBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(
             _parentBlock.Header,
             specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
         );

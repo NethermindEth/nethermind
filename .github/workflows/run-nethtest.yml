@@ -35,7 +35,7 @@ on:
       focil_version:
         description: Heze fixtures release tag (focilTest lane) - pin to an exact tag
         required: false
-        default: tests-heze-devnet@v2.0.0
+        default: tests-heze-devnet@v3.0.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -91,7 +91,7 @@ on:
       focil_version:
         description: Heze fixtures release tag (focilTest lane) - pin to an exact tag
         required: false
-        default: tests-heze-devnet@v2.0.0
+        default: tests-heze-devnet@v3.0.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -130,7 +130,7 @@ env:
   ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v21.0.1' }}
   # Heze fixtures cover EIP-7805 and EIP-8198. Keep the existing focil_version input and lane name
   # for callers, but pin the successor release rather than resolving latest dynamically.
-  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-heze-devnet@v2.0.0' }}
+  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-heze-devnet@v3.0.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
   # EIP-7906, where the Heze archive means Amsterdam plus EIP-7805 and EIP-8198; nothing inside a fixture

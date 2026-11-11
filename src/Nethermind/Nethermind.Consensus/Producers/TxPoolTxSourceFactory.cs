@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -21,7 +22,8 @@ namespace Nethermind.Consensus.Producers
     {
         public virtual ITxSource Create()
         {
-            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig);
+            ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
+                logManager, blocksConfig, specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot));
             return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline, blocksConfig, specChangeTxValidator);
         }
     }

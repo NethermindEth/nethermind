@@ -403,7 +403,7 @@ internal static class StartupPipelineWarmer
         ITxPool txPool = container.Resolve<ITxPool>();
         PrivateKey authority = keys[SenderCount];
         BlockHeader head = container.Resolve<IBlockTree>().Head!.Header;
-        UInt256 baseFee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head, spec) : UInt256.Zero;
+        UInt256 baseFee = spec.IsEip1559Enabled ? BaseFeeCalculator.CalculateForReferenceSlot(head, spec) : UInt256.Zero;
         UInt256 minimum = container.Resolve<IBlocksConfig>().MinGasPrice;
         UInt256 tip = minimum > 2_000_000_000 ? minimum : (UInt256)2_000_000_000;
         if (UInt256.AddOverflow(tip, baseFee, out UInt256 price))
