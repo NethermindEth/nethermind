@@ -11,9 +11,9 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 
 | Component | Source | Revision |
 | --- | --- | --- |
-| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` (this branch's base) | `0260e692fcf8e6b8bcb41289d877e0d5e380b5cd` (interim pin) |
+| Nethermind | `NethermindEth/nethermind` `feature/eip8288-lean` (this branch's base) | `1e5d1fa8a071b0b329a243437d00026e1d4a72df` (interim pin) |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse overlay | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `a03100abece8f8ed129c488db50ba89dde11b10a` |
+| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `f41267e01565bf39ea0c08b27cfeffed18c1822c` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 
 ## Prerequisites
@@ -30,25 +30,23 @@ Nethermind, with the native Lean library built from `tools/lean-ffi`:
 
 ```bash
 docker build -f tools/daisugi-devnet/images/nethermind.Dockerfile \
-  --build-arg COMMIT_HASH=0260e692fcf8e6b8bcb41289d877e0d5e380b5cd -t daisugi/nethermind:0260e692fc .
+  --build-arg COMMIT_HASH=1e5d1fa8a071b0b329a243437d00026e1d4a72df -t daisugi/nethermind:1e5d1fa8a0 .
 ```
 
-Lighthouse, from the pristine archive plus the AA-PQ overlay:
+Lighthouse, from the pinned archive plus the AA-PQ patch series:
 
 ```bash
 B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir -p $B
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
-echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
-tar -xzf $B/lighthouse.tar.gz -C $B
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin a03100abece8f8ed129c488db50ba89dde11b10a && git -C $B/AA-PQ checkout -q FETCH_HEAD
-(cd $B/AA-PQ/aggregation/frames/consensus/eip8288-lean && python3 -m unittest discover -p 'test_*.py' \
-  && python3 apply.py lighthouse ../../../../../lighthouse-$LH --check && python3 apply.py lighthouse ../../../../../lighthouse-$LH)
-docker build -f $B/lighthouse-$LH/Dockerfile.reproducible --platform linux/amd64 \
-  --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t daisugi/lighthouse:eip8288-lean $B/lighthouse-$LH
+git -C $B/AA-PQ fetch -q origin f41267e01565bf39ea0c08b27cfeffed18c1822c && git -C $B/AA-PQ checkout -q FETCH_HEAD
+# apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
+python3 $B/AA-PQ/aggregation/frames/consensus/eip8288-lean/apply.py lighthouse $B/lighthouse.tar.gz $B/lighthouse
+docker build -f $B/lighthouse/Dockerfile.reproducible --platform linux/amd64 \
+  --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t daisugi/lighthouse:eip8288-lean $B/lighthouse
 ```
 
-- Expected Lighthouse binary sha256 (`/lighthouse` in the image): `2e709e64cb111070fb4846d98f928dffd0d646904574a07478ffcb02aa390bcb`.
+- Expected Lighthouse binary sha256 (`/lighthouse` in the image): `b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2`.
 - The reproducible image is distroless with `ENTRYPOINT /lighthouse`. The compose commands start with `lighthouse`, so every compose call needs the override below.
 
 Set this in every shell that runs the scripts:
@@ -56,7 +54,7 @@ Set this in every shell that runs the scripts:
 ```bash
 cd tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
+NM=daisugi/nethermind:1e5d1fa8a0 LH=daisugi/lighthouse:eip8288-lean
 ```
 
 ### Native Lean fallback
@@ -170,7 +168,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
-- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:0260e692fc`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK and Rust as for `proof.sh`.
+- Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:1e5d1fa8a0`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK and Rust as for `proof.sh`.
 - `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - `lighthouse.Dockerfile` adds `/bin/sh` to the distroless Lighthouse image and clears its `ENTRYPOINT`. ethereum-package starts the beacon node with `sh -c` itself, and the validator client runs `lighthouse vc ...` with the image entrypoint.
