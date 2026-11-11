@@ -1528,9 +1528,18 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
-        if (precompile is IdentityPrecompile && CanReturnIdentityOutputInScratch(state))
+        if (precompile is IdentityPrecompile)
         {
-            return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
+            // A top-level frame's input is the transaction's calldata, which nothing writes to, so it is returned as is.
+            if (state.IsTopLevel)
+            {
+                return new(callData, precompileSuccess: true);
+            }
+
+            if (CanReturnIdentityOutputInScratch(state))
+            {
+                return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
+            }
         }
 
         try
