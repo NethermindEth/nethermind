@@ -40,6 +40,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -272,6 +273,51 @@ public partial class EthRpcModuleTests
         ctx.Test.AddTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject);
         string serialized = await ctx.Test.TestEthRpc("eth_pendingTransactions");
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":[{"hash":"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29","nonce":"0x0","blockHash":"0x0000000000000000000000000000000000000000000000000000000000000000","blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"from":"0x475674cb523a0a2736b7f7534390288fce16982c","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","chainId":"0x1","type":"0x0","v":"0x26","s":"0x2d04e55699fa32e6b65a22189f7571f5030d636d7d44a8b53fe016a2c3ecde24","r":"0xda3978c3a1430bd902cf5bbca73c5a1eca019b3f003c95ee16657fd0bb89534c"}],"id":67}""")).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Eth_pending_transactions_reports_a_frame_transaction_gas_at_the_next_block_spec()
+    {
+        Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        frameTx.GasLimit = 200_000;
+        frameTx.Hash = TestItem.KeccakA;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactions().Returns([frameTx]);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)1, Eip8141Prototype.Instance));
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithEthRpcModule(@this => new EthRpcModule(
+                @this.RpcConfig,
+                @this.Bridge,
+                @this.BlockFinder,
+                @this.BlockTree,
+                @this.ReceiptFinder,
+                @this.StateReader,
+                txPool,
+                @this.TxSender,
+                @this.TestWallet,
+                LimboLogs.Instance,
+                @this.SpecProvider,
+                @this.GasPriceOracle,
+                Substitute.For<IEthSyncingInfo>(),
+                Substitute.For<IFeeHistoryOracle>(),
+                @this.ProtocolsManager,
+                @this.ForkInfo,
+                12,
+                @this.HeadBlockSignal,
+                Substitute.For<IEthCapabilitiesProvider>(),
+                new BlockForRpcFactory()))
+            .Build(specProvider);
+        ulong includedGas = TransactionForRpc.FromTransaction(frameTx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, Eip8141Prototype.Instance)).Gas!.Value;
+
+        string serialized = await chain.TestEthRpc("eth_pendingTransactions");
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(frameTx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(document.RootElement.GetProperty("result")[0].GetProperty("gas").GetString(), Is.EqualTo($"0x{includedGas:x}"));
+        }
     }
 
     [Test]

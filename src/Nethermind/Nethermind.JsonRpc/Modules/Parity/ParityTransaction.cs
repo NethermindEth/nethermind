@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json;
@@ -53,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         /// <see cref="ChainId"/> comes from the explicit field the signed payload carries.
         /// </remarks>
         public ParityTransaction(Transaction transaction, byte[] raw, PublicKey publicKey,
-            Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null)
+            Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null, IReleaseSpec? pendingSpec = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -64,7 +65,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
             To = transaction.IsContractCreation ? null : transaction.To;
             Value = transaction.Value;
             GasPrice = transaction.GasPrice;
-            Gas = transaction.GasLimit;
+            Gas = pendingSpec is not null && FrameTxValidation.TryCalculateGasBudget(transaction, pendingSpec, out _, out _, out ulong frameGas)
+                ? frameGas
+                : transaction.GasLimit;
             Raw = raw;
             Input = transaction.Data.AsArray();
             PublicKey = publicKey;

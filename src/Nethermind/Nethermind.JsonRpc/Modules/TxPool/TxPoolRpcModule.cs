@@ -38,7 +38,7 @@ public class TxPoolRpcModule(ITxPoolInfoProvider txPoolInfoProvider, ISpecProvid
     public ResultWrapper<TxPoolInspection> txpool_inspect()
     {
         TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
-        return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo));
+        return ResultWrapper<TxPoolInspection>.Success(new TxPoolInspection(poolInfo, PendingContext().Spec));
     }
 
     private TransactionForRpcContext PendingContext() =>

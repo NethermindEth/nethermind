@@ -268,6 +268,36 @@ public class TxPoolRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task TxPool_Inspect_WhenFrameTxIsPendingBeforeEip8141_ReportsTheGasItHasOnceIncluded()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), FrameTxTestFrames.Pay(100_000));
+        tx.GasLimit = 200_000;
+        tx.Hash = TestItem.KeccakA;
+        Dictionary<TxPoolTxKey, Transaction> senderTxs = new() { { new TxPoolTxKey(0), tx } };
+        ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
+        txPoolInfoProvider.GetInfo().Returns(new TxPoolInfo(
+            pending: new() { { new AddressAsKey(TestItem.AddressA), senderTxs } },
+            queued: []));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider, blockFinder, new BlocksConfig { SecondsPerSlot = 12 });
+        ulong includedGas = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(
+            specProvider.ChainId, TestItem.KeccakB, 1, 0, 12, 1, specProvider.GetSpec(1, 12))).Gas!.Value;
+
+        string json = await RpcTest.TestSerializedRequest<ITxPoolRpcModule>(txPoolRpcModule, "txpool_inspect");
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        string summary = document.RootElement.GetProperty("result").GetProperty("pending")
+            .GetProperty(TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)).GetProperty("0").GetString()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(includedGas, Is.Not.EqualTo(tx.GasLimit), "the included gas must differ from the summed limits for the check to tell them apart");
+            Assert.That(summary, Does.Contain($"+ {includedGas} gas"));
+        }
+    }
+
     [TestCase("txpool_content", TxPoolContentJson)]
     [TestCase("txpool_inspect", TxPoolInspectJson)]
     public async Task TxPool_WhenPoolHasSeveralSendersAndNonces_SerializesToTheContractedBytes(string method, string expectedJson)
