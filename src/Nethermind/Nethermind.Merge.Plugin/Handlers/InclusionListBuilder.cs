@@ -166,14 +166,16 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     private readonly SlotSchedule _slots = specProvider.GetSlotSchedule(secondsPerSlot ?? new BlocksConfig().SecondsPerSlot);
 
     /// <summary>The base fee the next block will charge, assuming it lands in the slot after the parent's.</summary>
-    /// <remarks>Approximate at a fork boundary: the parent's timestamp picks the spec, so pre-fork EIP-1559 parameters are
-    /// resolved for a post-fork block.</remarks>
     private UInt256 NextBlockBaseFee(BlockHeader? parent)
     {
         parent ??= blockTree.Head?.Header;
-        return parent is null
-            ? UInt256.Zero
-            : BaseFeeCalculator.CalculateForNextSlot(parent, _slots.GetNextSlotTimestamp(parent.Timestamp), specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
+        if (parent is null) return UInt256.Zero;
+
+        BlockHeader? previous = parent.ParentHash is { } parentHash
+                ? blockTree.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+        ulong timestamp = BaseFeeCalculator.GetPredictionTimestamp(parent, previous, _slots.GetNextSlotTimestamp(parent.Timestamp));
+        return BaseFeeCalculator.CalculateForPrediction(parent, previous, timestamp, specProvider.GetSpec(parent.Number + 1, timestamp));
     }
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)

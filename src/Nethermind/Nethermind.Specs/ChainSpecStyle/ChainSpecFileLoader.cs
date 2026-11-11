@@ -43,7 +43,7 @@ public class ChainSpecFileLoader
         }
         else
         {
-            if (_logger.IsInfo) _logger.Info($"Did not find ChainSpec in embedded resources: {fileName}");
+            if (_logger.IsInfo) _logger.Info($"Did not find ChainSpec in embedded resources: {fileName:hide}");
             return LoadFromFile(fileName);
         }
     }
@@ -72,7 +72,7 @@ public class ChainSpecFileLoader
     {
         filePath = CheckEmbeddedChainSpec(filePath);
         string extension = Path.GetExtension(filePath);
-        if (_logger.IsInfo) _logger.Info($"Loading ChainSpec from file: {filePath}");
+        if (_logger.IsInfo) _logger.Info($"Loading ChainSpec from file: {filePath:hide}");
         using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         return _chainSpecLoaders[extension].Load(fileStream);
     }

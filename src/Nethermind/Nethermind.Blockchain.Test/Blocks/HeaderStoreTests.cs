@@ -31,17 +31,26 @@ public class HeaderStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(102).TestObject;
 
-        Assert.That(store.Get(header.Hash!), Is.Null);
-        Assert.That(store.Get(header2.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!), Is.Null);
+            Assert.That(store.Get(header2.Hash!), Is.Null);
+        }
 
         store.Insert(header);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header.Hash!, blockNumber: header.Number)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header2.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header.Hash!, blockNumber: header.Number)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header2.Hash!), Is.Null);
+        }
 
         store.Insert(header2);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
-        Assert.That(store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash, Is.EqualTo(header2.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+            Assert.That(store.Get(header2.Hash!, blockNumber: header2.Number)!.Hash, Is.EqualTo(header2.Hash!));
+        }
     }
 
     [Test]
@@ -100,8 +109,11 @@ public class HeaderStoreTests
         context.AssertReads(() =>
         {
             BlockHeader? result = context.Store.Get(context.Header.Hash!);
-            Assert.That(result?.Hash, Is.EqualTo(persisted ? context.Header.Hash : null));
-            Assert.That(result, Is.Not.SameAs(context.Header));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result?.Hash, Is.EqualTo(persisted ? context.Header.Hash : null));
+                Assert.That(result, Is.Not.SameAs(context.Header));
+            }
         }, numberReads: 1, headerReads: 1);
     }
 
@@ -289,8 +301,11 @@ public class HeaderStoreTests
         store.Delete(chain[4].Hash!);
         using IOwnedReadOnlyList<BlockHeader> partial = store.FindReversedHeaders(last.Number, last.Hash!, chain.Length);
         Assert.That(partial.Count, Is.EqualTo(3)); // chain[5], chain[6], chain[7]
-        Assert.That(partial[0].Hash, Is.EqualTo(chain[5].Hash!));
-        Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(partial[0].Hash, Is.EqualTo(chain[5].Hash!));
+            Assert.That(partial[^1].Hash, Is.EqualTo(chain[7].Hash!));
+        }
 
         // Fork: insert an extra header at the same number as chain[3] that is NOT in the main chain
         BlockHeader fork = Build.A.BlockHeader.WithParent(chain[2]).TestObject;
@@ -341,8 +356,11 @@ public class HeaderStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
 
-        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+            Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        }
     }
 
 }

@@ -44,9 +44,12 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
 
         (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
         Assert.That(trace.Accounts.Count, Is.EqualTo(3), "count");
-        Assert.That(trace.Accounts.Contains(Sender), Is.True);
-        Assert.That(trace.Accounts.Contains(Recipient), Is.True);
-        Assert.That(trace.Accounts.Contains(Miner), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Accounts.Contains(Sender), Is.True);
+            Assert.That(trace.Accounts.Contains(Recipient), Is.True);
+            Assert.That(trace.Accounts.Contains(Miner), Is.True);
+        }
     }
 
     [Test]
@@ -185,8 +188,11 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
         (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
 
         Assert.That(trace.Storages.Count, Is.EqualTo(1));
-        Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 1)), Is.True);
-        Assert.That(trace.Accounts.Contains(trace.Storages.First().Address), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 1)), Is.True);
+            Assert.That(trace.Accounts.Contains(trace.Storages.First().Address), Is.True);
+        }
     }
 
     [Test]
@@ -218,8 +224,11 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
         (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
 
         Assert.That(trace.Storages.Count, Is.EqualTo(2));
-        Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 1)), Is.True);
-        Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 2)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 1)), Is.True);
+            Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 2)), Is.True);
+        }
     }
 
     [Test]
@@ -250,8 +259,11 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
 
         (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
         Assert.That(trace.Storages.Count, Is.EqualTo(2));
-        Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 2)), Is.True);
-        Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 4)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 2)), Is.True);
+            Assert.That(trace.Storages.Contains(new StorageCell(SenderRecipientAndMiner.Default.Recipient, 4)), Is.True);
+        }
     }
 
     [Test]
@@ -286,10 +298,13 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
             .Done;
 
         (ProofTxTracer tracer, _, _) = ExecuteAndTraceProofCall(SenderRecipientAndMiner.Default, code);
-        Assert.That(tracer.Accounts.Count, Is.EqualTo(4));
-        Assert.That(tracer.Output.Length, Is.EqualTo(0));
-        Assert.That(tracer.BlockHashes.Count, Is.EqualTo(1));
-        Assert.That(tracer.Storages.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Accounts.Count, Is.EqualTo(4));
+            Assert.That(tracer.Output.Length, Is.EqualTo(0));
+            Assert.That(tracer.BlockHashes.Count, Is.EqualTo(1));
+            Assert.That(tracer.Storages.Count, Is.EqualTo(1));
+        }
     }
 
     protected (ProofTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceProofCall(SenderRecipientAndMiner addresses, params byte[] code)

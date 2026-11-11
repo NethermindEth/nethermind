@@ -21,7 +21,7 @@ public class EraStore : IEraStore
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly ValueHash256[] _checksums;
+    private readonly Dictionary<long, ValueHash256> _checksums;
 
     // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
     // But that is more relevant when we read directly from the directory
@@ -93,17 +93,22 @@ public class EraStore : IEraStore
         if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static (chk) => EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(chk))
-            .ToArray();
+        string[] checksumLines = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName));
 
         bool hasEraFile = false;
         _epochs = [];
+        Dictionary<int, List<string>> duplicates = [];
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
+            if (_epochs.TryGetValue(epoch, out string? other))
+            {
+                if (!duplicates.TryGetValue(epoch, out List<string>? files))
+                    duplicates[epoch] = files = [other];
+                files.Add(file);
+            }
             _epochs[epoch] = file;
             hasEraFile = true;
             if (epoch > LastEpoch)
@@ -115,6 +120,21 @@ public class EraStore : IEraStore
         if (!hasEraFile)
         {
             throw new EraException($"No relevant era files in directory {directory}");
+        }
+
+        Dictionary<long, string> checksumFiles = [];
+        _checksums = EraPathUtils.ParseManifest(checksumLines, FirstEpoch, checksumFiles);
+
+        // A failed re-export can leave a new file beside the one the manifests name until an export of that epoch
+        // succeeds. Read the file the checksum entry of that epoch belongs to. An epoch without an entry cannot pass a
+        // validated read anyway, so it takes its ordinal-first finished file, or its ordinal-first placeholder when it has
+        // no finished one, and does not keep the other epochs from opening.
+        foreach ((int epoch, List<string> files) in duplicates)
+        {
+            _epochs[epoch] = EraPathUtils.ResolveEpochFile(files, checksumFiles.GetValueOrDefault(epoch), _checksums, epoch)
+                ?? (_checksums.ContainsKey(epoch)
+                    ? throw new EraException(EraPathUtils.DuplicateEpochMessage(epoch, files))
+                    : files.OrderBy(static f => EraPathUtils.IsPlaceholderName(f)).ThenBy(static f => f, StringComparer.Ordinal).First());
         }
     }
 
@@ -141,7 +161,8 @@ public class EraStore : IEraStore
             Task checksumTask = Task.Run(() =>
             {
                 ValueHash256 checksum = reader.CalculateChecksum();
-                ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
+                if (!_checksums.TryGetValue(epoch, out ValueHash256 expectedChecksum))
+                    throw new EraVerificationException($"No checksum entry found for epoch {epoch}.");
                 if (checksum != expectedChecksum)
                 {
                     throw new EraVerificationException(

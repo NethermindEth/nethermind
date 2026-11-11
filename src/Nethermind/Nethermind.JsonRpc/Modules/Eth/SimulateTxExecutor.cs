@@ -44,6 +44,10 @@ public class SimulateTxExecutor<TTrace>(
 
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
+                // As in Geth, a block's state overrides are validated before its calls.
+                if (StateOverrideValidation.GetStorageConflictError(blockStateCall.StateOverrides) is { } storageError)
+                    return storageError;
+
                 TransactionWithSourceDetails[]? calls = null;
 
                 if (blockStateCall.Calls is not null)

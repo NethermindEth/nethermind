@@ -141,13 +141,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     ? fee
                     : UInt256.Zero;
 
+                ulong nextTimestamp = (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(b.Timestamp);
+                BlockHeader? previous = b.Number > 0
+                    ? _blockTree.FindHeader(b.ParentHash, AncestorLookupOptions, b.Number - 1)
+                    : null;
+                nextTimestamp = BaseFeeCalculator.GetPredictionTimestamp(b.Header, previous, nextTimestamp);
+                IReleaseSpec nextSpec = _specProvider.GetSpec(b.Number + 1, nextTimestamp);
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
-                    BaseFeeCalculator.CalculateForNextSlot(
-                        b.Header,
-                        (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(b.Timestamp),
-                        _specProvider.GetSpec(b.Number + 1, b.Timestamp)),
+                    BaseFeeCalculator.CalculateForPrediction(b.Header, previous, nextTimestamp, nextSpec),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     nextFeePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
@@ -254,10 +258,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         /// Returns the base fee of the block after <paramref name="info"/>: the canonical child's actual value when
         /// the child exists, otherwise the estimate.
         /// </summary>
-        /// <remarks>
-        /// The estimate picks the next block's spec from the block's own timestamp, so at a timestamp fork it is one block off,
-        /// and under EIP-8198 assumes the next block lands in the next slot.
-        /// </remarks>
         private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
         {
             BlockHeader? child = _blockTree.FindHeader(info.BlockNumber + 1, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.TotalDifficultyNotNeeded);

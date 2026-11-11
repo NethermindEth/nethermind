@@ -22,10 +22,10 @@ using Snappier;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
-public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<ZeroPacket>
+public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<NettyBufferPacket>
 {
     private const int MaxRetainedOutputCapacity = 64 * 1024;
-    private ZeroPacket? _outputPacket;
+    private NettyBufferPacket? _outputPacket;
     private bool _stopped;
     private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -41,9 +41,9 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         base.ChannelRegistered(context);
     }
 
-    protected override void ChannelRead0(IChannelHandlerContext ctx, ZeroPacket input)
+    protected override void ChannelRead0(IChannelHandlerContext ctx, NettyBufferPacket input)
     {
-        IByteBuffer content = input.Content;
+        IByteBuffer content = input.Buffer;
         int readableBytes = content.ReadableBytes;
         if (readableBytes > SnappyParameters.MaxSnappyLength)
         {
@@ -85,8 +85,8 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                 if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {readableBytes}");
             }
 
-            ZeroPacket outputPacket = TakeOutputPacket(ctx, uncompressedLength);
-            IByteBuffer output = outputPacket.Content;
+            NettyBufferPacket outputPacket = TakeOutputPacket(ctx, uncompressedLength);
+            IByteBuffer output = outputPacket.Buffer;
 
             try
             {
@@ -136,13 +136,13 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
     }
 
-    private ZeroPacket TakeOutputPacket(IChannelHandlerContext context, int length)
+    private NettyBufferPacket TakeOutputPacket(IChannelHandlerContext context, int length)
     {
-        ZeroPacket? packet = _outputPacket;
+        NettyBufferPacket? packet = _outputPacket;
         if (packet is not null && length <= MaxRetainedOutputCapacity)
         {
             _outputPacket = null;
-            IByteBuffer buffer = packet.Content;
+            IByteBuffer buffer = packet.Buffer;
             if (buffer.Capacity >= length)
             {
                 buffer.Clear().MarkReaderIndex().MarkWriterIndex();
@@ -150,7 +150,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             }
             packet.SafeRelease();
         }
-        return new ZeroPacket(context.Allocator.Buffer(length));
+        return new NettyBufferPacket(context.Allocator.Buffer(length));
     }
 
     public override void ChannelInactive(IChannelHandlerContext context)
@@ -168,7 +168,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     private void ReleaseOutputPacket()
     {
         _stopped = true;
-        ZeroPacket? packet = _outputPacket;
+        NettyBufferPacket? packet = _outputPacket;
         _outputPacket = null;
         packet?.SafeRelease();
     }
@@ -181,7 +181,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session)}: {exception}");
+            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session):hide}: {exception:hide}");
         }
 
         if (exception is IInternalNethermindException)
@@ -203,7 +203,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCommunicationError(Exception communicationException) =>
-            _logger.Trace($"Error in communication with {GetClientId(_session)} ({communicationException.GetType().Name}): {communicationException}");
+            _logger.Trace($"Error in communication with {GetClientId(_session):hide} ({communicationException.GetType().Name}): {communicationException:hide}");
     }
 
     private static string GetClientId(ISession? session) =>

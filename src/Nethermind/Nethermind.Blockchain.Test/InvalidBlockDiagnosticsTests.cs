@@ -68,7 +68,9 @@ public class InvalidBlockDiagnosticsTests
                 Task shutdown = Task.Run(diagnostics.Dispose);
                 Assert.That(shutdown.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "shutdown should let the dump finish");
                 releaseReplay.Set();
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
                 Assert.That(shutdown.Wait(Wait), Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(dumps.All(IsWritten), Is.True);
             }
             else

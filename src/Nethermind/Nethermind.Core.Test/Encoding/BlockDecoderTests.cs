@@ -178,8 +178,11 @@ public class BlockDecoderTests
         // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
         // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
-        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+            Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
@@ -261,6 +264,29 @@ public class BlockDecoderTests
         using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(target);
 
         Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(decoder.Encode(target).Bytes));
+    }
+
+    [Test]
+    public void Header_behaviors_reach_the_encoded_header()
+    {
+        // A zero base fee with no later header field is written only under Eip1559Header.
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0)
+            .WithTransactions(Build.A.Transaction.WithNonce(1).Signed().TestObject, Build.A.Transaction.WithNonce(2).Signed().TestObject)
+            .TestObject;
+        BlockDecoder decoder = new();
+
+        byte[] encoded = decoder.Encode(block, RlpBehaviors.Eip1559Header).Bytes;
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(block, RlpBehaviors.Eip1559Header);
+        RlpReader ctx = new(encoded);
+        Block decoded = decoder.Decode(ref ctx)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Length, Is.EqualTo(decoder.GetLength(block, RlpBehaviors.Eip1559Header)));
+            Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(encoded));
+            Assert.That(decoded.Header.Hash, Is.EqualTo(block.Header.CalculateHash(RlpBehaviors.Eip1559Header)));
+            Assert.That(decoded.Transactions, Has.Length.EqualTo(2));
+        }
     }
 
     [Test]

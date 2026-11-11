@@ -122,6 +122,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
+            if (StateOverrideValidation.GetStorageConflictError(stateOverride) is { } storageError)
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(storageError, ErrorCodes.InvalidInput);
+
             Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
@@ -790,7 +793,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using ParallelParityTxTracerPool txTracers = streamingTracer.CreateParallelTxTracers(block, types & ~ParityTraceTypes.Rewards);
             return parallelTracer.TryStream(block, parent,
-                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer, cancellationToken);
         }
 
         private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)

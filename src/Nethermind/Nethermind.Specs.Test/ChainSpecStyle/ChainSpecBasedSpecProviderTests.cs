@@ -1453,6 +1453,7 @@ public class ChainSpecBasedSpecProviderTests
             "istanbulBlock": 0,
             "berlinBlock": 0,
             "londonBlock": 0,
+            "shanghaiTime": 0,
             "amsterdamTime": 15
           },
           "difficulty": "0x1",

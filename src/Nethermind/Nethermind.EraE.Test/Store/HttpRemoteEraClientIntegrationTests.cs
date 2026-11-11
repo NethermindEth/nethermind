@@ -51,7 +51,9 @@ public class HttpRemoteEraClientIntegrationTests
         IReadOnlyDictionary<uint, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
 
         Assert.That(manifest, Is.Not.Empty);
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(manifest.Keys.Min(), Is.EqualTo(0u), "epoch 0 must be the first entry");
+#pragma warning restore NUnit2045
 
         Assert.That(manifest.ContainsKey(Epoch0), Is.True);
         Assert.That(manifest[Epoch0].Filename, Is.EqualTo(Epoch0Filename), "epoch 0 filename is immutable — if this fails the server format has changed");
@@ -72,8 +74,11 @@ public class HttpRemoteEraClientIntegrationTests
         string destinationPath = Path.Join(_downloadDir.Path, epoch0Entry.Filename);
         await _client.DownloadFileAsync(epoch0Entry.Filename, destinationPath);
 
-        Assert.That(File.Exists(destinationPath), Is.True);
-        Assert.That(new FileInfo(destinationPath).Length, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(destinationPath), Is.True);
+            Assert.That(new FileInfo(destinationPath).Length, Is.GreaterThan(0));
+        }
 
         using FileStream fs = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         byte[] actualHash = SHA256.HashData(fs);
@@ -101,10 +106,16 @@ public class HttpRemoteEraClientIntegrationTests
         // Block 1 is the first non-genesis block — epoch 0 must contain it
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(1, ensureValidated: false);
 
-        Assert.That(block, Is.Not.Null);
-        Assert.That(receipts, Is.Not.Null);
-        Assert.That(block!.Number, Is.EqualTo(1));
-        Assert.That(block.Hash, Is.Not.Null, "a real downloaded block must have a computed hash");
-        Assert.That(block.ParentHash, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Not.Null);
+            Assert.That(receipts, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Number, Is.EqualTo(1));
+            Assert.That(block.Hash, Is.Not.Null, "a real downloaded block must have a computed hash");
+            Assert.That(block.ParentHash, Is.Not.Null);
+        }
     }
 }

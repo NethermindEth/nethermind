@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 
@@ -23,6 +24,9 @@ public readonly record struct TransactionForRpcContext
     public UInt256? BaseFee { get; }
     public TxReceipt? Receipt { get; }
 
+    /// <summary>The release spec of the including block, which prices the gas a frame transaction reports.</summary>
+    public IReleaseSpec? Spec { get; }
+
     public TransactionForRpcContext(ulong chainId)
     {
         ChainId = chainId;
@@ -32,6 +36,7 @@ public readonly record struct TransactionForRpcContext
         TxIndex = null;
         BaseFee = null;
         Receipt = null;
+        Spec = null;
     }
 
     public TransactionForRpcContext(
@@ -41,6 +46,7 @@ public readonly record struct TransactionForRpcContext
         int txIndex,
         ulong blockTimestamp,
         UInt256 baseFee,
+        IReleaseSpec spec,
         TxReceipt? receipt = null)
     {
         ChainId = chainId;
@@ -50,5 +56,6 @@ public readonly record struct TransactionForRpcContext
         TxIndex = txIndex;
         BaseFee = baseFee;
         Receipt = receipt;
+        Spec = spec;
     }
 }

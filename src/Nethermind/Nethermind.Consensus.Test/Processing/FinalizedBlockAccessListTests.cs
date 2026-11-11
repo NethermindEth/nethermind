@@ -365,11 +365,17 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(policy.CanReconstruct(first.Header), Is.True);
         tree.ClearReceivedCalls();
         env.Beacon.GetFinalizedHash().Returns(third.Hash);
-        Assert.That(policy.CanReconstruct(first.Header), Is.True);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.True);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.Head.Returns(first);
-        Assert.That(policy.CanReconstruct(first.Header), Is.False);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.False);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.DidNotReceive().FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None);
         tree.DidNotReceive().FindHeader(first.Hash!, BlockTreeLookupOptions.None);
         tree.Received(1).FindHeader(second.Hash!, BlockTreeLookupOptions.None);
@@ -379,8 +385,11 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Block fourth = env.CreateBlock(parent: third);
         tree.FindHeader(fourth.Hash!, BlockTreeLookupOptions.None).Returns(fourth.Header);
         env.Beacon.GetFinalizedHash().Returns(fourth.Hash);
-        Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
-        Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
+            Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        }
     }
 
     [Test]

@@ -23,7 +23,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
@@ -112,9 +111,12 @@ public partial class BlockDownloaderTests
         syncPeer.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
-        // full sync does not set main chain, but triggers it processing which eventually set main chain
-        Assert.That(ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+            // full sync does not set main chain, but triggers it processing which eventually set main chain
+            Assert.That(ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!), Is.EqualTo(false));
+        }
 
         if (enableFastSync)
         {
@@ -360,9 +362,12 @@ public partial class BlockDownloaderTests
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
         Hash256 gapBlockHash = ctx.BlockTree.FindHeader(advancedState, BlockTreeLookupOptions.None)!.Hash!;
-        Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
-        Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+            Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -869,15 +874,21 @@ public partial class BlockDownloaderTests
         IForwardSyncController forwardSyncController = ctx.ForwardSyncController;
 
         ctx.ConfigureBestPeer(syncPeer);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(32));
 
         ctx.ConfigureBestPeer(syncPeer2);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(64));
 
         ctx.ConfigureBestPeer(syncPeer3);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(96));
 
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Null);
@@ -1147,7 +1158,9 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
+#pragma warning restore NUnit2045
 
         Assert.That((await ctx.FastSyncFeedComponent.Feed.PrepareRequest(default)).ReceiptsRequests.Count, Is.GreaterThan(0));
     }
@@ -1590,7 +1603,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockBodiesMessage message = new(headers);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1611,7 +1625,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1627,7 +1642,8 @@ public partial class BlockDownloaderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
@@ -1720,7 +1736,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1777,7 +1794,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockBodiesMessage message = new(blockBodies);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1817,7 +1835,8 @@ public partial class BlockDownloaderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 

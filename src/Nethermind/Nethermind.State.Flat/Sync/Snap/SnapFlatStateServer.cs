@@ -7,6 +7,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -23,10 +25,12 @@ public class SnapFlatStateServer(
 
     private readonly ILogger _logger = logManager.GetClassLogger<SnapFlatStateServer>();
 
-    // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
-    private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
+    // Range walks visit trie nodes in path order, which is the key order of the flat trie columns, so on a
+    // FullScan reader they are served by readahead iterators instead of a point get per node, as on HalfPath.
+    // Those iterators do not fill the block cache; HintCacheMiss keeps their point-get fallback out of it too.
+    private const ReadFlags RangeReadFlags = ReadFlags.HintReadAhead | ReadFlags.HintCacheMiss;
 
-    private bool TryGetBundle(Hash256 rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId)
+    private bool TryGetBundle(Hash256 rootHash, ReaderFlags readerFlags, out ReadOnlySnapshotBundle bundle, out StateId stateId)
     {
         if (!stateRootIndex.TryGetStateId(rootHash, out stateId))
         {
@@ -36,7 +40,7 @@ public class SnapFlatStateServer(
 
         try
         {
-            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId, readerFlags);
             return true;
         }
         catch (StateUnavailableException)
@@ -51,7 +55,7 @@ public class SnapFlatStateServer(
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.None, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return EmptyByteArrayList.Instance;
 
         using (bundle)
@@ -130,7 +134,7 @@ public class SnapFlatStateServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.FullScan, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
@@ -162,7 +166,7 @@ public class SnapFlatStateServer(
         long byteLimit,
         CancellationToken cancellationToken)
     {
-        if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
+        if (!TryGetBundle(rootHash, ReaderFlags.FullScan, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
 
         using (bundle)
@@ -235,7 +239,7 @@ public class SnapFlatStateServer(
         }
     }
 
-    private (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
+    private static (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
         ReadOnlySnapshotBundle bundle,
         in ValueHash256 rootHash,
         in ValueHash256 startingHash,
@@ -246,11 +250,9 @@ public class SnapFlatStateServer(
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
-        ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-        PatriciaTree tree = new(trieStore, logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
-        VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: RangeReadFlags, cancellationToken);
+        new NodeRecordBufferVisitor<TreePathContext>(bundle, bundle.StateSnapshot, visitor, VisitingOptions.Default, null)
+            .Accept((storageRoot ?? rootHash).ToCommitment(), storage?.ToCommitment());
 
         IByteArrayList proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? new ByteArrayListAdapter(visitor.GetProofs()) : EmptyByteArrayList.Instance;
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);

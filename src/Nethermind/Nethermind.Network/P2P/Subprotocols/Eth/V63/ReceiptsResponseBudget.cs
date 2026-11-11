@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -37,9 +36,9 @@ internal static class ReceiptsResponseBudget
     /// </param>
     /// <exception cref="SubprotocolException">The response holds more blocks or receipts than allowed.</exception>
     /// <exception cref="RlpException">The response is not well-formed RLP.</exception>
-    public static void ThrowIfExceeded(IByteBuffer content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
+    public static void ThrowIfExceeded(ReadOnlySpan<byte> content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
     {
-        RlpReader ctx = new(content.AsSpan());
+        RlpReader ctx = new(content);
         int limit = ctx.Length;
         if (fieldsBeforeReceipts is int fields)
         {
@@ -82,14 +81,16 @@ internal static class ReceiptsResponseBudget
         }
     }
 
-    // The RLP readers do not check declared lengths against the enclosing item, so every length is
-    // checked here before anything inside it is read, which reports truncation as an RlpException.
+    // The RLP readers do not check declared lengths against the enclosing item, so every length, and the
+    // prefix that holds it, is checked here before anything inside it is read, which reports truncation
+    // as an RlpException. A length is compared with the space left rather than added to the position,
+    // which could overflow.
     private static int ReadSequenceEnd(ref RlpReader ctx, int limit)
     {
-        ThrowIfTruncated(ctx.Position < limit);
-        int end = ctx.ReadSequenceLength() + ctx.Position;
-        ThrowIfTruncated(end <= limit);
-        return end;
+        ThrowIfTruncated(ctx.Position < limit && ctx.PeekPrefixLength() <= limit - ctx.Position);
+        int length = ctx.ReadSequenceLength();
+        ThrowIfTruncated(length <= limit - ctx.Position);
+        return ctx.Position + length;
     }
 
     private static void SkipItem(ref RlpReader ctx, int limit)

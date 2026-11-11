@@ -93,14 +93,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth65"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(65));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth65"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(65));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [TestCase(1)]
@@ -274,7 +277,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         private static ValueHash256[] GenerateValueHashes(int count)
@@ -305,7 +308,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
         }
     }
 }

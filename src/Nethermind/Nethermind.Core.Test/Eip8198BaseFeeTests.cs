@@ -256,4 +256,39 @@ public class Eip8198BaseFeeTests
 
         return (ulong)result;
     }
+
+    [TestCase(10ul, 1ul, 1_104_166_666ul)]
+    [TestCase(20ul, 2ul, 1_104_166_666ul)]
+    [TestCase(19ul, 2ul, 1_098_958_333ul)]
+    public void Prediction_preserves_observed_spacing_at_maximum_timestamp_and_slot(ulong seconds, ulong slots, ulong expected)
+    {
+        BlockHeader previous = Build.A.BlockHeader.WithNumber(9).WithTimestamp(ulong.MaxValue - seconds)
+            .WithSlotNumber(ulong.MaxValue - slots).TestObject;
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithParentHash(previous.Hash!)
+            .WithTimestamp(ulong.MaxValue).WithSlotNumber(ulong.MaxValue).WithBaseFee(1_000_000_000)
+            .WithGasLimit(BlockGasLimit).WithGasUsed(BlockGasLimit).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BaseFeeCalculator.GetPredictionTimestamp(head, previous, ulong.MaxValue), Is.EqualTo(ulong.MaxValue));
+            Assert.That(BaseFeeCalculator.CalculateForPrediction(head, previous, ulong.MaxValue, Enabled), Is.EqualTo((UInt256)expected));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Prediction_falls_back_without_matching_parent(bool missing)
+    {
+        BlockHeader head = Parent(1_000_000_000, BlockGasLimit);
+        BlockHeader? previous = missing ? null : Build.A.BlockHeader.WithNumber(head.Number - 1)
+            .WithTimestamp(head.Timestamp - 10).WithSlotNumber(ParentSlot - 1).TestObject;
+        ulong fallback = head.Timestamp + 12;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BaseFeeCalculator.GetPredictionTimestamp(head, previous, fallback), Is.EqualTo(fallback));
+            Assert.That(BaseFeeCalculator.CalculateForPrediction(head, previous, fallback, Enabled), Is.EqualTo((UInt256)1_125_000_000));
+        }
+    }
+
 }

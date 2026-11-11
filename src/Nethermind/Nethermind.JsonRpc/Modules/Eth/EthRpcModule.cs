@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -155,25 +154,38 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        IEip1559Spec specFor1559 = GetNextBlockSpec(head);
+        BlockHeader? previous = FindPreviousHeader(head);
+        ulong timestamp = GetNextSlotTimestamp(head, previous);
+        IEip1559Spec specFor1559 = _specProvider.GetSpec(head.Number + 1, timestamp);
         if (!specFor1559.IsEip1559Enabled)
         {
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        return ResultWrapper<UInt256?>.Success(GetNextBlockBaseFee(head, specFor1559));
+        return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.CalculateForPrediction(head, previous, timestamp, specFor1559));
     }
 
+    private BlockHeader? FindPreviousHeader(BlockHeader head) => head.ParentHash is { } parentHash
+        ? _blockFinder.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+        : null;
+
     private ulong GetNextSlotTimestamp(BlockHeader head) =>
-        (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp);
+        GetNextSlotTimestamp(head, FindPreviousHeader(head));
+
+    private ulong GetNextSlotTimestamp(BlockHeader head, BlockHeader? previous) =>
+        BaseFeeCalculator.GetPredictionTimestamp(head, previous,
+            (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp));
 
     /// <summary>The spec of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
     private IReleaseSpec GetNextBlockSpec(BlockHeader head) =>
         _specProvider.GetSpec(head.Number + 1, GetNextSlotTimestamp(head));
 
     /// <summary>The base fee of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
-    private UInt256 GetNextBlockBaseFee(BlockHeader head, IEip1559Spec spec) =>
-        BaseFeeCalculator.CalculateForNextSlot(head, GetNextSlotTimestamp(head), spec);
+    private UInt256 GetNextBlockBaseFee(BlockHeader head, IEip1559Spec spec)
+    {
+        BlockHeader? previous = FindPreviousHeader(head);
+        return BaseFeeCalculator.CalculateForPrediction(head, previous, GetNextSlotTimestamp(head, previous), spec);
+    }
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
@@ -327,7 +339,7 @@ public partial class EthRpcModule(
 
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
+            ? GetBlockSearchErrorResult<UInt256?>(searchResult)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -343,7 +355,7 @@ public partial class EthRpcModule(
 
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
+            ? GetBlockSearchErrorResult<UInt256?>(searchResult)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -415,7 +427,9 @@ public partial class EthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
-        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
+        // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
@@ -458,7 +472,8 @@ public partial class EthRpcModule(
             return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
         }
 
-        Result<Transaction> txResult = rpcTx.ToSignableTransaction();
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } frameHead ? _specProvider.GetSpec(frameHead) : null;
+        Result<Transaction> txResult = rpcTx.ToSignableTransaction(frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<SignTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 
@@ -548,8 +563,8 @@ public partial class EthRpcModule(
         ulong chainId = _blockchainBridge.GetChainId();
 
         LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
-        if (legacyTx.From is not { } from)
-            return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
+        // A missing sender is the zero address, as in geth and as the spec leaves from optional.
+        Address from = legacyTx.From ?? Address.Zero;
 
         // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
         // blobs has its sidecar checked first.
@@ -619,6 +634,9 @@ public partial class EthRpcModule(
         {
             return (orderError, ErrorCodes.InvalidInput);
         }
+
+        if (rpcTx.GetSubmissionDataError() is { } dataError)
+            return (dataError, ErrorCodes.InvalidInput);
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
@@ -782,7 +800,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
-            return ResultWrapper<BlockForRpc?>.Success(null);
+            return GetBlockSearchErrorResult<BlockForRpc?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -920,7 +938,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ArrayPoolList<byte>?>.Success(null);
+            return GetBlockSearchErrorResult<ArrayPoolList<byte>?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -949,7 +967,7 @@ public partial class EthRpcModule(
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
             {
-                return ResultWrapper<TransactionForRpc?>.Success(null);
+                return GetBlockSearchErrorResult<TransactionForRpc?>(searchResult);
             }
 
             Block block = searchResult.Object!;
@@ -973,7 +991,8 @@ public partial class EthRpcModule(
             txIndex: (int)positionIndex,
             blockTimestamp: header.Timestamp,
             baseFee: header.BaseFeePerGas,
-            receipt: null);
+            receipt: null,
+            spec: _specProvider.GetSpec(header));
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -988,7 +1007,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<BlockForRpc?>.Success(null);
+            return GetBlockSearchErrorResult<BlockForRpc?>(searchResult);
         }
 
         Block block = searchResult.Object!;
@@ -1065,32 +1084,10 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-        bool timeoutTransferred = false;
-
-        try
-        {
-            int id = filterId <= int.MaxValue ? (int)filterId : -1;
-            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
-            if (id < 0 || !filterFound)
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-            }
-
-            return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
-        }
-        catch (ResourceNotFoundException e)
-        {
-            return GetLogsFailure(e);
-        }
-        finally
-        {
-            if (!timeoutTransferred)
-            {
-                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-            }
-        }
+        LogFilter? logFilter = filterId <= int.MaxValue ? _blockchainBridge.GetLogFilter((int)filterId) : null;
+        return logFilter is null
+            ? ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput)
+            : GetLogs(logFilter, logFilter.FromBlock, logFilter.ToBlock);
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
@@ -1098,6 +1095,17 @@ public partial class EthRpcModule(
         BlockParameter fromBlock = filter.FromBlock!;
         BlockParameter toBlock = filter.ToBlock!;
 
+        LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
+        if (logFilter is not null && filter is not null)
+            logFilter.UseIndex = filter.UseIndex;
+
+        return GetLogs(logFilter, fromBlock, toBlock);
+    }
+
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogs(LogFilter logFilter, BlockParameter fromBlock, BlockParameter toBlock)
+    {
         ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
             => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
 
@@ -1143,12 +1151,6 @@ public partial class EthRpcModule(
 
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
-
-            LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
-            if (logFilter is not null && filter is not null)
-                logFilter.UseIndex = filter.UseIndex;
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
@@ -1219,7 +1221,7 @@ public partial class EthRpcModule(
         }
         catch (Exception ex)
         {
-            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0ul);
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError);
         }
     }
 
@@ -1361,6 +1363,16 @@ public partial class EthRpcModule(
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
+    /// <summary>
+    /// Maps a failed block search for a method that answers an unknown block with <c>null</c>: history below the served
+    /// floor keeps its <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error, so it is not mistaken for an unknown block,
+    /// and every other error is a <c>null</c> result.
+    /// </summary>
+    protected static ResultWrapper<TResult> GetBlockSearchErrorResult<TResult>(SearchResult<Block> searchResult) =>
+        searchResult.ErrorCode == ErrorCodes.PrunedHistoryUnavailable
+            ? ResultWrapper<TResult>.Fail(searchResult)
+            : ResultWrapper<TResult>.Success(default!);
+
     /// <summary>Trims each proof key that was not sent full width, so it is echoed as a quantity.</summary>
     internal static AccountProof EchoStorageKeys(AccountProof proof, StorageKeys storageKeys)
     {
@@ -1402,10 +1414,16 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         return searchResult switch
         {
-            { IsError: true } => ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null),
-            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, _specProvider)
+            { IsError: true } => GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult),
+            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, blockFinder, _specProvider)
         };
     }
+
+    /// <summary>Fails a read of the receipts of <paramref name="block"/> that are not stored, with the error <c>eth_getLogs</c> returns for the same block.</summary>
+    protected internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetMissingReceiptsResult(IBlockFinder blockFinder, Block block) =>
+        LogFinder.WasPruned(blockFinder, block.Header)
+            ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<IEnumerable<ReceiptForRpc>?>.Fail($"failed to get receipts for block #{block.Number}", ErrorCodes.ResourceNotFound);
 
     public ResultWrapper<JsonNode> eth_config()
     {
@@ -1413,36 +1431,10 @@ public partial class EthRpcModule(
 
         return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
+            Current = ForkConfigFactory.Create(forks.Current, _specProvider),
+            Next = ForkConfigFactory.Create(forks.Next, _specProvider),
+            Last = ForkConfigFactory.Create(forks.Last, _specProvider)
         }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
-
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
-        {
-            if (fork is null)
-            {
-                return null;
-            }
-
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
-
-            return new ForkConfig
-            {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
-                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
-                {
-                    BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
-                    Max = (int)spec.MaxBlobCount,
-                    Target = (int)spec.TargetBlobCount,
-                } : null,
-                ChainId = specProvider.ChainId,
-                ForkId = fork.Value.Id.HashBytes,
-                Precompiles = spec.ListPrecompiles(),
-                SystemContracts = spec.ListSystemContracts(),
-            };
-        }
     }
 
     public ResultWrapper<AccountAccessForRpc[]?> eth_getBlockAccessList(BlockParameter blockParameter)

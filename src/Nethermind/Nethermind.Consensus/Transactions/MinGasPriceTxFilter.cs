@@ -4,7 +4,6 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -20,16 +19,16 @@ public class MinGasPriceTxFilter(IBlocksConfig blocksConfig, SlotSchedule? slots
     /// Enabled by default to preserve tx-pool admission diagnostics returned to RPC callers.</remarks>
     internal bool IncludeRejectionMessage { get; init; } = true;
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
-        => IsAllowed(tx, parentHeader, blocksConfig.MinGasPrice, currentSpec);
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
+        => IsAllowed(tx, in context, blocksConfig.MinGasPrice);
 
-    public AcceptTxResult IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor, IReleaseSpec spec)
+    public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context, in UInt256 minGasPriceFloor)
     {
         UInt256 premiumPerGas = tx.GasPrice;
         UInt256 baseFeePerGas = UInt256.Zero;
-        if (spec.IsEip1559Enabled)
+        if (context.Spec.IsEip1559Enabled)
         {
-            baseFeePerGas = BaseFeeCalculator.CalculateForNextSlot(parentHeader, slots, spec);
+            baseFeePerGas = context.GetBaseFee(slots);
             tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
         }
 

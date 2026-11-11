@@ -7,10 +7,11 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.Trie
 {
-    public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
+    public class TrieStatsCollector : INodeRecordVisitor<TrieStatsCollector.Context>
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
@@ -68,6 +69,7 @@ namespace Nethermind.Trie
         public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public void VisitTree(in Context nodeContext, in ValueHash256 rootHash)
         {
         }
@@ -90,57 +92,61 @@ namespace Nethermind.Trie
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitBranch(in Context nodeContext, TrieNode node)
+        /// <inheritdoc/>
+        public void VisitBranch(in Context nodeContext, NodeRecordRef node)
         {
             _cancellationToken.ThrowIfCancellationRequested();
 
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public void VisitExtension(in Context nodeContext, TrieNode node)
+        /// <inheritdoc/>
+        public void VisitExtension(in Context nodeContext, NodeRecordRef node)
         {
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: false);
         }
 
-        public virtual void VisitLeaf(in Context nodeContext, TrieNode node)
+        /// <inheritdoc/>
+        public virtual void VisitLeaf(in Context nodeContext, NodeRecordRef node)
         {
             if (nodeContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._storageSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
+                Interlocked.Add(ref Stats._stateSize, node.Rlp.Length);
                 Interlocked.Increment(ref Stats._accountCount);
             }
 
             IncrementLevel(nodeContext, isLeaf: true);
         }
 
-        public void VisitAccount(in Context nodeContext, TrieNode node, in AccountStruct account)
+        /// <inheritdoc/>
+        public void VisitAccount(in Context nodeContext, NodeRecordRef node, in AccountStruct account)
         {
             if (!account.HasCode) return;
             ValueHash256 key = account.CodeHash;

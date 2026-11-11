@@ -8,16 +8,25 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
@@ -29,7 +38,9 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -45,6 +56,229 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> TransactionIndexingCases()
+    {
+        foreach (string scenario in new[]
+        {
+            "unfinished", "not-started", "completed", "no-fast-sync", "no-download", "no-pivot", "no-index",
+            "horizon-next", "horizon-boundary", "horizon-below", "pivot-outside-horizon", "barrier",
+            "uninitialized-completed-receipts", "uninitialized-completed-bodies", "uninitialized-unfinished",
+            "uninitialized-completed-history", "uninitialized-unfinished-history"
+        })
+            foreach (bool stream in new[] { false, true })
+                yield return new TestCaseData(scenario, stream);
+    }
+
+    [TestCaseSource(nameof(TransactionIndexingCases))]
+    public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
+    {
+        List<Hash256?> executed = [];
+        bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
+            .WithFlatDb(false)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
+            .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
+            .Build(builder =>
+            {
+                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                if (history)
+                {
+                    ReleaseSpec spec = Berlin.Instance.Clone();
+                    spec.MinHistoryRetentionEpochs = 0;
+                    builder.AddSingleton<ISpecProvider>(new TestSpecProvider(spec));
+                    builder.AddSingleton<IHistoryConfig>(new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 0 });
+                }
+            });
+        if (history)
+            for (int i = 0; i < 40; i++) await chain.AddBlock();
+        await chain.AddBlock();
+        await chain.AddBlock();
+        ulong head = chain.BlockTree.Head!.Number;
+        Assert.That(head, Is.GreaterThan(2UL));
+        ISyncConfig syncConfig = chain.Container.Resolve<ISyncConfig>();
+        IReceiptConfig receiptConfig = chain.Container.Resolve<IReceiptConfig>();
+        ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
+        ISyncFeed<ReceiptsSyncBatch?> feed = chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
+        Assert.That(feed, Is.TypeOf<ReceiptsSyncFeed>(), "use the production receipt feed, not a readiness substitute");
+        chain.BlockTree.SyncPivot = (head, chain.BlockTree.Head.Hash!);
+        pointers.LowestInsertedReceiptBlockNumber = head;
+        switch (scenario)
+        {
+            case "not-started": pointers.LowestInsertedReceiptBlockNumber = null; break;
+            case "completed": pointers.LowestInsertedReceiptBlockNumber = 1; break;
+            case "no-fast-sync": syncConfig.FastSync = false; break;
+            case "no-download": syncConfig.DownloadReceiptsInFastSync = false; break;
+            case "no-pivot": chain.BlockTree.SyncPivot = (0, Keccak.Zero); break;
+            case "no-index": receiptConfig.TxLookupLimit = ulong.MaxValue; break;
+            case "horizon-next": receiptConfig.TxLookupLimit = 2; break;
+            case "horizon-boundary": receiptConfig.TxLookupLimit = 1; break;
+            case "horizon-below": receiptConfig.TxLookupLimit = 1; pointers.LowestInsertedReceiptBlockNumber = head - 1; break;
+            case "pivot-outside-horizon":
+                receiptConfig.TxLookupLimit = 1;
+                chain.BlockTree.SyncPivot = (head - 1, chain.BlockTree.Head.ParentHash!);
+                pointers.LowestInsertedReceiptBlockNumber = null;
+                break;
+            case "barrier": syncConfig.AncientReceiptsBarrier = head; break;
+            case "uninitialized-completed-receipts": syncConfig.AncientReceiptsBarrier = head; break;
+            case "uninitialized-completed-bodies": syncConfig.AncientBodiesBarrier = head; break;
+            case "uninitialized-unfinished": syncConfig.AncientReceiptsBarrier = head - 2; break;
+            case "uninitialized-completed-history": pointers.LowestInsertedReceiptBlockNumber = head - 32; break;
+            case "uninitialized-unfinished-history": pointers.LowestInsertedReceiptBlockNumber = head - 31; break;
+        }
+        if (history)
+            Assert.That(chain.Container.Resolve<IHistoryPruner>().CutoffBlockNumber, Is.EqualTo(head - 32));
+        if (!scenario.StartsWith("uninitialized-", StringComparison.Ordinal))
+            ((ReceiptsSyncFeed)feed).InitializeFeed();
+        executed.Clear();
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString());
+        JToken json = JToken.Parse(response);
+        bool indexing = scenario is "unfinished" or "not-started" or "horizon-next" or "horizon-boundary" or "uninitialized-unfinished" or "uninitialized-unfinished-history";
+        string message = indexing ? "transaction indexing is in progress" : "transaction not found";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+            Assert.That((string?)json["error"]?["data"], Is.EqualTo(indexing ? message : null), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(executed, Is.Empty, "lookup failure must not execute a trace, including a deferred streaming trace");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_indexing_inflight_retained_boundary([Values] bool stream)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
+            .WithFlatDb(false)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream })
+            .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 1 })
+            .Build();
+        Block block = chain.BlockTree.Head!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Number, Is.GreaterThan(1UL));
+            Assert.That(block.Transactions, Is.Not.Empty);
+        }
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        chain.ReceiptStorage.RemoveReceipts(block);
+        Hash256 transactionHash = block.Transactions[0].Hash!;
+        Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.Null);
+
+        chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
+        ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
+        pointers.LowestInsertedReceiptBlockNumber = null;
+        ReceiptsSyncFeed feed = (ReceiptsSyncFeed)chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
+        feed.InitializeFeed();
+        using ReceiptsSyncBatch? batch = await feed.PrepareRequest();
+        Assert.That(batch, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(block.Number));
+            Assert.That(batch!.Infos[0]!.BlockNumber, Is.EqualTo(block.Number));
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactionHash.ToString());
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("transaction indexing is in progress"), response);
+            Assert.That((string?)json["error"]?["data"], Is.EqualTo("transaction indexing is in progress"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+
+        batch!.Response = new ArrayPoolList<TxReceipt[]?>(1) { receipts };
+        SyncResponseHandlingResult handlingResult = feed.HandleResponse(batch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(chain.ReceiptStorage.FindBlockHash(transactionHash), Is.EqualTo(block.Hash));
+        }
+        response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactionHash.ToString());
+        json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((long?)json["result"]?["gas"], Is.GreaterThan(0), response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That(json["result"]?["structLogs"], Is.TypeOf<JArray>(), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_indexing_preserves_available_traces(
+        [Values("debug_traceTransaction", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceTransactionByBlockhashAndIndex")] string method,
+        [Values] bool stream)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
+            .WithFlatDb(false)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
+        Block block = chain.BlockTree.Head!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Number, Is.GreaterThan(1UL), "the pivot must be above the receipt barrier");
+            Assert.That(block.Transactions, Is.Not.Empty);
+        }
+        chain.BlockTree.SyncPivot = (block.Number, block.Hash!);
+        ISyncPointers pointers = chain.Container.Resolve<ISyncPointers>();
+        pointers.LowestInsertedReceiptBlockNumber = 1;
+        ISyncFeed<ReceiptsSyncBatch?> feed = chain.Container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>();
+        ((ReceiptsSyncFeed)feed).InitializeFeed();
+        ISyncProgressResolver progress = chain.Container.Resolve<ISyncProgressResolver>();
+        Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.True);
+
+        object[] parameters = method switch
+        {
+            "debug_traceTransaction" => [block.Transactions[0].Hash!.ToString()],
+            "debug_traceBlockByNumber" => [block.Number.ToHexString(true)],
+            "debug_traceTransactionByBlockhashAndIndex" => [block.Hash!.ToString(), 0, new { }],
+            _ => [block.Hash!.ToString()]
+        };
+        string baselineResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
+        JToken baseline = JToken.Parse(baselineResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseline["error"], Is.Null, baselineResponse);
+            Assert.That(baseline["result"], Is.Not.Null, baselineResponse);
+        }
+        JToken expected = baseline["result"]!;
+        bool blockTrace = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
+        if (blockTrace)
+        {
+            Assert.That(expected, Is.TypeOf<JArray>().And.Property(nameof(JArray.Count)).EqualTo(block.Transactions.Length), baselineResponse);
+        }
+        for (int i = 0; i < (blockTrace ? block.Transactions.Length : 1); i++)
+        {
+            JToken trace = blockTrace ? expected[i]!["result"]! : expected;
+            Assert.That(trace, Is.Not.Null, baselineResponse);
+            using (Assert.EnterMultipleScope())
+            {
+                if (blockTrace)
+                    Assert.That((string?)expected[i]!["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), baselineResponse);
+                Assert.That((long?)trace["gas"], Is.GreaterThan(0), baselineResponse);
+                Assert.That((bool?)trace["failed"], Is.False, baselineResponse);
+                Assert.That(trace["structLogs"], Is.TypeOf<JArray>(), baselineResponse);
+            }
+        }
+
+        pointers.LowestInsertedReceiptBlockNumber = block.Number;
+        Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.False);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(JToken.DeepEquals(json["result"], expected), Is.True, response);
+        }
+    }
+
+    private sealed class ReceiptSyncRpcBlockchain : TestRpcBlockchain
+    {
+        protected override IEnumerable<IConfig> CreateConfigs() =>
+            [.. base.CreateConfigs(), new SyncConfig { FastSync = true }];
+    }
+
     private static IEnumerable<TestCaseData> ValidTransactionIndices()
     {
         (string Json, ulong? Value)[] cases =
@@ -183,6 +417,27 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_with_time_override_past_amsterdam_reads_a_missing_slot_as_zero()
+    {
+        const ulong amsterdamTime = 4_000_000_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(
+                new CustomSpecProvider(((ForkActivation)0, BPO2.Instance), (new ForkActivation(0, amsterdamTime), Amsterdam.Instance))));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x30d40" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x4b60005260206000f3" } },
+                blockOverrides = new { time = $"0x{amsterdamTime:x}" }
+            });
+
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]!["returnValue"]!;
+        Assert.That(output.StartsWith("0x") ? output[2..] : output, Is.EqualTo(new string('0', 64)), response);
+    }
+
+    [Test]
     public async Task Debug_traceCall_txIndex_keeps_block_overrides_out_of_prefix([Values] bool blockAccessLists)
     {
         OverridableReleaseSpec spec = new(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { Eip1559TransitionBlock = 1 };
@@ -196,12 +451,18 @@ public partial class DebugRpcModuleTests
         Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + 1).WithGasPrice(1_000_000_000)
             .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(create, transfer);
-        Assert.That(block.Transactions, Has.Length.EqualTo(2));
-        Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(2));
+            Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        }
         Address contract = ContractAddress.From(TestItem.AddressB, nonce);
         TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        }
         byte[] probe = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
             .PushData(1).Op(Instruction.SLOAD).PushData(32).Op(Instruction.MSTORE)
             .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE)
@@ -435,6 +696,100 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [TestCase("{}", false, null, 53000)]
+    [TestCase("""{"to":null}""", true, null, 53000)]
+    [TestCase("""{"input":"0x"}""", true, null, 53000)]
+    [TestCase("""{"to":null,"data":"0x"}""", false, null, 53000)]
+    [TestCase("""{"to":null,"input":"0x"}""", false, "callTracer", 53000)]
+    [TestCase("""{"data":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"accessList":[],"input":"0x"}""", false, null, 53000)]
+    [TestCase("""{"maxFeePerGas":"0x0","input":"0x"}""", true, "callTracer", 53000)]
+    [TestCase("""{"input":"0x00"}""", false, null, 53006)]
+    [TestCase("""{"to":null,"input":"0x00"}""", true, "callTracer", 53006)]
+    public async Task Debug_traceCall_executes_contract_creation(string fields, bool streaming, string? tracer, long expectedGas)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["from"] = TestItem.AddressA.ToString();
+        call["gas"] = "0x186a0";
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(json["result"]?["error"], Is.Null, response);
+            if (tracer is null)
+            {
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(expectedGas), response);
+                Assert.That(json["result"]?["structLogs"]?.Count(), Is.EqualTo(expectedGas == 53000 ? 0 : 1), response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"]?["type"], Is.EqualTo("CREATE"), response);
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo($"0x{expectedGas:x}"), response);
+            }
+        }
+    }
+
+    [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
+    [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
+    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
+    [TestCase("""{"authorizationList":[]}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
+    [TestCase("""{"authorizationList":[],"input":"0x00"}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
+    public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        Dictionary<string, object?> call = JsonSerializer.Deserialize<Dictionary<string, object?>>(fields)!;
+        call["gas"] = "0x186a0";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_contract_creation_does_not_change_original_request([Values] bool derived)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(new TestSpecProvider(Prague.Instance));
+        LegacyTransactionForRpc call = derived ? new EmptyCreationCall() : new LegacyTransactionForRpc();
+        call.From = TestItem.AddressA;
+        call.Gas = 100_000;
+        using ResultWrapper<GethLikeTxTrace> response = chain.DebugRpcModule.debug_traceCall(call);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(call.To, Is.Null);
+            Assert.That(call.Input, Is.Null);
+            Assert.That(call.Gas, Is.EqualTo(100_000UL));
+            Assert.That(call.From, Is.EqualTo(TestItem.AddressA));
+            if (call is EmptyCreationCall custom) Assert.That(custom.Conversions, Is.EqualTo(1));
+            Assert.That(call.ToCallTransaction(Prague.Instance).IsError, Is.False);
+            Assert.That(call.ToValidatedTransaction().Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+        }
+    }
+
+    private sealed class EmptyCreationCall : LegacyTransactionForRpc
+    {
+        public int Conversions { get; private set; }
+
+        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+        {
+            Conversions++;
+            return base.ToTransaction(validateUserInput, gasCap, spec);
+        }
+    }
+
+
     [Test]
     public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
     {
@@ -528,6 +883,42 @@ public partial class DebugRpcModuleTests
         public void Dispose() => Blockchain.Dispose();
     }
 
+    private static IEnumerable<TestCaseData> DebugConfigSpecProviders()
+    {
+        yield return new TestCaseData(MainnetSpecProvider.Instance, 0).SetArgDisplayNames("pre-merge genesis");
+        // Cancun is folded into genesis and the next fork is scheduled after the test chain's head.
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 2_000_000_000)] }, 0)
+            .SetArgDisplayNames("post-merge genesis");
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 1), new ForkActivation(0, 2_000_000_000)] }, 1)
+            .SetArgDisplayNames("timestamp fork");
+    }
+
+    [TestCaseSource(nameof(DebugConfigSpecProviders))]
+    public async Task Debug_config_returns_all_forks_with_current_marked_active(ISpecProvider specProvider, int activeIndex)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        JArray forks = (JArray)JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config"))["result"]!["forks"]!;
+        JToken current = JToken.Parse(await ctx.Blockchain.TestEthRpc("eth_config"))["result"]!["current"]!;
+        string[] scheduledForkIds = ctx.Blockchain.ForkInfo.GetAllForks().ToArray().Select(static fork => fork.Id.HashBytes.ToHexString(true)).ToArray();
+        JObject[] active = forks.Children<JObject>().Where(static fork => fork.ContainsKey("active")).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks, Has.Count.GreaterThan(1));
+            Assert.That(forks.Select(static fork => (string?)fork["forkId"]), Is.EqualTo(scheduledForkIds));
+            Assert.That(active, Has.Length.EqualTo(1));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forks.IndexOf(active[0]), Is.EqualTo(activeIndex));
+            Assert.That((bool?)active[0]["active"], Is.True);
+        }
+
+        active[0].Remove("active");
+        Assert.That(active[0], Is.EqualTo(current).Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
     public async Task Debug_traceCall_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
     {
@@ -536,10 +927,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
-        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
-        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
-        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+            Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+            Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+            Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -964,9 +1358,9 @@ public partial class DebugRpcModuleTests
     {
         (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
-            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
             ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
         foreach ((string json, string? error, int? code) in cases)
@@ -1094,6 +1488,140 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", false)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", true)]
+    [TestCase("CreateUint8ArrayCode", "ReferenceError: CreateUint8ArrayCode is not defined at <eval>:1:2(0)", false)]
+    [TestCase("CreateUint8ArrayCode", "ReferenceError: CreateUint8ArrayCode is not defined at <eval>:1:2(0)", true)]
+    [TestCase("tracers.callTracer", "ReferenceError: tracers is not defined", false)]
+    [TestCase("tracers.callTracer", "ReferenceError: tracers is not defined", true)]
+    [TestCase("tracers['callTracer']", "ReferenceError: tracers is not defined", false)]
+    [TestCase("tracers['callTracer']", "ReferenceError: tracers is not defined", true)]
+    [TestCase("OpcountTracer", "ReferenceError: OpcountTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("OpcountTracer", "ReferenceError: OpcountTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("OpcountTracer.JS", "ReferenceError: OpcountTracer is not defined", false)]
+    [TestCase("OpcountTracer.JS", "ReferenceError: OpcountTracer is not defined", true)]
+    [TestCase("toHex", "trace object must expose a function result()", false)]
+    [TestCase("toHex", "trace object must expose a function result()", true)]
+    [TestCase("{}", "trace object must expose a function result()", false)]
+    [TestCase("{}", "trace object must expose a function result()", true)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", false)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", true)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", false)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", true)]
+    [TestCase("{result:{},fault:function(){}}", "trace object must expose a function result()", false)]
+    [TestCase("{result:{},fault:function(){}}", "trace object must expose a function result()", true)]
+    [TestCase("{result:function(){},fault:[]}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){},fault:[]}", "trace object must expose a function fault()", true)]
+    public async Task Debug_traceCall_javascript_selector_errors(string tracer, string message, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null);
+            Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
+            Assert.That(json["error"]!["data"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_builtin_extension_is_case_insensitive(
+        [Values("opcountTracer.js", "opcountTracer.JS", " opcountTracer.Js ", "opcountTracer.jS")] string tracer,
+        [Values] bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code = "0x600100" } };
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }), stateOverrides }
+            : new { tracer, stateOverrides };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((mux ? json["result"]?[tracer] : json["result"])?.Value<int>(), Is.EqualTo(2), response);
+        }
+    }
+
+    [TestCase("({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", false)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", true)]
+    [TestCase("{fault:function(){},result:function(){return 7;},setup:{}}", false)]
+    [TestCase("{fault:function(){},result:function(){return 7;},setup:{}}", true)]
+    public async Task Debug_traceCall_javascript_selector_expressions(string tracer, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null);
+            Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_javascript_retains_selected_callbacks(
+        [Values("accessor-order", "selected-result", "function-alias")] string scenario, [Values] bool mux)
+    {
+        (string tracer, string expected) = scenario switch
+        {
+            "accessor-order" => ("""
+                {events:[],
+                 get result(){this.events.push('result');return function(){this.events.push('result-call');return this.events.join(',');};},
+                 get fault(){this.events.push('fault');return function(){};},
+                 get step(){this.events.push('step');return function(){};},
+                 get enter(){this.events.push('enter');return function(){};},
+                 get exit(){this.events.push('exit');return function(){};},
+                 get setup(){this.events.push('setup');return function(){this.events.push('setup-call');};}}
+                """, "result,fault,step,enter,exit,setup,setup-call,result-call"),
+            "selected-result" => ("""
+                {reads:0,get result(){return ++this.reads===1
+                    ? function(){return 'retained';}:function(){return 'reselected';};},fault:function(){}}
+                """, "retained"),
+            "function-alias" => ("""
+                (function(){function tracer(){return 'aliased';}tracer.result=tracer;tracer.fault=tracer;return tracer;})()
+                """, "aliased"),
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<string>(), Is.EqualTo(expected), response);
+        }
+    }
+
     [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
     [TestCase("1", "json: cannot unmarshal number into Go value of type map[string]jsontext.Value")]
     [TestCase("true", "json: cannot unmarshal bool into Go value of type map[string]jsontext.Value")]
@@ -1114,6 +1642,54 @@ public partial class DebugRpcModuleTests
             Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
         }
+    }
+
+    [TestCase("invalid-data", false)]
+    [TestCase("invalid-data", true)]
+    [TestCase("argument", false)]
+    [NonParallelizable]
+    public async Task Debug_traceCall_native_constructor_failures_are_not_selector_errors(string failureKind, bool serialized)
+    {
+        using Context ctx = await Context.Create();
+        Exception failure = failureKind == "invalid-data"
+            ? new InvalidDataException("native constructor sentinel")
+            : new ArgumentException("trace object must expose a function result()");
+        int constructions = 0;
+        string name = $"native-selector-boundary-{Guid.NewGuid():N}";
+        System.Collections.IDictionary registrations = (System.Collections.IDictionary)typeof(Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory)
+            .GetField("_tracers", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(name, (_, _, _, _) =>
+        {
+            constructions++;
+            throw failure;
+        });
+        try
+        {
+            if (serialized)
+            {
+                string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+                    new { to = TestItem.AddressC.ToString() }, "latest", new { tracer = name });
+                JToken json = JToken.Parse(response);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("Internal error"), response);
+                    Assert.That(json["result"], Is.Null, response);
+                }
+            }
+            else
+            {
+                Assert.That(() => ctx.DebugRpcModule.debug_traceCall(
+                    new Nethermind.Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressC },
+                    Nethermind.Blockchain.Find.BlockParameter.Latest, new GethTraceOptions { Tracer = name }), Throws.Exception.SameAs(failure));
+            }
+            Assert.That(constructions, Is.EqualTo(1));
+        }
+        finally
+        {
+            registrations.Remove(name);
+        }
+        Assert.That(Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.IsNativeTracer(name), Is.False);
     }
 
     [Test]
@@ -1177,6 +1753,69 @@ public partial class DebugRpcModuleTests
             Assert.That(JToken.Parse(response)["error"], Is.Not.Null);
             Assert.That(disposed, Is.EqualTo(resultFailure ? 2 : 1));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        const string first = "{step:function(){},fault:function(){},result:function(){return {};}}";
+        const string failing = "{step:function(){},fault:function(){},result:function(){throw Error('mux child result failure');}}";
+        List<GethLikeBlockJavaScriptTracer> children = [];
+        List<Microsoft.ClearScript.V8.V8Runtime> runtimes = [];
+        List<Engine> engines = [];
+        GethTraceOptions options = new()
+        {
+            TracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [first] = new { }, [failing] = new { } })
+        };
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild = childOptions =>
+        {
+            if (!resultFailure && children.Count == 1) throw new ArgumentException("child construction failure");
+            GethLikeBlockJavaScriptTracer child = (GethLikeBlockJavaScriptTracer)Nethermind.Consensus.Tracing.GethStyleTracer.CreateOptionsTracer(
+                ctx.Blockchain.BlockTree.Head!.Header, childOptions, ctx.Blockchain.MainProcessingContext.WorldState, ctx.Blockchain.SpecProvider);
+            children.Add(child);
+            runtimes.Add(Field<Microsoft.ClearScript.V8.V8Runtime>(Field<object>(child, "_runtime"), "_runtime"));
+            return child;
+        };
+        Type muxType = typeof(Nethermind.Consensus.Tracing.GethStyleTracer).Assembly.GetType("Nethermind.Consensus.Tracing.GethLikeBlockMuxTracer", throwOnError: true)!;
+        IBlockTracer<GethLikeTxTrace>? mux = null;
+        try
+        {
+            if (!resultFailure)
+            {
+                System.Reflection.TargetInvocationException? failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => CreateMux());
+                Assert.That(failure!.InnerException, Is.TypeOf<ArgumentException>().With.Message.EqualTo("child construction failure"));
+            }
+            else
+            {
+                mux = CreateMux();
+                mux.StartNewBlockTrace(Build.A.Block.TestObject);
+                mux.StartNewTxTrace(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject);
+                foreach (GethLikeBlockJavaScriptTracer child in children)
+                    engines.Add(Field<Engine>(Field<object>(child, "_currentTxTracer"), "_engine"));
+                Assert.That(() => mux.EndTxTrace(), Throws.Exception.With.Message.Contains("mux child result failure"));
+            }
+        }
+        finally
+        {
+            (mux as IDisposable)?.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtimes.Count, Is.EqualTo(resultFailure ? 2 : 1));
+            Assert.That(engines.Count, Is.EqualTo(resultFailure ? 2 : 0));
+            foreach (Microsoft.ClearScript.V8.V8Runtime runtime in runtimes)
+                Assert.That(() => { using Microsoft.ClearScript.V8.V8ScriptEngine engine = runtime.CreateScriptEngine(); }, Throws.TypeOf<ObjectDisposedException>());
+            foreach (Engine engine in engines)
+                Assert.That(() => engine.CreateTracer(first), Throws.TypeOf<ObjectDisposedException>());
+        }
+
+        IBlockTracer<GethLikeTxTrace> CreateMux() => (IBlockTracer<GethLikeTxTrace>)Activator.CreateInstance(muxType,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [options, createChild], null)!;
+        static T Field<T>(object instance, string name) => (T)instance.GetType()
+            .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(instance)!;
     }
 
     [Test]
@@ -1256,6 +1895,50 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
+    }
+
+    [TestCase(100, null, null, 7, 93)]
+    [TestCase(null, 100, 2, 7, 2)]
+    [TestCase(null, 100, 100, 7, 93)]
+    [TestCase(100, null, null, 0, 100)]
+    [TestCase(null, 100, 2, 0, 2)]
+    [TestCase(100, null, null, null, 100)]
+    [TestCase(null, 100, 2, null, 2)]
+    [TestCase(null, 100, 100, null, 100)]
+    public async Task Debug_traceCall_javascript_gasPrice_is_effective_gas_tip(
+        int? gasPrice, int? maxFeePerGas, int? maxPriorityFeePerGas, int? baseFeeOverride, int expectedGasPrice)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+        // Without an override the live base fee applies, so the fee caps are raised by it to keep the expected tips.
+        UInt256 feeCapShift = baseFeeOverride is null ? ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas : UInt256.Zero;
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new() { ["from"] = $"{sender}", ["to"] = $"{TestItem.AddressD}", ["gas"] = "0x186a0" };
+        if (gasPrice is not null)
+            transaction["gasPrice"] = (feeCapShift + (UInt256)gasPrice.Value).ToHexString(true);
+        if (maxFeePerGas is not null)
+            transaction["maxFeePerGas"] = (feeCapShift + (UInt256)maxFeePerGas.Value).ToHexString(true);
+        if (maxPriorityFeePerGas is not null)
+            transaction["maxPriorityFeePerGas"] = ((UInt256)maxPriorityFeePerGas.Value).ToHexString(true);
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [$"{sender}"] = new { balance = "0x56BC75E2D63100000" },
+            [$"{TestItem.AddressD}"] = new { code = "0x00" }
+        };
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return ctx.gasPrice.toString(10);}}";
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest",
+            new
+            {
+                tracer,
+                stateOverrides,
+                blockOverrides = baseFeeOverride is null ? null : new { baseFeePerGas = $"0x{baseFeeOverride:x}" }
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"], Is.EqualTo(expectedGasPrice.ToString()), response);
         }
     }
 
@@ -1616,18 +2299,21 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals", "pending-with-withdrawals", "missing-with-withdrawals", "unavailable-parent-with-withdrawals")] string selection,
+        [Values] bool streaming, [Values] bool movePrecompile)
     {
+        bool withWithdrawals = selection.EndsWith("-with-withdrawals", StringComparison.Ordinal);
+        string blockSelection = withWithdrawals ? selection[..^"-with-withdrawals".Length] : selection;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
-        if (selection == "unavailable-parent")
+        if (blockSelection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (blockSelection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
             await chain.AddBlock();
             parent.Header.StateRoot = TestItem.KeccakA;
         }
-        string selector = selection switch
+        string selector = blockSelection switch
         {
             "pending" => "pending",
             "missing" => TestItem.KeccakA.ToString(),
@@ -1637,8 +2323,8 @@ public partial class DebugRpcModuleTests
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, selector,
             new
             {
-                txIndex = selection == "unavailable-parent" ? "0x0" : null,
-                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
+                txIndex = blockSelection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = withWithdrawals ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object>
                 {
                     [TestItem.AddressC.ToString()] = new
@@ -1649,9 +2335,8 @@ public partial class DebugRpcModuleTests
                     }
                 }
             });
-        (int code, string message) = selection switch
+        (int code, string message) = blockSelection switch
         {
-            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
@@ -1822,9 +2507,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(result["failed"]?.Value<bool>(), Is.True);
-        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
-        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.True);
+            Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+            Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        }
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -1885,8 +2573,11 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
@@ -2099,13 +2790,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
             Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
-        });
+        }
     }
 
     [Test]
@@ -2122,12 +2813,12 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
-        });
+        }
     }
 
     private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter

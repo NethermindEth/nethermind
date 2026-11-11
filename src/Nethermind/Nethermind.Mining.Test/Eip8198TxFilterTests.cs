@@ -42,10 +42,10 @@ public class Eip8198TxFilterTests
         Transaction tx = Tx(FeeBetweenTheRules);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.Accepted), "10 s slots");
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(12)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow), "12 s slots");
-            Assert.That(new BaseFeeTxFilter().IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow), "no schedule, 12 s reference");
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Amsterdam.Instance), Is.EqualTo(AcceptTxResult.FeeTooLow), "before EIP-8198");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, new TxFilterContext(Parent(), Spec)), Is.EqualTo(AcceptTxResult.Accepted), "10 s slots");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(12)).IsAllowed(tx, new TxFilterContext(Parent(), Spec)), Is.EqualTo(AcceptTxResult.FeeTooLow), "12 s slots");
+            Assert.That(new BaseFeeTxFilter().IsAllowed(tx, new TxFilterContext(Parent(), Spec)), Is.EqualTo(AcceptTxResult.FeeTooLow), "no schedule, 12 s reference");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, new TxFilterContext(Parent(), Amsterdam.Instance)), Is.EqualTo(AcceptTxResult.FeeTooLow), "before EIP-8198");
         }
     }
 
@@ -57,8 +57,23 @@ public class Eip8198TxFilterTests
         Transaction tx = Tx(1_104_166_667, 1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new MinGasPriceTxFilter(blocksConfig, new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(new MinGasPriceTxFilter(blocksConfig).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow));
+            Assert.That(new MinGasPriceTxFilter(blocksConfig, new SlotSchedule(10)).IsAllowed(tx, new TxFilterContext(Parent(), Spec)), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(new MinGasPriceTxFilter(blocksConfig).IsAllowed(tx, new TxFilterContext(Parent(), Spec)), Is.EqualTo(AcceptTxResult.FeeTooLow));
         }
     }
+
+    [TestCase(1_000_000_000ul, true)]
+    [TestCase(1_125_000_000ul, false)]
+    public void Filters_use_the_supplied_child_base_fee(ulong baseFee, bool accepted)
+    {
+        Transaction tx = Tx(FeeBetweenTheRules, 1);
+        TxFilterContext context = new(Parent(), Spec, baseFee);
+        SlotSchedule slots = new(10);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)new BaseFeeTxFilter(slots).IsAllowed(tx, in context), Is.EqualTo(accepted));
+            Assert.That((bool)new MinGasPriceTxFilter(new BlocksConfig { MinGasPrice = 1 }, slots).IsAllowed(tx, in context), Is.EqualTo(accepted));
+        }
+    }
+
 }

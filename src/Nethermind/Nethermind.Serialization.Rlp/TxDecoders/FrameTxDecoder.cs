@@ -13,7 +13,7 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
-/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
+/// blob_versioned_hashes]</c>, where <c>fees = [max_fee, max_priority_fee_per_gas]</c>,
 /// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
@@ -39,6 +39,9 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        // The type byte alone: there is no payload header to read.
+        if (decoderContext.Position >= decoderContext.Length) ThrowTruncatedPayload();
+
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             if (IsNetworkWrapper(ref decoderContext))
@@ -55,6 +58,10 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
 
         DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowShortFeeList() =>
+        throw new RlpException($"{nameof(TxType.FrameTx)} fees must hold two items");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
@@ -115,20 +122,33 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     private static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
         RlpBehaviors rlpBehaviors)
     {
+        ThrowIfNextItemTruncated(ref decoderContext);
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
         transaction.ChainId = decoderContext.DecodeULong();
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
-        transaction.Nonce = decoderContext.DecodeULong();
+        ThrowIfNextItemTruncated(ref decoderContext);
+        decoderContext.Position = DecodeNonce(new LiteRlpReader(decoderContext.Data), decoderContext.Position, out ulong nonce);
+        transaction.Nonce = nonce;
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.SenderAddress = decoderContext.DecodeAddress();
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance,
             limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
+        ThrowIfNextItemTruncated(ref decoderContext);
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
+        ThrowIfNextItemTruncated(ref decoderContext);
+        transaction.MaxFee = decoderContext.DecodeUInt256();
+        if (decoderContext.Position >= feesCheck) ThrowShortFeeList();
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
-        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        transaction.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(transaction.MaxFee, FrameTxValidation.TotalGasLimit(transaction.Frames));
+        transaction.MaxFeePerBlobGas = null;
         decoderContext.Check(feesCheck);
+        ThrowIfNextItemTruncated(ref decoderContext);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
 
         // A frame transaction has no gas_limit field; GasLimit carries the sum of frame gas limits so pre-execution
@@ -204,9 +224,8 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
         writer.StartSequence(GetFeesContentLength(transaction));
+        writer.Encode(transaction.MaxFee);
         writer.Encode(transaction.GasPrice);
-        writer.Encode(transaction.DecodedMaxFeePerGas);
-        writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
         EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
     }
 
@@ -249,9 +268,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     }
 
     private static int GetFeesContentLength(Transaction transaction) =>
-        Rlp.LengthOf(transaction.GasPrice)
-        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        Rlp.LengthOf(transaction.MaxFee) + Rlp.LengthOf(transaction.GasPrice);
 
     private static int GetContentLength(Transaction transaction, bool forSigning) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
@@ -277,6 +294,24 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTruncatedPayload() =>
         throw new RlpException("RLP data is truncated: frame transaction payload is incomplete.");
+
+    /// <summary>Throws the truncation error unless the next item, header and content, lies inside the bytes the
+    /// reader holds.</summary>
+    /// <remarks>Called before each read of a frame transaction field, so input that ends early is reported as
+    /// truncated. Without it most such reads index past the end of the buffer, and the index exception reaches the
+    /// caller as the generic <c>Cannot decode stream of</c> error that any decoder indexing bug also raises; a byte
+    /// string instead fails its length guard, <c>Collection count ... bytes left</c>. A long-form header whose length
+    /// bytes or content run past the end is already refused by <see cref="RlpReader.PeekNextRlpLength"/> with the
+    /// same "RLP data is truncated" wording.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ThrowIfNextItemTruncated(ref RlpReader decoderContext)
+    {
+        int position = decoderContext.Position;
+        if (position >= decoderContext.Length || decoderContext.PeekNextRlpLength() > decoderContext.Length - position)
+        {
+            ThrowTruncatedPayload();
+        }
+    }
 }
 
 /// <summary>
@@ -328,6 +363,7 @@ public static class FrameTxNonceCalldata
                 decoderContext.GuardLimit(count + 1, KeysCountLimit);
             }
 
+            FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
             buffer[count++] = decoderContext.DecodeUInt256();
         }
 
@@ -357,18 +393,29 @@ public static class FrameTxNonceCalldata
         return contentLength;
     }
 
-    /// <summary>Zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, measured off the encoded
-    /// bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <summary>Zero and non-zero byte counts of the priced part of what <see cref="Encode{TWriter}"/> writes,
+    /// measured off the encoded bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
+    /// <remarks>A non-empty key set with <see cref="Eip8250Constants.MaxNonceSeq"/> prices only the keys: the
+    /// single-use sequence is encoded and signed but exempt from data pricing.</remarks>
     public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
     {
-        int length = Length(transaction);
+        bool isSequencePriced = transaction.NonceKeys is not { Length: > 0 } || transaction.Nonce != Eip8250Constants.MaxNonceSeq;
+        int length = isSequencePriced ? Length(transaction) : KeysLength(transaction.NonceKeys!);
         // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
         // public: the keys can reach it from an RPC-built transaction the decoder never bounded.
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
         Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
-        Encode(transaction, ref writer);
+        if (isSequencePriced)
+        {
+            Encode(transaction, ref writer);
+        }
+        else
+        {
+            EncodeKeys(transaction.NonceKeys!, ref writer);
+        }
+
         int zeros = calldata.CountZeros();
         return (zeros, length - zeros);
     }

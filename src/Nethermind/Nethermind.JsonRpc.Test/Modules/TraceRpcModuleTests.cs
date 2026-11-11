@@ -193,6 +193,34 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_executes_empty_contract_creation(
+        [Values("trace_call", "trace_callMany")] string method, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object transaction = new { from = TestItem.AddressA, gas = "0x186a0", input = "0x" };
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [transaction, traceTypes, "latest"]
+            : [new[] { new object[] { transaction, traceTypes } }, "latest"];
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JToken? result = method == "trace_call" ? json["result"] : json["result"]?[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)result?["output"], Is.EqualTo("0x"), response);
+            Assert.That((JArray?)result?["trace"], Has.Count.EqualTo(1), response);
+            Assert.That((string?)result?["trace"]?[0]?["type"], Is.EqualTo("create"), response);
+            Assert.That((string?)result?["trace"]?[0]?["result"]?["code"], Is.EqualTo("0x"), response);
+            Assert.That((string?)result?["trace"]?[0]?["result"]?["gasUsed"], Is.EqualTo("0x0"), response);
+            Assert.That(result?["trace"]?[0]?["error"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Trace_call_rejects_a_chain_id_for_another_chain_as_invalid_params(
         [Values("trace_call", "trace_callMany")] string method, [Values("0x0", "0x2")] string type, [Values] bool matching)
     {
@@ -228,12 +256,12 @@ public class TraceRpcModuleTests
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong chainId = blockchain.BlockTree.ChainId;
         string otherChainId = $"0x{chainId + 1:x}";
-        // A creation without data fails conversion, and block 0x100000 does not exist.
+        // Conflicting fee styles fail conversion, and block 0x100000 does not exist.
         object[] parameters = method == "trace_call"
-            ? [new { from = TestItem.AddressA, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" }, blockParameter]
+            ? [new { from = TestItem.AddressA, gas = "0x186a0", gasPrice = "0x1", maxFeePerGas = "0x2", chainId = otherChainId }, new[] { "trace" }, blockParameter]
             : [new[]
             {
-                new object[] { new { from = TestItem.AddressA, gas = "0x186a0" }, new[] { "trace" } },
+                new object[] { new { from = TestItem.AddressA, gas = "0x186a0", gasPrice = "0x1", maxFeePerGas = "0x2" }, new[] { "trace" } },
                 new object[] { new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" } },
             }, blockParameter];
 
@@ -1786,7 +1814,9 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(transaction2);
 
         IEnumerable<ParityTxTraceFromStore> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!).Data!;
+#pragma warning disable NUnit2045 // Check the trace count before accessing its elements.
         Assert.That(System.Linq.Enumerable.Count(traces), Is.EqualTo(3));
+#pragma warning restore NUnit2045
         Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
 
         using ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction2.Hash!, [0]);
@@ -1831,7 +1861,9 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
         IEnumerable<ParityTxTraceFromStore> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!).Data!;
+#pragma warning disable NUnit2045 // Check the trace count before accessing its elements.
         Assert.That(System.Linq.Enumerable.Count(traces), Is.EqualTo(3));
+#pragma warning restore NUnit2045
         Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
         string serialized = new EthereumJsonSerializer().Serialize(traces);
 
@@ -2338,8 +2370,11 @@ public class TraceRpcModuleTests
 
     private static void AssertTracedFromAddressA(ResultWrapper<ParityTxTraceFromReplay> traces)
     {
-        Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success), traces.Result.Error);
-        Assert.That(traces.Data?.Action?.From, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success), traces.Result.Error);
+            Assert.That(traces.Data?.Action?.From, Is.EqualTo(TestItem.AddressA));
+        }
     }
 
     private static async Task<JToken> TraceRawSerialized(Context context, Transaction transaction) =>
@@ -3073,7 +3108,9 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(transaction1, transaction2);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
+#pragma warning disable NUnit2045 // Check the trace count before accessing its elements.
         Assert.That(System.Linq.Enumerable.Count(traces.Data), Is.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(traces.Data.ElementAt(0).Action!.From, Is.EqualTo(traces.Data.ElementAt(1).Action!.From));
         string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
         Assert.That(serialized, Is.EqualTo("[{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"init\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"code\":\"0x\",\"gasUsed\":\"0x79\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"gas\":\"0x9988\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0x8513c9083ec27fa8e3ca7e3ffa732d61562e2d17e2e1af6e773bc810dc4c3452\",\"vmTrace\":null},{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"gas\":\"0x9c70\",\"init\":\"0x60006000600060006000730ffd3e46594919c04bcfd4e146203c825567082861c350f1\",\"value\":\"0x1\"},\"result\":{\"address\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"code\":\"0x\",\"gasUsed\":\"0xa3d\"},\"subtraces\":1,\"traceAddress\":[],\"type\":\"create\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"gas\":\"0x8feb\",\"input\":\"0x\",\"to\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}],\"transactionHash\":\"0xa6a56c7927deae778a749bcdab7bbf409c0d8a5d2420021a3ba328240ae832d8\",\"vmTrace\":null}]"));
@@ -3192,6 +3229,13 @@ public class TraceRpcModuleTests
         """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
+        "Uses storage diff from state override",
+        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x60fe47b1112233445566778899001122334455667788990011223344556677889900112233445566778899001122","gas":"0xf4240"}""",
+        "stateDiff",
+        """{"0xc200000000000000000000000000000000000000":{"stateDiff": {"0x0000000000000000000000000000000000000000000000000000000000000000": "0x0000000000000000000000000000000000000000000000000000000000123456"}, "code":"0x6080604052348015600e575f80fd5b50600436106030575f3560e01c80632a1afcd914603457806360fe47b114604d575b5f80fd5b603b5f5481565b60405190815260200160405180910390f35b605c6058366004605e565b5f55565b005b5f60208284031215606d575f80fd5b503591905056fea2646970667358221220fd4e5f3894be8e57fc7460afebb5c90d96c3486d79bf47b00c2ed666ab2f82b364736f6c634300081a0033"}}""",
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
+    )]
+    [TestCase(
         "Executes precompile using overridden address",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0x0000000000000000000000000000000000123456","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055","gas":"0xf4240"}""",
         "trace",
@@ -3205,6 +3249,7 @@ public class TraceRpcModuleTests
 
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_call", transaction, new[] { traceType }, "latest", stateOverride);
@@ -3271,6 +3316,45 @@ public class TraceRpcModuleTests
         }
     }
 
+    [TestCase("latest", false, "trace")]
+    [TestCase("latest", true, "trace")]
+    [TestCase("latest", false, "bogus")]
+    [TestCase("0x1000", false, "trace")]
+    public async Task Trace_call_rejects_conflicting_storage_overrides_after_the_header_lookup(string block, bool tipAboveFeeCap, string traceType)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Dictionary<string, object> call = new() { ["from"] = TestItem.AddressA.ToString(), ["to"] = TestItem.AddressC.ToString(), ["gas"] = "0x5208" };
+        if (tipAboveFeeCap)
+        {
+            call["maxFeePerGas"] = "0x1";
+            call["maxPriorityFeePerGas"] = "0x2";
+        }
+
+        // The higher address goes first: the error names the lowest conflicting one.
+        Address lower = new("0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f");
+        object conflict = new { state = new { }, stateDiff = new { } };
+        Dictionary<string, object> stateOverride = new() { ["0xc200000000000000000000000000000000000000"] = conflict, [lower.ToString()] = conflict };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { traceType }, block, stateOverride);
+
+        JToken? error = JToken.Parse(response)["error"];
+        if (block == "latest")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"account {lower.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"), response);
+            }
+        }
+        else
+        {
+            JToken? headerError = JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, block))["error"];
+            Assert.That(error, Is.Not.Null.And.EqualTo(headerError).Using(JToken.EqualityComparer), response);
+        }
+    }
+
     [Test]
     public async Task Trace_call_caps_gas_to_gas_cap()
     {
@@ -3319,9 +3403,12 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> explicitGasCapTraces = TraceCallMany(context, gas: gasCap);
 
-        Assert.That(omittedGasTraces.Result.Error, Is.Null);
-        Assert.That(explicitGasCapTraces.Result.Error, Is.Null);
-        Assert.That(omittedGasTraces.Data.Single().Action!.Gas, Is.EqualTo(explicitGasCapTraces.Data.Single().Action!.Gas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(omittedGasTraces.Result.Error, Is.Null);
+            Assert.That(explicitGasCapTraces.Result.Error, Is.Null);
+            Assert.That(omittedGasTraces.Data.Single().Action!.Gas, Is.EqualTo(explicitGasCapTraces.Data.Single().Action!.Gas));
+        }
     }
 
     [Test]
@@ -3445,7 +3532,9 @@ public class TraceRpcModuleTests
         }
         else
         {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(response.TryGetProperty("result", out JsonElement result), Is.True, serialized);
+#pragma warning restore NUnit2045
             Assert.That(result.GetProperty("trace")[0].GetProperty("action").GetProperty("gas").GetString(),
                 Is.EqualTo("0x13498")); // 100,000 signed gas minus 21,000 intrinsic gas.
         }
@@ -3800,8 +3889,11 @@ public class TraceRpcModuleTests
             byte[] frameCode = Bytes.FromHexString((string)frame["code"]!);
             foreach (JToken op in frame["ops"]!)
             {
-                Assert.That(((JObject)op).Properties().Select(static p => p.Name), Is.EquivalentTo(new[] { "pc", "cost", "op", "ex", "sub" }), op.ToString());
-                Assert.That((string?)op["op"], Is.EqualTo(OpcodeJsonNames.GetName((Instruction)frameCode[(int)op["pc"]!])), op.ToString());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(((JObject)op).Properties().Select(static p => p.Name), Is.EquivalentTo(new[] { "pc", "cost", "op", "ex", "sub" }), op.ToString());
+                    Assert.That((string?)op["op"], Is.EqualTo(OpcodeJsonNames.GetName((Instruction)frameCode[(int)op["pc"]!])), op.ToString());
+                }
                 if (op["sub"]!.Type == JTokenType.Object) AssertOperationsNameTheirOpcode(op["sub"]!);
             }
         }
@@ -3857,8 +3949,11 @@ public class TraceRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
         JToken bufferedTrace = JToken.Parse(buffered);
-        Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![7]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
-        Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![7]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
+            Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
@@ -3913,10 +4008,10 @@ public class TraceRpcModuleTests
             IReadOnlyCollection<ParityLikeTxTrace> traces = Substitute.For<IReadOnlyCollection<ParityLikeTxTrace>, IDisposable>();
             traces.GetEnumerator().Returns(_ => new List<ParityLikeTxTrace> { new() }.GetEnumerator());
 
-            Assert.Throws<OperationCanceledException>(() => tracer.WriteTraces(traces));
+            Assert.Throws<OperationCanceledException>(() => tracer.Write(traces));
             ((IDisposable)traces).Received(1).Dispose();
             return Task.CompletedTask;
-        })).SetName("WriteTraces: disposes the traces when writing them is cancelled");
+        })).SetName("Write: disposes the traces when writing them is cancelled");
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]

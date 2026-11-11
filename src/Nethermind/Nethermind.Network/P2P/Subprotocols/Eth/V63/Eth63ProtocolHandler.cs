@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -51,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             switch (message.PacketType)
             {
@@ -59,8 +58,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.Receipts:
-                    ThrowIfReceiptsExceedRequest(message.Content, null, _receiptsRequests.GetPendingRequest());
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    ThrowIfReceiptsExceedRequest(message.Content.Span, null, _receiptsRequests.GetPendingRequest());
+                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     return true;
@@ -68,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.NodeData:
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     return true;
@@ -87,7 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return response;
         }
@@ -138,7 +137,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         /// <param name="content">The encoded response.</param>
         /// <param name="fieldsBeforeReceipts">See <see cref="ReceiptsResponseBudget.ThrowIfExceeded"/>.</param>
         /// <param name="request">The request the response answers.</param>
-        protected static void ThrowIfReceiptsExceedRequest(IByteBuffer content, int? fieldsBeforeReceipts, GetReceiptsMessage request) =>
+        protected static void ThrowIfReceiptsExceedRequest(ReadOnlySpan<byte> content, int? fieldsBeforeReceipts, GetReceiptsMessage request) =>
             ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span);
 
         protected virtual Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -361,5 +362,18 @@ public static class BaseTriePersistence
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
                 : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            path.Length switch
+            {
+                <= StateNodesTopThreshold => stateTopNodes.TryGet(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags, action, arg),
+                <= ShortenedPathThreshold => stateNodes.TryGet(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags, action, arg),
+                _ => fallbackNodes.TryGet(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags, action, arg)
+            };
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            path.Length <= ShortenedPathThreshold
+                ? storageNodes.TryGet(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags, action, arg)
+                : fallbackNodes.TryGet(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags, action, arg);
     }
 }

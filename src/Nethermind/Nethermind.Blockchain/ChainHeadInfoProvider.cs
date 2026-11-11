@@ -47,6 +47,7 @@ namespace Nethermind.Blockchain
             _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
+            _blockTree = blockTree;
             Block? head = blockTree.Head;
             HeadNumber = head?.Number ?? 0;
             HeadTimestamp = head?.Timestamp ?? 0;
@@ -54,7 +55,6 @@ namespace Nethermind.Blockchain
             // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
-            _blockTree = blockTree;
             blockTree.BlockAddedToMain += OnHeadChanged;
             blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
         }
@@ -128,9 +128,14 @@ namespace Nethermind.Blockchain
             IReleaseSpec spec = SpecProvider.GetSpec(header);
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
-            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
+            BlockHeader? previous = header.ParentHash is { } parentHash
+                ? _blockTree.FindHeader(parentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                : null;
+            ulong timestamp = BaseFeeCalculator.GetPredictionTimestamp(header, previous,
+                (_slots ??= SpecProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(header.Timestamp));
+            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, timestamp);
             NextBaseFee = childSpec.IsEip1559Enabled
-                ? BaseFeeCalculator.CalculateForNextSlot(header, (_slots ??= SpecProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(header.Timestamp), childSpec)
+                ? BaseFeeCalculator.CalculateForPrediction(header, previous, timestamp, childSpec)
                 : UInt256.Zero;
             CurrentFeePerBlobGas =
                 BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)

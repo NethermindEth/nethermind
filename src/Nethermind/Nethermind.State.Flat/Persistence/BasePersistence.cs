@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -70,6 +71,13 @@ public static class BasePersistence
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
     private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
     private static readonly byte[] SnapCheckpointKey = Keccak.Compute("SnapCheckpoint").BytesToArray();
+
+    /// <summary>Key of the sentinel saved in the account column with a snap sync checkpoint, see <see cref="HasSnapCheckpointSentinel"/>.</summary>
+    /// <remarks>
+    /// No account key is a single byte, and this one sorts before all of them in the first column a wipe goes through,
+    /// so the first batch any older version's wipe commits deletes it.
+    /// </remarks>
+    private static readonly byte[] SnapCheckpointSentinelKey = [0];
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -238,16 +246,40 @@ public static class BasePersistence
     /// <summary>Reads the snap sync checkpoint saved by <see cref="WriteSnapCheckpoint"/>, or <c>null</c> when there is none.</summary>
     internal static byte[]? ReadSnapCheckpoint(IReadOnlyKeyValueStore metadata) => metadata.Get(SnapCheckpointKey) is { Length: > 0 } record ? record : null;
 
+    /// <summary>Whether the sentinel saved with the snap sync checkpoint is still there, so no wipe has run since it was saved.</summary>
+    /// <remarks>
+    /// Versions that predate the checkpoint wipe every column but the metadata, so they leave the checkpoint behind
+    /// over data it no longer describes, while they do delete the sentinel.
+    /// </remarks>
+    internal static bool HasSnapCheckpointSentinel(IColumnsDb<FlatDbColumns> db) =>
+        db.GetColumnDb(FlatDbColumns.Account).Get(SnapCheckpointSentinelKey) is not null;
+
     /// <summary>Durably saves the snap sync checkpoint, or deletes it when <paramref name="record"/> is <c>null</c>. A wipe deletes it too.</summary>
+    /// <remarks>The sentinel is made durable before the checkpoint and deleted after it, so a checkpoint is never without it unless a wipe took it.</remarks>
     internal static void WriteSnapCheckpoint(IColumnsDb<FlatDbColumns> db, byte[]? record)
     {
         IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-        if (record is null) metadata.Remove(SnapCheckpointKey);
-        else metadata.PutSpan(SnapCheckpointKey, record);
+        IDb accounts = db.GetColumnDb(FlatDbColumns.Account);
+        if (record is null)
+        {
+            metadata.Remove(SnapCheckpointKey);
+            metadata.FlushOrThrow();
+            accounts.Remove(SnapCheckpointSentinelKey);
+            return;
+        }
+
+        accounts.PutSpan(SnapCheckpointSentinelKey, [1]);
+        accounts.FlushOrThrow();
+        metadata.PutSpan(SnapCheckpointKey, record);
         metadata.FlushOrThrow();
     }
 
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    /// <remarks>
+    /// A column that can remove a key range is first dropped with a single range deletion and the files it held are given
+    /// back, so the key-by-key pass over it only meets the keys left in files that could not be given back. That pass is
+    /// still needed: tailing iterators ignore range deletions.
+    /// </remarks>
     public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
@@ -261,6 +293,9 @@ public static class BasePersistence
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
             batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
+            // Range deletions bypass the batch.
+            batch = CommitAndStartNext(db, batch);
+            RemoveRangeRemovableColumns(db);
 
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -275,9 +310,7 @@ public static class BasePersistence
                     batch.GetColumnBatch(column).Remove(key);
                     if (++count == batchSize)
                     {
-                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
-                        batch.Dispose(); // commit the chunk
-                        batch = next;
+                        batch = CommitAndStartNext(db, batch);
                         count = 0;
                     }
                 }
@@ -289,6 +322,40 @@ public static class BasePersistence
         finally
         {
             batch.Dispose();
+        }
+    }
+
+    private static IColumnsWriteBatch<FlatDbColumns> CommitAndStartNext(IColumnsDb<FlatDbColumns> db, IColumnsWriteBatch<FlatDbColumns> batch)
+    {
+        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+        batch.Dispose();
+        return next;
+    }
+
+    private static void RemoveRangeRemovableColumns(IColumnsDb<FlatDbColumns> db)
+    {
+        // Longer than any flat key, so every key sorts below it.
+        Span<byte> aboveEveryKey = stackalloc byte[64];
+        aboveEveryKey.Fill(0xFF);
+        bool anyRemoved = false;
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+            {
+                rangeRemovable.RemoveRange([], aboveEveryKey);
+                anyRemoved = true;
+            }
+        }
+
+        if (!anyRemoved) return;
+
+        // Files may only go once the wipe marker and the range deletions are durable: a crash losing those would leave
+        // the state pointer over a state whose files are gone.
+        db.GetColumnDb(FlatDbColumns.Metadata).SyncWal();
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+                rangeRemovable.ReclaimRange([0], aboveEveryKey);
         }
     }
 
@@ -494,6 +561,14 @@ public static class BasePersistence
     {
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+        /// <remarks><paramref name="action"/> runs synchronously, at most once, and only when the node is found.</remarks>
+        /// <returns>Whether the node was found and passed.</returns>
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the node at <paramref name="path"/> in the storage trie of <paramref name="address"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
+        /// <inheritdoc cref="TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
     }
 
     public interface ITrieWriteBatch
@@ -834,6 +909,12 @@ public static class BasePersistence
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStateRlp(path, flags, action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            _trieReader.TryLoadStorageRlp(address, path, flags, action, arg);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

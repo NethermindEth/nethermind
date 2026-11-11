@@ -44,9 +44,12 @@ public class XdcProtocolVersionTests
     {
         using Peer peer = Peer.Create(version);
 
-        Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
-        Assert.That(peer.Handler.Name, Is.EqualTo(name));
-        Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Handler.ProtocolVersion, Is.EqualTo(version));
+            Assert.That(peer.Handler.Name, Is.EqualTo(name));
+            Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
+        }
     }
 
     [Test]
@@ -68,7 +71,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
 
         Vote vote = new(new BlockRoundInfo(TestItem.KeccakA, 5, 100), 0, new Signature(new byte[64], 0));
-        peer.Serializer.Deserialize<VoteMsg>(Arg.Any<IByteBuffer>()).Returns(new VoteMsg { Vote = vote });
+        peer.Serializer.Deserialize<VoteMsg>(Arg.Any<ZeroPacket>()).Returns(new VoteMsg { Vote = vote });
 
         peer.Receive(XdcMessageCode.VoteMsg);
 
@@ -93,7 +96,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
         peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
-        peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<IByteBuffer>())
+        peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<ZeroPacket>())
             .Returns(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));
 
         peer.Receive(XdcMessageCode.NewPooledTransactionHashes);
@@ -181,13 +184,13 @@ public class XdcProtocolVersionTests
 
         public void ReceiveStatus()
         {
-            Serializer.Deserialize<StatusMessage>(Arg.Any<IByteBuffer>()).Returns(new StatusMessage());
+            Serializer.Deserialize<StatusMessage>(Arg.Any<ZeroPacket>()).Returns(new StatusMessage());
             Receive(Eth62MessageCode.Status);
         }
 
         public void Receive(int packetType)
         {
-            ZeroPacket packet = new(Unpooled.Buffer()) { PacketType = (byte)packetType };
+            NettyBufferPacket packet = new(Unpooled.Buffer()) { PacketType = (byte)packetType };
             Handler.HandleMessage(packet);
         }
 

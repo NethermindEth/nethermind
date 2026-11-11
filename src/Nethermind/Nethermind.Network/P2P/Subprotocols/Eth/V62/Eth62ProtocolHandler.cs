@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void Init()
         {
-            if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node?.ToString("c"):hide}");
 
             if (SyncServer.Head is null)
             {
@@ -113,7 +113,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             bool CanAcceptBlockGossip()
             {
@@ -139,7 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 case Eth62MessageCode.Status:
                     {
-                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message);
                         ReportIn(statusMsg, size);
                         Handle(statusMsg);
                         return true;
@@ -147,7 +147,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlockHashes:
                     if (CanAcceptBlockGossip())
                     {
-                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
+                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message);
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
@@ -179,7 +179,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockHeaders:
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     return true;
@@ -187,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockBodies:
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     return true;
@@ -256,21 +256,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             where T : P2PMessage
         {
             message = null;
-            RlpReader ctx = new(packet.Content.AsSpan());
+            RlpReader ctx = new(packet.Content.Span);
             if (typeof(T) == typeof(V66.Messages.PooledTransactionsMessage))
             {
                 ctx.ReadSequenceLength();
                 ctx.DecodeLong();
             }
             int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx, out _);
-            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, transactionCount);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.Length, transactionCount);
             if (reservation is null)
             {
                 // Locally discarded responses cannot be judged for usefulness. As with scheduler rejection,
                 // resetting both sampling windows avoids false penalties but also discards unrelated evidence.
                 if (pooledResponse)
                     IgnorePooledTransactionResponse();
-                ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);
+                ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.Length);
                 return false;
             }
 
@@ -279,7 +279,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 // Pooled responses keep every item: the flood controller and announcement checks judge the response as sent.
                 using (TransactionsMessageSerializer.SkipKnown(typeof(T) == typeof(TransactionsMessage) ? this : null))
                 {
-                    message = Deserialize<T>(packet.Content);
+                    message = Deserialize<T>(packet);
                 }
                 TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);
@@ -448,7 +448,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
             // copy on its own, as the sparse path does. Done before the only submission, since a rejected owned tx
             // has its sidecar buffers returned to the pool.
-            if (tx.SupportsBlobs && tx.Hash is { } hash)
+            if (tx.CarriesBlobs && tx.Hash is { } hash)
             {
                 _txPool.ForgetInvalidBlobProofs(hash);
             }
@@ -462,7 +462,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
-            void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+            void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node?.ToString("c"):hide} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
 
         protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
@@ -486,7 +486,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
             catch (Exception e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
+                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node?.ToString("c"):hide} failed: {e.Message:hide}");
                 throw;
             }
 
@@ -546,7 +546,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
             }
 
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node?.ToString("c"):hide}");
 
             NewBlockMessage msg = new() { Block = block, TotalDifficulty = block.TotalDifficulty.Value };
 
@@ -555,7 +555,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void HintNewBlock(Hash256 blockHash, ulong number)
         {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node?.ToString("c"):hide}");
 
             NewBlockHashesMessage msg = new((blockHash, number));
             Send(msg);

@@ -58,6 +58,30 @@ namespace Ethereum.Test.Base
             return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo) * 1000);
         }
 
+        /// <summary>
+        /// Reads the terminal total difficulty of a retesteth <c>AtDiff</c> transition, such as <c>DiffC0000</c> in
+        /// <c>ArrowGlacierToParisAtDiffC0000</c>: hex digits without a <c>0x</c> prefix.
+        /// </summary>
+        /// <exception cref="FormatException">The suffix starts with <c>Diff</c> but is not followed by hex digits.</exception>
+        private static bool TryParseTerminalTotalDifficulty(string transitionInfo, out UInt256 terminalTotalDifficulty)
+        {
+            const string totalDifficultyPrefix = "Diff";
+            terminalTotalDifficulty = default;
+            if (!transitionInfo.StartsWith(totalDifficultyPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string digits = transitionInfo[totalDifficultyPrefix.Length..];
+            if (digits.Length == 0 || digits.Length > 64 || !digits.All(Uri.IsHexDigit))
+            {
+                throw new FormatException($"Total difficulty transition '{transitionInfo}' is not 'Diff' followed by hex digits.");
+            }
+
+            terminalTotalDifficulty = UInt256.Parse(digits, NumberStyles.HexNumber);
+            return true;
+        }
+
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
         {
             if (headerJson is null)
@@ -380,6 +404,7 @@ namespace Ethereum.Test.Base
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
+                TransitionTerminalTotalDifficulty = testJson.TransitionTerminalTotalDifficulty,
                 LastBlockHash = new Hash256(testJson.LastBlockHash),
                 GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp)),
                 GenesisBlockHeader = testJson.GenesisBlockHeader,
@@ -502,12 +527,17 @@ namespace Ethereum.Test.Base
                 testSpec.EthereumNetwork = WithZeroNonceStorageAccounts(LoadSpec(networks[0], testSpec.Config?.BlobSchedule), testSpec.Config);
                 if (transitionInfo.Length > 1)
                 {
-                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(networks[1], testSpec.Config?.BlobSchedule), testSpec.Config);
+                    if (TryParseTerminalTotalDifficulty(transitionInfo[1], out UInt256 terminalTotalDifficulty))
+                        testSpec.TransitionTerminalTotalDifficulty = terminalTotalDifficulty;
+                    else
+                        testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
+                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
-                testsByName.Add(Convert(name, category, testSpec));
+                BlockchainTest test = Convert(name, category, testSpec);
+                test.FixtureId = testName;
+                testsByName.Add(test);
             }
 
             return testsByName;
@@ -519,9 +549,28 @@ namespace Ethereum.Test.Base
         private static ulong LoadChainId(ConfigJson? config) =>
             config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);
 
+        /// <summary>The full name of the fork a transition network named <c>{from}To{to}</c> moves to.</summary>
+        /// <remarks>A transition into a BPO scenario of <paramref name="from"/> drops that fork's prefix, as in
+        /// <c>AmsterdamToBPOIncreaseAtTime15k</c>, while its blob schedule stays keyed by the full name.</remarks>
+        private static string TransitionTarget(string from, string to) =>
+            to is BpoIncreaseScenario or BpoDecreaseScenario ? from + to : to;
+
+        /// <remarks>
+        /// EEST derives a <c>{Fork}BPOIncrease</c> and a <c>{Fork}BPODecrease</c> from every fork from Amsterdam on.
+        /// Each keeps the rules of its fork and only changes the blob schedule, which the fixture carries.
+        /// </remarks>
+        private static IReleaseSpec ParseSpec(string name) =>
+            SpecNameParser.Parse(ForkAliases.Resolve(
+                name.EndsWith(BpoIncreaseScenario, StringComparison.Ordinal) ? name[..^BpoIncreaseScenario.Length]
+                : name.EndsWith(BpoDecreaseScenario, StringComparison.Ordinal) ? name[..^BpoDecreaseScenario.Length]
+                : name));
+
+        private const string BpoIncreaseScenario = "BPOIncrease";
+        private const string BpoDecreaseScenario = "BPODecrease";
+
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            IReleaseSpec spec = ParseSpec(name);
             // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
@@ -531,7 +580,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
+                IReleaseSpec spec = ParseSpec(key.Name);
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

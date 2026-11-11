@@ -103,7 +103,8 @@ public partial class EthRpcModuleTests
     [TestCase(12UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_one_slot_before_fork")]
     [TestCase(13UL, 30_000_000UL, 100UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_more_than_a_slot_before_fork")]
     [TestCase(0UL, 30_000_000UL, null, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_without_slot_number")]
-    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, ulong? slotNumber, string expected)
+    [TestCase(0UL, 30_000_000UL, 100UL, "0x4180c5fd", 19UL, 2UL, TestName = "Eth_baseFee_Eip8198_observed_fractional_spacing")]
+    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, ulong? slotNumber, string expected, ulong secondsElapsed = 0, ulong slotsElapsed = 0)
     {
         const ulong forkTimestamp = 1_000;
         ISpecProvider specProvider = new CustomSpecProvider(
@@ -115,7 +116,14 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(specProvider);
         Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
             .WithGasLimit(30_000_000).WithGasUsed(gasUsed).WithSlotNumber(slotNumber).TestObject;
-        BlockTree blockTree = Build.A.BlockTree(head).WithBlocks(head).TestObject;
+        Block genesis = head;
+        if (secondsElapsed > 0)
+        {
+            genesis = Build.A.Block.WithNumber(0).WithTimestamp(head.Timestamp - secondsElapsed).WithSlotNumber(slotNumber - slotsElapsed).TestObject;
+            head = Build.A.Block.WithParent(genesis).WithTimestamp(head.Timestamp).WithBaseFeePerGas(1_000_000_000)
+                .WithGasLimit(30_000_000).WithGasUsed(gasUsed).WithSlotNumber(slotNumber).TestObject;
+        }
+        BlockTree blockTree = Build.A.BlockTree(genesis).WithBlocks(secondsElapsed > 0 ? [genesis, head] : [head]).TestObject;
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
 
         string result = await ctx.Test.TestEthRpc("eth_baseFee");
@@ -143,7 +151,7 @@ public partial class EthRpcModuleTests
         Assert.That(result, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
     }
 
-    [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
+    [TestCase(true, "0x4")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Floor: base fee 3 + min gas price 1 | Result: 4 (0x4)
     [TestCase(false, "0x2")] //Gas Prices: 0,1,1,2,2,3 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 2 (0x2)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
     {

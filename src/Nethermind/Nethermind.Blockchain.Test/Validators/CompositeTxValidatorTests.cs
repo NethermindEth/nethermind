@@ -34,8 +34,11 @@ public class CompositeTxValidatorTests
             .IsWellFormed(Build.A.Transaction.TestObject, Osaka.Instance, BlockGasLimit, Options);
 
         string[] expectedCalls = new[] { "first", "second", "third" }.Take(failing + 1).ToArray();
-        Assert.That(calls, Is.EqualTo(expectedCalls));
-        Assert.That(result.Error, Is.EqualTo(failing < validators.Length ? expectedCalls[^1] : null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(expectedCalls));
+            Assert.That(result.Error, Is.EqualTo(failing < validators.Length ? expectedCalls[^1] : null));
+        }
     }
 
     /// <summary>Implements only the two-argument overload, which the composite reaches through the interface defaults.</summary>

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -14,21 +13,21 @@ namespace Nethermind.Consensus.Transactions
     /// </param>
     public class BaseFeeTxFilter(SlotSchedule? slots = null) : ITxFilter
     {
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, in TxFilterContext context)
         {
-            bool isEip1559Enabled = spec.IsEip1559Enabled;
+            bool isEip1559Enabled = context.Spec.IsEip1559Enabled;
 
             if (!isEip1559Enabled || tx.IsServiceTransaction)
             {
                 return AcceptTxResult.Accepted;
             }
 
-            UInt256 baseFee = BaseFeeCalculator.CalculateForNextSlot(parentHeader, slots, spec);
+            UInt256 baseFee = context.GetBaseFee(slots);
             bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.FeeTooLow.WithMessage(
-                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {parentHeader.Number + 1}");
+                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {context.Parent.Number + 1}");
         }
     }
 }

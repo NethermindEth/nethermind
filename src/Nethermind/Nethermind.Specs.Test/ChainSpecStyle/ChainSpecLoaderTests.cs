@@ -18,6 +18,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -25,6 +26,40 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [Parallelizable(ParallelScope.All)]
 public class ChainSpecLoaderTests
 {
+    [Test]
+    [NonParallelizable]
+    public void File_diagnostics_follow_sensitive_masking([Values] bool maskSensitiveData)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"private-chain-spec-{Guid.NewGuid():N}.json");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Specs", "genesis_test.json"), path);
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsInfo.Returns(true);
+            List<string> lines = [];
+            logger.When(log => log.Info(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
+            ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), new OneLoggerLogManager(new(logger)));
+
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
+
+            string displayedPath = maskSensitiveData ? "[redacted]" : path;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainSpec.ChainId, Is.EqualTo(22082));
+                Assert.That(lines, Does.Contain($"Did not find ChainSpec in embedded resources: {displayedPath}"));
+                Assert.That(lines, Does.Contain($"Loading ChainSpec from file: {displayedPath}"));
+                if (maskSensitiveData) Assert.That(lines, Has.None.Contains(path));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+            File.Delete(path);
+        }
+    }
+
     private static ChainSpec LoadChainSpec(string path)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -27,6 +28,12 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 {
     public UInt256 Calculate(BlockHeader parent, ulong timestamp, ulong? slotNumber, IEip1559Spec specFor1559)
     {
+        TryGetSlotSpacing(parent, timestamp, slotNumber, out ulong secondsElapsed, out ulong slotsElapsed);
+        return CalculateWithSpacing(parent, specFor1559, secondsElapsed, slotsElapsed);
+    }
+
+    internal UInt256 CalculateWithSpacing(BlockHeader parent, IEip1559Spec specFor1559, ulong secondsElapsed, ulong slotsElapsed)
+    {
         UInt256 expectedBaseFee = parent.BaseFeePerGas;
         if (specFor1559.IsEip1559Enabled)
         {
@@ -38,7 +45,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 
             UInt256 maxChangeNumerator = UInt256.One;
             UInt256 maxChangeDenominator = specFor1559.BaseFeeMaxChangeDenominator;
-            if (specFor1559.IsEip8198Enabled && TryGetSlotSpacing(parent, timestamp, slotNumber, out ulong secondsElapsed, out ulong slotsElapsed))
+            if (specFor1559.IsEip8198Enabled && secondsElapsed > 0 && slotsElapsed > 0)
             {
                 UInt256 referenceSeconds = (UInt256)Eip8198Constants.BaseFeeReferenceSlotSeconds * slotsElapsed;
                 maxChangeDenominator *= referenceSeconds;
@@ -120,6 +127,42 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 
 public static class BaseFeeCalculator
 {
+    /// <summary>Predicts the next timestamp from observed slot spacing, or the supplied fallback when spacing is unavailable.</summary>
+    public static ulong GetPredictionTimestamp(BlockHeader head, BlockHeader? previous, ulong fallbackTimestamp)
+    {
+        if (!TryGetObservedSpacing(head, previous, out ulong seconds, out ulong slots)) return fallbackTimestamp;
+
+        ulong duration = Math.Max(1, seconds / slots);
+        return ulong.MaxValue - head.Timestamp < duration ? ulong.MaxValue : head.Timestamp + duration;
+    }
+
+    /// <summary>Predicts the next base fee using the head's observed slot spacing under EIP-8198.</summary>
+    /// <remarks>The fee retains the exact seconds-to-slots ratio even when the predicted timestamp rounds down.</remarks>
+    public static UInt256 CalculateForPrediction(BlockHeader head, BlockHeader? previous, ulong predictedTimestamp, IEip1559Spec spec)
+    {
+        if (spec.IsEip8198Enabled && spec.BaseFeeCalculator is DefaultBaseFeeCalculator calculator
+            && TryGetObservedSpacing(head, previous, out ulong seconds, out ulong slots))
+            return calculator.CalculateWithSpacing(head, spec, seconds, slots);
+
+        return CalculateForNextSlot(head, predictedTimestamp, spec);
+    }
+
+    private static bool TryGetObservedSpacing(BlockHeader head, BlockHeader? previous, out ulong seconds, out ulong slots)
+    {
+        if (previous is not null && previous.Hash is not null && head.ParentHash == previous.Hash
+            && previous.Number < ulong.MaxValue && head.Number == previous.Number + 1
+            && head.Timestamp > previous.Timestamp && head.SlotNumber is { } slot
+            && previous.SlotNumber is { } previousSlot && slot > previousSlot)
+        {
+            seconds = head.Timestamp - previous.Timestamp;
+            slots = slot - previousSlot;
+            return true;
+        }
+
+        seconds = slots = 0;
+        return false;
+    }
+
     /// <summary>The base fee of <paramref name="header"/>, the child of <paramref name="parent"/>.</summary>
     public static UInt256 Calculate(BlockHeader parent, BlockHeader header, IEip1559Spec specFor1559) =>
         Calculate(parent, header.Timestamp, header.SlotNumber, specFor1559);
