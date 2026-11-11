@@ -116,7 +116,7 @@ internal static class SecuredTrieNodeValidator
         int children = 0;
         int slot = 0;
         // A branch only if an embedded child, a short list, stopped it there.
-        bool mayBeBranch = mismatch < length && (uint)(Unsafe.Add(ref node, mismatch) - 0xc1) < Hash256.Size - 2;
+        bool mayBeBranch = mismatch < length && IsEmbeddedChild(Unsafe.Add(ref node, mismatch));
         while (mayBeBranch && slot < BranchChildren && position < length)
         {
             if (!SkipHashOrEmpty(ref node, ref position, length, ref children))
@@ -124,7 +124,7 @@ internal static class SecuredTrieNodeValidator
                 // An embedded node, whose list encoding is shorter than a hash and decodes in full, as the spec decodes the
                 // whole parent.
                 int prefix = Unsafe.Add(ref node, position);
-                position = (uint)(prefix - 0xc1) < Hash256.Size - 2 ? ItemEnd(ref node, position, length) : -1;
+                position = IsEmbeddedChild(prefix) ? ItemEnd(ref node, position, length) : -1;
                 if (position < 0) break;
                 children++;
             }
@@ -177,6 +177,12 @@ internal static class SecuredTrieNodeValidator
         return true;
     }
 
+    /// <summary>Whether <paramref name="prefix"/> starts a list shorter than a hash: a child embedded in its parent.</summary>
+    /// <remarks>An empty list is one too. The spec's <c>_decode_child_ref</c> accepts it in the parent and rejects it only once an
+    /// operation reaches it, as a node of no items.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsEmbeddedChild(int prefix) => (uint)(prefix - 0xc0) < Hash256.Size - 1;
+
     /// <summary>Nonzero unless child <paramref name="index"/> of a full branch is a hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint NotHash(ref byte fullBranch, int index) => (uint)(Unsafe.Add(ref fullBranch, 3 + index * (1 + Hash256.Size)) ^ HashString);
@@ -195,7 +201,7 @@ internal static class SecuredTrieNodeValidator
         bool isValid = (flags & 2) != 0
             ? nibbles == remaining && child < 0xc0
             // A child reference that is a hash, or an embedded node shorter than one.
-            : nibbles > 0 && nibbles < remaining && (child == HashString || (uint)(child - 0xc1) < Hash256.Size - 2);
+            : nibbles > 0 && nibbles < remaining && (child == HashString || IsEmbeddedChild(child));
         if (!isValid) ThrowInvalidNode();
     }
 

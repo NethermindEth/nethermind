@@ -28,7 +28,8 @@ public class WitnessTrieValidationTests
     private static readonly byte[] AccountKey = Nibbles.BytesToNibbleBytes(Keccak.Compute(TestItem.AddressA.Bytes).Bytes);
     private static readonly StorageCell Cell = new(TestItem.AddressA, UInt256.One);
 
-    /// <remarks>The node sits in a branch slot no lookup reaches, so it is never checked.</remarks>
+    /// <remarks>The node sits in a branch slot no lookup reaches, so it is never checked. Another slot holds an empty list,
+    /// which the spec takes for an embedded node.</remarks>
     [TestCase(true, KeyNibbles + 1, TestName = "Leaf exceeding the key by a nibble")]
     [TestCase(true, 1, TestName = "Leaf short of the key")]
     [TestCase(false, 0, TestName = "Empty extension")]
@@ -37,7 +38,8 @@ public class WitnessTrieValidationTests
     {
         byte[] accountLeaf = AccountLeaf(0);
         byte[] unreachedNode = isLeaf ? Leaf(new byte[nibbles], StorageValue) : Extension(new byte[nibbles], AccountLeaf(0));
-        byte[] root = Branch((AccountKey[0], accountLeaf), (AccountKey[0] ^ 1, unreachedNode));
+        byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray,
+            (AccountKey[0], Reference(accountLeaf)), (AccountKey[0] ^ 1, Reference(unreachedNode)), (AccountKey[0] ^ 2, new Rlp([0xc0])));
 
         Assert.That(() => ReadBalance(root, accountLeaf, unreachedNode), Throws.Nothing);
     }
@@ -51,7 +53,9 @@ public class WitnessTrieValidationTests
         BranchWithListValue,
         BranchWithShortHashReference,
         ExtensionToLeaf,
+        HighFlagExtensionToLeaf,
         ExtensionToNothing,
+        EmptyListChild,
         OversizedEmbeddedChild,
         MalformedEmbeddedChild,
         HashReferenceToShortNode,
@@ -78,7 +82,11 @@ public class WitnessTrieValidationTests
             Malformation.BranchWithListValue => Hashed(BranchOfReferences(new Rlp([0xc1, 0x80]), (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
             Malformation.BranchWithShortHashReference => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
             Malformation.ExtensionToLeaf => Hashed(Extension(AccountKey[1..2], leaf), leaf),
+            // Flag nibble 5: an extension, as the spec reads only its two low bits.
+            Malformation.HighFlagExtensionToLeaf => Hashed(HighFlagExtension(AccountKey[1..2], leaf), leaf),
             Malformation.ExtensionToNothing => (new Rlp(Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), Rlp.OfEmptyByteArray).Bytes), []),
+            // Accepted in its parent, as an embedded node, but a node of no items once reached.
+            Malformation.EmptyListChild => (new Rlp([0xc0]), []),
             Malformation.OversizedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], new Rlp(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), sibling),
             // In a slot the read does not take: the spec decodes the whole branch.
             Malformation.MalformedEmbeddedChild => Hashed(BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, new Rlp([0xc1, 0x81]))), leaf),
@@ -91,12 +99,21 @@ public class WitnessTrieValidationTests
         };
         byte[] root = BranchOfReferences(Rlp.OfEmptyByteArray, (AccountKey[0], slotReference), (AccountKey[0] ^ 1, Reference(sibling)));
 
-        Assert.That(() => ReadBalance(root, [.. nodes, sibling]), malformation switch
-        {
-            Malformation.None => Throws.Nothing,
-            Malformation.InvalidRlp => Throws.Exception,
-            _ => Throws.TypeOf<TrieException>(),
-        });
+        Assert.That(() => ReadBalance(root, [.. nodes, sibling]), malformation == Malformation.None ? Throws.Nothing : Throws.TypeOf<TrieException>());
+    }
+
+    /// <remarks>A key ends 64 nibbles below the root, so no branch can sit there, whether all its children are hashed or only
+    /// some.</remarks>
+    [Test]
+    public void Branch_at_the_key_length_is_rejected([Values] bool full)
+    {
+        (int Slot, Rlp Reference)[] children = new (int, Rlp)[full ? 16 : 2];
+        for (int i = 0; i < children.Length; i++) children[i] = (i, Rlp.Encode(Keccak.Compute([(byte)i]).Bytes));
+        byte[] branchAtKeyLength = BranchOfReferences(Rlp.OfEmptyByteArray, children);
+        byte[] branch = Branch((AccountKey[KeyNibbles - 1], branchAtKeyLength), (AccountKey[KeyNibbles - 1] ^ 1, Leaf([], StorageValue)));
+        byte[] root = Extension(AccountKey[..(KeyNibbles - 1)], branch);
+
+        Assert.That(() => ReadBalance(root, branch, branchAtKeyLength), Throws.TypeOf<TrieException>());
     }
 
     /// <remarks>The spec reads only the two low bits of a hex-prefix flag nibble, so 5 marks an extension of an odd path.</remarks>
@@ -107,9 +124,7 @@ public class WitnessTrieValidationTests
         byte[] leaf = Leaf(AccountKey[3..], account);
         byte[] sibling = Leaf(new byte[KeyNibbles - 3], account);
         byte[] branch = Branch((AccountKey[2], leaf), (AccountKey[2] ^ 1, sibling));
-        byte[] path = HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false);
-        path[0] |= 0x40;
-        byte[] extension = Rlp.Encode(Rlp.Encode(path), Reference(branch)).Bytes;
+        byte[] extension = HighFlagExtension(AccountKey[1..2], branch);
         byte[] rootSibling = Leaf(new byte[KeyNibbles - 1], account);
         byte[] root = Branch((AccountKey[0], extension), (AccountKey[0] ^ 1, rootSibling));
 
@@ -300,6 +315,14 @@ public class WitnessTrieValidationTests
 
     private static byte[] Leaf(byte[] nibbles, byte[] value) =>
         Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(value)).Bytes;
+
+    /// <summary>An extension along <paramref name="nibbles"/> to <paramref name="child"/>, its hex-prefix flag nibble 5 rather than 1.</summary>
+    private static byte[] HighFlagExtension(byte[] nibbles, byte[] child)
+    {
+        byte[] path = HexPrefix.ToBytes(nibbles, isLeaf: false);
+        path[0] |= 0x40;
+        return Rlp.Encode(Rlp.Encode(path), Reference(child)).Bytes;
+    }
 
     private static byte[] Extension(byte[] nibbles, byte[] child) =>
         Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), Reference(child)).Bytes;
