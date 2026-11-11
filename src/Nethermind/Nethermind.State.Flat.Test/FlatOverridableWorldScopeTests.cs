@@ -214,24 +214,13 @@ public class FlatOverridableWorldScopeTests
         Account accountA = TestItem.GenerateRandomAccount();
         Account accountB = TestItem.GenerateRandomAccount();
 
-        Hash256 Commit(BlockHeader? baseBlock, params (Address Address, Account Account)[] accounts)
-        {
-            using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accounts.Length))
-            {
-                foreach ((Address address, Account account) in accounts) writeBatch.Set(address, account);
-            }
-            scope.Commit((baseBlock?.Number ?? 0) + 1);
-            return scope.RootHash;
-        }
-
-        Hash256 rootA = Commit(null, (TestItem.AddressA, accountA));
+        Hash256 rootA = CommitAccounts(overridableScope, null, (TestItem.AddressA, accountA));
         // Builds on the trie nodes of the previous commit, which only the overlay holds.
-        Hash256 rootAB = Commit(Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootA).TestObject, (TestItem.AddressB, accountB));
+        Hash256 rootAB = CommitAccounts(overridableScope, Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootA).TestObject, (TestItem.AddressB, accountB));
         int pinsBeforeReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
         overridableScope.ResetOverrides();
         int pinsAfterReset = ctx.GlobalNodeRecordBuffer.OutstandingPins;
-        Hash256 rootABInOneCommit = Commit(null, (TestItem.AddressA, accountA), (TestItem.AddressB, accountB));
+        Hash256 rootABInOneCommit = CommitAccounts(overridableScope, null, (TestItem.AddressA, accountA), (TestItem.AddressB, accountB));
         overridableScope.ResetOverrides();
 
         using (Assert.EnterMultipleScope())
@@ -411,6 +400,53 @@ public class FlatOverridableWorldScopeTests
     }
 
     [Test]
+    public void ResetOverrides_IsolatesConsecutiveCallsThatReuseTheOverlayRecords([Values] bool holdScopeAcrossResets)
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        Address[] callAddresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        Account sharedAccount = TestItem.GenerateRandomAccount();
+        IWorldStateScopeProvider.IScope? heldScope = null;
+
+        for (int call = 0; call < callAddresses.Length; call++)
+        {
+            Account callAccount = TestItem.GenerateRandomAccount();
+            BlockHeader callBlock = Build.A.BlockHeader.WithNumber(1)
+                .WithStateRoot(CommitAccounts(overridableScope, null, (callAddresses[call], callAccount))).TestObject;
+            // Builds on the trie nodes of the previous commit, which only the overlay holds.
+            Hash256 stepwiseRoot = CommitAccounts(overridableScope, callBlock, (TestItem.AddressD, sharedAccount));
+            using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(callBlock))
+            using (Assert.EnterMultipleScope())
+            {
+                for (int other = 0; other < callAddresses.Length; other++)
+                {
+                    Assert.That(scope.Get(callAddresses[other]), other == call ? Is.Not.Null : Is.Null, $"call {call} reads the address of call {other}");
+                }
+            }
+
+            if (holdScopeAcrossResets && call == 0) heldScope = overridableScope.WorldState.BeginScope(callBlock);
+            overridableScope.ResetOverrides();
+            bool visibleAfterReset = overridableScope.GlobalStateReader.TryGetAccount(callBlock, callAddresses[call], out _);
+            Hash256 oneCommitRoot = CommitAccounts(overridableScope, null, (callAddresses[call], callAccount), (TestItem.AddressD, sharedAccount));
+            overridableScope.ResetOverrides();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(visibleAfterReset, Is.False);
+                Assert.That(stepwiseRoot, Is.EqualTo(oneCommitRoot));
+            }
+        }
+
+        if (heldScope is not null)
+        {
+            Assert.That(heldScope.Get(callAddresses[0]), Is.Not.Null, "a scope held across resets keeps its records");
+            heldScope.Dispose();
+        }
+
+        Assert.That(ctx.GlobalNodeRecordBuffer.OutstandingPins, Is.Zero);
+    }
+
+    [Test]
     public void ResetOverrides_DisposesAllLocalSnapshots()
     {
         using TestContext ctx = new();
@@ -482,6 +518,17 @@ public class FlatOverridableWorldScopeTests
             Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.False);
             Assert.That(worldState.HasStateForTargetBlock(child), Is.False);
         }
+    }
+
+    private static Hash256 CommitAccounts(FlatOverridableWorldScope overridableScope, BlockHeader? baseBlock, params (Address Address, Account Account)[] accounts)
+    {
+        using IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accounts.Length))
+        {
+            foreach ((Address address, Account account) in accounts) writeBatch.Set(address, account);
+        }
+        scope.Commit((baseBlock?.Number ?? 0) + 1);
+        return scope.RootHash;
     }
 
     private static Hash256 CommitAccount(IWorldStateScopeProvider.IScope scope, ulong blockNumber, Address address)
