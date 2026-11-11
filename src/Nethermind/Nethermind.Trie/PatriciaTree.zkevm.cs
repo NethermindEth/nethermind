@@ -269,8 +269,8 @@ public partial class PatriciaTree
         return default;
     }
 
-    /// <summary>Decodes <paramref name="node"/> if a walk reaches it first, and then checks it <paramref name="depth"/> nibbles
-    /// below the root where <paramref name="isSecured"/>.</summary>
+    /// <summary>Decodes <paramref name="node"/> if a walk reaches it first, checking it <paramref name="depth"/> nibbles below
+    /// the root before the decode where <paramref name="isSecured"/>.</summary>
     /// <remarks>
     /// The state and storage tries, the only ones keyed by keccak, are the ones read from the witness. A node decoded once stays
     /// decoded, so each is checked once, as the spec checks a witness node once a trie operation first reaches it (see
