@@ -293,7 +293,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL
             or Instruction.EXP or Instruction.EXTCODECOPY or Instruction.MCOPY or Instruction.CREATE or Instruction.CREATE2
-            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4;
+            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4
+            or Instruction.BLOCKHASH;
     }
 
     /// <inheritdoc/>
@@ -415,10 +416,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     }
 
     /// <inheritdoc/>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         base.ReportActionError(error);
         InvokeExit(gasLeft, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }
