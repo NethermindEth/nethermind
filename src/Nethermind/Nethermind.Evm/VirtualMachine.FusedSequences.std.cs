@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -145,11 +144,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// that runs into the padding fails to match on its STOP.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static uint ReadCode(ref byte code, nint offset)
-        {
-            uint word = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref code, offset));
-            return BitConverter.IsLittleEndian ? word : BinaryPrimitives.ReverseEndianness(word);
-        }
+        private static uint ReadCode(ref byte code, nint offset) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref code, offset));
 
         /// <summary>
         /// A comparison or ISZERO, run with the <c>PUSH2</c> <c>JUMPI</c> after it, or the <c>ISZERO</c> <c>PUSH2</c>
@@ -331,9 +326,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     && Unsafe.Add(ref code, pc + 10) == (byte)Instruction.JUMPI)
                 {
                     ulong cost = 4 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-                    uint selector = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref code, pc + 2));
-                    if (BitConverter.IsLittleEndian)
-                        selector = BinaryPrimitives.ReverseEndianness(selector);
+                    // The PUSH4 immediate is big-endian, the stack limbs little-endian.
+                    uint selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref code, pc + 2)));
                     // Limb layout: the selector can only equal a word whose low limb holds it and whose other limbs are zero.
                     ref ulong limbs = ref Unsafe.As<byte, ulong>(ref stack.PeekBytesByRefUnchecked());
                     bool equal = ((limbs ^ selector) | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) == 0;
