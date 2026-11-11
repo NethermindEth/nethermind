@@ -79,10 +79,13 @@ public class OptimismEthRpcModuleTest
         return rf;
     }
 
-    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null, IBlockchainBridge? bridge = null) =>
-        TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
-            .WithBlockchainBridge(bridge!)
+    /// <param name="bridge">Replaces the chain's blockchain bridge; without it the chain keeps its own.</param>
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null, IBlockchainBridge? bridge = null)
+    {
+        TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(sealEngineType: SealEngineType.Optimism);
+        if (bridge is not null) builder = builder.WithBlockchainBridge(bridge);
+
+        return builder
             .WithBlockFinder(blockFinder)
             .WithReceiptFinder(receiptFinder)
             .WithOptimismEthRpcModule(
@@ -92,6 +95,7 @@ public class OptimismEthRpcModuleTest
                 sealer: Substitute.For<ITxSealer>(),
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build(specProvider);
+    }
 
     private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
     {

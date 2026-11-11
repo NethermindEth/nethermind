@@ -267,7 +267,7 @@ internal sealed partial class McpEthTools(
     [Description("Returns the raw receipt of a mined transaction exactly as eth_getTransactionReceipt: status (0x1 success, 0x0 failure), gasUsed, " +
         "effectiveGasPrice, contractAddress (for deployments) and raw logs. Quantities are 0x-prefixed hex. " +
         "For decoded events and a plain-English outcome prefer explain_transaction (or decode_logs for just the logs). " +
-        "Fails with not_found if the transaction is unknown or not yet mined.")]
+        "Fails with not_found if the transaction is unknown or not yet mined, and unavailable if the node has pruned the history of its block.")]
     [McpToolOutputSchema("""
         {"type":"object","required":["result"],"properties":{"result":{"type":"object",
           "required":["transactionHash","transactionIndex","blockNumber","cumulativeGasUsed","gasUsed","from","to","contractAddress","logs","type"],
