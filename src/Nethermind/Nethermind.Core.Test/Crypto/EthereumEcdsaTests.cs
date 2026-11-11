@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto
@@ -296,8 +298,7 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        // Typed txs are served from the hash-keyed sender cache on repeat recovery; legacy txs
-        // are excluded (signing hash depends on the ambient chain id)
+        // Typed txs are served from the sender cache on repeat recovery; legacy txs are not cached
         [TestCase(TxType.EIP1559, true)]
         [TestCase(TxType.Legacy, false)]
         public void RecoverAddress_repeat_recovery_uses_sender_cache_for_typed_tx_only(TxType txType, bool servedFromCache)
@@ -308,7 +309,6 @@ namespace Nethermind.Core.Test.Crypto
 
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey keyA = TestItem.PrivateKeyA;
-            PrivateKey keyB = TestItem.PrivateKeyB;
             // Unique content per case so the process-wide cache cannot collide across tests
             static Transaction Create(TxType txType) => Build.A.Transaction
                 .WithType(txType)
@@ -317,16 +317,158 @@ namespace Nethermind.Core.Test.Crypto
 
             Transaction txA = Create(txType);
             ecdsa.Sign(keyA, txA);
-            txA.Hash = txA.CalculateHash();
-            Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
+            Address? recovered = ecdsa.RecoverAddress(txA);
+            // An ecdsa that recovers nothing: only a cache hit returns the previously recovered sender
+            Address? cached = NonRecoveringEcdsa(ecdsa.ChainId).RecoverAddress(txA);
 
-            // Same hash, different signature: a cache hit returns the previously recovered
-            // sender, a recompute returns keyB's address
-            Transaction txB = Create(txType);
-            ecdsa.Sign(keyB, txB);
-            txB.Hash = txA.Hash;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovered, Is.EqualTo(keyA.Address));
+                Assert.That(cached, Is.EqualTo(servedFromCache ? keyA.Address : null));
+            }
+        }
 
-            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(servedFromCache ? keyA.Address : keyB.Address));
+        [Test]
+        public void RecoverAddress_from_the_transaction_and_from_its_encoding_share_the_sender_cache([Values] bool encodingFirst)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = UniqueTypedTx(ecdsa, encodingFirst ? 0xA110C4UL : 0xA110C5UL);
+            byte[] encoded = Encode(tx);
+            IEthereumEcdsa nonRecovering = NonRecoveringEcdsa(ecdsa.ChainId);
+
+            Address? recovered = encodingFirst ? ecdsa.RecoverAddress(tx, encoded) : ecdsa.RecoverAddress(tx);
+            Address? cached = encodingFirst ? nonRecovering.RecoverAddress(tx) : nonRecovering.RecoverAddress(tx, encoded);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovered, Is.EqualTo(TestItem.PrivateKeyA.Address));
+                Assert.That(cached, Is.EqualTo(TestItem.PrivateKeyA.Address));
+            }
+        }
+
+        /// <summary>
+        /// Every recovery of a typed transaction computes its signing hash, so a sender-cache hit must allocate nothing
+        /// and a miss no more than the ECDSA recovery of the address itself.
+        /// </summary>
+        [Test]
+        public void RecoverAddress_allocates_no_more_than_the_ecdsa_recovery([Values] bool fromEncoding)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction warmUp = UniqueTypedTx(ecdsa, fromEncoding ? 0xA110C6UL : 0xA110C0UL);
+            Transaction tx = UniqueTypedTx(ecdsa, fromEncoding ? 0xA110C7UL : 0xA110C1UL);
+            byte[] warmUpEncoded = Encode(warmUp);
+            byte[] encoded = Encode(tx);
+            KeccakRlpWriter writer = new();
+            TxDecoder.Instance.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, forSigning: true, isEip155Enabled: true, BlockchainIds.Sepolia);
+            ValueHash256 signingHash = writer.GetValueHash();
+            Recover(warmUp, warmUpEncoded);
+            Recover(warmUp, warmUpEncoded);
+            ecdsa.RecoverAddress(warmUp.Signature!, in signingHash);
+
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            Address? recoveredDirectly = ecdsa.RecoverAddress(tx.Signature!, in signingHash);
+            long ecdsaRecovery = GC.GetAllocatedBytesForCurrentThread() - start;
+
+            start = GC.GetAllocatedBytesForCurrentThread();
+            Address? missed = Recover(tx, encoded);
+            long miss = GC.GetAllocatedBytesForCurrentThread() - start;
+
+            start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+            {
+                Recover(tx, encoded);
+            }
+            long hits = GC.GetAllocatedBytesForCurrentThread() - start;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recoveredDirectly, Is.EqualTo(TestItem.PrivateKeyA.Address), "the signing hash under test");
+                Assert.That(missed, Is.EqualTo(TestItem.PrivateKeyA.Address));
+                Assert.That(miss, Is.EqualTo(ecdsaRecovery), "a miss");
+                Assert.That(hits, Is.Zero, "cache hits");
+            }
+
+            Address? Recover(Transaction transaction, byte[] transactionEncoding) =>
+                fromEncoding ? ecdsa.RecoverAddress(transaction, transactionEncoding) : ecdsa.RecoverAddress(transaction);
+        }
+
+        /// <summary>A signing hash left unfinished on this thread, as an exception while encoding would leave it, does not reach the next recovery.</summary>
+        [Test]
+        public void RecoverAddress_after_an_unfinished_signing_hash_recovers_the_signer()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            ecdsa.RecoverAddress(UniqueTypedTx(ecdsa, 0xA110C2UL));
+            KeccakHash hasher = (KeccakHash)typeof(EthereumEcdsaExtensions)
+                .GetField("_signingHasher", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            hasher.Update(new byte[300]);
+
+            Assert.That(ecdsa.RecoverAddress(UniqueTypedTx(ecdsa, 0xA110C3UL)), Is.EqualTo(TestItem.PrivateKeyA.Address));
+        }
+
+        // Unique content, which nothing else recovers, so the first recovery of each is a miss.
+        private static Transaction UniqueTypedTx(IEthereumEcdsa ecdsa, ulong nonce) => Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(BlockchainIds.Sepolia)
+            .WithNonce(nonce)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        public enum SignedField { Nonce, Signature, RecoveryId }
+
+        /// <summary>Transactions that differ only in the nonce, the signature or the recovery id each recover their own signer.</summary>
+        /// <remarks>With <paramref name="fromEncoding"/>, each transaction is recovered from its own encoding.</remarks>
+        [Test]
+        public void RecoverAddress_recovers_the_signer_of_each_signed_variant([Values] SignedField field, [Values] bool fromEncoding)
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            // Unique content per case, which nothing else recovers, so the process-wide cache holds no entry for it.
+            Transaction signed = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(BlockchainIds.Sepolia)
+                .WithNonce(0xFACADEUL + 4 * (ulong)field + (fromEncoding ? 2UL : 0UL))
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            byte[] encoded = Encode(signed);
+            Transaction original = Rlp.Decode<Transaction>(encoded, RlpBehaviors.SkipTypedWrapping)!;
+
+            // The cache key does not include Hash.
+            Transaction variant = Rlp.Decode<Transaction>(encoded, RlpBehaviors.SkipTypedWrapping)!;
+            switch (field)
+            {
+                case SignedField.Nonce:
+                    variant.Nonce++;
+                    break;
+                case SignedField.Signature:
+                    ecdsa.Sign(TestItem.PrivateKeyB, variant);
+                    break;
+                case SignedField.RecoveryId:
+                    // Same signing hash, r and s: the other parity recovers another valid key.
+                    Signature signature = variant.Signature!;
+                    variant.Signature = new Signature(signature.RAsSpan, signature.SAsSpan, (ulong)(Signature.VOffset + 1 - signature.RecoveryId));
+                    break;
+            }
+
+            Address? variantSender = Recover(variant);
+            Address? originalSender = Recover(original);
+            Address? variantSenderAgain = Recover(variant);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(variant.Hash, Is.EqualTo(original.Hash), "precondition: equal Hash");
+                Assert.That(variantSender, Is.Not.Null.And.Not.EqualTo(TestItem.PrivateKeyA.Address), "the variant recovers another signer");
+                Assert.That(originalSender, Is.EqualTo(TestItem.PrivateKeyA.Address), "the original recovers its signer");
+                Assert.That(variantSenderAgain, Is.EqualTo(variantSender), "the variant recovers the same signer again");
+            }
+
+            Address? Recover(Transaction tx) => fromEncoding ? ecdsa.RecoverAddress(tx, Encode(tx)) : ecdsa.RecoverAddress(tx);
+        }
+
+        private static IEthereumEcdsa NonRecoveringEcdsa(ulong chainId)
+        {
+            IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+            ecdsa.ChainId.Returns(chainId);
+            return ecdsa;
         }
 
         [Test]

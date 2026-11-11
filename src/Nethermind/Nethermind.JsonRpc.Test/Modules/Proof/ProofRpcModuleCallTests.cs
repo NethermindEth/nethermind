@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Serialization.Rlp;
@@ -880,5 +881,24 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Result, Is.Not.Null.And.Not.Empty,
             "from-but-no-nonce must not be rejected pre-VM");
         Assert.That(result.Result![^1], Is.EqualTo(0x42));
+    }
+
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Proof_call_runs_a_signed_call_as_its_from([Values] bool fromOmitted)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(Cancun.Instance));
+        // proof_call rejects genesis.
+        await CreateTransferTx(blockchain);
+
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(blockchain.EthereumEcdsa, blockchain.SpecProvider.ChainId, fromOmitted ? null : from);
+
+        using ResultWrapper<CallResultWithProof> result = blockchain.ProofRpcModule.proof_call(call, BlockParameter.Latest);
+
+        // The `from` has no balance, so the priced call names it as the sender without funds.
+        Assert.That(result.Result.Error, Does.Contain($"insufficient funds for gas * price + value: address {from}").IgnoreCase);
     }
 }

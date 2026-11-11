@@ -58,7 +58,7 @@ public partial class EthRpcModuleTests
                   .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
-        FeeHistoryOracle oracle = new(blockFinder, NullReceiptStorage.Instance, specProvider);
+        FeeHistoryOracle oracle = new(blockFinder, NullReceiptStorage.Instance, specProvider, new JsonRpcConfig());
 
         using ResultWrapper<FeeHistoryResults> result = oracle
             .GetFeeHistory((ulong)excessBlobGas.Length, new BlockParameter((ulong)(blocks.Length - 1)), [0.0, 1.0]);
@@ -97,7 +97,7 @@ public partial class EthRpcModuleTests
         {
             Eip8198SlotDurationMs = 10_000
         };
-        FeeHistoryOracle oracle = new(blockFinder, Substitute.For<IReceiptStorage>(), specProvider);
+        FeeHistoryOracle oracle = new(blockFinder, Substitute.For<IReceiptStorage>(), specProvider, new JsonRpcConfig());
 
         using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(1UL), []);
 
