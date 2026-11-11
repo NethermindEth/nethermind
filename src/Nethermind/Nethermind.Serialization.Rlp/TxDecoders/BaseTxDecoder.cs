@@ -29,7 +29,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
     protected void DecodeTransaction<TPayload>(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence, ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
         where TPayload : struct, ITxPayloadDecoder
     {
-        if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+        if (rlpBehaviors.IsTrustedInput())
         {
             DecodeTransaction<TPayload, OffFlag>(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
         }

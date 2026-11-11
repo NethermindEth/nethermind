@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -63,4 +64,15 @@ public enum RlpBehaviors
     /// </summary>
     /// <remarks>Never set it for input from the network, from RPC or from the Engine API.</remarks>
     TrustedInput = 4096
+}
+
+internal static class RlpBehaviorsExtensions
+{
+    /// <summary>Whether the decode can skip the checks of the canonical form: <see cref="RlpBehaviors.TrustedInput"/> is set.</summary>
+    /// <remarks>
+    /// Always <see langword="false"/> in the zkEVM guest: the compiler then drops the trusted copy of every generic
+    /// decoder, which the 4 MiB ROM of the Airbender guest has no room for.
+    /// </remarks>
+    public static bool IsTrustedInput(this RlpBehaviors rlpBehaviors) =>
+        !ZkEvmFlag.IsActive && (rlpBehaviors & RlpBehaviors.TrustedInput) != 0;
 }

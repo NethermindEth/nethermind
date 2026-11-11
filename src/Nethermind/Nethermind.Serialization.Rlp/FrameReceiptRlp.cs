@@ -176,7 +176,7 @@ public static class FrameReceiptRlp
     /// <exception cref="RlpReaderException">The payload holds no frames, or a frame is malformed.</exception>
     public static void DecodePayload(ref RlpReader fields, TxReceipt receipt, RlpBehaviors rlpBehaviors)
     {
-        if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+        if (rlpBehaviors.IsTrustedInput())
         {
             DecodePayload<OffFlag>(ref fields, receipt);
         }

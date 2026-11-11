@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         public static CompactLogEntryDecoder Instance { get; } = new();
 
         protected override LogEntry? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
 
         internal static LogEntry? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeLogEntryStructRef(scoped ref RlpReader reader, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
-            if ((behaviors & RlpBehaviors.TrustedInput) != 0)
+            if (behaviors.IsTrustedInput())
             {
                 DecodeLogEntryStructRef<OffFlag>(ref reader, out item);
             }
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
         /// <param name="reader">A reader at the topics sequence.</param>
         /// <param name="rlpBehaviors">The behaviors of the decode; only <see cref="RlpBehaviors.TrustedInput"/> applies.</param>
         public static Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            => rlpBehaviors.IsTrustedInput()
                 ? DecodeTopics<OffFlag>(ref reader, guardLimit: false)
                 : DecodeTopics<OnFlag>(ref reader, guardLimit: false);
 

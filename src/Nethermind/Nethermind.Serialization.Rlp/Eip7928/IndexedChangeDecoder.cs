@@ -27,7 +27,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private protected static T Decode<TReader>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TReader : IIndexedChangeReader<T>
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+        => rlpBehaviors.IsTrustedInput()
             ? Decode<TReader, OffFlag>(ref reader, rlpBehaviors)
             : Decode<TReader, OnFlag>(ref reader, rlpBehaviors);
 

@@ -35,7 +35,7 @@ public sealed class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
 
     protected override ReadOnlyAccountChanges DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
     internal static ReadOnlyAccountChanges Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {

@@ -20,7 +20,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         {
             DecodeTransaction<Payload>(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
         }
-        else if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+        else if (rlpBehaviors.IsTrustedInput())
         {
             DecodeNetworkWrapper<OffFlag>(ref transaction, ref reader, source, rlpBehaviors);
         }

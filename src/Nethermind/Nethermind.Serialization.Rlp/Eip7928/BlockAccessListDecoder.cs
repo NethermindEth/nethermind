@@ -25,7 +25,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
 
     private static ReadOnlyBlockAccessList Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {

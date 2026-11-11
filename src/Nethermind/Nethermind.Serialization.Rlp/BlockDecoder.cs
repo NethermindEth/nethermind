@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         protected override Block? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
         private Block? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
@@ -169,7 +169,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            => rlpBehaviors.IsTrustedInput()
                 ? DecodeToReceiptRecoveryBlock<OffFlag>(memoryManager, memory, rlpBehaviors)
                 : DecodeToReceiptRecoveryBlock<OnFlag>(memoryManager, memory, rlpBehaviors);
 

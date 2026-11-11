@@ -41,7 +41,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     {
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
         {
-            bool isWrapper = (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            bool isWrapper = rlpBehaviors.IsTrustedInput()
                 ? DecodeIfNetworkWrapper<OffFlag>(ref transaction, ref reader, source, rlpBehaviors)
                 : DecodeIfNetworkWrapper<OnFlag>(ref transaction, ref reader, source, rlpBehaviors);
             if (isWrapper) return;

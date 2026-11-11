@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
 
         protected override TxReceipt? DecodeInternal(ref RlpReader reader,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
         internal static TxReceipt? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
@@ -105,7 +105,7 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
-            if ((rlpBehaviors & RlpBehaviors.TrustedInput) != 0)
+            if (rlpBehaviors.IsTrustedInput())
             {
                 DecodeStructRef<OffFlag>(ref decoderContext, out item);
             }

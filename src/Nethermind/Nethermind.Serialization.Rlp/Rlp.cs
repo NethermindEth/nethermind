@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            => rlpBehaviors.IsTrustedInput()
                 ? DecodeArrayPool<T, OffFlag>(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
                 : DecodeArrayPool<T, OnFlag>(ref decoderContext, rlpDecoder, rlpBehaviors, limit);
 
