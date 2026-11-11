@@ -48,5 +48,11 @@ public enum RlpBehaviors
     /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
     /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
     /// </summary>
-    Eip7668Receipts = 1024
+    Eip7668Receipts = 1024,
+
+    /// <summary>
+    /// EIP-1559: encodes the header base fee even when it is zero, as required from London. Without it a zero base fee
+    /// is encoded only when a later field follows, which gives a London header before Shanghai the pre-London shape.
+    /// </summary>
+    Eip1559Header = 2048
 }

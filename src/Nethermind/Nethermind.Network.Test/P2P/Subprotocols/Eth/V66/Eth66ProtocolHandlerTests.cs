@@ -291,7 +291,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             packet.ReadByte();
             HandleIncomingStatusMessage();
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
+            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
             _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
 
@@ -320,7 +320,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             writer.StartSequence(contentLength);
             for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet)
+            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet)
             {
                 PacketType = (byte)(pooledResponse ? Eth66MessageCode.PooledTransactions : Eth62MessageCode.Transactions)
             }), Throws.Nothing);
@@ -397,7 +397,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 }
                 packet.ReadByte();
 
-                Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
+                Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(messageKind == BudgetMessageKind.CorrelatedPooled ? 0 : 1));
@@ -486,7 +486,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 packet.WriteByte(0);
             }
             packet.ReadByte();
-            Action receive = () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
+            Action receive = () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
             if (malformed)
                 Assert.That(receive, Throws.Exception);
             else
@@ -919,7 +919,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         private static MessageDictionary<TMsg, TData> GetDictionary<TMsg, TData>(Eth66ProtocolHandler handler, string fieldName)
@@ -942,7 +942,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
             using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
             content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
-            _handler.HandleMessage(new ZeroPacket(content) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(content) { PacketType = (byte)messageCode });
         }
 
         private void HandleIncomingStatusMessage()
@@ -953,7 +953,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
         }
 
         internal sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler

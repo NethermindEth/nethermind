@@ -165,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            SetRequiredItems(header, requiredItems);
+            SetRequiredItems(header, rlpBehaviors, requiredItems);
 
             if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
             if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
@@ -220,7 +220,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            SetRequiredItems(item, requiredItems);
+            SetRequiredItems(item, rlpBehaviors, requiredItems);
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
             if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
@@ -234,9 +234,9 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)
+        private static void SetRequiredItems(BlockHeader header, RlpBehaviors rlpBehaviors, Span<bool> requiredItems)
         {
-            requiredItems[0] = !header.BaseFeePerGas.IsZero;
+            requiredItems[0] = (rlpBehaviors & RlpBehaviors.Eip1559Header) == RlpBehaviors.Eip1559Header || !header.BaseFeePerGas.IsZero;
             requiredItems[1] = header.WithdrawalsRoot is not null;
             requiredItems[2] = header.BlobGasUsed is not null;
             // EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.

@@ -145,9 +145,11 @@ namespace Nethermind.Facade.Find
         /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
         /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
         /// </remarks>
-        private bool WasPruned(BlockHeader header) =>
-            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
-            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+        internal static bool WasPruned(IBlockFinder blockFinder, BlockHeader header) =>
+            (blockFinder.Head?.Number >= header.Number && blockFinder.IsMainChain(header))
+            || blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
+
+        private bool WasPruned(BlockHeader header) => WasPruned(_blockFinder, header);
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null

@@ -75,7 +75,7 @@ public static class BasePersistence
     /// <summary>Key of the sentinel saved in the account column with a snap sync checkpoint, see <see cref="HasSnapCheckpointSentinel"/>.</summary>
     /// <remarks>
     /// No account key is a single byte, and this one sorts before all of them in the first column a wipe goes through,
-    /// so the first batch any wipe commits deletes it.
+    /// so the first batch any older version's wipe commits deletes it.
     /// </remarks>
     private static readonly byte[] SnapCheckpointSentinelKey = [0];
 
@@ -275,6 +275,11 @@ public static class BasePersistence
     }
 
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    /// <remarks>
+    /// A column that can remove a key range is first dropped with a single range deletion and the files it held are given
+    /// back, so the key-by-key pass over it only meets the keys left in files that could not be given back. That pass is
+    /// still needed: tailing iterators ignore range deletions.
+    /// </remarks>
     public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
@@ -288,6 +293,9 @@ public static class BasePersistence
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
             batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
+            // Range deletions bypass the batch.
+            batch = CommitAndStartNext(db, batch);
+            RemoveRangeRemovableColumns(db);
 
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -302,9 +310,7 @@ public static class BasePersistence
                     batch.GetColumnBatch(column).Remove(key);
                     if (++count == batchSize)
                     {
-                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
-                        batch.Dispose(); // commit the chunk
-                        batch = next;
+                        batch = CommitAndStartNext(db, batch);
                         count = 0;
                     }
                 }
@@ -316,6 +322,40 @@ public static class BasePersistence
         finally
         {
             batch.Dispose();
+        }
+    }
+
+    private static IColumnsWriteBatch<FlatDbColumns> CommitAndStartNext(IColumnsDb<FlatDbColumns> db, IColumnsWriteBatch<FlatDbColumns> batch)
+    {
+        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+        batch.Dispose();
+        return next;
+    }
+
+    private static void RemoveRangeRemovableColumns(IColumnsDb<FlatDbColumns> db)
+    {
+        // Longer than any flat key, so every key sorts below it.
+        Span<byte> aboveEveryKey = stackalloc byte[64];
+        aboveEveryKey.Fill(0xFF);
+        bool anyRemoved = false;
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+            {
+                rangeRemovable.RemoveRange([], aboveEveryKey);
+                anyRemoved = true;
+            }
+        }
+
+        if (!anyRemoved) return;
+
+        // Files may only go once the wipe marker and the range deletions are durable: a crash losing those would leave
+        // the state pointer over a state whose files are gone.
+        db.GetColumnDb(FlatDbColumns.Metadata).SyncWal();
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+                rangeRemovable.ReclaimRange([0], aboveEveryKey);
         }
     }
 

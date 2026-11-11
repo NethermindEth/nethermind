@@ -78,13 +78,17 @@ jobs:
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
+          # The guests that take the spec StatelessInput, then those that take the trusted-input format
+          for variant in "" -trusted; do
           for vm in zisk sp1 openvm; do
-            dir=nethermind-$vm
+            dir=nethermind-$vm$variant
+            # Packaged under the stateless guest's file name, which the OpenVM archive layout expects
+            [ -z "$variant" ] || mv "$dir/nethermind$variant" "$dir/nethermind"
             # The zkVM version is the tag of the image the guest is run with
             zkvm_version=$(sed -n 's/^[A-Z0-9]*_IMAGE ?= [^:]*:v\{0,1\}\([^@]*\)@.*/\1/p' \
               "../src/Nethermind/Nethermind.Stateless.${guests[$vm]}Guest/Makefile")
-            name=stateless-validator-nethermind-$vm-v${zkvm_version:?}
-            digests+="- **${names[$vm]} $zkvm_version**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
+            name=stateless-validator-nethermind$variant-$vm-v${zkvm_version:?}
+            digests+="- **${names[$vm]} $zkvm_version${variant:+, trusted input}**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
             mv "$dir/nethermind" "$name.elf"
             # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK
@@ -103,6 +107,7 @@ jobs:
             fi
 
             assets+=("${files[@]}")
+          done
           done
 
           # One signature over the checksums covers every file

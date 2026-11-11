@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -31,15 +32,6 @@ namespace Nethermind.Network.Test.P2P
             yield return new TestCaseData(limit.Limit + 1, true).SetName("{m}(above limit)");
         }
 
-        public static void AssertLimitEnforced<TMessage>(
-            IZeroMessageSerializer<TMessage> serializer,
-            Func<IByteArrayList, TMessage> createMessage,
-            Func<TMessage, int> itemCount,
-            int items,
-            bool shouldThrow)
-            where TMessage : P2PMessage =>
-            AssertLimitEnforced(serializer.Serialize, serializer.Deserialize, createMessage, itemCount, items, shouldThrow);
-
         /// <remarks>Decodes through <see cref="MessageSerializationService"/>, which hands the packet buffer to an <see cref="IOwningMessageSerializer{T}"/>.</remarks>
         public static void AssertLimitEnforced<TMessage>(
             IMessageSerializer<TMessage> serializer,
@@ -50,7 +42,7 @@ namespace Nethermind.Network.Test.P2P
             where TMessage : P2PMessage
         {
             MessageSerializationService service = new(SerializerInfo.Create(serializer));
-            AssertLimitEnforced(serializer.Serialize, service.Deserialize<TMessage>, createMessage, itemCount, items, shouldThrow);
+            AssertLimitEnforced(serializer.Serialize, buffer => service.Deserialize<TMessage>(new NettyBufferPacket(buffer)), createMessage, itemCount, items, shouldThrow);
         }
 
         private static void AssertLimitEnforced<TMessage>(

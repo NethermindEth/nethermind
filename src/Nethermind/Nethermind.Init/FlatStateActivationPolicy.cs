@@ -32,7 +32,7 @@ public sealed class FlatStateActivationPolicy(
     IFileSystem fileSystem,
     ILogManager logManager)
 {
-    private static readonly long LowMemoryLayoutThreshold = 16.GiB;
+    internal static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
     private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, patriciaStateDb, syncConfig, initConfig, fileSystem, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
@@ -184,7 +184,7 @@ public sealed class FlatStateActivationPolicy(
         return activateFlat;
     }
 
-    private static bool HasSstFile(IFileSystem fileSystem, string directory)
+    internal static bool HasSstFile(IFileSystem fileSystem, string directory)
     {
         try
         {

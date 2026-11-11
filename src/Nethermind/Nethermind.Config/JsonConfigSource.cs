@@ -113,6 +113,10 @@ public class JsonConfigSource : IConfigSource
                 {
                     itemsDict[key] = "false";
                 }
+                else if (value.ValueKind == JsonValueKind.Null)
+                {
+                    itemsDict[key] = "null";
+                }
                 else
                 {
                     itemsDict[key] = configItem.Value.ToString();

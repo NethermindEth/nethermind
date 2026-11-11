@@ -40,7 +40,8 @@ public readonly struct NodeRecord
     /// <summary>The node's standard RLP, exactly the bytes that are hashed and persisted.</summary>
     public ReadOnlySpan<byte> Rlp => View.Rlp;
 
-    internal NodeRecordRef View => new(Span);
+    /// <summary>Reads the record in place.</summary>
+    public NodeRecordRef View => new(Span);
 
     /// <summary>A leaf record's value, in place.</summary>
     internal ReadOnlyMemory<byte> LeafValue

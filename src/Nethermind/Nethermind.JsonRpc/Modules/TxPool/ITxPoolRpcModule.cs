@@ -23,6 +23,6 @@ public interface ITxPoolRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Returns a detailed info on tx pool transactions.",
         IsImplemented = true,
-        ExampleResponse = "{\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea\":{\"20\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6721975 × 140000000000 gas\",\"21\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6721975 × 140000000000 gas\",\"22\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6721975 × 140000000000 gas\",\"23\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6700000 × 140000000000 gas\",\"24\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6700000 × 140000000000 gas\",\"27\":\"0xb49928fcb10123e451cfe63aa47edcaea0f8aeea: 0 wei + 6700000 × 140000000000 gas\"},\"0xc51db3339a7603f70b347a0b9680554f777d1f3c\":{\"82\":\"0xc51db3339a7603f70b347a0b9680554f777d1f3c: 0 wei + 4500000 × 10000000000 gas\"},\"0x084dd4aefc6853253573fee9f5fcc23e849d164c\":{\"17\":\"0x084dd4aefc6853253573fee9f5fcc23e849d164c: 0 wei + 28472169 × 1000000008 gas\"}}")]
+        ExampleResponse = "{\"pending\":{\"0xb7705aE4c6F81B66cdB323C65f4E8133690fC099\":{\"0\":\"0x65942Aaf2C32a1aca4f14e82e94fCE91960893a2: 1000000000000000000 wei + 21000 gas × 30000000000 wei\",\"1\":\"contract creation: 0 wei + 1000000 gas × 30000000000 wei\"}},\"queued\":{\"0x942921b14f1B1C385CD7e0cc2eF7aBe5598c8358\":{\"7\":\"0x76e68A8696537e4141926F3e528733af9e237d69: 0 wei + 50000 gas × 2000000000 wei\"}}}")]
     ResultWrapper<TxPoolInspection> txpool_inspect();
 }

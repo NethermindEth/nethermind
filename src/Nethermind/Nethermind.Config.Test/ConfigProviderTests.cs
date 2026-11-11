@@ -33,6 +33,20 @@ namespace Nethermind.Config.Test
 
         [Test]
         public void GetDefault_returns_null_for_reference_types() => Assert.That(ConfigSourceHelper.GetDefault(typeof(string)), Is.Null);
+
+        [TestCase(typeof(string[]), "[]", new string[0])]
+        [TestCase(typeof(string[]), " [ ] ", new string[0])]
+        [TestCase(typeof(int[]), "[]", new int[0])]
+        [TestCase(typeof(NetworkNode[]), "[]", new object[0])]
+        [TestCase(typeof(IEnumerable<string>), "[]", new string[0])]
+        [TestCase(typeof(string[]), """["a\\b", "c,d"]""", new[] { "a\\b", "c,d" })]
+        [TestCase(typeof(string[]), """["a", "b"]""", new[] { "a", "b" })]
+        [TestCase(typeof(string[]), "[a, b]", new[] { "a", "b" })]
+        [TestCase(typeof(string[]), "a,b", new[] { "a", "b" })]
+        [TestCase(typeof(int[]), "[1, 2]", new[] { 1, 2 })]
+        [TestCase(typeof(int[]), "1,2", new[] { 1, 2 })]
+        public void ParseValue_parses_arrays(Type type, string valueString, IEnumerable expected) =>
+            Assert.That(ConfigSourceHelper.ParseValue(type, valueString, "Category", "Name"), Is.EqualTo(expected).AsCollection);
     }
 
     [TestFixture]

@@ -204,7 +204,9 @@ namespace Nethermind.Facade
                     txIndex: txReceipt!.Index,
                     blockTimestamp: header.Timestamp,
                     baseFee: header.BaseFeePerGas,
-                    receipt: txReceipt);
+                    receipt: txReceipt,
+                    spec: specProvider.GetSpec(header),
+                    excessBlobGas: header.ExcessBlobGas);
 
 
                 result = new TransactionLookupResult(tx, extraData);
@@ -302,7 +304,7 @@ namespace Nethermind.Facade
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 
-        private static bool HasBlockOverrides(BlockOverride blockOverride) =>
+        internal static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
             blockOverride.Time is not null ||
@@ -331,7 +333,7 @@ namespace Nethermind.Facade
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
             SimulateReadOnlyBlocksProcessingScope env = pooled.Scope;
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header, cancellationToken);
             try
             {
                 return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
@@ -952,12 +954,15 @@ namespace Nethermind.Facade
         public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
             => balStore.Delete(blockNumber, blockHash);
 
-        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block) =>
+            GenerateExecutionWitness(parent, block, NullBlockTracer.Instance);
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer)
         {
             RecoverTxSenders(block);
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
             IExistingBlockWitnessCollector witnessCollector = scope.Env.CreateExistingBlockWitnessCollector();
-            return witnessCollector.GetWitnessForExistingBlock(parent, block);
+            return witnessCollector.GetWitnessForExistingBlock(parent, block, tracer);
         }
 
         public SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default)

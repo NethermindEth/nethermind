@@ -8,6 +8,8 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp;
 
+// Null tests start with `default(T) is null`: for `value is null`, Debug IL keeps a box of a non-nullable struct, but
+// `default(T) is null` folds at every tier, so such structs skip the test. Release IL is folded either way.
 public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
     public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
@@ -19,7 +21,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     protected abstract T DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => item is null ? Rlp.OfEmptyList : new Rlp(EncodeAsBytes(item, rlpBehaviors));
+        => default(T) is null && item is null ? Rlp.OfEmptyList : new Rlp(EncodeAsBytes(item!, rlpBehaviors));
 
     /// <summary>
     /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array.
@@ -143,7 +145,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     public virtual T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T? value = Decode(ref context, rlpBehaviors);
-        if (value is null)
+        if (default(T) is null && value is null)
         {
             ThrowNullDecodedValue();
         }
@@ -173,13 +175,13 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         int size = GetNullableLength(item, rlpBehaviors);
         CappedArray<byte> buffer = bufferPool.SafeRent(size);
         RlpWriter writer = new(in buffer);
-        if (item is null)
+        if (default(T) is null && item is null)
         {
             writer.EncodeNullObject();
         }
         else
         {
-            Encode(ref writer, item, rlpBehaviors);
+            Encode(ref writer, item!, rlpBehaviors);
         }
         return buffer;
     }
@@ -197,13 +199,13 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         for (int index = 0; index < items.Length; index++)
         {
             T? item = items[index];
-            if (item is null)
+            if (default(T) is null && item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
             }
             else
             {
-                Encode(ref writer, item, behaviors);
+                Encode(ref writer, item!, behaviors);
             }
         }
     }
@@ -240,5 +242,5 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         => throw new RlpException($"{typeof(T).Name} decoding returned null");
 
     private int GetNullableLength(T? item, RlpBehaviors behaviors)
-        => item is null ? Rlp.OfEmptyList.Length : GetLength(item, behaviors);
+        => default(T) is null && item is null ? Rlp.OfEmptyList.Length : GetLength(item!, behaviors);
 }

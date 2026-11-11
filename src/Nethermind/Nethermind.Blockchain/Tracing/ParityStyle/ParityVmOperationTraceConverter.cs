@@ -39,6 +39,11 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
                 reader.Read();
                 ReadExecuted(ref reader, value, options);
             }
+            else if (reader.ValueTextEquals("op"u8))
+            {
+                reader.Read();
+                value.Op = reader.ValueTextEquals("STATICCALL"u8) ? Instruction.STATICCALL : reader.ValueTextEquals("CALL"u8) ? Instruction.CALL : null;
+            }
             else if (reader.ValueTextEquals("pc"u8))
             {
                 reader.Read();
@@ -180,7 +185,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
 
     /// <summary>Writes an operation of the frame running <paramref name="code"/>, named by the opcode at its <c>pc</c>.</summary>
     /// <remarks>An operation whose <c>pc</c> lies outside the code, such as one heading an EIP-8141 frame in the frame
-    /// transaction's code-less root, has no opcode and is written without <c>op</c>.</remarks>
+    /// transaction's code-less root, is named by its <see cref="ParityVmOperationTrace.Op"/>, or written without <c>op</c>.</remarks>
     internal static void WriteOperation(Utf8JsonWriter writer, ParityVmOperationTrace value, ReadOnlySpan<byte> code, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
@@ -199,6 +204,10 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         if ((uint)value.Pc < (uint)code.Length)
         {
             writer.WriteString("op"u8, OpcodeJsonNames.Get((Instruction)code[value.Pc]));
+        }
+        else if (value.Op is { } op)
+        {
+            writer.WriteString("op"u8, OpcodeJsonNames.Get(op));
         }
 
         writer.WriteNumber("pc"u8, value.Pc);

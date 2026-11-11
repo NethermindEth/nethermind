@@ -6,14 +6,14 @@ using NUnit.Framework;
 
 namespace Ethereum.Legacy.Blockchain.Block.Test;
 
+public class MetaTests : FixtureCaseMetaTests;
+
 // [TestFixture] required on at least one concrete class in the assembly for NUnit discovery
 // to find test methods inherited from generic base classes in external assemblies.
 [TestFixture]
 public class BlockGasLimitTest : LegacyBlockchainTestFixture<BlockGasLimitTest>;
 
 public class ExploitTest : LegacyBlockchainTestFixture<ExploitTest>;
-
-public class ForgedTest : LegacyBlockchainTestFixtureNoRlpValidation<ForgedTest>;
 
 public class ForkStressTest : LegacyBlockchainTestFixture<ForkStressTest>;
 

@@ -68,6 +68,7 @@ namespace Nethermind.Synchronization
         private readonly Lock _rangeBroadcastLock = new();
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
+        internal const int NodeDataSoftResponseByteLimit = 2 * MemorySizes.MiB;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -402,9 +403,10 @@ namespace Nethermind.Synchronization
         {
             if (blockHash is null) return null;
 
-            Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
-            if (block is null || block.IsBodyMissing) return null;
-            if (block.Transactions.Length == 0) return [];
+            // The receipt finder loads and decodes the block itself, so check only the header and that the body exists.
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null || !_blockTree.HasBlock(header.Number, blockHash)) return null;
+            if (header.TxRoot == Keccak.EmptyTreeHash) return [];
 
             TxReceipt[] receipts = _receiptFinder.Get(blockHash);
             return receipts.Length == 0 ? null : receipts;
@@ -425,10 +427,11 @@ namespace Nethermind.Synchronization
             using DeferredRlpItemList.Builder builder = new(keys.Count);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
             int count = 0;
+            long byteCount = 0;
 
             for (int i = 0; i < keys.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested) break;
+                if (byteCount > NodeDataSoftResponseByteLimit || cancellationToken.IsCancellationRequested) break;
 
                 bool found = false;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
@@ -437,6 +440,7 @@ namespace Nethermind.Synchronization
                     if (!value.IsNullOrEmpty())
                     {
                         writer.WriteValue(value);
+                        byteCount += value.Length;
                         _stateDb.DangerousReleaseMemory(value);
                         found = true;
                     }
@@ -446,6 +450,7 @@ namespace Nethermind.Synchronization
                 {
                     Span<byte> value = _codeDb.GetSpan(keys[i].Bytes, ReadFlags.HintCacheMiss);
                     writer.WriteValue(value);
+                    byteCount += value.Length;
                     _codeDb.DangerousReleaseMemory(value);
                     found = true;
                 }

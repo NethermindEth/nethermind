@@ -17,6 +17,22 @@ public interface ITraceStoreConfig : IConfig
     [ConfigItem(Description = "The types of traces to store. Requests for unrecorded types fall back to live tracing and require available historical state. `trace_block` and `trace_filter` require both `Trace` and `Rewards` to use the store. Transaction replays requesting `Rewards` always trace live because stored transaction traces omit block rewards.", DefaultValue = "Trace, Rewards")]
     public ParityTraceTypes TraceTypes { get; set; }
 
+    /// <summary>Whether to enable persistent OTS address indexing. Defaults to false.</summary>
+    [ConfigItem(Description = "Whether to build a separate trace-address index for OTS history. Requires BlocksToKeep=0 and TraceTypes including Trace. Uncovered history is scanned.", DefaultValue = "false")]
+    bool AddressIndexEnabled { get; set; }
+
+    /// <summary>The first indexed block number, inclusive. Defaults to 1.</summary>
+    [ConfigItem(Description = "The first block to index. Earlier history is scanned, not assumed empty.", DefaultValue = "1")]
+    int AddressIndexFromBlock { get; set; }
+
+    /// <summary>The indexing delay behind the head, measured in blocks. Defaults to 64.</summary>
+    [ConfigItem(Description = "The number of blocks behind the head at which trace-address indexing stops. This is not a finality guarantee.", DefaultValue = "64")]
+    int AddressIndexLag { get; set; }
+
+    /// <summary>Whether to clear only the address index on startup. Defaults to false.</summary>
+    [ConfigItem(Description = "Whether to reset only the trace-address index on startup. Use once after checkpoint invalidation, then disable it.", DefaultValue = "false")]
+    bool AddressIndexReset { get; set; }
+
     [ConfigItem(Description = "Whether to verify all serialized elements.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifySerialized { get; set; }
 

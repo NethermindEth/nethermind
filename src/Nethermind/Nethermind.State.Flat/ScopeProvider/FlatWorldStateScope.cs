@@ -780,7 +780,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             });
     }
 
-    // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
+    // Largely same logic as the one for TrieStoreScopeProvider, but more confusing when deduplicated.
     // So I just leave it here.
     private class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {

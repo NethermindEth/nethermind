@@ -12,8 +12,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test;
 
-[TestFixture]
-public class MetaTests
+public class MetaTests : FixtureCaseMetaTests
 {
     [Test]
     public void All_categories_are_tested() =>
@@ -28,7 +27,7 @@ public class MetaTests
         string name = fileName;
         if (!name.EndsWith("Tests"))
             name = name.EndsWith("Test") ? name + "s" : name + "Tests";
-        return name.Replace("_", string.Empty);
+        return char.ToUpperInvariant(name[0]) + name[1..].Replace("_", string.Empty);
     }
 }
 

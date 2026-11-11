@@ -66,4 +66,15 @@ public class JsonConfigSourceParseNumberTests
 
         Assert.That(source.GetValue(valueType, "SampleConfig", "Value").Value, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void GetValue_NullInJson_IsNull(
+        [Values(typeof(ulong?), typeof(long?), typeof(string), typeof(string[]))] Type valueType,
+        [Values("null", "\"null\"")] string json)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes($$"""{ "SampleConfig": { "Value": {{json}} } }"""));
+        JsonConfigSource source = new(stream);
+
+        Assert.That(source.GetValue(valueType, "SampleConfig", "Value").Value, Is.Null);
+    }
 }

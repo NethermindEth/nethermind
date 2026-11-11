@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 
@@ -54,5 +55,19 @@ namespace Ethereum.Test.Base
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? LastPayloadStatus { get; set; }
 
+        /// <summary>
+        /// Every block or payload the client rejected, in fixture order, with the client's own error. Only
+        /// blockchain/engine results carry it; the runner reports the reason and leaves checking it to the consumer.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<BlockRejection>? Rejections { get; set; }
     }
+
+    /// <param name="Index">The block's position in the fixture's <c>blocks</c>, or the payload's in <c>engineNewPayloads</c>.</param>
+    /// <param name="Hash">The rejected block's hash, when the client computed one.</param>
+    /// <param name="Error">The client's error, verbatim.</param>
+    public sealed record BlockRejection(
+        int Index,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Hash256? Hash,
+        string Error);
 }

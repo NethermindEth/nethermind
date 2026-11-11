@@ -169,6 +169,11 @@ public class FrameTxMempoolDosMeasurement
     {
         foreach (ulong ceiling in SweptCeilings)
         {
+            if (ceiling < Eip8141Constants.MaxVerifyGas)
+            {
+                continue;
+            }
+
             yield return new TestCaseData(ceiling);
         }
     }

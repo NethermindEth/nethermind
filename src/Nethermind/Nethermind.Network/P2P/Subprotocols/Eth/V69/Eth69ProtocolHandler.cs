@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -48,7 +47,7 @@ public class Eth69ProtocolHandler(
 {
     private static readonly Func<ReceiptsMessage69, int, (IOwnedReadOnlyList<TxReceipt[]>, long)> SelectReceipts =
         static (message, size) => (message.EthMessage.TxReceipts, size);
-    private static readonly Action<IByteBuffer, GetReceiptsMessage> ValidateReceipts =
+    private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage> ValidateReceipts =
         static (content, request) => ThrowIfReceiptsExceedRequest(content, 1, request.EthMessage);
 
     public override string Name => "eth69";
@@ -67,22 +66,22 @@ public class Eth69ProtocolHandler(
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth69MessageCode.Status:
-                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
+                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message);
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                HandleCorrelatedResponse(_receiptsRequests66, message.Content, size, SelectReceipts, ValidateReceipts);
+                HandleCorrelatedResponse(_receiptsRequests66, message, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
                 return true;
             case Eth69MessageCode.BlockRangeUpdate:
-                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
+                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message);
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
                 return true;

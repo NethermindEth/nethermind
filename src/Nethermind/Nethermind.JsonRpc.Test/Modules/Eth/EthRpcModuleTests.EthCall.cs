@@ -149,6 +149,29 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Rpc_skips_an_authorization_whose_chain_id_exceeds_64_bits(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+
+        async Task<JToken> Call(string chainId)
+        {
+            using JsonDocument call = JsonDocument.Parse(
+                $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"authorizationList\":[{{\"chainId\":\"{chainId}\",\"address\":\"{TestItem.AddressC}\",\"nonce\":\"0x0\",\"yParity\":\"0x0\",\"r\":\"0x1\",\"s\":\"0x1\"}}]}}");
+            return JToken.Parse(await ctx.Test.TestEthRpc(method, call.RootElement, "latest"));
+        }
+
+        JToken wrongChain = await Call("0x2");
+        JToken wideChain = await Call("0x10000000000000001");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wideChain["error"], Is.Null, wideChain.ToString());
+            Assert.That(JToken.DeepEquals(wideChain["result"], wrongChain["result"]), Is.True, $"{wideChain} vs {wrongChain}");
+        }
+    }
+
+    [Test]
     public async Task Rpc_rejects_unsupported_call_block_overrides(
         [Values("eth_call", "eth_estimateGas")] string method,
         [Values("beaconRoot", "withdrawals", "nonemptyWithdrawals", "both", "null")] string field)
@@ -559,6 +582,40 @@ public partial class EthRpcModuleTests
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
+    /// <summary>
+    /// A call with the fields and signature of a signed transaction runs as its <c>from</c>, here a sender with no account, or
+    /// as the zero address when <c>from</c> is omitted, as an unsigned call does.
+    /// </summary>
+    [Test]
+    public async Task Rpc_runs_a_signed_call_as_its_from(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1")] string method, [Values] bool fromOmitted)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        // eth_createAccessList requires a non-zero fee cap; priced, the call names the sender that cannot pay for it.
+        bool priced = method == "eth_createAccessList";
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(ctx.Test.EthereumEcdsa, ctx.Test.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: !priced);
+        // Stops when the caller is `from` and hits an invalid instruction otherwise.
+        Dictionary<string, object> stateOverride = new() { [TestItem.AddressB.ToString()] = new { code = $"0x73{from.ToString(false, false)}3314601b57fe5b00" } };
+
+        string response = method == "eth_simulateV1"
+            ? await ctx.Test.TestEthRpc(method, new { blockStateCalls = new[] { new { stateOverrides = stateOverride, calls = new[] { call } } }, validation = false })
+            : await ctx.Test.TestEthRpc(method, call, "latest", stateOverride);
+
+        JToken parsed = JToken.Parse(response);
+        if (priced)
+        {
+            Assert.That(response, Does.Contain($"insufficient funds for gas * price + value: address {from}").IgnoreCase);
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            if (method == "eth_simulateV1") Assert.That((string?)parsed["result"]?[0]?["calls"]?[0]?["status"], Is.EqualTo("0x1"), response);
+        }
+    }
+
     [Test]
     public async Task Eth_call_web3_sample_not_enough_gas_other_account()
     {
@@ -717,16 +774,42 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_methods_share_empty_creation_defaults(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        ctx.Test.Container.Resolve<IJsonRpcConfig>().EstimateErrorMargin = 0;
+        string response = await ctx.Test.TestEthRpc(method,
+            new { from = TestItem.AddressA.ToString(), gas = "0x186a0" }, "latest");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            if (method == "eth_createAccessList")
+            {
+                Assert.That((string?)json["result"]?["gasUsed"], Is.EqualTo("0xcf08"), response);
+                Assert.That(json["result"]?["accessList"], Is.Empty, response);
+            }
+            else
+            {
+                Assert.That((string?)json["result"], Is.EqualTo(method == "eth_call" ? "0x" : "0xcf08"), response);
+            }
+        }
+    }
+
+
+    [Test]
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
+        LegacyTransactionForRpc transaction = new()
         {
-            From = TestItem.AddressA
+            From = TestItem.AddressA,
+            Gas = 100_000
         };
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]
@@ -1409,7 +1492,7 @@ public partial class EthRpcModuleTests
 
     [TestCase(null)]
     [TestCase(new byte[0])]
-    public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)
+    public async Task Eth_call_to_is_null_with_empty_initcode_creates_a_contract(byte[]? data)
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction
@@ -1422,7 +1505,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]

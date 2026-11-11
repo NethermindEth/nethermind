@@ -85,6 +85,9 @@ public static unsafe partial class EvmInstructions
             return;
         }
 
+        if (AirbenderMontgomery.TryMultiply(in a, in b, in m, out result))
+            return;
+
         byte* buffer = stackalloc byte[3 * 32 + 31];
         UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
         words[0] = a;
@@ -112,9 +115,8 @@ public static unsafe partial class EvmInstructions
         }
 
         Unsafe.SkipInit(out result);
-        Unsafe.SkipInit(out UInt256 remainder);
         fixed (UInt256* pa = &a, pb = &b, pq = &result)
-            Accelerators.DivRem256((ulong*)pa, (ulong*)pb, (ulong*)pq, (ulong*)&remainder);
+            Accelerators.Div256((ulong*)pa, (ulong*)pb, (ulong*)pq);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

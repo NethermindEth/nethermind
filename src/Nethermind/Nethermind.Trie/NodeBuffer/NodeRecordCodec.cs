@@ -100,7 +100,7 @@ internal static class NodeRecordCodec
     }
 
     /// <summary>Decodes the record kind and hash mask of a node's RLP for <see cref="WriteFromRlp"/>.</summary>
-    /// <returns>False when the RLP is malformed, embeds a child that is not a leaf, or gives a branch a value.</returns>
+    /// <returns>False when the RLP is malformed, embeds an invalid node, or gives a branch a value.</returns>
     public static bool TryDecode(ReadOnlySpan<byte> rlp, out NodeRecordKind kind, out ushort hashMask)
     {
         kind = default;
@@ -170,7 +170,7 @@ internal static class NodeRecordCodec
         return reader.DecodeByteArraySpan().IsEmpty && reader.Position == reader.Length;
     }
 
-    /// <returns>False for a child that is malformed or embeds anything but a leaf.</returns>
+    /// <returns>False for a child that is malformed or embeds an invalid node.</returns>
     private static bool TryDecodeChild(ref RlpReader reader, out ChildRefKind kind)
     {
         if (reader.IsSequenceNext())
@@ -178,7 +178,7 @@ internal static class NodeRecordCodec
             kind = ChildRefKind.Inline;
             ReadOnlySpan<byte> inlineRlp = reader.PeekNextItem();
             reader.SkipBytes(inlineRlp.Length);
-            return inlineRlp.Length < ValueHash256.MemorySize && IsInlineLeaf(inlineRlp);
+            return inlineRlp.Length < ValueHash256.MemorySize && TryDecode(inlineRlp, out _, out _);
         }
 
         ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
@@ -186,12 +186,20 @@ internal static class NodeRecordCodec
         return hash.IsEmpty || hash.Length == ValueHash256.MemorySize;
     }
 
-    /// <remarks>An embedded branch or extension would need two keys sharing 224 bits, which keccak keys never do.</remarks>
+    /// <summary>Whether the embedded node <paramref name="rlp"/> is a leaf, which readers parse in place.</summary>
+    /// <remarks>
+    /// Readers decode any other embedded node into a record, a slow path for a case that is only theoretically possible: an embedded
+    /// branch is under 32 bytes, so it holds only embedded leaves with at most seven key nibbles left, which needs two keys sharing at
+    /// least 224 bits, and an embedded extension sits above such a branch. Keccak keys sharing that many bits are infeasible to find.
+    /// </remarks>
     internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
     {
         RlpReader reader = new(rlp);
         reader.ReadSequenceLength();
+        // Only a leaf has two strings: a branch may start with an embedded node, and an extension may end with one.
+        if (reader.IsSequenceNext()) return false;
         ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
+        if (reader.IsSequenceNext()) return false;
         reader.DecodeByteArraySpan();
         return reader.Position == reader.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
     }

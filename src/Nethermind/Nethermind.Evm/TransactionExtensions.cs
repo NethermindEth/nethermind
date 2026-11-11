@@ -29,19 +29,23 @@ namespace Nethermind.Evm
         /// </summary>
         public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header, ref UInt256? feePerBlobGas)
         {
-            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
-
             // EIP-8141: gate on blob presence, not the type-3-only SupportsBlobs, so frame-blob txs report blob gas.
             if (tx.CarriesBlobs)
             {
                 feePerBlobGas ??= CalculateFeePerBlobGas(spec, header);
                 ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
-                return new(effectiveGasPrice, feePerBlobGas, blobGas);
+                return new(CalculateEffectiveGasPrice(tx, spec, header, feePerBlobGas.Value), feePerBlobGas, blobGas);
             }
 
-            return new(effectiveGasPrice, null, null);
+            return new(CalculateEffectiveGasPrice(tx, spec, header, UInt256.Zero), null, null);
         }
+
+        /// <summary>The price per gas <paramref name="tx"/> pays; for an EIP-8141 frame transaction, what <c>GASPRICE</c> reads.</summary>
+        private static UInt256 CalculateEffectiveGasPrice(Transaction tx, IReleaseSpec spec, BlockHeader header, in UInt256 feePerBlobGas) =>
+            tx.SupportsFrames && FrameTxValidation.TryCalculateGasPrice(tx, spec, header.BaseFeePerGas, in feePerBlobGas, out UInt256 gasPrice)
+                ? gasPrice
+                : tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
         private static UInt256 CalculateFeePerBlobGas(IReleaseSpec spec, BlockHeader header)
         {

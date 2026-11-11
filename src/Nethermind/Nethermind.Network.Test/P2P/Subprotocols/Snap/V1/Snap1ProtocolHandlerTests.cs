@@ -118,7 +118,7 @@ public class Snap1ProtocolHandlerTests
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
 
-                        ZeroPacket packet = new(buffer);
+                        NettyBufferPacket packet = new(buffer);
 
                         packet.PacketType = Snap1MessageCode.AccountRange;
                         Snap1ProtocolHandler.HandleMessage(packet);
@@ -225,7 +225,7 @@ public class Snap1ProtocolHandlerTests
         try
         {
             buffer.ReadByte();
-            ZeroPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
+            NettyBufferPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
             buffer = null;
             try
             {
@@ -340,6 +340,6 @@ public class Snap1ProtocolHandlerTests
         using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
         using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
         content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
-        handler.HandleMessage(new ZeroPacket(content) { PacketType = Snap1MessageCode.AccountRange });
+        handler.HandleMessage(new NettyBufferPacket(content) { PacketType = Snap1MessageCode.AccountRange });
     }
 }

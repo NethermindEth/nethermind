@@ -25,12 +25,6 @@ namespace Nethermind.Network.Test.Builders
         private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
         private List<SerializerInfo> _serializers = [];
 
-        public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
-        {
-            _serializers.Add(SerializerInfo.Create(serializer));
-            return this;
-        }
-
         public SerializationBuilder With<T>(IMessageSerializer<T> serializer) where T : MessageBase
         {
             _serializers.Add(SerializerInfo.Create(serializer));

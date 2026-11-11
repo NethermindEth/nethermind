@@ -1517,14 +1517,14 @@ public class Eth70ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler!.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
     }
 
     private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)

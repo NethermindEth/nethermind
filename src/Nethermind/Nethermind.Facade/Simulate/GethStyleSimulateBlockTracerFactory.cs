@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -14,4 +15,7 @@ public class GethStyleSimulateBlockTracerFactory(GethTraceOptions options) : ISi
 {
     public IBlockTracer<GethLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>
         GethStyleTracer.CreateOptionsTracer(block, options, worldState, spec);
+
+    public IBlockTracer<GethLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block, CancellationToken cancellationToken) =>
+        GethStyleTracer.CreateOptionsTracer(block, options, worldState, spec, logIndex: null, cancellationToken);
 }

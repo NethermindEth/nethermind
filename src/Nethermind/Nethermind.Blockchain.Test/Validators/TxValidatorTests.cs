@@ -979,7 +979,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(cap + 1, cap)));
-            Assert.That(result.IsIntrinsicGasError, Is.False);
         }
 
         static Transaction TxWithGasLimit(ulong gasLimit) => Build.A.Transaction
@@ -1008,7 +1007,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
-            Assert.That(result.IsIntrinsicGasError, Is.True);
             Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
             Assert.That(result.Error, skipErrorDetails
                 ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)

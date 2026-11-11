@@ -290,9 +290,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             StorageTree remoteStorageTree = new(remote.TrieStore.GetTrieStore(TestItem.AddressD), Keccak.EmptyTreeHash, LimboLogs.Instance);
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb0000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(
-                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb111"), new byte[] { 1 });
+                Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1111111111111"), new byte[] { 1 });
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb000000000000000000000000000000000000000000"), new byte[] { 1 });
             remoteStorageTree.Set(
