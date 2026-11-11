@@ -30,6 +30,11 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
+
+    /// <summary>
+    /// Leaves <c>Transaction.Hash</c> and <c>BlockHeader.Hash</c> unset instead of hashing the decoded bytes. Set it when the
+    /// caller already knows the hashes, as a database read keyed by the hash does, or does not need them.
+    /// </summary>
     ExcludeHashes = 128,
 
     /// <summary>

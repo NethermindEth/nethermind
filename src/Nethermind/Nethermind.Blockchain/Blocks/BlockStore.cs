@@ -173,15 +173,13 @@ public class BlockStore : IBlockStore, IClearableCache
         }
 
         Block? block = _blockDb.Get(blockNumber, blockHash, _blockDecoder,
-            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false)
+            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors | RlpBehaviors.ExcludeHashes, shouldCache: false)
             ?? _blockDb.Get(blockHash, _blockDecoder,
-                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
+                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors | RlpBehaviors.ExcludeHashes, shouldCache: false);
+        if (block is null) return null;
 
-        if (shouldCache && block is not null)
-        {
-            _blockCache.Set(in cacheKey, block);
-        }
-
+        block.Header.Hash = blockHash;
+        if (shouldCache) _blockCache.Set(in cacheKey, block);
         return block;
     }
 
@@ -223,7 +221,8 @@ public class BlockStore : IBlockStore, IClearableCache
         ReceiptRecoveryBlock? block = null;
         try
         {
-            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.ExcludeHashes);
+            if (block is not null) block.Value.Header.Hash = blockHash;
             return block;
         }
         finally

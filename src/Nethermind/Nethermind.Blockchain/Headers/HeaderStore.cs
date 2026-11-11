@@ -104,9 +104,14 @@ public class HeaderStore : IHeaderStore, IClearableCache
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, (AssociativeCache<ValueHash256, BlockHeader>?)null, RlpBehaviors.ExcludeHashes, shouldCache: false);
         }
-        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        header ??= _headerDb.Get(blockHash, _headerDecoder, (AssociativeCache<ValueHash256, BlockHeader>?)null, RlpBehaviors.ExcludeHashes, shouldCache: false);
+        if (header is null) return null;
+
+        header.Hash = blockHash;
+        if (shouldCache) _headerCache.Set(in blockHash.ValueHash256, header);
+        return header;
     }
 
     /// <inheritdoc/>
@@ -123,11 +128,11 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        header = ReadIfBloomMatches(key, bloomMatches, out found);
-        return found ? header : ReadIfBloomMatches(blockHash.Bytes, bloomMatches, out found);
+        header = ReadIfBloomMatches(key, blockHash, bloomMatches, out found);
+        return found ? header : ReadIfBloomMatches(blockHash.Bytes, blockHash, bloomMatches, out found);
     }
 
-    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         if (_headerDb is IReadOnlyNativeKeyValueStore native)
         {
@@ -140,7 +145,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
             try
             {
-                return DecodeIfBloomMatches(slice, bloomMatches, out found);
+                return DecodeIfBloomMatches(slice, blockHash, bloomMatches, out found);
             }
             finally
             {
@@ -157,7 +162,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         try
         {
-            return DecodeIfBloomMatches(data, bloomMatches, out found);
+            return DecodeIfBloomMatches(data, blockHash, bloomMatches, out found);
         }
         finally
         {
@@ -165,7 +170,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         }
     }
 
-    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Hash256 blockHash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
         found = rlp.Length != 0;
         if (!found) return null;
@@ -175,8 +180,9 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (bloomTested && !bloomMatches(bloom)) return null;
 
         RlpReader reader = new(rlp);
-        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.ExcludeHashes);
         found = header is not null;
+        if (found) header!.Hash = blockHash;
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
     }
 
@@ -268,8 +274,8 @@ public class HeaderStore : IHeaderStore, IClearableCache
         {
             if (view.CurrentKey.Length != NumberPrefixedKeyLength) continue; // skip old hash-only keys
 
-            BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
-            header.Hash ??= new Hash256(view.CurrentKey[sizeof(ulong)..]);
+            BlockHeader header = _headerDecoder.Decode(view.CurrentValue, RlpBehaviors.ExcludeHashes);
+            header.Hash = new Hash256(view.CurrentKey[sizeof(ulong)..]);
             prefetched[header.Hash.ValueHash256] = header;
         }
 

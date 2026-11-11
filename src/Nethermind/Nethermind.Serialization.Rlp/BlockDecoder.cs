@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
             int blockCheck = position + sequenceLength;
             decoderContext.Position = position;
 
-            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors & RlpBehaviors.ExcludeHashes);
             // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
 
@@ -173,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors & RlpBehaviors.ExcludeHashes);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
