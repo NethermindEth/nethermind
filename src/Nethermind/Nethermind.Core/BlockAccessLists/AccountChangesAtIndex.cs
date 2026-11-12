@@ -34,8 +34,10 @@ public class AccountChangesAtIndex(Address address)
     public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
 
     // One record per slot this index wrote or seeded: its change, if any, and its transaction prestate, so a write
-    // resolves both with a single lookup.
-    private readonly Dictionary<UInt256, StorageSlot> _storageSlots = new(UInt256Comparer.GetOptimized());
+    // resolves both with a single lookup. The records sit in a list, found through the index, so walking the changes
+    // reads them in place.
+    private readonly List<StorageSlot> _storageSlots = [];
+    private readonly Dictionary<UInt256, int> _storageSlotIndex = new(UInt256Comparer.GetOptimized());
     private int _storageChangeCount;
     private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
     private bool _storageReadsMayHoldChangedSlots;
@@ -61,15 +63,35 @@ public class AccountChangesAtIndex(Address address)
         foreach (KeyValuePair<UInt256, StorageChange> change in StorageChanges) _storageReads.Remove(change.Key);
     }
 
+    private ref StorageSlot FindSlot(in UInt256 key)
+    {
+        ref int index = ref CollectionsMarshal.GetValueRefOrNullRef(_storageSlotIndex, key);
+        if (Unsafe.IsNullRef(ref index)) return ref Unsafe.NullRef<StorageSlot>();
+
+        return ref CollectionsMarshal.AsSpan(_storageSlots)[index];
+    }
+
+    private ref StorageSlot GetOrAddSlot(in UInt256 key)
+    {
+        ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlotIndex, key, out bool exists);
+        if (!exists)
+        {
+            index = _storageSlots.Count;
+            _storageSlots.Add(new StorageSlot { Key = key });
+        }
+
+        return ref CollectionsMarshal.AsSpan(_storageSlots)[index];
+    }
+
     public bool HasStorageChange(in UInt256 key)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_storageSlots, key);
+        ref StorageSlot slot = ref FindSlot(in key);
         return !Unsafe.IsNullRef(ref slot) && slot.HasChange;
     }
 
     public void SetStorageChange(in UInt256 key, StorageChange storageChange)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, key, out _);
+        ref StorageSlot slot = ref GetOrAddSlot(in key);
         if (!slot.HasChange)
         {
             slot.HasChange = true;
@@ -80,18 +102,12 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageChange(in UInt256 key)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_storageSlots, key);
+        ref StorageSlot slot = ref FindSlot(in key);
         if (Unsafe.IsNullRef(ref slot) || !slot.HasChange) return false;
 
-        if (slot.HasPreTx)
-        {
-            slot.HasChange = false;
-            slot.Change = default;
-        }
-        else
-        {
-            _storageSlots.Remove(key);
-        }
+        // The record stays, empty if it holds no prestate either, so the index of every other record holds.
+        slot.HasChange = false;
+        slot.Change = default;
         _storageChangeCount--;
         return true;
     }
@@ -101,7 +117,12 @@ public class AccountChangesAtIndex(Address address)
     {
         if (_storageChangeCount == 0) return;
 
-        foreach (UInt256 key in _storageSlots.Keys) RemoveStorageChange(key);
+        foreach (ref StorageSlot slot in CollectionsMarshal.AsSpan(_storageSlots))
+        {
+            slot.HasChange = false;
+            slot.Change = default;
+        }
+        _storageChangeCount = 0;
     }
 
     public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
@@ -137,7 +158,7 @@ public class AccountChangesAtIndex(Address address)
     internal bool RecordStorageWrite(in UInt256 key, in UInt256 before, in UInt256 after, uint index, ulong journalEpoch,
         out StorageChange previous, out bool hadChange)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, key, out _);
+        ref StorageSlot slot = ref GetOrAddSlot(in key);
         hadChange = slot.HasChange;
         previous = slot.Change;
         bool needsUndo = !slot.HasPreTx || slot.JournalEpoch != journalEpoch;
@@ -176,7 +197,7 @@ public class AccountChangesAtIndex(Address address)
     /// <summary>Records a slot's transaction prestate known before its first write, such as one hidden by a storage clear.</summary>
     public void SeedPreTxStorage(in UInt256 key, in UInt256 value)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlots, key, out _);
+        ref StorageSlot slot = ref GetOrAddSlot(in key);
         if (slot.HasPreTx) return;
 
         slot.PreTx = value;
@@ -187,7 +208,7 @@ public class AccountChangesAtIndex(Address address)
     /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
     public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
     {
-        ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_storageSlots, key);
+        ref StorageSlot slot = ref FindSlot(in key);
         if (!Unsafe.IsNullRef(ref slot) && slot.HasPreTx)
         {
             value = slot.PreTx;
@@ -201,6 +222,7 @@ public class AccountChangesAtIndex(Address address)
     /// <summary>What this index holds for one slot: its change and its transaction prestate, each when present.</summary>
     internal struct StorageSlot
     {
+        public UInt256 Key;
         public StorageChange Change;
         public UInt256 PreTx;
         public ulong JournalEpoch;
@@ -226,7 +248,7 @@ public class AccountChangesAtIndex(Address address)
 
         public bool TryGetValue(in UInt256 key, out StorageChange change)
         {
-            ref StorageSlot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_owner._storageSlots, key);
+            ref StorageSlot slot = ref _owner.FindSlot(in key);
             if (!Unsafe.IsNullRef(ref slot) && slot.HasChange)
             {
                 change = slot.Change;
@@ -237,7 +259,7 @@ public class AccountChangesAtIndex(Address address)
             return false;
         }
 
-        public Enumerator GetEnumerator() => new(_owner._storageSlots.GetEnumerator());
+        public Enumerator GetEnumerator() => new(_owner._storageSlots);
 
         IEnumerator<KeyValuePair<UInt256, StorageChange>> IEnumerable<KeyValuePair<UInt256, StorageChange>>.GetEnumerator() => GetEnumerator();
 
@@ -245,27 +267,40 @@ public class AccountChangesAtIndex(Address address)
 
         public struct Enumerator : IEnumerator<KeyValuePair<UInt256, StorageChange>>
         {
-            private Dictionary<UInt256, StorageSlot>.Enumerator _slots;
+            private readonly List<StorageSlot> _slots;
+            private int _index;
 
-            internal Enumerator(Dictionary<UInt256, StorageSlot>.Enumerator slots) => _slots = slots;
+            internal Enumerator(List<StorageSlot> slots)
+            {
+                _slots = slots;
+                _index = -1;
+            }
 
-            public readonly KeyValuePair<UInt256, StorageChange> Current => new(_slots.Current.Key, _slots.Current.Value.Change);
+            public readonly KeyValuePair<UInt256, StorageChange> Current
+            {
+                get
+                {
+                    ref readonly StorageSlot slot = ref CollectionsMarshal.AsSpan(_slots)[_index];
+                    return new(slot.Key, slot.Change);
+                }
+            }
 
             readonly object IEnumerator.Current => Current;
 
             public bool MoveNext()
             {
-                while (_slots.MoveNext())
+                ReadOnlySpan<StorageSlot> slots = CollectionsMarshal.AsSpan(_slots);
+                while (++_index < slots.Length)
                 {
-                    if (_slots.Current.Value.HasChange) return true;
+                    if (slots[_index].HasChange) return true;
                 }
 
                 return false;
             }
 
-            void IEnumerator.Reset() => throw new NotSupportedException();
+            void IEnumerator.Reset() => _index = -1;
 
-            public void Dispose() => _slots.Dispose();
+            public readonly void Dispose() { }
         }
     }
 
@@ -279,7 +314,10 @@ public class AccountChangesAtIndex(Address address)
         PreTxBalance = null;
         PreTxNonce = null;
         PreTxCode = default;
-        _storageSlots.ClearAndTrim();
+        _storageSlotIndex.ClearAndTrim();
+        _storageSlots.Clear();
+        if (_storageSlots.Capacity > Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+            _storageSlots.Capacity = Collections.CollectionExtensions.DefaultTrimToCapacity;
         _storageChangeCount = 0;
         _storageReads.ClearAndTrim();
         _storageReadsMayHoldChangedSlots = false;
