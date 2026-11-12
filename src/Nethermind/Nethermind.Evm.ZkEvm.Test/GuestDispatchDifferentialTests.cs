@@ -835,14 +835,16 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Block numbers of no hash below, at and above the last 256, the current block, later blocks and numbers past
-    /// 64 bits, at every gas up to the program's need, before EIP-7709 serves the hashes from state.
+    /// 64 bits, at every gas up to the program's need. Only forks before EIP-7709, which serves the hashes from state,
+    /// install the guest handler.
     /// BLOCKHASH with no pushed number reads the word below, or underflows on an empty stack.
     /// </remarks>
     [Test]
     public void Block_hashes_match_the_shared_handlers([ValueSource(nameof(BlockHashForks))] IReleaseSpec spec, [Values(0, 1, 2)] int below)
     {
         UInt256[] numbers = [0, BlockHashHeader.Number - 257, BlockHashHeader.Number - 256, BlockHashHeader.Number - 1, BlockHashHeader.Number,
-            BlockHashHeader.Number + 1, (UInt256.One << 64) + BlockHashHeader.Number - 1, ulong.MaxValue, UInt256.MaxValue];
+            BlockHashHeader.Number + 1, (UInt256.One << 64) + BlockHashHeader.Number - 1, ulong.MaxValue, UInt256.MaxValue,
+            (UInt256.One << 128) + BlockHashHeader.Number - 1, (UInt256.One << 192) + BlockHashHeader.Number - 1];
         byte[] fromEmptyStack = [(byte)Instruction.BLOCKHASH, (byte)Instruction.STOP];
         BlockExecutionContext context = new(BlockHashHeader, spec);
         const ulong ample = 1_000;
@@ -863,6 +865,7 @@ public class GuestDispatchDifferentialTests
         {
             Assert.That(mismatches, Is.Empty);
             Assert.That(Run(ample, [], 0, new CodeInfo(fromEmptyStack), Table.Untraced, spec, context: context).Exception, Is.EqualTo(EvmExceptionType.StackUnderflow));
+            Assert.That(VirtualMachine<EthereumGasPolicy>.HashesBlockThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip7709Enabled));
         }
     }
 
@@ -1257,7 +1260,13 @@ public class GuestDispatchDifferentialTests
 
     private const int FirstEmptyKey = 0x80;
 
-    private static readonly IReleaseSpec[] BlockHashForks = [Byzantium.Instance, ReleaseSpec, Amsterdam.Instance];
+    private static readonly IReleaseSpec[] BlockHashForks = [Byzantium.Instance, ReleaseSpec, Amsterdam.Instance, new Eip7709Spec(Amsterdam.Instance)];
+
+    /// <summary>A fork that serves BLOCKHASH from the history contract's storage under EIP-7709.</summary>
+    private sealed class Eip7709Spec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+    {
+        public override bool IsEip7709Enabled => true;
+    }
 
     /// <summary>A block far enough from genesis for every one of the last 256 blocks to have a hash.</summary>
     private static readonly BlockHeader BlockHashHeader = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1_000, 30_000_000, 1, []);
