@@ -737,7 +737,13 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         public override bool IsTracingActions => true;
         public bool HaltsLeftNoGas { get; private set; } = true;
         public int Errors { get; private set; }
+        public int CodeDepositDetails { get; private set; }
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+
+        public override void ReportActionErrorDetails(string error)
+        {
+            if (error == "contract creation code storage out of gas") CodeDepositDetails++;
+        }
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
@@ -1071,6 +1077,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             {
                 Assert.That(checkpoints.Errors, Is.EqualTo(expectedErrors), "action errors");
                 Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
+                Assert.That(checkpoints.CodeDepositDetails, Is.Zero, "instruction tracers do not receive code-deposit detail");
             }
         }
 
