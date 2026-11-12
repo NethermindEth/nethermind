@@ -566,10 +566,6 @@ public ref struct RlpReader
     [DoesNotReturn]
     private static void ThrowTruncated() => throw new RlpReaderException(TruncatedMessage);
 
-    // The messages keep the wording of the previous RLP reader, with two differences. A reader for a sequence does not know
-    // where the sequence starts in the whole input, so a position counts from the start of the sequence. An item that runs
-    // past the end of its sequence is reported as truncated, where the previous reader reported "Data checkpoint failed".
-    // Absolute positions would need two more fields in this struct, which costs about 0.03% of ZisK steps.
     [DoesNotReturn]
     private static void ThrowNonCanonicalInteger(int position) => throw new RlpReaderException($"Non-canonical integer at position {position}");
 
