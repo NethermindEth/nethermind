@@ -26,7 +26,7 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
+    internal static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
         => UInt256.Mod(in a, in b, out result);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

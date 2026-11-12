@@ -154,6 +154,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.XOR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.XorOperation>);
         lookup[(int)Instruction.MUL] = AsTableEntry(&RawCalliHelper.ExecuteMul);
         lookup[(int)Instruction.DIV] = AsTableEntry(&RawCalliHelper.ExecuteDiv);
+        lookup[(int)Instruction.MOD] = AsTableEntry(&RawCalliHelper.ExecuteMod);
         lookup[(int)Instruction.ADDMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpAddMod>);
         lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
         lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
@@ -3476,6 +3477,118 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpDiv, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>MOD of a dividend below 2^64 by a divisor below 2^64, or by a power of two, which masks the dividend.</summary>
+        /// <remarks>
+        /// Either takes one instruction or a mask, where the shared handler runs a full 256-bit division. Every other
+        /// modulus goes to <see cref="ExecuteModOfWideOperands"/>; a short stack or gas runs the shared MOD handler.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMod(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 1 && ChargeUntested(ref gas, LowGasCost.GasCost))
+            {
+                // The dividend is the top word; the remainder replaces the divisor below it.
+                ref ulong remainder = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
+                ref ulong dividend = ref Unsafe.Add(ref remainder, LimbsPerWord);
+                ulong divisor = remainder;
+                if ((Unsafe.Add(ref dividend, 1) | Unsafe.Add(ref dividend, 2) | Unsafe.Add(ref dividend, 3) |
+                     Unsafe.Add(ref remainder, 1) | Unsafe.Add(ref remainder, 2) | Unsafe.Add(ref remainder, 3)) == 0 && divisor != 0)
+                {
+                    remainder = dividend % divisor;
+                }
+                else if (TryGetLog2(ref remainder, out int shift))
+                {
+                    CopyWord(ref dividend, ref remainder);
+                    KeepLowBits(ref remainder, shift);
+                }
+                else
+                {
+                    nint wide = Entry(&ExecuteModOfWideOperands);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, wide);
+                }
+
+                head--;
+                sp = ref Moved(ref sp, -1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpMod, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>The rest of <see cref="ExecuteMod"/>, for a zero divisor, or wider operands whose divisor is not a power of two.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. A zero divisor leaves the zero its slot
+        /// holds, and a dividend below the divisor is its own remainder. In the ZisK guest the library reads both
+        /// operands before it writes, so the remainder takes the divisor's slot.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteModOfWideOperands(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            ref ulong remainder = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
+            if (!IsZeroWord(ref remainder))
+            {
+                ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref remainder);
+                if (IsBelow(ref remainder, LimbsPerWord, 0))
+                {
+                    CopyWord(ref Unsafe.Add(ref remainder, LimbsPerWord), ref remainder);
+                }
+                else if (ZiskFlag.IsActive)
+                {
+                    EvmInstructions.Mod256(in Unsafe.Add(ref divisor, 1), in divisor, out divisor);
+                }
+                else
+                {
+                    EvmInstructions.Mod256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
+                    divisor = result;
+                }
+
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+            }
+
+            head--;
+            sp = ref Moved(ref sp, -1);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>Keeps the low <paramref name="bits"/> bits of the word at <paramref name="word"/>, in limb layout, and clears the rest.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void KeepLowBits(ref ulong word, int bits)
+        {
+            for (int i = 0; i < LimbsPerWord; i++)
+            {
+                int keep = bits - i * 64;
+                ref ulong limb = ref Unsafe.Add(ref word, i);
+                if (keep <= 0) limb = 0;
+                else if (keep < 64) limb &= (1UL << keep) - 1;
+            }
         }
 
         /// <summary>The rest of <see cref="ExecuteDiv"/>, for a zero divisor, or wider operands whose divisor is not a power of two.</summary>

@@ -120,7 +120,7 @@ public static unsafe partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
+    internal static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         if (AirbenderFlag.IsActive)
         {
