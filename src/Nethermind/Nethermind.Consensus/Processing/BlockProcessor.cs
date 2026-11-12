@@ -227,20 +227,26 @@ public partial class BlockProcessor(
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         _balManager.Setup(block);
+        E1Probe.Begin(block);
 
         // EIP-8253: the fork-block nonce bump precedes every pre-execution system call.
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
+        E1Probe.PreDone();
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        E1Probe.ExecDone();
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke(block);
 
-        return FinalizeBlock(block, blockTracer, options, spec, receipts);
+        long finStart = E1Probe.Now();
+        TxReceipt[] finalized = FinalizeBlock(block, blockTracer, options, spec, receipts);
+        E1Probe.End(block, finalized, finStart);
+        return finalized;
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
@@ -351,16 +357,22 @@ public partial class BlockProcessor(
 
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
     {
-        using MetricsTimer<StorageMerkleTimeSink> _ = new();
-        _stateProvider.Commit(spec, commitRoots: true);
+        long probeStart = E1Probe.Now();
+        using (MetricsTimer<StorageMerkleTimeSink> _ = new())
+        {
+            _stateProvider.Commit(spec, commitRoots: true);
+        }
+        E1Probe.Root(probeStart);
     }
 
     private void ComputeStateRoot(BlockHeader header)
     {
+        long probeStart = E1Probe.Now();
         using (MetricsTimer<StateRootTimeSink> _ = new())
         {
             _stateProvider.RecalculateStateRoot();
         }
+        E1Probe.Root(probeStart);
         header.StateRoot = _stateProvider.StateRoot;
     }
 

@@ -159,6 +159,7 @@ public partial class BlockProcessor
             ExecutedGasTally executedGas = _executedGasTally ??= new();
             executedGas.Reset(rejection);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            E1Probe.Parallel(ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism);
 
             try
             {
@@ -203,6 +204,7 @@ public partial class BlockProcessor
                                     // The list is the block's own claim, so a rejected block stops applying it between steps;
                                     // its scope is discarded, and disposing it cancels any warm-up still running.
                                     if (state.IsBlockRejected) return state;
+                                    long it0Start = E1Probe.Now();
                                     state.BalManager.WaitForBalWarmup();
                                     if (state.IsBlockRejected) return state;
                                     ReadOnlyBlockAccessList bal = state.Block.BlockAccessList;
@@ -214,6 +216,7 @@ public partial class BlockProcessor
                                     state.StateProvider.ApplyBal(bal, state.Rejection);
                                     if (state.IsBlockRejected) return state;
                                     state.StateProvider.RecalculateStateRoot();
+                                    E1Probe.Iteration0(it0Start);
                                     return state;
                                 }
 
@@ -238,6 +241,7 @@ public partial class BlockProcessor
                                     return state;
                                 }
 
+                                long txStart = E1Probe.Now();
                                 try
                                 {
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
@@ -259,6 +263,7 @@ public partial class BlockProcessor
                                     ulong blockStateGasUsed = state.ReceiptsTracers[txIndex].BlockStateGasUsed;
                                     state.ExecutedGas.Add(tx.BlockGasUsed, blockStateGasUsed, state.Block.Header.GasLimit);
                                     state.GasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, blockStateGasUsed, null));
+                                    E1Probe.Tx(txIndex, txStart);
                                 }
                                 catch (InvalidBlockException ex)
                                 {

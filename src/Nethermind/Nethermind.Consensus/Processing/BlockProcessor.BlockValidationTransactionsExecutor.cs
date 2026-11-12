@@ -63,6 +63,7 @@ public partial class BlockProcessor
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
             long txStart = StartTxTimer();
+            long probeStart = E1Probe.Now();
             TransactionResult result;
             try
             {
@@ -72,6 +73,7 @@ public partial class BlockProcessor
             {
                 // Stop the timer even on failure so a slow-block log captures the failing tx's time
                 StopTxTimer(index, txStart);
+                E1Probe.Tx(index, probeStart);
             }
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             if (_transactionProcessedEventHandler is { HasSubscribers: true } handler)
