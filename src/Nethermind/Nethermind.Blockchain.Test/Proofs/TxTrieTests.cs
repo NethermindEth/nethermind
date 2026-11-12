@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs.Forks;
@@ -146,7 +147,7 @@ public class TxTrieTests(bool useEip2718)
                 Assert.That(references[i], Is.EqualTo(original[i]));
                 continue;
             }
-            RlpWriter writer = new(branch);
+            RlpWriter writer = RlpWriter.ContentWriter(branch);
             writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
             for (int j = 0; j < 16; j++) writer.Encode(original[i + j].Value);
             writer.Encode(ReadOnlySpan<byte>.Empty);
@@ -192,7 +193,7 @@ public class TxTrieTests(bool useEip2718)
                 }
                 continue;
             }
-            RlpWriter writer = new(branch);
+            RlpWriter writer = RlpWriter.ContentWriter(branch);
             writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
             for (int j = 0; j < 16; j++) writer.Encode(original[start + j].Value);
             writer.Encode(ReadOnlySpan<byte>.Empty);
@@ -210,8 +211,7 @@ public class TxTrieTests(bool useEip2718)
             if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
             return reportedLength ?? item.Length;
         }
-        public void Encode<TWriter>(ref TWriter writer, byte[] item)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+        public void Encode(ref RlpWriter writer, byte[] item) => writer.WriteEncoded(item);
     }
 
     [Test]
@@ -315,7 +315,7 @@ public class TxTrieTests(bool useEip2718)
         transactions[^1] = transaction;
         Hash256 expected = TxTrie.CalculateRoot(transactions);
         transaction.Type = (TxType)127;
-        Assert.Throws<RlpException>(() => TxTrie.CalculateRoot(transactions));
+        Assert.Throws<RlpReaderException>(() => TxTrie.CalculateRoot(transactions));
 
         transaction.Type = TxType.Legacy;
         Assert.That(TxTrie.CalculateRoot(transactions), Is.EqualTo(expected));
@@ -535,8 +535,8 @@ public class TxTrieCodecTests
         public TestTxDecoder() => TxDecoder.Instance.RegisterDecoder(this);
         public void Dispose() => TxDecoder.Instance.RegisterDecoder(Type, null!);
 
-        public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-            ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
+        public void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+            ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
 
         public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
             bool isEip155Enabled = false, ulong chainId = 0)
@@ -545,9 +545,8 @@ public class TxTrieCodecTests
             return 3;
         }
 
-        public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             using (Assert.EnterMultipleScope())
             {
@@ -556,8 +555,9 @@ public class TxTrieCodecTests
             }
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();
-            writer.StartSequence(1);
+            RlpSequence sequence = writer.StartSequence(1);
             writer.WriteByte(1);
+            writer.EndSequence(sequence);
         }
     }
 }

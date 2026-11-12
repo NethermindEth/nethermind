@@ -14,6 +14,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
@@ -88,7 +89,7 @@ public class ReceiptsMessageSerializerTests
         }
         else
         {
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
         }
     }
 
@@ -151,7 +152,7 @@ public class ReceiptsMessageSerializerTests
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
         byte[] serialized = Bytes.FromHexString("c2c1c0");
 
-        RlpException? exception = Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+        RlpReaderException? exception = Assert.Throws<RlpReaderException>(() => serializer.Deserialize(serialized));
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
     }
 
@@ -272,9 +273,9 @@ public class ReceiptsMessageSerializerTests
     private static byte[] WrapInSequence(byte[] inner)
     {
         byte[] bytes = new byte[Rlp.LengthOfSequence(inner.Length)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.StartSequence(inner.Length);
-        inner.CopyTo(bytes, writer.Position);
+        inner.CopyTo(bytes, writer.Length);
         return bytes;
     }
 }
