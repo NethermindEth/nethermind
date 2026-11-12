@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -51,6 +52,9 @@ public sealed class ReadOnlySnapshotBundle(
     // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
+
+    // Read once, so a persisted read on a node that is not migrating makes no call to find out.
+    private readonly MigrationCursor? _migrationCursor = persistenceReader.GetMigrationCursor();
 
     /// <summary>The in-memory snapshot of this bundle's state, which resolves its tries' roots; null when the state is persisted.</summary>
     internal Snapshot? StateSnapshot => snapshots.Count > 0 ? snapshots[^1] : null;
@@ -123,7 +127,7 @@ public sealed class ReadOnlySnapshotBundle(
             return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? account = persistenceReader.ShouldReadWithTrie(address) ? GetAccountWithTrie(address) : persistenceReader.GetAccount(address);
+        Account? account = ShouldReadWithTrie(address) ? GetAccountWithTrie(address) : persistenceReader.GetAccount(address);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -369,14 +373,28 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     private bool TryGetPersistedSlot(Address address, in UInt256 index, ref UInt256 value) =>
-        persistenceReader.ShouldReadWithTrie(address, index)
+        ShouldReadWithTrie(address, index)
             ? TryGetSlotWithTrie(address, index, ref value)
             : persistenceReader.TryGetSlot(address, index, ref value);
+
+    /// <summary>Whether the account at <paramref name="address"/> is past the migration cursor, so persistence may not have it flat.</summary>
+    private bool ShouldReadWithTrie(Address address) => _migrationCursor is { } cursor && !cursor.IsCopied(address.ToAccountPath);
+
+    /// <summary>Whether the slot at <paramref name="index"/> of <paramref name="address"/> is past the migration cursor, so persistence may not have it flat.</summary>
+    private bool ShouldReadWithTrie(Address address, in UInt256 index)
+    {
+        if (_migrationCursor is not { } cursor) return false;
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(index, ref slotPath);
+        return !cursor.IsCopied(address.ToAccountPath, slotPath);
+    }
 
     /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private Account? GetAccountWithTrie(Address address)
     {
+        Metrics.IncrementHalfPathFallbackWalks();
         Account? account = null;
         TryGetWithTrie(null, StateRoot, address.ToAccountPath, DecodeAccount, new Span<Account?>(ref account));
         return account;
@@ -386,6 +404,7 @@ public sealed class ReadOnlySnapshotBundle(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool TryGetSlotWithTrie(Address address, in UInt256 index, ref UInt256 value)
     {
+        Metrics.IncrementHalfPathFallbackWalks();
         if (GetAccount(address) is not { HasStorage: true } account) return false;
 
         ValueHash256 slotPath = default;

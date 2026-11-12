@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -42,9 +43,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
-    public bool ShouldReadWithTrie(Address address) => _innerReader.ShouldReadWithTrie(address);
-
-    public bool ShouldReadWithTrie(Address address, in UInt256 slot) => _innerReader.ShouldReadWithTrie(address, in slot);
+    public MigrationCursor? GetMigrationCursor() => _innerReader.GetMigrationCursor();
 
     public StateId CurrentState => _innerReader.CurrentState;
 

@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -275,8 +276,7 @@ public class FlatSnapTrieFactory(
         public bool IsPreimageMode => Inner.IsPreimageMode;
         public Account? GetAccount(Address address) => Inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
-        public bool ShouldReadWithTrie(Address address) => Inner.ShouldReadWithTrie(address);
-        public bool ShouldReadWithTrie(Address address, in UInt256 slot) => Inner.ShouldReadWithTrie(address, slot);
+        public MigrationCursor? GetMigrationCursor() => Inner.GetMigrationCursor();
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => Inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Inner.TryLoadStorageRlp(address, path, flags);
         public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => Inner.TryLoadStateRlp(path, hash, flags);

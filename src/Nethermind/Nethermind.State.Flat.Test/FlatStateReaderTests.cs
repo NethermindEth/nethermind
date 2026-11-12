@@ -12,6 +12,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -159,7 +160,7 @@ public class FlatStateReaderTests
     public void Reads_what_the_reader_cannot_read_flat_with_the_trie_of_the_bundle([Values] bool persistedSnapshot)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
-        trieReader.ReadWithTrie = true;
+        trieReader.Cursor = MigrationCursor.Start;
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
@@ -269,6 +270,7 @@ public class FlatStateReaderTests
         public override Account? GetAccount(Address address) => null;
         public override bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public override StateId CurrentState => new(5, Keccak.EmptyTreeHash);
+        public override MigrationCursor? GetMigrationCursor() => null;
         public override byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public override bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public override IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -337,7 +339,7 @@ public class FlatStateReaderTests
         public int StorageRlpLoads { get; private set; }
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
-        public bool ReadWithTrie { get; set; }
+        public MigrationCursor? Cursor { get; set; }
 
         /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
         public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
@@ -412,8 +414,7 @@ public class FlatStateReaderTests
 
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
-        public bool ShouldReadWithTrie(Address address) => ReadWithTrie;
-        public bool ShouldReadWithTrie(Address address, in UInt256 slot) => ReadWithTrie;
+        public MigrationCursor? GetMigrationCursor() => Cursor;
         public StateId CurrentState => new(5, Keccak.EmptyTreeHash);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;

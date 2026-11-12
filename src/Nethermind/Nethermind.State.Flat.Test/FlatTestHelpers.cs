@@ -293,6 +293,7 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     public abstract Account? GetAccount(Address address);
     public abstract bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
     public abstract StateId CurrentState { get; }
+    public abstract MigrationCursor? GetMigrationCursor();
     public abstract byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
     public abstract byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
     public abstract byte[]? GetAccountRaw(in ValueHash256 addrHash);

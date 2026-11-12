@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
@@ -56,6 +57,8 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     }
 
     public StateId CurrentState => _block;
+
+    public MigrationCursor? GetMigrationCursor() => null;
 
     public Account? GetAccount(Address address)
     {

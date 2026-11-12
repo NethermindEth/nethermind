@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
@@ -18,6 +19,7 @@ internal sealed class BulkFillStateReader(IColumnsDb<Columns> db, StateId state,
 {
     public StateId CurrentState => state;
     public bool IsPreimageMode => false;
+    public MigrationCursor? GetMigrationCursor() => null;
 
     public Account? GetAccount(Address address)
     {

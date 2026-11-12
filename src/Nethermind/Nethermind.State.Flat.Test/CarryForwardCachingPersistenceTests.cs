@@ -1010,6 +1010,7 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => state.Id;
+            public MigrationCursor? GetMigrationCursor() => null;
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
@@ -1126,6 +1127,7 @@ public class CarryForwardCachingPersistenceTests
             }
 
             public StateId CurrentState => parent.ReaderState;
+            public MigrationCursor? GetMigrationCursor() => null;
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;

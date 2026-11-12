@@ -5,6 +5,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -16,6 +17,8 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
     public Account? GetAccount(Address address) => null;
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+
+    public MigrationCursor? GetMigrationCursor() => null;
 
     public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
 

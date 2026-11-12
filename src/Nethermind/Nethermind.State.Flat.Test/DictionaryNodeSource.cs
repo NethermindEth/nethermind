@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
@@ -61,6 +62,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         public Account? GetAccount(Address address) => throw new NotSupportedException();
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => throw new NotSupportedException();
         public StateId CurrentState => throw new NotSupportedException();
+        public MigrationCursor? GetMigrationCursor() => null;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => source.LoadRlp(path);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => source.LoadRlp(path);
 

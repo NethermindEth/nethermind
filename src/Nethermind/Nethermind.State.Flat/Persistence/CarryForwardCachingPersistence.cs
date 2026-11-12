@@ -293,8 +293,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
-        public bool ShouldReadWithTrie(Address address) => inner.ShouldReadWithTrie(address);
-        public bool ShouldReadWithTrie(Address address, in UInt256 slot) => inner.ShouldReadWithTrie(address, slot);
+        public MigrationCursor? GetMigrationCursor() => inner.GetMigrationCursor();
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);

@@ -944,6 +944,8 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
+        public MigrationCursor? GetMigrationCursor() => null;
+
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);
 

@@ -23,6 +23,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -1298,6 +1299,7 @@ public class ReadOnlySnapshotBundleFilterTests
         }
 
         public StateId CurrentState => currentState;
+        public MigrationCursor? GetMigrationCursor() => null;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;

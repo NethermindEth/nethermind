@@ -42,13 +42,13 @@ public interface IPersistence
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
 
-        /// <summary>Whether the account at <paramref name="address"/> must be read by walking the state trie, as <see cref="GetAccount"/> may miss it.</summary>
-        /// <remarks>For a reader whose flat state is incomplete, as during a migration into flat; the trie nodes are still read through it.</remarks>
-        bool ShouldReadWithTrie(Address address) => false;
-
-        /// <summary>Whether the <paramref name="slot"/> of <paramref name="address"/> must be read by walking its storage trie, as <see cref="TryGetSlot"/> may miss it.</summary>
-        /// <inheritdoc cref="ShouldReadWithTrie(Address)" path="/remarks"/>
-        bool ShouldReadWithTrie(Address address, in UInt256 slot) => false;
+        /// <summary>How far the migration into flat had copied when this reader's snapshot was taken, or <c>null</c> when its flat state is complete.</summary>
+        /// <remarks>
+        /// An account or slot the cursor has not passed must be read by walking the trie, as <see cref="GetAccount"/> and
+        /// <see cref="TryGetSlot"/> may miss it; the trie nodes are still read through this reader. It is fixed for the reader's
+        /// lifetime, so a caller can read it once.
+        /// </remarks>
+        MigrationCursor? GetMigrationCursor();
 
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);

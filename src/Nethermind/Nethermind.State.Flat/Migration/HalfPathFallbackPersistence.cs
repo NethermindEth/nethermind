@@ -14,9 +14,9 @@ namespace Nethermind.State.Flat.Migration;
 /// <remarks>
 /// <para>
 /// A read the <see cref="MigrationCursor"/> has passed is served by flat alone. Past it, a trie node flat misses is looked up in the
-/// HalfPath DB by its path and hash, which is exact, and an account or slot is reported by
-/// <see cref="IPersistence.IPersistenceReader.ShouldReadWithTrie(Address)"/>, so the caller reads it by walking the trie through
-/// those node reads.
+/// HalfPath DB by its path and hash, which is exact, and the reader reports the cursor through
+/// <see cref="IPersistence.IPersistenceReader.GetMigrationCursor"/>, so the caller reads an account or slot past it by walking the
+/// trie through those node reads.
 /// </para>
 /// <para>
 /// The walk must start from the caller's state root rather than the HalfPath one because flat deletes are physical: an account a
@@ -61,24 +61,7 @@ public sealed class HalfPathFallbackPersistence(IPersistence inner, INodeStorage
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => inner.TryGetSlot(address, slot, ref outValue);
 
-        /// <inheritdoc/>
-        /// <remarks>Counted in <see cref="Metrics.HalfPathFallbackWalks"/>, as the caller then walks the trie.</remarks>
-        public bool ShouldReadWithTrie(Address address) => !copied.IsCopied(address.ToAccountPath) && CountWalk();
-
-        /// <inheritdoc/>
-        /// <remarks>Counted in <see cref="Metrics.HalfPathFallbackWalks"/>, as the caller then walks the trie.</remarks>
-        public bool ShouldReadWithTrie(Address address, in UInt256 slot)
-        {
-            ValueHash256 slotPath = default;
-            StorageTree.ComputeKeyWithLookup(slot, ref slotPath);
-            return !copied.IsCopied(address.ToAccountPath, slotPath) && CountWalk();
-        }
-
-        private static bool CountWalk()
-        {
-            Metrics.IncrementHalfPathFallbackWalks();
-            return true;
-        }
+        public MigrationCursor? GetMigrationCursor() => copied;
 
         public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
             inner.TryLoadStateRlp(path, hash, flags) ?? LoadUncopied(null, path, hash, flags);

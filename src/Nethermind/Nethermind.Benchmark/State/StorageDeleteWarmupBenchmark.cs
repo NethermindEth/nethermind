@@ -17,6 +17,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
@@ -262,6 +263,8 @@ public class StorageDeleteWarmupBenchmark
         private long _loads;
 
         public long Loads => Interlocked.Read(ref _loads);
+
+        public MigrationCursor? GetMigrationCursor() => inner.GetMigrationCursor();
 
         private void Read()
         {
