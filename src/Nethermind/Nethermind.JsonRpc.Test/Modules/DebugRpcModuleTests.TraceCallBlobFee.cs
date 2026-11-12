@@ -10,8 +10,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Core;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -229,12 +229,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("0x0", false, null, 0)]
-    [TestCase("0x1", false, null, 1)]
-    [TestCase("0x1", false, "0x9", 9)]
-    [TestCase(null, true, null, 0)]
-    [TestCase(null, true, "0x9", 0)]
-    public async Task Debug_traceCall_runs_blob_fee_cap_as_geth(string? blobFeeCap, bool withBlobHashes, string? blobBaseFeeOverride, int expectedBlobBaseFee)
+    [Test]
+    public async Task Debug_traceCall_runs_an_omitted_blob_fee_cap_at_zero_blob_base_fee([Values(null, "0x9")] string? blobBaseFeeOverride)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
@@ -243,10 +239,9 @@ public partial class DebugRpcModuleTests
         Dictionary<string, object> call = new()
         {
             ["to"] = TestItem.AddressC.ToString(),
-            ["gas"] = "0x186a0"
+            ["gas"] = "0x186a0",
+            ["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) }
         };
-        if (blobFeeCap is not null) call["maxFeePerBlobGas"] = blobFeeCap;
-        if (withBlobHashes) call["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
         // BLOBBASEFEE; MSTORE at 0; RETURN 32 bytes
         object stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code = "0x4a60005260206000f3" } };
 
@@ -258,17 +253,19 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["result"]?["failed"]?.Value<bool>(), Is.False, response);
-            Assert.That(new UInt256(ParseReturnValue(response), true), Is.EqualTo((UInt256)expectedBlobBaseFee), response);
+            Assert.That(new UInt256(ParseReturnValue(response), true), Is.EqualTo(UInt256.Zero), response);
         }
     }
 
+    // A blob fee cap only describes a blob transaction, so a cap alone is rejected at every fork, as in trace_call and
+    // debug_traceCallMany (trace-interop H14), although Geth's debug_traceCall runs it from Cancun.
     [Test]
-    public async Task Debug_traceCall_rejects_blob_fee_cap_without_blob_hashes_before_cancun()
+    public async Task Debug_traceCall_rejects_a_lone_blob_fee_cap([Values("0x0", "0x1")] string blobFeeCap)
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(Shanghai.Instance));
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerBlobGas = "0x1" }, "latest");
-        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(Shanghai.Instance.Name)), response);
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerBlobGas = blobFeeCap }, "latest");
+        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
     }
 
     private static void AssertBlobPayment(string response, ulong expectedBalance, ulong expectedFee)
