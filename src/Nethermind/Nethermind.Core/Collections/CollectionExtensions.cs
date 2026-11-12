@@ -21,6 +21,8 @@ namespace Nethermind.Core.Collections
         /// <summary>Default capacity <c>ClearAndTrim</c> shrinks a collection back to once <see cref="DefaultTrimAboveCapacity"/> is exceeded.</summary>
         public const int DefaultTrimToCapacity = 1024;
 
+        public const int SparseClearCapacityDivisor = 256;
+
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
             switch (items)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -155,10 +156,30 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            ClearIntraBlockCache();
             _changes.Clear();
             _protectedPosition = Resettable.EmptyPosition;
-            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
+        }
+
+        private void ClearIntraBlockCache()
+        {
+            int capacity = _intraBlockCache.Capacity;
+            if (capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
+                || _intraBlockCache.Count > capacity / Core.Collections.CollectionExtensions.SparseClearCapacityDivisor)
+            {
+                _intraBlockCache.ClearAndTrim();
+                return;
+            }
+
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            for (int i = changes.Length - 1; i >= 0; i--)
+            {
+                ref readonly Change change = ref changes[i];
+                if (change.PrevIdx == -1 && change.ChangeType == StorageChangeType.Update) _intraBlockCache.Remove(change.StorageCell);
+            }
+
+            Debug.Assert(_intraBlockCache.Count == 0, "Every cached cell has an update without a previous one.");
         }
 
         /// <summary>

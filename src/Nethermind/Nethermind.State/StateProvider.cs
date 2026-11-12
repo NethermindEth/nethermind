@@ -688,12 +688,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         InvalidateFrontCache();
+        ClearIntraTxCache(changes);
         _changes.Clear();
         _transactionChangesSnapshots.Clear();
         _protectedPosition = Resettable.EmptyPosition;
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
-        _intraTxCache.ClearAndTrim();
         // A commit ends the transaction, which has finalized its TCREATE accounts by then.
         ResetTransientCode();
 
@@ -764,6 +764,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static void ThrowStartOfCommitIsNull(int currentPosition)
             => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
+    }
+
+    private void ClearIntraTxCache(ReadOnlySpan<Change> changes)
+    {
+        int capacity = _intraTxCache.Capacity;
+        if (capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
+            || _intraTxCache.Count > capacity / Core.Collections.CollectionExtensions.SparseClearCapacityDivisor)
+        {
+            _intraTxCache.ClearAndTrim();
+            return;
+        }
+
+        foreach (ref readonly Change change in changes)
+        {
+            if (change.PrevIdx == -1) _intraTxCache.Remove(change.Address);
+        }
+
+        Debug.Assert(_intraTxCache.Count == 0, "Every cached address has a change without a previous one.");
     }
 
     private void CommitChanges<TStateTracing>(
