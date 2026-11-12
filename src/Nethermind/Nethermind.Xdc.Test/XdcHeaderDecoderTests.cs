@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -108,7 +109,7 @@ namespace Nethermind.Xdc.Test
             byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject).Bytes;
             byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
 
-            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpException>());
+            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpReaderException>());
         }
 
         private static void Decode(XdcHeaderDecoder codec, byte[] rlp)

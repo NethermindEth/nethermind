@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
@@ -98,22 +99,20 @@ public class BadBlockStore(
     {
         RlpReader ctx = new(((byte[]?)bytes ?? []));
         Block block = _blockDecoder.Decode(ref ctx);
-        if (ctx.Position < ctx.Length)
+        if (ctx.HasNext)
         {
-            if (ctx.Data[ctx.Position] == NoBlockAccessList)
+            if (ctx.PeekByte() == NoBlockAccessList)
             {
-                ctx.Position++;
+                ctx.ReadRaw(1);
             }
             else
             {
-                int length = ctx.PeekNextRlpLength();
-                block.EncodedBlockAccessList = ctx.Data.Slice(ctx.Position, length).ToArray();
-                ctx.Position += length;
+                block.EncodedBlockAccessList = ctx.ReadEncodedItem().ToArray();
             }
 
-            if (ctx.Position < ctx.Length)
+            if (ctx.HasNext)
             {
-                block.EncodedGeneratedBlockAccessList = ctx.Data[ctx.Position..].ToArray();
+                block.EncodedGeneratedBlockAccessList = ctx.ReadRaw(ctx.Remaining).ToArray();
             }
         }
 
@@ -135,7 +134,7 @@ public class BadBlockStore(
         _blockAccessListSizes = new(Bytes.EqualityComparer);
         foreach (KeyValuePair<byte[], byte[]> entry in blockDb.GetAll(true))
         {
-            SetBlockAccessListSize(entry.Key, entry.Value.Length - new RlpReader(entry.Value).PeekNextRlpLength());
+            SetBlockAccessListSize(entry.Key, entry.Value.Length - new RlpReader(entry.Value).ReadEncodedItem().Length);
         }
     }
 
@@ -173,7 +172,7 @@ public class BadBlockStore(
             if (_blockAccessListTotal <= blockAccessListBudget) break;
             if (!_blockAccessListSizes.ContainsKey(key) || blockDb.Get(key) is not { } value) continue;
 
-            blockDb.PutSpan(key, value.AsSpan(0, new RlpReader(value).PeekNextRlpLength()), writeFlags);
+            blockDb.PutSpan(key, value.AsSpan(0, new RlpReader(value).ReadEncodedItem().Length), writeFlags);
             SetBlockAccessListSize(key, 0);
             if (_logger.IsDebug) _logger.Debug($"Bad block store is over the access list budget of {blockAccessListBudget} bytes. Removed the access lists of the entry {key.ToHexString()}.");
         }

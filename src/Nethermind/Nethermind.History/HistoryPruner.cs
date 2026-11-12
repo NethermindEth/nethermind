@@ -23,6 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -147,7 +148,7 @@ public class HistoryPruner : IHistoryPruner
 
         byte[]? balsPointer = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
-        _balAdmissionFloor = ulong.Max(balsPointer is null ? 0 : new RlpReader(balsPointer).DecodeULong(), persistedPointer ?? 0);
+        _balAdmissionFloor = ulong.Max(balsPointer is null ? 0 : DecodePointer(balsPointer), persistedPointer ?? 0);
         ulong snapshotPointer = persistedPointer ?? 0;
         ulong barrierFloor = _blockTree.GetLowestBlock(); // still the config barrier here - nothing has raised it yet
         // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
@@ -495,7 +496,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
-        ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
+        ulong? pointer = pointerBytes is null ? null : DecodePointer(pointerBytes);
         ulong barrier = AncientBodiesBarrier;
         if (pointer <= barrier)
         {
@@ -574,7 +575,7 @@ public class HistoryPruner : IHistoryPruner
         byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         _balsDeletePointer = balsVal is null
             ? _minDeletableBlockNumber
-            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _minDeletableBlockNumber);
+            : ulong.Max(DecodePointer(balsVal), _minDeletableBlockNumber);
         _lastSavedBalsDeletePointer = _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
         _hasLoadedBalsDeletePointer = true;
@@ -1108,7 +1109,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong OldestStoredReceipts()
     {
         ulong receiptsFloor = _defaultReceiptsColumn.Get(PersistentReceiptStorage.LowestInsertedReceiptBlockKey) is { } lowestInserted
-            ? new RlpReader(lowestInserted).DecodeULong()
+            ? DecodePointer(lowestInserted)
             : _fastSync ? _blockTree.SyncPivot.BlockNumber : 0;
 
         return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
@@ -1118,8 +1119,8 @@ public class HistoryPruner : IHistoryPruner
     {
         byte[]? pointerBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         byte[]? cursorBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
-        return (pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong(),
-            cursorBytes is null ? null : new RlpReader(cursorBytes).DecodeULong());
+        return (pointerBytes is null ? null : DecodePointer(pointerBytes),
+            cursorBytes is null ? null : DecodePointer(cursorBytes));
     }
 
     private bool TryLoadDeletePointers()
@@ -1154,7 +1155,7 @@ public class HistoryPruner : IHistoryPruner
         // deleted alongside blocks in PruneBlocksAndReceipts. Default to the blocks pointer on first load.
         _balsDeletePointer = balsVal is null
             ? _blocksDeletePointer
-            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _blocksDeletePointer);
+            : ulong.Max(DecodePointer(balsVal), _blocksDeletePointer);
         // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
@@ -1162,7 +1163,7 @@ public class HistoryPruner : IHistoryPruner
         byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
         _sliceCleanupCursor = cleanupVal is null
             ? _minDeletableBlockNumber
-            : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
+            : ulong.Max(DecodePointer(cleanupVal), _minDeletableBlockNumber);
         _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
 
         // A frozen frontier must not leak to disk through the first-save sentinels either.
@@ -1247,5 +1248,11 @@ public class HistoryPruner : IHistoryPruner
             _oldestBlockHeader = oldest;
             NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));
         }
+    }
+
+    private static ulong DecodePointer(byte[] pointerBytes)
+    {
+        RlpReader reader = new(pointerBytes);
+        return reader.DecodeULong<OffFlag>();
     }
 }

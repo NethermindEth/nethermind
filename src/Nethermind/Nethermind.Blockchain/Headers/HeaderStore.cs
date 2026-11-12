@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
@@ -180,7 +181,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (bloomTested && !bloomMatches(bloom)) return null;
 
         RlpReader reader = new(rlp);
-        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.ExcludeHashes);
+        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
         found = header is not null;
         if (found) header!.Hash = blockHash;
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
@@ -188,11 +189,14 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     private static bool TryReadBloom(ReadOnlySpan<byte> headerRlp, out ReadOnlySpan<byte> bloom)
     {
-        RlpReader reader = new(headerRlp);
-        reader.ReadSequenceLength();
+        RlpReader reader = new RlpReader(headerRlp).EnterSequence<OffFlag>(out _);
         // Parent hash, uncles hash, beneficiary, state root, transactions root and receipts root precede the bloom.
-        reader.SkipItems(6);
-        bloom = reader.DecodeByteArraySpan();
+        for (int i = 0; i < 6; i++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        bloom = reader.DecodeByteArraySpan<OffFlag>();
         return bloom.Length == Bloom.ByteLength;
     }
 
@@ -274,7 +278,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         {
             if (view.CurrentKey.Length != NumberPrefixedKeyLength) continue; // skip old hash-only keys
 
-            BlockHeader header = _headerDecoder.Decode(view.CurrentValue, RlpBehaviors.ExcludeHashes);
+            BlockHeader header = _headerDecoder.Decode(view.CurrentValue, RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
             header.Hash = new Hash256(view.CurrentKey[sizeof(ulong)..]);
             prefetched[header.Hash.ValueHash256] = header;
         }

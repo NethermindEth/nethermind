@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -2738,7 +2739,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
                 Assert.That((string?)json["error"]?["message"] ?? string.Empty,
-                    Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+                    Does.StartWith(nonceDelta > 0 ? "tracing failed: nonce too high" : "tracing failed: nonce too low"), response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
@@ -3232,14 +3233,7 @@ public partial class DebugRpcModuleTests
         };
         if (inputKind == "extra-field")
         {
-            RlpReader reader = new(input);
-            int contentLength = reader.ReadSequenceLength();
-            byte[] expanded = new byte[Rlp.LengthOfSequence(contentLength + 1)];
-            RlpWriter writer = new(expanded);
-            writer.StartSequence(contentLength + 1);
-            input.AsSpan(reader.Position).CopyTo(expanded.AsSpan(writer.Position));
-            expanded[^1] = 0x80;
-            input = expanded;
+            input = RlpTestHelper.WithTrailingItem(input);
         }
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", input);
         JToken json = JToken.Parse(response);

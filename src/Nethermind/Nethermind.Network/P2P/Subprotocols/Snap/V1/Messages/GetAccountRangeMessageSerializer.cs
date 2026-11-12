@@ -3,21 +3,23 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetAccountRangeMessageSerializer : SnapSerializerBase<GetAccountRangeMessage>
     {
-        protected override GetAccountRangeMessage Deserialize(ref RlpReader ctx)
+        protected override GetAccountRangeMessage Deserialize(ref RlpReader reader)
         {
             GetAccountRangeMessage message = new();
-            ctx.ReadSequenceLength();
+            RlpReader ctx = reader.EnterSequence(out int itemLength);
 
             message.RequestId = ctx.DecodeLong();
             message.AccountRange = new(ctx.DecodeKeccak(), ctx.DecodeValueKeccakNonNull(), ctx.DecodeValueKeccakNonNull());
             message.ResponseBytes = ctx.DecodeLong();
 
+            reader.ExitSequenceIgnoringRest(ctx, itemLength);
             return message;
         }
 

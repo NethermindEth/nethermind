@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
@@ -19,7 +20,7 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
     protected override int GetContentLengthCore(NodesMsg msg)
         => Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
 
-    protected override void SerializeCore<TWriter>(ref TWriter writer, NodesMsg msg)
+    protected override void SerializeCore(ref RlpWriter writer, NodesMsg msg)
     {
         Encode(ref writer, msg.Total);
         EncodeNodeRecords(ref writer, msg.Records);
@@ -42,8 +43,7 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeNodeRecords<TWriter>(ref TWriter writer, IReadOnlyList<NodeRecord> records)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void EncodeNodeRecords(ref RlpWriter writer, IReadOnlyList<NodeRecord> records)
     {
         int contentLength = 0;
         for (int i = 0; i < records.Count; i++)
@@ -51,35 +51,36 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
             contentLength += records[i].GetRlpLengthWithSignature();
         }
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         for (int i = 0; i < records.Count; i++)
         {
             records[i].Encode(ref writer);
         }
+
+        writer.EndSequence(sequence);
     }
 
-    private NodeRecord[] DecodeNodeRecords(ref RlpReader ctx)
+    private NodeRecord[] DecodeNodeRecords(ref RlpReader reader)
     {
-        int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
-        int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
+        int count = ctx.CountItems();
         if (count > MaxNodeRecordsPerMessage)
         {
-            throw new RlpException($"discv5 NODES record count {count} exceeds {MaxNodeRecordsPerMessage}.");
+            throw new RlpReaderException($"discv5 NODES record count {count} exceeds {MaxNodeRecordsPerMessage}.");
         }
 
         NodeRecord[] records = new NodeRecord[count];
         int recordCount = 0;
         for (int i = 0; i < count; i++)
         {
-            ReadOnlySpan<byte> record = ctx.PeekNextItem();
-            ctx.SkipItem();
+            ReadOnlySpan<byte> record = ctx.ReadEncodedItem();
             if (TryDecodeNodeRecord(record, out NodeRecord? nodeRecord))
             {
                 records[recordCount++] = nodeRecord;
             }
         }
 
-        ctx.Check(checkPosition);
+        reader.ExitSequence(ctx, itemLength);
         if (recordCount != count)
         {
             Array.Resize(ref records, recordCount);
@@ -99,7 +100,7 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
         try
         {
             RlpReader reader = new(record);
-            if (!_signer.TryDeserialize(ref reader, out nodeRecord) || reader.Position != record.Length || !_signer.Verify(nodeRecord))
+            if (!_signer.TryDeserialize(ref reader, out nodeRecord) || reader.HasNext || !_signer.Verify(nodeRecord))
             {
                 nodeRecord = null;
                 return false;
@@ -114,5 +115,5 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
     }
 
     private static bool IsMalformedNodeRecordException(Exception exception)
-        => exception is RlpException or ArgumentException or InvalidOperationException or FormatException;
+        => exception is RlpReaderException or ArgumentException or InvalidOperationException or FormatException;
 }
