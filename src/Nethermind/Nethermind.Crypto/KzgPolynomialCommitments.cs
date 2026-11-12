@@ -119,6 +119,14 @@ public static partial class KzgPolynomialCommitments
     }
 
     /// <summary>
+    /// Computes the KZG commitment of a blob.
+    /// </summary>
+    /// <param name="blob">The input blob data. The span must be exactly <c>BYTES_PER_BLOB</c> bytes.</param>
+    /// <param name="commitment">The output span where the <c>BYTES_PER_COMMITMENT</c> commitment is written.</param>
+    public static void ComputeCommitment(ReadOnlySpan<byte> blob, Span<byte> commitment) =>
+        Ckzg.BlobToKzgCommitment(commitment, blob, CkzgSetup);
+
+    /// <summary>
     /// Computes a single blob KZG proof for a blob and its commitment.
     /// </summary>
     /// <param name="blob">The input blob data. The span must be exactly <c>BYTES_PER_BLOB</c> bytes.</param>

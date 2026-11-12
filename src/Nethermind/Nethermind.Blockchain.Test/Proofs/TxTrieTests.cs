@@ -245,6 +245,7 @@ public class TxTrieTests(bool useEip2718)
         [Values(-1, 0, 124, 125, 136, 300, 2164, 2165, 8192)] int valueLength)
     {
         byte[][] encoded = new byte[count][];
+        ReadOnlyMemory<byte>[] memories = new ReadOnlyMemory<byte>[count];
         Random random = new(42);
         using TrackingCappedArrayPool pool = new();
         TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
@@ -255,11 +256,23 @@ public class TxTrieTests(bool useEip2718)
             byte[] value = new byte[sparse && i % 3 == 0 ? 0 : length];
             random.NextBytes(value);
             encoded[i] = sparse && i % 6 == 0 ? null! : value;
+            if (encoded[i] is not null)
+            {
+                byte[] padded = new byte[value.Length + 2];
+                padded[0] = 0xab;
+                padded[^1] = 0xcd;
+                value.CopyTo(padded, 1);
+                memories[i] = padded.AsMemory(1, value.Length);
+            }
             trie.Set(Rlp.Encode(i).Bytes, value);
         }
         trie.UpdateRootHash(canBeParallel: false);
 
-        Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+            Assert.That(TxTrie.CalculateRoot(memories), Is.EqualTo(trie.RootHash));
+        }
     }
 
     [TestCase(65535)]

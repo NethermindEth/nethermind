@@ -87,6 +87,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        postExecution.ExecutionRequests.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        postExecution.GetExecutionRequests(executionRequestsOptions).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

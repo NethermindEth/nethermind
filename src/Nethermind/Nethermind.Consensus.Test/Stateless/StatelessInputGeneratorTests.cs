@@ -354,7 +354,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
+    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true, Transaction? transaction = null)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -404,7 +404,7 @@ public class StatelessInputGeneratorTests
         };
         try
         {
-            Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
+            Transaction tx = transaction ?? Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
             Block suggested = Build.A.Block.WithParent(parent).WithPostMergeRules()
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)

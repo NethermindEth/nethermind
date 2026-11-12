@@ -1,0 +1,14 @@
+{
+  "source": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae crates/eez-l1/src/chain_config/offline.rs and pinned custom chain fork/blob construction",
+  "method": "Semantic JSON modeled directly from the source field selection and unchanged captured L1 genesis. Canonical JSON and ABI hashes produced by cast; not a source-built Rust producer output.",
+  "cast": [
+    "cast Version: 1.7.1",
+    "Commit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8",
+    "Build Timestamp: 2026-05-08T07:54:31.470926000Z (1778226871)",
+    "Build Profile: dist"
+  ],
+  "configHash": "0x6dad1f7d24e1d34f08fda373214f8c5c6f5b1b37db79ee7df71fc4fd2d010027",
+  "profileHash": "0x32442221f79225663e25bf29d8c7e48df1d1d2e13d9f41b01965683485b48972",
+  "profileHashPresentInOriginalL1Genesis": false,
+  "canonicalSha256": "30f88bdfb4b8938337423740fdb2e94aa6f5762a5de3ed596ecf40142261a43c"
+}
