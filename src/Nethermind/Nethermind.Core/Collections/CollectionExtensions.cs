@@ -21,6 +21,11 @@ namespace Nethermind.Core.Collections
         /// <summary>Default capacity <c>ClearAndTrim</c> shrinks a collection back to once <see cref="DefaultTrimAboveCapacity"/> is exceeded.</summary>
         public const int DefaultTrimToCapacity = 1024;
 
+        /// <summary>A map whose entries are at most its capacity over this is cheaper to empty by removing them one by one.</summary>
+        /// <remarks>A clear zeroes every bucket, so its cost follows the capacity, which only grows. Measured on Address and
+        /// StorageCell journals, the crossover sits between about capacity/100 and capacity/1000.</remarks>
+        public const int SparseClearCapacityDivisor = 256;
+
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
             switch (items)
