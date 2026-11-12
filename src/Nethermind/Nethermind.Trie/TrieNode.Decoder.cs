@@ -46,7 +46,7 @@ namespace Nethermind.Trie
         private static bool IsBatchableBranchRlp(int length) =>
             length is >= Hash256.Size and <= MaxBatchableRlpLength;
 
-        private class TrieNodeDecoder
+        private partial class TrieNodeDecoder
         {
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
@@ -1237,42 +1237,49 @@ namespace Nethermind.Trie
             private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
                 ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                const int headerLength = FullBranchRlpLength - BranchesCount * Rlp.LengthOfKeccakRlp - 1;
                 // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
                 Debug.Assert(nodeRlp[^1] == 128);
                 Debug.Assert(nodeRlp[0] == 0xf9);
                 NoteFullBranchPatched(destination, -1);
                 Bytes.Copy(nodeRlp, destination);
-                ref object? child = ref FirstBranchChild(item);
-                ref object? end = ref Unsafe.Add(ref child, BranchesCount);
+                ref object? group = ref FirstBranchChild(item);
+                ref object? end = ref Unsafe.Add(ref group, BranchesCount);
                 // Slots are patched in order, so the bytes before the first patched hash are the previous ones.
                 int unchanged = FullBranchRlpLength;
                 ushort taken = TakenChildren(item);
-                for (; Unsafe.IsAddressLessThan(ref child, ref end) && (!TracksTakenChildren || taken != 0); child = ref Unsafe.Add(ref child, 1), taken >>= 1)
+                if (!TryPatchFullBranchChildren(tree, ref path, ref group, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)) return false;
+                NoteFullBranchPatched(destination, unchanged);
+                return true;
+            }
+
+            /// <summary>Patches the hash of the child in slot <paramref name="slot"/> of <paramref name="group"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether the slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChild(ITrieNodeResolver tree, ref TreePath path, ref object? group, int slot, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                const int headerLength = FullBranchRlpLength - BranchesCount * Rlp.LengthOfKeccakRlp - 1;
+                if (TracksTakenChildren && (taken & 1 << slot) == 0) return true;
+                object? data = Unsafe.Add(ref group, slot);
+                if (data is null) return true;
+                if (ReferenceEquals(data, _nullNode)) return false;
+                int i = ChildIndex(ref group, ref end) + slot;
+                if (unchanged == FullBranchRlpLength) unchanged = headerLength + i * Rlp.LengthOfKeccakRlp + 1;
+                Hash256? hash = data as Hash256;
+                if (hash is null)
                 {
-                    if (TracksTakenChildren && (taken & 1) == 0) continue;
-                    object? data = child;
-                    if (data is null) continue;
-                    if (ReferenceEquals(data, _nullNode)) return false;
-                    int i = ChildIndex(ref child, ref end);
-                    if (unchanged == FullBranchRlpLength) unchanged = headerLength + i * Rlp.LengthOfKeccakRlp + 1;
-                    Hash256? hash = data as Hash256;
+                    TrieNode childNode = (TrieNode)data;
+                    hash = childNode.Keccak;
                     if (hash is null)
                     {
-                        TrieNode childNode = (TrieNode)data;
+                        EnterChildPath(ref path, i);
+                        childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        LeaveChildPath(ref path);
                         hash = childNode.Keccak;
-                        if (hash is null)
-                        {
-                            EnterChildPath(ref path, i);
-                            childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            LeaveChildPath(ref path);
-                            hash = childNode.Keccak;
-                            if (hash is null) return false;
-                        }
+                        if (hash is null) return false;
                     }
-                    Rlp.Encode(destination, headerLength + i * Rlp.LengthOfKeccakRlp, hash);
                 }
-                NoteFullBranchPatched(destination, unchanged);
+                Rlp.Encode(destination, headerLength + i * Rlp.LengthOfKeccakRlp, hash);
                 return true;
             }
         }
