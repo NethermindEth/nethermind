@@ -164,26 +164,14 @@ public class GuestDispatchDifferentialTests
         [Values(0, 7, 15, 16)] int callDepth,
         [Values] bool retainsGas)
     {
-        Address target = new("0x00000000000000000000000000000000000000bb");
-        byte[] call =
-        [
-            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
-            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
-            .. op is Instruction.CALL or Instruction.CALLCODE ? new byte[] { (byte)Instruction.PUSH0 } : [],
-            (byte)Instruction.PUSH20, .. target.Bytes,
-            (byte)Instruction.PUSH2, 0xff, 0xff, (byte)op
-        ];
+        byte[] call = NestedCall(op);
         byte[] code = [.. call, .. UntestedTail()];
         ulong retainedGas = (ulong)code.Length - (retainsGas ? 0UL : 1UL);
-        // A call to empty code charges what this one does and forwards no gas that is not returned.
-        const ulong ample = 100_000;
-        ulong callCost = ample - RunFrame(call, ample, callDepth, Repository(CodeInfo.Empty)).Gas;
         // EIP-150 retains floor(available / 64): test exactly the code length and one gas below it.
-        ulong gas = retainedGas * 64 + callCost;
+        ulong gas = retainedGas * 64 + CallCost(call, callDepth);
         bool nests = callDepth < 16;
 
-        (EvmExceptionType exception, nint pc, ulong remainingGas) =
-            RunFrame(code, gas, callDepth, Repository(new CodeInfo(new byte[] { (byte)Instruction.INVALID })));
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame(code, gas, callDepth, InvalidCallee());
 
         if (nests)
         {
@@ -206,6 +194,49 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// A frame with less gas than its code has bytes runs on the shared handlers, and a nested call leaves it no more gas
+    /// than it had, so it continues on them.
+    /// </remarks>
+    [Test]
+    public void Caller_on_the_shared_handlers_continues_a_nested_call_on_them(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op)
+    {
+        const ulong retainedGas = 10;
+        byte[] call = NestedCall(op);
+        ulong gas = retainedGas * 64 + CallCost(call, 0);
+        byte[] tail = UntestedTail((int)(gas + 1) & ~1);
+
+        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame([.. call, .. tail], gas, 0, InvalidCallee());
+
+        Outcome shared = Run(retainedGas, [], 0, new CodeInfo(tail), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, Is.EqualTo(call.Length + shared.Pc));
+            Assert.That(remainingGas, Is.Zero);
+        }
+    }
+
+    private static byte[] NestedCall(Instruction op) =>
+    [
+        (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+        (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+        .. op is Instruction.CALL or Instruction.CALLCODE ? new byte[] { (byte)Instruction.PUSH0 } : [],
+        (byte)Instruction.PUSH20, .. new Address("0x00000000000000000000000000000000000000bb").Bytes,
+        (byte)Instruction.PUSH2, 0xff, 0xff, (byte)op
+    ];
+
+    /// <summary>What <paramref name="call"/> charges, as a call to empty code forwards no gas that is not returned.</summary>
+    private static ulong CallCost(byte[] call, int callDepth)
+    {
+        const ulong ample = 100_000;
+        return ample - RunFrame(call, ample, callDepth, Repository(CodeInfo.Empty)).Gas;
+    }
+
+    /// <summary>A callee that consumes all the gas it is given.</summary>
+    private static ICodeInfoRepository InvalidCallee() => Repository(new CodeInfo(new byte[] { (byte)Instruction.INVALID }));
+
     private static ICodeInfoRepository Repository(CodeInfo code)
     {
         ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
@@ -214,9 +245,9 @@ public class GuestDispatchDifferentialTests
         return repository;
     }
 
-    private static byte[] UntestedTail()
+    private static byte[] UntestedTail(int length = UntestedRunLength)
     {
-        byte[] code = new byte[UntestedRunLength];
+        byte[] code = new byte[length];
         code[0] = (byte)Instruction.PUSH1;
         code[1] = 1;
         for (int i = 2; i < code.Length; i += 2)

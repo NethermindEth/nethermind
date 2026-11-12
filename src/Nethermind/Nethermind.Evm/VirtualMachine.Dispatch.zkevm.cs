@@ -349,7 +349,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
                 if (exceptionType == EvmExceptionType.Suspend && typeof(TTracingInst) == typeof(OffFlag))
-                    state.Vm.TryRunStagedFrameNested(ref stack, out exceptionType);
+                    state.Vm.TryRunStagedFrameNested(ref stack, out exceptionType, testsGas: !TCancelable.IsActive);
                 head = stack.Head;
                 gas = ChainGas(GetExecutionGas(ref state.Gas));
             }

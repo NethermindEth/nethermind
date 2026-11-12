@@ -220,6 +220,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// </summary>
     /// <param name="stack">The caller's stack, its head current.</param>
     /// <param name="resumeResult">What resuming the caller came to; anything but <c>None</c> halts it.</param>
+    /// <param name="testsGas">
+    /// Whether the caller's chain may hold handlers that skip gas tests. A chain on the shared handlers tests every
+    /// charge already, so it continues on them whatever gas the call leaves.
+    /// </param>
     /// <returns>Whether the child ran here; if not, the caller's chain leaves with the child staged, as without nesting.</returns>
     /// <remarks>
     /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
@@ -228,7 +232,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// (<see cref="TestsEveryCharge"/>), the chain leaves with <c>Suspend</c> and nothing staged, and
     /// <see cref="RunFrameCode{TTracingInst, TCancelable}"/> enters it again on the handlers that gas allows.
     /// </remarks>
-    internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
+    internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult, bool testsGas = true)
     {
         VmState<TGasPolicy> child = Unsafe.As<VmState<TGasPolicy>>(ReturnData!);
         if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth)
@@ -262,7 +266,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         if (previousCallOutputLength > 0)
             _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
 
-        if (TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
+        if (testsGas && TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
             resumeResult = EvmExceptionType.Suspend;
 
         return true;
