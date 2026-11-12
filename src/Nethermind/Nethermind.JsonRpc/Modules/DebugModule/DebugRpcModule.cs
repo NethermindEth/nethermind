@@ -1093,6 +1093,7 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
         if (headerError is null && header!.IsGenesis)
             return GetGenesisFileTraceFailure(header, options);
+        headerError ??= CheckFileTraceTransaction(header!, options);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1114,6 +1115,7 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, badBlocksOnly: true);
         if (headerError is null && header!.IsGenesis)
             return GetGenesisFileTraceFailure(header, options, badBlocksOnly: true);
+        headerError ??= CheckFileTraceTransaction(header!, options, badBlocksOnly: true);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1156,6 +1158,30 @@ public class DebugRpcModule(
                 if (transaction.Hash == txHash) return true;
             return false;
         }
+    }
+
+    /// <summary>Fails when <see cref="GethTraceOptions.TxHash"/> names a transaction that is not in the traced block.</summary>
+    /// <remarks>As in Geth, this is checked before the block's base state, and a zero hash is no filter.</remarks>
+    private ResultWrapper<IEnumerable<string>>? CheckFileTraceTransaction(BlockHeader header, GethTraceOptions? options, bool badBlocksOnly = false)
+    {
+        if (options?.TxHash is not { } txHash || txHash == Hash256.Zero)
+            return null;
+
+        if (badBlocksOnly)
+        {
+            // The first bad block with this hash is the one traced.
+            foreach (Block block in debugBridge.GetBadBlocks())
+                if (block.Hash == header.Hash)
+                    return Contains(block, txHash) ? null : NotFound(txHash);
+            return null;
+        }
+
+        return blockFinder.FindBlock(header.Hash!, header.Number) is { } canonical && !Contains(canonical, txHash) ? NotFound(txHash) : null;
+
+        static bool Contains(Block block, Hash256 txHash) => Array.Exists(block.Transactions, transaction => transaction.Hash == txHash);
+
+        static ResultWrapper<IEnumerable<string>> NotFound(Hash256 txHash) =>
+            ResultWrapper<IEnumerable<string>>.Fail($"transaction {txHash} not found in block", ErrorCodes.InvalidInput);
     }
 
     private const string ExistingFileError = "location would overwrite an existing file";
