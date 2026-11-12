@@ -321,8 +321,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
-        public void When_recently_started_full_sync_on_empty_clique_chain() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain()
+        public void When_recently_started_full_sync_on_empty_chain_without_block_rewards() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyChainWithoutBlockRewards()
                 .AndGoodPeersAreKnown()
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);

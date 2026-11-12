@@ -675,15 +675,6 @@
           "Nito.Collections.Deque": "[1.2.1, )"
         }
       },
-      "nethermind.consensus.clique": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Api": "[2.3.0-preview, )",
-          "Nethermind.Blockchain": "[2.3.0-preview, )",
-          "Nethermind.Consensus": "[2.3.0-preview, )",
-          "Nethermind.JsonRpc": "[2.3.0-preview, )"
-        }
-      },
       "nethermind.consensus.ethash": {
         "type": "Project",
         "dependencies": {

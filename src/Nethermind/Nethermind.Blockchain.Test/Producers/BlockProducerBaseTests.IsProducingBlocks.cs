@@ -10,7 +10,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -20,7 +19,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -115,35 +113,6 @@ public partial class BlockProducerBaseTests
             Substitute.For<IBlocksConfig>());
         StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), Substitute.For<IBlockTree>(), blockProducer);
-        await AssertIsProducingBlocks(runner);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task CliqueBlockProducer_IsProducingBlocks_returns_expected_results()
-    {
-        TestRpcBlockchain testRpc = await CreateTestRpc();
-        CliqueBlockProducer blockProducer = new(
-            Substitute.For<ITxSource>(),
-            testRpc.BlockchainProcessor,
-            testRpc.MainWorldState,
-            testRpc.Timestamper,
-            Substitute.For<ICryptoRandom>(),
-            Substitute.For<ISnapshotManager>(),
-            Substitute.For<ISealer>(),
-            Substitute.For<IGasLimitCalculator>(),
-            Substitute.For<ISpecProvider>(),
-            new CliqueConfig(),
-            LimboLogs.Instance);
-
-        CliqueBlockProducerRunner runner = new(
-            testRpc.BlockTree,
-            testRpc.Timestamper,
-            Substitute.For<ICryptoRandom>(),
-            Substitute.For<ISnapshotManager>(),
-            blockProducer,
-            new CliqueConfig(),
-            LimboLogs.Instance);
-
         await AssertIsProducingBlocks(runner);
     }
 

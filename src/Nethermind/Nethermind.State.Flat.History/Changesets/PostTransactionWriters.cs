@@ -31,7 +31,7 @@ internal static class PostTransactionWriters
     /// of its own and leaves the property alone would be taken for a standard chain. Every provider in the tree
     /// overrides it, through its chain spec or explicitly.</summary>
     public static bool Describes(string sealEngine) =>
-        sealEngine is SealEngineType.Ethash or SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.NethDev;
+        sealEngine is SealEngineType.Ethash or SealEngineType.BeaconChain or SealEngineType.NethDev;
 
     /// <summary>False when the block cannot be described, so nothing of it is chained.</summary>
     public static bool TryCollect(Block block, IReleaseSpec spec, HashSet<AddressAsKey> writers)

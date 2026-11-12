@@ -16,7 +16,7 @@ var flat = mode.Equals("flat", StringComparison.OrdinalIgnoreCase);
 var bad = new[] { "Exception", flat ? "Verification failed" : "Missing node found!" };
 var required = new Dictionary<string, int> { ["Processed"] = 20, [flat ? "Verification complete." : "Stats after finishing state"] = 1 };
 if (flat) required["MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0"] = 1;
-if (!new[] { "joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta" }.Contains(network)) required["Synced Chain Head"] = 20;
+if (!new[] { "energyweb", "volta" }.Contains(network)) required["Synced Chain Head"] = 20;
 var counts = required.Keys.ToDictionary(key => key, _ => 0);
 using var cancellation = new CancellationTokenSource();
 using var signal = OperatingSystem.IsWindows() ? null : System.Runtime.InteropServices.PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGTERM, context => { context.Cancel = true; cancellation.Cancel(); });

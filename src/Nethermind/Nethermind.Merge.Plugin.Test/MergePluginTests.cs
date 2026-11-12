@@ -11,7 +11,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -67,7 +67,7 @@ public class MergePluginTests
     private MergeConfig _mergeConfig = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private MergePlugin _plugin = null!;
-    private CliquePlugin? _consensusPlugin;
+    private EthashPlugin? _consensusPlugin;
 
     [SetUp]
     public void Setup()
@@ -75,14 +75,13 @@ public class MergePluginTests
         _chainSpec = new ChainSpec
         {
             Parameters = new ChainParameters(),
-            SealEngineType = SealEngineType.Clique,
-            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
-                new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod }),
+            SealEngineType = SealEngineType.Ethash,
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new EthashChainSpecEngineParameters()),
         };
         _mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
         _jsonRpcConfig = new JsonRpcConfig { Enabled = true, EnabledModules = [ModuleType.Engine] };
         _plugin = new MergePlugin(_chainSpec, _mergeConfig);
-        _consensusPlugin = new(_chainSpec);
+        _consensusPlugin = new(_chainSpec, new MiningConfig());
     }
 
     private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
