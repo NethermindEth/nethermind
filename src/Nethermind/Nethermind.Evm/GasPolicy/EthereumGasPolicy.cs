@@ -772,25 +772,24 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         public readonly IReleaseSpec Spec;
         public readonly bool IsEip2780SelfTransfer;
         private readonly ulong _standardGas;
-        private readonly long _stateReservoir;
-        private readonly long _stateGasUsed;
+        private readonly long _stateGas;
         private readonly ulong _floorGas;
 
         public IntrinsicGasMemo(IReleaseSpec spec, bool isEip2780SelfTransfer, in IntrinsicGas<EthereumGasPolicy> gas)
         {
             Debug.Assert(gas.Standard is { StateGasSpill: 0, StateGasSpillRefunded: 0, OutOfGas: false, IndependentStatePool: false }
+                && gas.Standard.StateReservoir == gas.Standard.StateGasUsed
                 && gas.FloorGas is { StateReservoir: 0, StateGasUsed: 0, StateGasSpill: 0, StateGasSpillRefunded: 0, OutOfGas: false, IndependentStatePool: false },
-                "Intrinsic gas sets only the fields the memo keeps.");
+                "Intrinsic gas sets only the fields the memo keeps, with the same state gas in the reservoir and as used.");
             Spec = spec;
             IsEip2780SelfTransfer = isEip2780SelfTransfer;
             _standardGas = gas.Standard.Value;
-            _stateReservoir = gas.Standard.StateReservoir;
-            _stateGasUsed = gas.Standard.StateGasUsed;
+            _stateGas = gas.Standard.StateReservoir;
             _floorGas = gas.FloorGas.Value;
         }
 
         public IntrinsicGas<EthereumGasPolicy> Gas => new(
-            new EthereumGasPolicy { Value = _standardGas, StateReservoir = _stateReservoir, StateGasUsed = _stateGasUsed },
+            new EthereumGasPolicy { Value = _standardGas, StateReservoir = _stateGas, StateGasUsed = _stateGas },
             FromULong(_floorGas));
     }
 

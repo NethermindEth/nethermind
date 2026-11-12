@@ -486,8 +486,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memo));
-                Assert.That(hit.Standard, Is.EqualTo(expected.Standard));
-                Assert.That(hit.FloorGas, Is.EqualTo(expected.FloorGas));
+                Assert.That(hit, Is.EqualTo(expected));
             }
         }
 
