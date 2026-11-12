@@ -826,7 +826,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             FailedCreate.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
             FailedCreate.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
             FailedCreate.InvalidDepositOutOfGas => DepositInitCode(1024, 0xEF),
-            FailedCreate.Oversize => DepositInitCode(CancunSpec.MaxCodeSize + 1),
+            FailedCreate.Oversize => DepositInitCode(checked((int)CancunSpec.MaxCodeSize + 1)),
             FailedCreate.ExecutionOutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
             _ => Prepare.EvmCode.Revert(0, 0).Done
         };
@@ -900,7 +900,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         int length = outcome switch
         {
             DepositOutcome.InsufficientGas or DepositOutcome.InvalidCodeAndInsufficientGas => 1024,
-            DepositOutcome.Oversize => spec.MaxCodeSize + 1,
+            DepositOutcome.Oversize => checked((int)spec.MaxCodeSize + 1),
             _ => 1
         };
         byte[] initCode = outcome == DepositOutcome.ExecutionOutOfGas
@@ -949,7 +949,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(frame.To, Is.EqualTo(success ? address : null));
             Assert.That(frame.Output.ToArray(), Is.EqualTo(receipt.Output));
             Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
-            if (success) Assert.That(TestState.GetCode(address), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+            if (success) Assert.That(TestState.GetCode(address).ToArray(), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
         }
         if (dispatch == TraceDispatch.Traced) AssertDepositStructTrace(actualStruct, expectedStruct);
     }
@@ -1006,7 +1006,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(root.Output.ToArray(), Is.EqualTo(success ? address.Bytes.PadLeft(32) : new byte[32]));
             Assert.That(root.Calls, Has.Count.EqualTo(onlyTopCall ? 0 : 1));
             Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
-            if (success) Assert.That(TestState.GetCode(address), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+            if (success) Assert.That(TestState.GetCode(address).ToArray(), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
             Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(nonce + 1));
             Assert.That(TestState.GetBalance(Recipient), Is.EqualTo(balance + tx.Value));
         }
