@@ -58,7 +58,7 @@ public sealed class StateBoundaryStore(
                 }
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
-                    stateDb[OldestStateBlockKey] = Rlp.Encode(value.Value);
+                    stateDb.PutSpan(OldestStateBlockKey, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 else
                     stateDb.Remove(OldestStateBlockKey);
                 _oldestStateBlock = value;
@@ -84,7 +84,7 @@ public sealed class StateBoundaryStore(
                 if (_bestPersistedState == value) return;
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
-                    blockInfosDb[BestPersistedStateKey] = Rlp.Encode(value.Value);
+                    blockInfosDb.PutSpan(BestPersistedStateKey, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 else
                     blockInfosDb.Remove(BestPersistedStateKey);
                 _bestPersistedState = value;

@@ -1315,22 +1315,23 @@ namespace Nethermind.Blockchain.Receipts
             if (!ShouldIndexTxs(block.Number, lastBlockNumber.Value)) return;
             if (_receiptConfig.CompactTxIndex)
             {
-                byte[] blockNumber = Rlp.Encode(block.Number);
+                Span<byte> buffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
+                ReadOnlySpan<byte> blockNumber = Rlp.Encode(block.Number, buffer);
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockNumber;
+                    writeBatch.PutSpan(hash.Bytes, blockNumber);
                 }
             }
             else
             {
-                byte[] blockHash = block.Hash.BytesToArray();
+                ReadOnlySpan<byte> blockHash = block.Hash.Bytes;
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch[hash.Bytes] = blockHash;
+                    writeBatch.PutSpan(hash.Bytes, blockHash);
                 }
             }
         }

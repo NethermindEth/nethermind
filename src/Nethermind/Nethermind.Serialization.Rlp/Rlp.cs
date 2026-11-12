@@ -33,6 +33,8 @@ namespace Nethermind.Serialization.Rlp
 
         public const int LengthOfKeccakRlp = 33;
 
+        public const int MaxLengthOfUInt64Rlp = 9;
+
         public const int LengthOfAddressRlp = 21;
 
         public const byte EmptyByteArrayByte = 0x80;
@@ -421,6 +423,19 @@ namespace Nethermind.Serialization.Rlp
             => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
         public static byte[] Encode(Hash256? keccak) => Write(LengthOf(keccak), keccak, static (ref RlpWriter writer, Hash256? keccak) => writer.Encode(keccak));
+
+        /// <summary>Encodes <paramref name="keccak"/> into <paramref name="buffer"/>, which holds at least <see cref="LengthOfKeccakRlp"/> bytes.</summary>
+        /// <returns>The encoded prefix of <paramref name="buffer"/>.</returns>
+        public static Span<byte> Encode(Hash256? keccak, Span<byte> buffer)
+        {
+            if (keccak is null)
+            {
+                buffer[0] = EmptyByteArrayByte;
+                return buffer[..1];
+            }
+
+            return buffer[..Encode(buffer, 0, keccak)];
+        }
 
         public static int StartSequence(Span<byte> buffer, int position, int sequenceLength)
         {

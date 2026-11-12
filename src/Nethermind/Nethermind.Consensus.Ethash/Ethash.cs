@@ -262,12 +262,8 @@ namespace Nethermind.Consensus.Ethash
 
         private static readonly HeaderDecoder _headerDecoder = new();
 
-        private static Hash256 GetTruncatedHash(BlockHeader header)
-        {
-            byte[] encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Hash256 headerHashed = Keccak.Compute(encoded); // sic! Keccak here not Keccak512
-            return headerHashed;
-        }
+        // sic! Keccak here not Keccak512
+        private static Hash256 GetTruncatedHash(BlockHeader header) => _headerDecoder.ComputeHash(header, RlpBehaviors.ForSealing);
 
         public static (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
         {

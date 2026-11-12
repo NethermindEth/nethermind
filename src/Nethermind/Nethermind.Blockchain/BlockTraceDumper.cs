@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -29,7 +30,7 @@ public static class BlockTraceDumper
     {
         if (toFile || toLog)
         {
-            byte[] rlp = Rlp.Encode(block, RlpBehaviors.AllowExtraBytes);
+            using ArrayPoolSpan<byte> rlp = Rlp.GetDecoderOrThrow<Block>().EncodeToArrayPoolSpan(block, RlpBehaviors.AllowExtraBytes);
             Hash256 blockHash = block.Hash;
             if (toFile)
             {
@@ -42,7 +43,7 @@ public static class BlockTraceDumper
 
             if (toLog)
             {
-                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.ToHexString()}");
+                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.AsReadOnlyMemory().ToHexString()}");
             }
         }
     }

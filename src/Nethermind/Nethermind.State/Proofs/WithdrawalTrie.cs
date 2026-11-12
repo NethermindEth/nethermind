@@ -28,11 +28,12 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
-        int key = 0;
+        ulong key = 0;
+        Span<byte> keyBuffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
 
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            Set(Rlp.Encode(key++), _codec.Encode(withdrawal));
+            Set(Rlp.Encode(key++, keyBuffer), _codec.Encode(withdrawal));
         }
     }
 

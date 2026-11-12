@@ -205,10 +205,11 @@ namespace Nethermind.Merge.Plugin
                     return false;
                 }
 
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
                 using (IWriteBatch batch = _metadataDb.StartWriteBatch())
                 {
-                    batch.Set((long)MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number));
-                    batch.Set((long)MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash));
+                    batch.PutSpan(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number, buffer));
+                    batch.PutSpan(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash, buffer));
                 }
 
                 _terminalBlockNumber = header.Number;

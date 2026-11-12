@@ -75,7 +75,8 @@ namespace Nethermind.Blockchain
             set
             {
                 _lowestInsertedHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()));
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -91,7 +92,8 @@ namespace Nethermind.Blockchain
             set
             {
                 _lowestInsertedBeaconHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()));
+                Span<byte> buffer = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash(), buffer));
             }
         }
 
@@ -2189,13 +2191,13 @@ namespace Nethermind.Blockchain
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
             if (_persistedForkChoice == requested) return;
 
-            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash);
-            byte[] safeRlp = Rlp.Encode(safeBlockHash);
+            Span<byte> finalizedRlp = Rlp.Encode(finalizedBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
+            Span<byte> safeRlp = Rlp.Encode(safeBlockHash, stackalloc byte[Rlp.LengthOfKeccakRlp]);
             _persistedForkChoice = null;
             using (IWriteBatch batch = _metadataDb.StartWriteBatch())
             {
-                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
-                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
+                batch.PutSpan(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.PutSpan(MetadataDbKeys.SafeBlockHash, safeRlp);
             }
 
             _persistedForkChoice = requested;

@@ -25,7 +25,7 @@ public class SyncPointers : ISyncPointers
         set
         {
             _lowestInsertedBodyNumber = value;
-            if (value.HasValue) _metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value));
+            if (value.HasValue) _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
         }
     }
 
@@ -39,7 +39,7 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedReceiptBlock = value;
             if (value.HasValue)
             {
-                _defaultReceiptDbColumn.Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(value.Value));
+                _defaultReceiptDbColumn.PutSpan(PersistentReceiptStorage.LowestInsertedReceiptBlockKey.Bytes, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
             }
         }
     }
@@ -54,7 +54,7 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedBlockAccessListBlock = value;
             if (value.HasValue)
             {
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value));
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
             }
         }
     }

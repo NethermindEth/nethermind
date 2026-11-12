@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -142,7 +143,8 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
                 token.ThrowIfCancellationRequested();
                 if (account.StorageRoot != Keccak.EmptyTreeHash || account.CodeHash != Keccak.OfAnEmptyString)
                     throw new NotSupportedException("Genesis bootstrap requires plain account allocations.");
-                accounts.PutSpan(address.ToAccountPath.Bytes, AccountDecoder.Slim.Encode(account));
+                using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+                accounts.PutSpan(address.ToAccountPath.Bytes, rlp);
             }
             IWriteBatch metadata = batch.GetColumnBatch(Columns.Metadata);
             foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears })

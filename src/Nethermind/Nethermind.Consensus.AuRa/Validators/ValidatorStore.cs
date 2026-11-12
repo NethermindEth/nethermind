@@ -37,7 +37,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (_latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
                 ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber ? EmptyBlockNumber : _latestFinalizedValidatorsBlockNumber, validators);
-                _db.Set(GetKey(finalizingBlockNumber), Rlp.Encode(validatorInfo));
+                using (ArrayPoolSpan<byte> rlp = Rlp.GetDecoderOrThrow<ValidatorInfo>().EncodeToArrayPoolSpan(validatorInfo))
+                {
+                    _db.PutSpan(GetKey(finalizingBlockNumber).Bytes, rlp);
+                }
+
                 _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
                 _latestValidatorInfo = validatorInfo;

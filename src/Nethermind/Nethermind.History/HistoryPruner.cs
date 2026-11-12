@@ -1189,7 +1189,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (_hasLoadedBalsDeletePointer && _balsDeletePointer != _lastSavedBalsDeletePointer)
             {
-                _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer));
+                _metadataDb.PutSpan(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 _lastSavedBalsDeletePointer = _balsDeletePointer;
             }
 
@@ -1218,12 +1218,13 @@ public class HistoryPruner : IHistoryPruner
         ulong boundaryToSave = _blocksDeletePointer;
         ulong cleanupToSave = _sliceCleanupCursor;
         ulong balsToSave = _balsDeletePointer;
+        Span<byte> buffer = stackalloc byte[Rlp.MaxLengthOfUInt64Rlp];
         using (IWriteBatch batch = _metadataDb.StartWriteBatch())
         {
-            if (cursorDirty) batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave));
-            if (boundaryDirty) batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave));
-            if (cleanupDirty) batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave));
-            if (balsDirty) batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave));
+            if (cursorDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave, buffer));
+            if (boundaryDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave, buffer));
+            if (cleanupDirty) batch.PutSpan(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave, buffer));
+            if (balsDirty) batch.PutSpan(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave, buffer));
         }
 
         // Only after the batch committed: a throwing commit must leave these claiming unsaved.
