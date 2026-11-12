@@ -567,6 +567,35 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Memory of four words is written first, then copied forward and backward over itself, by whole words and by odd
+    /// lengths at odd offsets, empty, and past the memory's end, which expands it; every amount of gas up to the program's
+    /// need puts the end of the gas inside each charge. The memory is compared after the copy.
+    /// </remarks>
+    [Test]
+    public void Memory_copies_match_the_shared_handlers(
+        [Values(0, 1, 5, 31, 32, 33, 64, 96)] int destination, [Values(0, 3, 32, 64)] int source, [Values(0, 1, 17, 32, 63, 100)] int length)
+    {
+        List<byte> program = [];
+        for (int word = 0; word < 4; word++)
+            program.AddRange([(byte)Instruction.PUSH32, .. Enumerable.Range(word * 32 + 1, 32).Select(static b => (byte)b), (byte)Instruction.PUSH1, (byte)(word * 32), (byte)Instruction.MSTORE]);
+        program.AddRange([(byte)Instruction.PUSH1, (byte)length, (byte)Instruction.PUSH1, (byte)source, (byte)Instruction.PUSH1, (byte)destination, (byte)Instruction.MCOPY, (byte)Instruction.STOP]);
+        byte[] code = [.. program];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = needed > 40 ? needed - 40 : 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
     /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
     /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the

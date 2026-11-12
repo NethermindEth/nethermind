@@ -132,6 +132,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
+        if (spec.MCopyIncluded)
+            lookup[(int)Instruction.MCOPY] = AsTableEntry(&RawCalliHelper.ExecuteMCopyInsideMemory);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
         lookup[(int)Instruction.AND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AndOperation>);
@@ -1868,6 +1870,71 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
         }
 
+        /// <summary>MCOPY (EIP-5656) from a range the memory holds initialized, with the operands read in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies the three operands off the stack and charges through 256-bit helpers. A source reaching
+        /// past the initialized memory, a destination <see cref="EvmPooledMemory.TryPrepareRangeOverwrite"/> refuses, an
+        /// operand of 2^32 or more, a short stack or a short gas runs the shared handler instead, which charges and faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMCopyInsideMemory(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 2)
+            {
+                // The destination is the top word, the source the one below it and the length the third.
+                ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                ref ulong source = ref Unsafe.Subtract(ref destination, LimbsPerWord);
+                ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+                ulong size = length;
+                ulong cost = GasCostOf.VeryLow + GasCostOf.VeryLow * ((size + (EvmStack.WordSize - 1)) >> 5);
+                if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && Covers(gas, cost))
+                {
+                    if (size == 0)
+                    {
+                        gas -= (nuint)cost;
+                        goto Dispatch;
+                    }
+
+                    ulong to = destination;
+                    ulong from = source;
+                    if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (to >> 32) |
+                         Unsafe.Add(ref source, 1) | Unsafe.Add(ref source, 2) | Unsafe.Add(ref source, 3) | (from >> 32)) == 0)
+                    {
+                        gas -= (nuint)cost;
+                        if (AlignedMemory(ref state).TryCopyWithin(to, from, size, ref gas))
+                        {
+                            // Reloaded rather than held across the call, where each would take a callee-saved register.
+                            handlers = state.OpcodeHandlers;
+                            code = ref stack.Code;
+                            sp = ref SlotAt(ref stack.Bottom, head);
+                            goto Dispatch;
+                        }
+
+                        gas += (nuint)cost;
+                    }
+                }
+            }
+
+            nint shared = Entry(&ExecuteOpcode<MCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+
+        Dispatch:
+            head -= 3;
+            sp = ref Moved(ref sp, -3);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
         /// <remarks>
         /// Immediates that run past the end of the code read the padding's zeros, as the EVM pads them. A short gas or
@@ -2561,7 +2628,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
                             gas -= (nuint)cost;
-                            ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
+                            ref EvmPooledMemory memory = ref AlignedMemory(ref state);
+                            ref byte written = ref memory.TryGetWrittenRange(target, size);
+                            ref byte range = ref Unsafe.IsNullRef(ref written) ? ref memory.TryPrepareRangeOverwrite(target, size, ref gas) : ref written;
                             if (!Unsafe.IsNullRef(ref range))
                             {
                                 uint copied = 0;
@@ -2576,10 +2645,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                         Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
                                 }
 
-                                if (EvmPooledMemory.IsSwizzled)
-                                    SwizzledMemory.Clear(ref Unsafe.Add(ref range, copied), (nint)((uint)size - copied));
-                                else
-                                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                if (copied < size)
+                                {
+                                    if (EvmPooledMemory.IsSwizzled)
+                                        SwizzledMemory.Clear(ref Unsafe.Add(ref range, copied), (nint)((uint)size - copied));
+                                    else
+                                        Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                }
                                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
                                 handlers = state.OpcodeHandlers;
                                 code = ref stack.Code;
