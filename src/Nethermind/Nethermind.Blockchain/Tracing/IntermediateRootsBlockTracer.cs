@@ -17,7 +17,8 @@ namespace Nethermind.Blockchain.Tracing;
 /// </summary>
 /// <remarks>
 /// Roots are produced per transaction in execution order; a failed transaction still
-/// produces its post-execution root (matching geth's partial-result semantics).
+/// produces its post-execution root (matching geth's partial-result semantics), while a transaction
+/// rejected before execution ends the replay without an entry.
 /// System-level calls (EIP-4788, EIP-2935) and withdrawals do not produce entries
 /// because <see cref="BlockTracerBase{TTrace,TTracer}"/> only dispatches on user transactions.
 /// A trie-less world state (e.g. history-backed flat state) cannot produce roots, so tracing a transaction
@@ -32,6 +33,12 @@ public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec s
             : throw new StateNotRetainedException("Intermediate roots are unavailable: the state at this block is trie-less (historical flat state).");
 
     protected override Hash256 OnEnd(IntermediateRootsTxTracer txTracer) => txTracer.StateRoot;
+
+    /// <remarks>A transaction rejected before execution is never marked, so it has no root and adds no entry.</remarks>
+    protected override void AddTrace(Hash256 trace)
+    {
+        if (trace is not null) base.AddTrace(trace);
+    }
 
     public class IntermediateRootsTxTracer(IWorldState worldState, IReleaseSpec spec) : TxTracer
     {
