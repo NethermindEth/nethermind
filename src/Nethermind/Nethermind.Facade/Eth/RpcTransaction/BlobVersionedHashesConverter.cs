@@ -34,7 +34,7 @@ internal sealed class BlobVersionedHashesConverter : ByteArrayArrayConverter
             if (length > encodedHashLength)
                 throw new SafePublicMessageFormatException(RpcTransactionErrors.InvalidBlobVersionedHashSize);
 
-            ReadOnlySpan<byte> hash;
+            scoped ReadOnlySpan<byte> hash;
             if (reader.HasValueSequence)
             {
                 reader.ValueSequence.CopyTo(buffer);
