@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Decoders;
@@ -38,8 +39,9 @@ public class InclusionListDecoder(
     {
         TxDecoder decoder = TxDecoder.Instance;
         byte[] buffer = new byte[decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
+        Rlp.CheckLength(in writer, buffer.Length);
         return buffer;
     }
 
@@ -49,8 +51,9 @@ public class InclusionListDecoder(
         TxDecoder decoder = TxDecoder.Instance;
         int length = decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
         ArrayPoolList<byte> result = new(length, length);
-        RlpWriter writer = new(result.AsSpan());
+        RlpWriter writer = RlpWriter.ContentWriter(result.AsSpan());
         decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
+        Rlp.CheckLength(in writer, length);
         return result;
     }
 

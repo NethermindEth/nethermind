@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -114,7 +115,7 @@ namespace Nethermind.Trie
                         if (!isStorage && visitor.ExpectAccounts)
                         {
                             RlpReader decoderContext = new(node.Value.AsSpan());
-                            if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
+                            if (!_accountDecoder.TryDecodeStruct<OffFlag>(ref decoderContext, out AccountStruct account))
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");
                             }

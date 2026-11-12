@@ -20,7 +20,11 @@ internal static class PersistedSnapshotBloomBuilder
     /// filter. Reads bytes through the caller-owned <paramref name="session"/>; this
     /// method does not dispose it.
     /// </summary>
-    internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
+    /// <param name="hasStorageClears">Whether the table carries a "destructed" self-destruct record (an
+    /// unreadable flag counts as one). Without one, no merge inside the snapshot's range dropped a slot, so
+    /// the bloom also covers every persisted snapshot that range contains; with one it covers this snapshot
+    /// only (see <see cref="PersistedSnapshotMerger.NWayMergeSnapshots{TWriter, TView, TReader, TPin}"/>).</param>
+    internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey, out bool hasStorageClears)
     {
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
@@ -28,8 +32,10 @@ internal static class PersistedSnapshotBloomBuilder
         // the address's account, self-destruct flag, and the address half of every slot lookup, so it is
         // counted once per address — not once per account/flag/slot.
         long capacity = 0;
+        hasStorageClears = false;
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
+            hasStorageClears |= entry.SelfDestructFlag is false;
             capacity++; // addrKey
             foreach (WholeReadScanner.SlotEntry _ in entry.Slots)
                 capacity++; // (address, slot) key
