@@ -151,6 +151,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         VmState<TGasPolicy> parent = _currentState;
         VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            FrameCache,
             gas: childGas,
             outputDestination: outputDestination,
             outputLength: outputLength,
