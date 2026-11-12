@@ -234,7 +234,7 @@ public class NativeLeanProofVerifierTests
         byte[] triples = Eip8288Dependencies.Serialize(dependencies);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxMixedGuestProofBytes));
+            Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxProofBytes));
             for (int offset = 0; offset < triples.Length; offset += Eip8288Constants.DependencyTripleLength)
                 Assert.That(proof.AsSpan().IndexOf(triples.AsSpan(offset + 32, 64)), Is.EqualTo(-1));
         }

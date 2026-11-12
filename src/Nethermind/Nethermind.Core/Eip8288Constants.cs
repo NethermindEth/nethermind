@@ -62,10 +62,6 @@ public static class Eip8288Constants
     public static long IlProofBytes(int starkProofLength, int proofDepCount) =>
         IlProofOverheadBytes + (long)starkProofLength + (long)proofDepCount * DependencyTripleLength;
 
-    /// <summary>Native acceptance bound for the serialized mixed guest proof, which the pinned backend reports back.</summary>
-    /// <remarks>Above <see cref="MaxAggregateProofBytes"/>, which every caller checks first.</remarks>
-    public const int MaxMixedGuestProofBytes = 8 * 1024 * 1024;
-
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
 
