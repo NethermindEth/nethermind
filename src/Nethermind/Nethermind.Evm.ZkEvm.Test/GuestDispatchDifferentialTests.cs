@@ -584,13 +584,13 @@ public class GuestDispatchDifferentialTests
                 : [[(byte)op, (byte)immediate, (byte)Instruction.STOP],
                     [(byte)op, (byte)immediate, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]];
             foreach (byte[] code in programs)
-            foreach (int head in heads)
-            {
-                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, Amsterdam.Instance);
-                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, Amsterdam.Instance);
-                if (!Matches(untraced, traced))
-                    mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
-            }
+                foreach (int head in heads)
+                {
+                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, Amsterdam.Instance);
+                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, Amsterdam.Instance);
+                    if (!Matches(untraced, traced))
+                        mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
+                }
         }
 
         Assert.That(mismatches, Is.Empty);
