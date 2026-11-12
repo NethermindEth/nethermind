@@ -109,6 +109,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last.</summary>
     private static PairedHandlers? _checkedPairedHandlers;
 
+    /// <summary>Whether the chain <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/> entered last runs on <see cref="GetCheckedPairedHandlers"/>.</summary>
+    private bool _chainTestsEveryCharge;
+
     /// <summary>Each table that the guest's handlers replaced entries of, mapped to its entries from before.</summary>
     private static readonly ConditionalWeakTable<object, SharedHandlerTable> _sharedHandlerTables = [];
 
@@ -192,6 +195,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         ulong executionGas = GetExecutionGas(ref gas);
         bool testsEveryCharge = !TTracingInst.IsActive && !TCancelable.IsActive && TestsEveryCharge(executionGas, stack.CodeLength);
+        _chainTestsEveryCharge = testsEveryCharge;
         nint[] handlers = testsEveryCharge
             ? GetCheckedPairedHandlers()
             : GetPairedHandlers<TTracingInst>(_opcodeHandlers);
