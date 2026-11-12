@@ -228,30 +228,15 @@ public class BlockAccessListAtIndex(int initialChangeCapacity, int maxPooledAcco
         if (before == after) return;
 
         AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
-
-        ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
-        if (accountChanges.GetOrCapturePreTxStorage(in key, in before, _storageJournalEpoch, out UInt256 preTxStorage))
+        if (accountChanges.RecordStorageWrite(in key, in before, in after, Index, _storageJournalEpoch, out StorageChange previous, out bool hadChange))
         {
-            // One undo per slot between snapshot boundaries also covers interleaved writes to other slots.
-            _changes.Add(new Change(slot: key, previousValue: slotChange.Value)
+            _changes.Add(new Change(slot: key, previousValue: previous.Value)
             {
                 Account = accountChanges,
                 Type = ChangeType.StorageChange,
-                HasPrevious = hasPrevious,
-                PreviousIndex = slotChange.Index,
+                HasPrevious = hadChange,
+                PreviousIndex = previous.Index,
             });
-        }
-
-        if (preTxStorage != after)
-        {
-            slotChange = new StorageChange(Index, after);
-            // An existing change already excludes this slot from the read set, or the next StorageReads access will.
-            if (!hasPrevious) accountChanges.RemoveStorageRead(key);
-        }
-        else
-        {
-            accountChanges.RemoveStorageChange(key);
-            accountChanges.AddStorageRead(key);
         }
     }
 
@@ -301,7 +286,7 @@ public class BlockAccessListAtIndex(int initialChangeCapacity, int maxPooledAcco
         }
 
         // SELFDESTRUCT clears storage (changes become reads), nonce and code
-        accountChanges.StorageChanges.Clear();
+        accountChanges.ClearStorageChanges();
         accountChanges.NonceChange = null;
         accountChanges.CodeChange = null;
 
