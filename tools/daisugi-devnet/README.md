@@ -13,7 +13,7 @@ Local fresh-genesis devnet in the Daisugi topology: one Nethermind, one Lighthou
 | --- | --- | --- |
 | Nethermind | `NethermindEth/nethermind` #15829 `feature/eip8288-upstream-leanvm`, native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 (nugettest) | `215f799b136347109a55f962748068ec0d2fee54` (interim pin) |
 | Lighthouse | `sigp/lighthouse` v8.2.2 | `e423a66763bb1bd780492d635123f208d80c3538`, archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `7a9b581` |
+| Lighthouse patch series | `asanso/AA-PQ` PR #10, `aggregation/frames/consensus/eip8288-lean` | `bf371db2b674597d584fd2825b6a1109609e2ead` |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 
 ## Prerequisites
@@ -40,7 +40,7 @@ B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
 echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin 7a9b581 && git -C $B/AA-PQ checkout -q FETCH_HEAD
+git -C $B/AA-PQ fetch -q origin bf371db2b674597d584fd2825b6a1109609e2ead && git -C $B/AA-PQ checkout -q FETCH_HEAD
 # apply.py checks the archive, each patch and the resulting tree against sources.lock.json.
 python3 $B/AA-PQ/aggregation/frames/consensus/eip8288-lean/apply.py lighthouse $B/lighthouse.tar.gz $B/lighthouse
 docker build -f $B/lighthouse/Dockerfile.reproducible --platform linux/amd64 \
