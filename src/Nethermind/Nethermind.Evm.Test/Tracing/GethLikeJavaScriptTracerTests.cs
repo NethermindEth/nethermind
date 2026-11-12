@@ -109,10 +109,16 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 yield return new TestCaseData($"new Uint8Array({array}).buffer", inputHex, addressHex);
                 yield return new TestCaseData($"new DataView(new Uint8Array([238].concat({array}, [255])).buffer, 1, {length})", inputHex, addressHex);
             }
-            if (length is 0 or 1 or 20 or 21)
+            if (length is 1 or 20 or 21)
                 yield return new TestCaseData($"\"{inputHex}\"", inputHex, addressHex);
         }
     }
+
+    [TestCase("")]
+    [TestCase("0x")]
+    public void Address_conversion_preserves_empty_string_rejection(string input) =>
+        Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>()
+            .With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
 
     [Test]
     public void Address_conversion_validates_even_discarded_bytes([Values(-1, 256)] int invalidByte, [Values(1, 21)] int length)
