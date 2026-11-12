@@ -24,7 +24,8 @@ public class OverlayNodeRecordBufferTests
         using IDisposable globalReadPin = global.PinAll();
         ulong beforePin = Append(global, BeforePinLeaf);
 
-        OverlayNodeRecordBuffer overlay = new(global);
+        using PrivateNodeRecordBuffer local = new(4096);
+        OverlayNodeRecordBuffer overlay = new(global, local);
         ulong afterPin = Append(global, AfterPinLeaf);
         // The global buffer indexes the same root again, as when block processing returns storage to an earlier root.
         ulong reindexed = Append(global, BeforePinLeaf);
