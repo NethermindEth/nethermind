@@ -146,6 +146,37 @@ public class TransactionForRpcTests
     }
 
     [Test]
+    public async Task Malformed_blob_hashes_fail_binding_before_aliases_fees_and_sidecars(
+        [Values(0, 2, 33)] int hashLength, [Values] bool invalidFee, [Values] bool suppliedBlobs)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableEthSignTransaction = true }).Build();
+        string hash = "0x" + new string('0', hashLength * 2);
+        string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
+        using JsonDocument call = JsonDocument.Parse($$"""
+            { {{sidecar}}"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressD}}","gas":"0x186a0","nonce":"0x0",
+              "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","maxFeePerBlobGas":"0x1",
+              "blobVersionedHashes":["{{hash}}"],"input":"0x01","data":"0x2a" }
+            """);
+        foreach (string method in new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "eth_sendTransaction",
+                     "eth_signTransaction", "eth_fillTransaction", "debug_traceCall", "trace_call" })
+        {
+            string response = method switch
+            {
+                "debug_traceCall" => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, call.RootElement, "latest"),
+                "trace_call" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest"),
+                _ => await chain.TestEthRpc(method, call.RootElement)
+            };
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), method + ": " + response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+    }
+
+    [Test]
     public void Blob_submission_alias_checks_preserve_fee_sidecar_and_call_precedence(
         [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version")] string hashKind)
     {
@@ -153,7 +184,7 @@ public class TransactionForRpcTests
         string hashes = hashKind switch
         {
             "missing" => "null",
-            "size" => "[\"0x0100\"]",
+            "size" => "[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]",
             "version" => "[\"0x0200000000000000000000000000000000000000000000000000000000000000\"]",
             _ => "[]"
         };
@@ -169,7 +200,8 @@ public class TransactionForRpcTests
               "maxFeePerGas":"0x1","maxPriorityFeePerGas":"{{(invalidFee ? "0x2" : "0x1")}}",
               "input":"0x01","data":"0x2a" }
             """);
-        string expected = suppliedBlobs ? blobError
+        if (hashKind == "size") ((BlobTransactionForRpc)request).BlobVersionedHashes = [[0x01, 0x00]];
+        string expected = suppliedBlobs || hashKind == "size" ? blobError
             : invalidFee ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)
             : RpcTransactionErrors.DataAndInputDiffer;
 

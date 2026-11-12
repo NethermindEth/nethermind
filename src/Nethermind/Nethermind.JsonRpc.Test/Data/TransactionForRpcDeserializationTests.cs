@@ -36,6 +36,64 @@ public class TransactionForRpcDeserializationTests
         "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
     ];
 
+    private static IEnumerable InvalidBlobHashFields()
+    {
+        string valid = "\"0x01" + new string('0', 62) + "\"";
+        foreach (string invalid in new[] { "\"0x\"", "\"0x0100\"", "\"0x" + new string('0', 66) + "\"",
+                     "null", "1", "\"0x" + new string('0', 63) + "\"", "\"" + new string('0', 64) + "\"",
+                     "\"0x" + new string('z', 64) + "\"", "\"0x\\u0030" + new string('0', 63) + "\"" })
+        {
+            foreach (string fields in new[]
+                     {
+                         $"\"blobVersionedHashes\":[{invalid}]",
+                         $"\"blobVersionedHashes\":[{invalid}],\"blobVersionedHashes\":[{valid}]",
+                         $"\"blobVersionedHashes\":[{invalid}],\"blobVersionedHashes\":null",
+                         $"\"blobVersionedHashes\":[{valid},{invalid}]"
+                     })
+            {
+                yield return new TestCaseData(fields, false);
+                yield return new TestCaseData(fields, true);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(InvalidBlobHashFields))]
+    public void Blob_hash_binding_validates_every_occurrence(string fields, bool frame)
+    {
+        string frameFields = frame ? "\"frames\":[]," : "";
+        string json = $$"""{ {{frameFields}}"maxFeePerBlobGas":"0x1",{{fields}}}""";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(json));
+            Assert.Throws<JsonException>(() => _serializer.Deserialize<SignableTransactionForRpc>(json));
+            if (frame) Assert.Throws<JsonException>(() => _serializer.Deserialize<FrameTransactionForRpc>(json));
+            else Assert.Throws<JsonException>(() => _serializer.Deserialize<BlobTransactionForRpc>(json));
+        }
+    }
+
+    [Test]
+    public void Blob_hash_binding_preserves_null_empty_and_fixed_length_values(
+        [Values("missing", "null", "empty", "valid", "version", "upper-prefix", "upper-hex", "cleared", "replaced")] string kind,
+        [Values] bool frame)
+    {
+        string hash = "0x" + (kind == "version" ? "02" : "01") + new string('0', 62);
+        if (kind == "upper-prefix") hash = "0X" + hash[2..];
+        if (kind == "upper-hex") hash = "0xAB" + hash[4..];
+        string hashes = kind == "null" ? "null" : kind == "empty" ? "[]" : $"[\"{hash}\"]";
+        string duplicate = kind == "cleared" ? ",\"blobVersionedHashes\":null"
+            : kind == "replaced" ? ",\"blobVersionedHashes\":[]" : "";
+        string frameFields = frame ? "\"frames\":[]," : "";
+        string hashFields = kind == "missing" ? "" : $",\"blobVersionedHashes\":{hashes}{duplicate}";
+        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
+            $$"""{ {{frameFields}}"maxFeePerBlobGas":"0x1"{{hashFields}}}""")!;
+        Assert.That(rpc, Is.TypeOf(frame ? typeof(FrameTransactionForRpc) : typeof(BlobTransactionForRpc)));
+        byte[][]? decodedHashes = frame ? ((FrameTransactionForRpc)rpc).BlobVersionedHashes : ((BlobTransactionForRpc)rpc).BlobVersionedHashes;
+
+        if (kind is "missing" or "null" or "cleared") Assert.That(decodedHashes, Is.Null);
+        else if (kind is "empty" or "replaced") Assert.That(decodedHashes, Is.Empty);
+        else Assert.That(decodedHashes, Has.Length.EqualTo(1).And.All.Length.EqualTo(Eip4844Constants.BytesPerBlobVersionedHash));
+    }
+
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 1, false)]
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 0, false)]
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 1, true)]

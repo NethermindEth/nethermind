@@ -366,20 +366,21 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Blob_submission_calldata_conflicts_precede_invalid_hashes(
+    public async Task Blob_submission_calldata_conflicts_precede_invalid_hash_versions(
         [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
-        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidSize)
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee)
     {
         using Context ctx = await Context.CreateWithCancunEnabled();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
         request["data"] = data;
-        request["blobVersionedHashes"] = new JsonArray(invalidSize ? "0x0100"
-            : "0x0200000000000000000000000000000000000000000000000000000000000000");
+        request["blobVersionedHashes"] = new JsonArray("0x0200000000000000000000000000000000000000000000000000000000000000");
+        request["gasPrice"] = invalidFee ? "0x0" : "0x1";
 
         string response = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
-        string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
-            : invalidSize ? RpcTransactionErrors.InvalidBlobVersionedHashSize : RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+        string expected = invalidFee ? "gasPrice must be non-zero after london fork"
+            : data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+            : RpcTransactionErrors.InvalidBlobVersionedHashVersion;
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {

@@ -26,6 +26,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonDiscriminator]
+    [JsonConverter(typeof(BlobVersionedHashesConverter))]
     public byte[][]? BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -102,12 +103,15 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        string? dataError = base.GetSubmissionDataError();
-        // Geth's setDefaults checks aliases after sidecars and fees, but before blob fields.
-        if (Blobs is null && dataError == RpcTransactionErrors.DataAndInputDiffer
-            && conversionError is RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
+        if (conversionError is not null
+            && (Blobs is not null || conversionError is not (RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
                 or RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
-                or RpcTransactionErrors.InvalidBlobVersionedHashSize or RpcTransactionErrors.InvalidBlobVersionedHashVersion)
+                or RpcTransactionErrors.InvalidBlobVersionedHashVersion)))
+            return conversionError;
+
+        string? dataError = base.GetSubmissionDataError();
+        // Geth's setDefaults checks aliases after sidecars and fees, but before semantic blob errors.
+        if (conversionError is not null && dataError == RpcTransactionErrors.DataAndInputDiffer)
         {
             Result<Transaction> preceding = MaxFeePerBlobGas?.IsZero == true
                 ? RpcTransactionErrors.ZeroMaxFeePerBlobGas
