@@ -324,6 +324,10 @@ namespace Nethermind.Trie
             ResolveUnknownNodeWithContext(tree, path, readFlags, bufferPool);
         }
 
+        /// <summary>Reports a node that is resolved from the RLP it holds rather than loaded, where this build does; see
+        /// <c>TrieNode.std.cs</c>.</summary>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp);
+
         /// <summary>
         /// Highly optimized
         /// </summary>
@@ -350,6 +354,10 @@ namespace Nethermind.Trie
                 // A node referenced by hash is constructed persisted already.
                 if (!IsPersisted) IsPersisted = true;
             }
+            else
+            {
+                OnEmbeddedNodeResolving(tree, path, rlp);
+            }
 
             if (!DecodeRlp(rlp.AsSpan(), bufferPool, out int numberOfItems))
             {
@@ -357,16 +365,16 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
-
-            [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) => throw new TrieNodeException(
                     $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})",
                     path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static Hash256 ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
+
+        [DoesNotReturn, StackTraceHidden]
+        private byte[] ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
 
         /// <summary>
         /// Highly optimized
@@ -507,7 +515,7 @@ namespace Nethermind.Trie
             NodeRlpReader reader = new(data);
             reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
             int keyEnd = position;
-            if (keySpan[0] >= 0x20)
+            if ((keySpan[0] & 0x20) != 0)
             {
                 reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
