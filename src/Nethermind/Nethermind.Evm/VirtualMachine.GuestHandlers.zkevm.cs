@@ -131,6 +131,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
+        lookup[(int)Instruction.COINBASE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CoinbaseWord>);
+        lookup[(int)Instruction.TIMESTAMP] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.TimestampWord>);
+        lookup[(int)Instruction.NUMBER] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.NumberWord>);
+        lookup[(int)Instruction.PREVRANDAO] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.PrevRandaoWord>);
+        lookup[(int)Instruction.GASLIMIT] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasLimitWord>);
+        if (spec.ChainIdOpcodeEnabled)
+            lookup[(int)Instruction.CHAINID] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.ChainIdWord>);
+        if (spec.BaseFeeEnabled)
+            lookup[(int)Instruction.BASEFEE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BaseFeeWord>);
+        if (spec.BlobBaseFeeEnabled)
+            lookup[(int)Instruction.BLOBBASEFEE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>);
+        if (spec.IsEip7843Enabled)
+            lookup[(int)Instruction.SLOTNUM] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
@@ -1866,6 +1879,158 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
+        }
+
+        /// <summary>An opcode that pushes a word of the block's context, as <typeparamref name="TWord"/> writes it.</summary>
+        /// <remarks>
+        /// The context does not change while a frame runs, so the word comes straight off <see cref="DispatchState.Vm"/>
+        /// with no call. A short gas, a full stack, or a word the block does not have runs the shared handler of the
+        /// opcode instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePushContextWord<TWord>(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TWord : struct, IContextWord
+        {
+            if (head < EvmStack.MaxStackSize - 1 && TWord.IsAvailable(state.Vm) && TryCharge(ref gas, BaseGasCost.GasCost))
+            {
+                TWord.Write(state.Vm, ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = TWord.SharedHandler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>A word of the block's context, of base cost, that <see cref="ExecutePushContextWord{TWord}"/> pushes.</summary>
+        internal interface IContextWord
+        {
+            /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
+            static abstract nint SharedHandler { get; }
+
+            /// <summary>Whether the block has the word; the opcode is invalid where it does not.</summary>
+            static virtual bool IsAvailable(VirtualMachine<TGasPolicy> vm) => true;
+
+            /// <summary>Writes the word into <paramref name="slot"/>, in limb layout.</summary>
+            static abstract void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot);
+        }
+
+        /// <summary>COINBASE: the block's beneficiary.</summary>
+        internal readonly struct CoinbaseWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkAddressOpcode<EvmInstructions.OpCoinbase<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(vm.BlockExecutionContext.Coinbase.Bytes);
+                slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
+                Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
+                // The leading four bytes of the address end the third limb.
+                Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32;
+                Unsafe.Add(ref slot, 3) = 0;
+            }
+        }
+
+        /// <summary>TIMESTAMP: the block's timestamp.</summary>
+        internal readonly struct TimestampWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt64Opcode<EvmInstructions.OpTimestamp<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetWord(ref slot, vm.BlockExecutionContext.Header.Timestamp);
+        }
+
+        /// <summary>NUMBER: the block's number.</summary>
+        internal readonly struct NumberWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt64Opcode<EvmInstructions.OpNumber<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetWord(ref slot, vm.BlockExecutionContext.Number);
+        }
+
+        /// <summary>PREVRANDAO: the block's RANDAO mix, or its difficulty before the merge.</summary>
+        internal readonly struct PrevRandaoWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<PrevRandaoOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                LoadBigEndian(ref slot, ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in vm.BlockExecutionContext.PrevRandao)));
+        }
+
+        /// <summary>GASLIMIT: the block's gas limit.</summary>
+        internal readonly struct GasLimitWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt64Opcode<EvmInstructions.OpGasLimit<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetWord(ref slot, vm.BlockExecutionContext.GasLimit);
+        }
+
+        /// <summary>CHAINID: the chain's id.</summary>
+        internal readonly struct ChainIdWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt256Opcode<EvmInstructions.OpChainId<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in vm.ChainId)), ref slot);
+        }
+
+        /// <summary>BASEFEE: the block's base fee per gas.</summary>
+        internal readonly struct BaseFeeWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt256Opcode<EvmInstructions.OpBaseFee<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref vm.BlockExecutionContext.Header.BaseFeePerGas), ref slot);
+        }
+
+        /// <summary>BLOBBASEFEE: the block's blob base fee, which only a block with an excess blob gas has.</summary>
+        internal readonly struct BlobBaseFeeWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlobBaseFeeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool IsAvailable(VirtualMachine<TGasPolicy> vm) => vm.BlockExecutionContext.Header.ExcessBlobGas.HasValue;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                LoadBigEndian(ref slot, ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in vm.BlockExecutionContext.BlobBaseFee)));
+        }
+
+        /// <summary>SLOTNUM: the block's slot number, zero where the header has none.</summary>
+        internal readonly struct SlotNumWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<SlotNumOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                SetWord(ref slot, vm.BlockExecutionContext.Header.SlotNumber.GetValueOrDefault());
         }
 
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
