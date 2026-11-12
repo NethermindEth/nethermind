@@ -36,10 +36,11 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             // keep that on the prover thread, which dispatches every proof.
             if (!ProverThread.Run(static () => AggregatedVerificationKey).AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
-            Span<uint> limits = stackalloc uint[9];
+            Span<uint> limits = stackalloc uint[11];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
                 Eip8288Constants.MaxInnerProofsPerStep, Eip8288Constants.LeanSphincsWitnessBytes,
-                Eip8288Constants.MaxClaimsPerBatchLeaf, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
+                Eip8288Constants.MaxClaimsPerBatchLeaf, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes,
+                Eip8288Constants.MaxLeanStarkCommittedLog, Eip8288Constants.MaxLeanStarkBusLog];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -252,7 +253,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         return stream.ToArray();
     }
 
-    /// <summary>EIP-8288 inner proofs of one step: direct leanSTARK witnesses, batch leaves and recursive proofs.</summary>
+    /// <summary>EIP-8288 inner proofs of one step: batch leaves, direct leanSTARK witnesses as singleton leaves, and recursive
+    /// proofs; leanSPHINCS witnesses do not count.</summary>
     private static int InnerProofs(AggregationInput input)
     {
         int count = input.BatchLeaves.Count + input.RecursiveProofs.Count;

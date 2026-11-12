@@ -35,12 +35,21 @@ public static class Eip8288Constants
 
     /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): direct leanSTARK proofs, batch leaves and recursive
     /// proofs verified by one aggregation step together.</summary>
-    /// <remarks>One native aggregation call is a step; the pinned guest realizes it as a tree of smaller nodes under the same
-    /// <see cref="AggregatedVk"/>. Larger inputs need further steps.</remarks>
+    /// <remarks>Raw leanSPHINCS witnesses do not count. The pinned guest accepts up to this many per execution, but its trace
+    /// bound fits at most one leaf with two children, or seven children, so the native backend proves one call as a tree of
+    /// such executions under the same <see cref="AggregatedVk"/>.</remarks>
     public const int MaxInnerProofsPerStep = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
     public const int MaxLeanStarkInstructions = 2048;
+
+    /// <summary>Maximum log2 committed-polynomial size of a leanSTARK proof the pinned generic verifier accepts.</summary>
+    /// <remarks>An EIP-8288 verifier resource bound (trace dimensions); a proof above it is invalid.</remarks>
+    public const int MaxLeanStarkCommittedLog = 22;
+
+    /// <summary>Maximum log2 bus size of a leanSTARK proof the pinned generic verifier accepts.</summary>
+    /// <remarks>An EIP-8288 verifier resource bound (bus interactions); a proof above it is invalid.</remarks>
+    public const int MaxLeanStarkBusLog = 22;
 
     /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
@@ -111,5 +120,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("0ec59d6f0da0b9d769620f1b0142bcac81d5561a2599ae670badcb4edbfa5736");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("41eca9c18620995298adb2fb8df0bb8f3be9b182aa8135038348049bef9d2d55");
 }

@@ -22,8 +22,9 @@ const MAX_MIXED_GUEST_BYTES: usize = MAX_BYTES;
 const MAX_INSTRUCTIONS: usize = 1 << eip8288_mixed::MAX_GENERIC_BYTECODE_LOG;
 const MAX_OPERAND: u32 = 65535;
 const MAX_CLAIMS_PER_BATCH_LEAF: usize = eip8288_mixed::MAX_CLAIMS_PER_BATCH_LEAF;
-/// EIP-8288 `MAX_INNER_PROOFS_PER_STEP`: direct leanSTARK proofs, batch leaves and recursive proofs in one aggregation call.
-pub const MAX_INNER_PROOFS_PER_STEP: usize = 16;
+/// EIP-8288 `MAX_INNER_PROOFS_PER_STEP`: batch leaves, direct leanSTARK proofs as singleton leaves, and recursive proofs
+/// in one aggregation call. The guest enforces it per execution too; raw leanSPHINCS witnesses do not count.
+pub const MAX_INNER_PROOFS_PER_STEP: usize = eip8288_mixed::MAX_INNER_PROOFS_PER_STEP;
 const MAX_DECODE_BYTES: usize = 32 * 1024 * 1024;
 static PROVER: Mutex<()> = Mutex::new(());
 
@@ -927,11 +928,13 @@ pub unsafe extern "C" fn nlean_last_error(out: *mut u8, len: usize) -> usize {
         message.len()
     })
 }
+/// The number of u32 values `nlean_limits` writes.
+const LIMITS: usize = 11;
 /// # Safety
-/// Output must hold nine writable u32 values.
+/// Output must hold eleven writable u32 values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
-    if out.is_null() || len != 9 {
+    if out.is_null() || len != LIMITS {
         return 0;
     }
     let limits = [
@@ -944,6 +947,8 @@ pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
         MAX_OPERAND,
         MAX_INPUT_BYTES as u32,
         MAX_MIXED_GUEST_BYTES as u32,
+        eip8288_mixed::MAX_GENERIC_COMMITTED_LOG as u32,
+        eip8288_mixed::MAX_GENERIC_BUS_LOG as u32,
     ];
     unsafe {
         std::ptr::copy_nonoverlapping(limits.as_ptr(), out, limits.len());
@@ -1504,6 +1509,26 @@ mod tests {
         }
         let input = aggregation_input(&[], &[(&deps, &[0])], &[], &[]);
         assert!(decode_child(&deps, &[0]).is_err());
+        // Lists past the bound, including 16-bit counter boundaries, are rejected rather than truncated.
+        for count in [65_535usize, 65_536] {
+            let mut long = vec![[0u8; 96]; count];
+            for (i, dep) in long.iter_mut().enumerate() {
+                dep[31] = 0x11;
+                dep[60..64].copy_from_slice(&(i as u32).to_be_bytes());
+            }
+            assert!(decode_child(&long, &[0]).is_err());
+            assert!(
+                prove_aggregate(
+                    &commitment(&long),
+                    &aggregation_input(&[], &[(&long, &[0])], &[], &[])
+                )
+                .is_err()
+            );
+            assert!(
+                prove_aggregate(&commitment(&long), &aggregation_input(&[], &[], &long, &[]))
+                    .is_err()
+            );
+        }
         assert!(prove_aggregate(&commitment(&deps), &input).is_err());
     }
     #[test]
@@ -1523,10 +1548,10 @@ mod tests {
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "0ec59d6f0da0b9d769620f1b0142bcac81d5561a2599ae670badcb4edbfa5736"
+            "41eca9c18620995298adb2fb8df0bb8f3be9b182aa8135038348049bef9d2d55"
         );
-        let mut limits = [0u32; 9];
-        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);
+        let mut limits = [0u32; LIMITS];
+        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), LIMITS) }, 1);
         assert_eq!(
             limits,
             [
@@ -1538,11 +1563,13 @@ mod tests {
                 MAX_INSTRUCTIONS as u32,
                 MAX_OPERAND,
                 MAX_INPUT_BYTES as u32,
-                MAX_MIXED_GUEST_BYTES as u32
+                MAX_MIXED_GUEST_BYTES as u32,
+                eip8288_mixed::MAX_GENERIC_COMMITTED_LOG as u32,
+                eip8288_mixed::MAX_GENERIC_BUS_LOG as u32
             ]
         );
-        assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
-        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
+        assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), LIMITS) }, 0);
+        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), LIMITS - 1) }, 0);
         let last_error = || {
             let mut message = [0u8; 64];
             let len = unsafe { nlean_last_error(message.as_mut_ptr(), message.len()) };
@@ -1963,6 +1990,17 @@ mod tests {
         let over: Vec<[u8; 32]> = (1..=MAX_CLAIMS_PER_BATCH_LEAF as u8 + 1)
             .map(|i| [i; 32])
             .collect();
+        // The aggregation enforces claim order even when the leaf verifier accepts the list's digest.
+        for claims in [&[b, a][..], &[a, a]] {
+            let (proof, _) = witness(claims);
+            assert!(
+                prove_aggregate(
+                    &hash,
+                    &aggregation_input(&[], &[], &[], &[(key, claims, &proof)])
+                )
+                .is_err()
+            );
+        }
         for (claims, proof) in [
             (&[b, a][..], &leaf),
             (&[a, a], &leaf),

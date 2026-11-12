@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/654e12a75db44b087341d4225ecda01a8dba7f78),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/0025a71b77bfdfd10aef96900c436f45d8d21d10),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims, generic leanVM programs and its own child proofs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
@@ -49,9 +49,9 @@ the native suite is explicitly skipped. With it, the backend and fixtures are re
 missing libraries fail the run.
 
 The C ABI is version 11, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
-`nlean_limits` writes nine u32 values (proof bytes, dependencies, inner proofs per step,
+`nlean_limits` writes eleven u32 values (proof bytes, dependencies, inner proofs per step,
 SPHINCS witness bytes, claims per batch leaf, instructions, operand offset, aggregation
-input bytes, mixed guest proof bytes); startup checks these against the managed protocol
+input bytes, mixed guest proof bytes, leanSTARK committed log, leanSTARK bus log); startup checks these against the managed protocol
 bounds before accepting work.
 Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. After -1, `nlean_last_error(out, len)` on the same
 thread copies up to `len` bytes of the panic message and returns its full length. Callers initialize proof output
@@ -68,8 +68,13 @@ All framing integers are unsigned 32-bit little-endian. The native backend bound
 individual witnesses to 8 MiB and aggregation input to 18 MiB; managed callers first apply
 the local 1.25 MiB pinned-prover bound (`Eip8288Constants.MaxAggregateProofBytes`, not an EIP-8288
 constant) to every aggregate proof. This is an input-buffer limit, not a process memory bound.
-Dependency lists are bounded to 256, and direct leanSTARK proofs, batch leaves and recursive
-children together to EIP-8288's `MAX_INNER_PROOFS_PER_STEP` (16) per aggregation call. This format and the
+Dependency lists are bounded to 256; longer lists are rejected, never truncated, although
+EIP-8288 requires `MAX_RLP_BLOCK_SIZE // 96`. Batch leaves (direct leanSTARK proofs as singleton
+leaves) and recursive children together are bounded to EIP-8288's `MAX_INNER_PROOFS_PER_STEP`
+(16) per aggregation call and per guest execution; leanSPHINCS witnesses do not count. The
+guest's log-27 trace bound fits at most one leaf with two children, or seven children, per
+execution, so the backend proves a call as a tree of executions. A proof whose program, trace
+or bus exceeds the reported leanSTARK bounds is rejected before verification. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 
 The serialized mixed guest proof is the whole `stark_proof`; an empty dependency list has an
@@ -113,8 +118,8 @@ resolved dependency.
   leanSTARK witness blob)` entries.
 * **batch leaf:** a leanSTARK witness whose public statement is
   `get_batch_hash(claims) = Keccak-256(b'EIP8288:batch:v1' || claims)` over 1 to
-  `MAX_CLAIMS_PER_BATCH_LEAF` (16, a guest constant bound to the key) strictly increasing
-  claims. Each claim yields `(0x11, claim, key)`. Leaves appear only as private aggregation
+  `MAX_CLAIMS_PER_BATCH_LEAF` (16, a guest constant bound to the key) claims. The aggregation
+  guest, not the leaf verifier, enforces strictly increasing byte-lexicographic order. Each claim yields `(0x11, claim, key)`. Leaves appear only as private aggregation
   inputs; mode-0 wrappers carry singleton proofs. A user builds a mode-1 wrapper from a leaf by
   aggregating it alone (`AggregationInput.BatchLeaves`) and attaching the result.
 * **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies
@@ -151,7 +156,7 @@ EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
   included, against its run. Both schemes share the 256-dependency list bound; there is no
   separate leanSTARK cap.
 
-Startup checks ABI 11, the pinned key and the nine bounds together. New devnets require fresh
+Startup checks ABI 11, the pinned key and the eleven bounds together. New devnets require fresh
 chain and database namespaces.
 
 The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, below the `MAX_RLP_BLOCK_SIZE // 96` output capacity EIP-8288 requires; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
