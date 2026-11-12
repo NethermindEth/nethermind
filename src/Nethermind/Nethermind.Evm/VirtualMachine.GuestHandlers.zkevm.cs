@@ -1885,7 +1885,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The context does not change while a frame runs, so the word comes straight off <see cref="DispatchState.Vm"/>
         /// with no call. A short gas, a full stack, or a word the block does not have runs the shared handler of the
-        /// opcode instead, which faults on it.
+        /// opcode instead. It does not record BlockContextReads, which only the host's mempool footprints read.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
