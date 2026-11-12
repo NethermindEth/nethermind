@@ -69,6 +69,23 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return expected != 0 && (nint)handlers[(int)opcode] == expected;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a block-context word, on the guest handler.</summary>
+    /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
+    internal static bool PushesContextWordThroughGuestHandlerForTests(IReleaseSpec spec, Instruction opcode) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)opcode] == opcode switch
+        {
+            Instruction.COINBASE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CoinbaseWord>),
+            Instruction.TIMESTAMP => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.TimestampWord>),
+            Instruction.NUMBER => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.NumberWord>),
+            Instruction.PREVRANDAO => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.PrevRandaoWord>),
+            Instruction.GASLIMIT => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasLimitWord>),
+            Instruction.CHAINID => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.ChainIdWord>),
+            Instruction.BASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BaseFeeWord>),
+            Instruction.BLOBBASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>),
+            Instruction.SLOTNUM => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>),
+            _ => throw new ArgumentOutOfRangeException(nameof(opcode))
+        };
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
     internal static bool CallsThroughGuestHandlerForTests(IReleaseSpec spec)
