@@ -570,15 +570,20 @@ public class GuestDispatchDifferentialTests
     /// Memory of four words is written first, then copied forward and backward over itself, by whole words and by odd
     /// lengths at odd offsets, empty, and past the memory's end, which expands it; every amount of gas up to the program's
     /// need puts the end of the gas inside each charge. The memory is compared after the copy.
+    /// An MLOAD at <paramref name="loaded"/> first grows the memory through the shared handler, which initializes past
+    /// its new size, so a source that ends past the size but inside the initialized prefix must still pay for its expansion.
     /// </remarks>
     [Test]
     public void Memory_copies_match_the_shared_handlers(
-        [Values(0, 1, 5, 31, 32, 33, 64, 96)] int destination, [Values(0, 3, 32, 64)] int source, [Values(0, 1, 17, 32, 63, 100)] int length)
+        [Values(0, 1, 5, 31, 32, 33, 64, 96)] int destination, [Values(0, 3, 32, 64, 0x110, 0x1e0, 0x480)] int source, [Values(0, 1, 17, 32, 63, 100)] int length,
+        [Values(0, 0x100, 0x400)] int loaded)
     {
         List<byte> program = [];
         for (int word = 0; word < 4; word++)
             program.AddRange([(byte)Instruction.PUSH32, .. Enumerable.Range(word * 32 + 1, 32).Select(static b => (byte)b), (byte)Instruction.PUSH1, (byte)(word * 32), (byte)Instruction.MSTORE]);
-        program.AddRange([(byte)Instruction.PUSH1, (byte)length, (byte)Instruction.PUSH1, (byte)source, (byte)Instruction.PUSH1, (byte)destination, (byte)Instruction.MCOPY, (byte)Instruction.STOP]);
+        if (loaded != 0)
+            program.AddRange([(byte)Instruction.PUSH2, (byte)(loaded >> 8), (byte)loaded, (byte)Instruction.MLOAD, (byte)Instruction.POP]);
+        program.AddRange([(byte)Instruction.PUSH1, (byte)length, (byte)Instruction.PUSH2, (byte)(source >> 8), (byte)source, (byte)Instruction.PUSH1, (byte)destination, (byte)Instruction.MCOPY, (byte)Instruction.STOP]);
         byte[] code = [.. program];
         const ulong ample = 100_000;
         ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced).GasLeft;
@@ -758,10 +763,11 @@ public class GuestDispatchDifferentialTests
     /// <remarks>
     /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
     /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
-    /// its need, which puts the end of the gas inside its word and expansion charges.
+    /// its need, which puts the end of the gas inside its word and expansion charges. An MLOAD at 0x100 or 0x400 grows
+    /// the memory and initializes it past its new size, so a destination there still owes its expansion.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -769,7 +775,9 @@ public class GuestDispatchDifferentialTests
         {
             0 => [],
             1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
-            _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+            2 => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+            3 => [(byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            _ => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];

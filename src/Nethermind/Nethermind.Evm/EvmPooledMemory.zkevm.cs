@@ -249,30 +249,30 @@ public partial struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ref byte TryGetWrittenRange(ulong offset, ulong length)
     {
-        ulong end = offset + length;
-        if (end > Size || end > _initializedSize || (IsSwizzled && ((offset | length) & (sizeof(uint) - 1)) != 0))
-            return ref Unsafe.NullRef<byte>();
-
-        return ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
+        if (IsSwizzled && ((offset | length) & (sizeof(uint) - 1)) != 0) return ref Unsafe.NullRef<byte>();
+        return ref GetActiveInitializedRange(offset, length);
     }
 
     /// <summary>
     /// Copies the <paramref name="length"/> bytes at <paramref name="source"/> to <paramref name="destination"/>, which may overlap,
-    /// when the source lies in the initialized prefix and the destination fits <see cref="TryPrepareRangeOverwrite"/>, charging the
-    /// expansion to <paramref name="gas"/>; otherwise changes nothing and returns <see langword="false"/>.
+    /// when the source lies in the initialized prefix and inside the memory as the destination expands it, and the destination fits
+    /// <see cref="TryPrepareRangeOverwrite"/>, charging the expansion to <paramref name="gas"/>; otherwise changes nothing and returns
+    /// <see langword="false"/>.
     /// </summary>
     /// <param name="destination">The start of the destination, below 2^32.</param>
     /// <param name="source">The start of the source, below 2^32.</param>
     /// <param name="length">The length of the copy, from 1 to 2^32 - 1.</param>
     /// <param name="gas">The remaining execution gas.</param>
     /// <remarks>
-    /// With the source inside the initialized prefix, which never passes <see cref="Size"/>, the expansion MCOPY charges is that
-    /// of the destination alone, and the gap the destination clears lies above the source.
+    /// MCOPY charges the expansion to the end of both ranges. With the source ending inside <see cref="Size"/> or the destination,
+    /// that is the expansion of the destination alone. The initialized prefix can pass <see cref="Size"/>, so it does not bound
+    /// the source on its own. The gap the destination clears lies above the source.
     /// </remarks>
     internal bool TryCopyWithin(ulong destination, ulong source, ulong length, ref nuint gas)
     {
         Debug.Assert(destination <= uint.MaxValue && source <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
-        if (source + length > _initializedSize) return false;
+        ulong sourceEnd = source + length;
+        if (sourceEnd > _initializedSize || sourceEnd > Math.Max(Size, destination + length)) return false;
 
         ref byte target = ref TryPrepareRangeOverwrite(destination, length, ref gas);
         if (Unsafe.IsNullRef(ref target)) return false;

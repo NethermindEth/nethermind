@@ -1895,7 +1895,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong source = ref Unsafe.Subtract(ref destination, LimbsPerWord);
                 ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
                 ulong size = length;
-                ulong cost = GasCostOf.VeryLow + GasCostOf.VeryLow * ((size + (EvmStack.WordSize - 1)) >> 5);
+                ulong cost = GasCostOf.VeryLow + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
                 if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && Covers(gas, cost))
                 {
                     if (size == 0)
