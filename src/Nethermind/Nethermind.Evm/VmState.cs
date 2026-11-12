@@ -263,7 +263,7 @@ public partial class VmState<TGasPolicy> : IDisposable
         if (!ReferenceEquals(_env, env)) _env = env;
         _isReleased = false;
         _snapshot = snapshot;
-        _accessTracker = stateForAccessLists;
+        _accessTracker.ShareFrom(in stateForAccessLists);
         ResetMemoryFromPriorTransaction();
         if (executionType.IsAnyCreate())
         {
@@ -342,7 +342,7 @@ public partial class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _accessTracker = default;
+        if (!_isCached) _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _snapshot = default;
         StateGasRefundAdvanced = 0;

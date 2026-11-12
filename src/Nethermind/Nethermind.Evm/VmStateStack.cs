@@ -48,14 +48,17 @@ public sealed class VmStateStack<TGasPolicy>(int capacity)
             ThrowFull();
         }
 
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), (uint)count) = state;
+        // A slot keeps the frame last popped from it, which at a reused depth is this one: skip the store and its
+        // GC write barrier.
+        ref VmState<TGasPolicy>? slot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), (uint)count);
+        if (!ReferenceEquals(slot, state)) slot = state;
         _count = count + 1;
     }
 
     /// <summary>Removes and returns the most recently pushed frame.</summary>
     /// <remarks>
-    /// The vacated slot is cleared, so the stack stops keeping the returned frame alive; disposing it
-    /// remains the caller's responsibility.
+    /// The vacated slot keeps the frame, so pushing the same frame again stores nothing; the frames a VM
+    /// reuses stay alive with it anyway. Disposing the frame remains the caller's responsibility.
     /// </remarks>
     /// <returns>The frame from the top of the stack.</returns>
     /// <exception cref="InvalidOperationException">The stack is empty.</exception>
@@ -71,7 +74,6 @@ public sealed class VmStateStack<TGasPolicy>(int capacity)
 
         ref VmState<TGasPolicy>? slot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), (uint)count);
         VmState<TGasPolicy> state = slot!;
-        slot = null;
         _count = count;
         return state;
     }

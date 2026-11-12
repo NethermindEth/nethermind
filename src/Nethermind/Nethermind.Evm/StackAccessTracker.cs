@@ -22,7 +22,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private readonly bool _isTracingAccess = isTracingAccess;
+    private bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
     // Word-sized: every call frame stores all four, and zkVMs charge a 32-bit store several times a 64-bit one.
@@ -90,6 +90,18 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         originalBalance = default;
         return false;
+    }
+
+    /// <summary>Becomes a copy of <paramref name="source"/>, storing the shared tracking state only when it changed.</summary>
+    /// <remarks>Frames of one transaction share one tracking state, so a reused frame skips the GC write barrier.</remarks>
+    internal void ShareFrom(in StackAccessTracker source)
+    {
+        if (!ReferenceEquals(_trackingState, source._trackingState)) _trackingState = source._trackingState;
+        _isTracingAccess = source._isTracingAccess;
+        _addressesSnapshots = source._addressesSnapshots;
+        _storageKeysSnapshots = source._storageKeysSnapshots;
+        _destroyListSnapshots = source._destroyListSnapshots;
+        _logsSnapshots = source._logsSnapshots;
     }
 
     public void TakeSnapshot()
