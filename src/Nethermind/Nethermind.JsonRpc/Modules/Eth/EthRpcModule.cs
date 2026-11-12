@@ -385,19 +385,13 @@ public partial class EthRpcModule(
     /// </remarks>
     protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (rpcTx is BlobTransactionForRpc { Blobs: null }
-            && _blockFinder.Head?.Header is { } blobHead
-            && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(blobHead).IsEip1559Enabled) is { } blobFeeError)
-        {
-            return ResultWrapper<Hash256>.Fail(blobFeeError, ErrorCodes.InvalidInput);
-        }
-
-        if (rpcTx is BlobTransactionForRpc || _blockFinder.Head?.Header is not { } head)
+        if (rpcTx is BlobTransactionForRpc { Blobs: not null } || _blockFinder.Head?.Header is not { } head)
             return null;
 
         IReleaseSpec spec = _specProvider.GetSpec(head);
         if (FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
             return ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput);
+        if (rpcTx is BlobTransactionForRpc) return null;
 
         return await FillFeesAndGas(rpcTx, head, spec) is { } fillError
             ? ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode)

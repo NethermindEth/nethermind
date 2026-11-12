@@ -103,23 +103,19 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (conversionError is not null
-            && (Blobs is not null || conversionError is not (RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
-                or RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
-                or RpcTransactionErrors.InvalidBlobVersionedHashVersion)))
+        if (conversionError is null) return base.GetSubmissionDataError();
+        if (Blobs is not null || conversionError is not (RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
+            or RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
+            or RpcTransactionErrors.InvalidBlobVersionedHashVersion))
             return conversionError;
 
         string? dataError = base.GetSubmissionDataError();
         // Geth's setDefaults checks aliases after sidecars and fees, but before semantic blob errors.
-        if (conversionError is not null && dataError == RpcTransactionErrors.DataAndInputDiffer)
-        {
-            Result<Transaction> preceding = MaxFeePerBlobGas?.IsZero == true
-                ? RpcTransactionErrors.ZeroMaxFeePerBlobGas
-                : CheckFeeCapOrder(base.ToTransaction(validateUserInput: true, gasCap, spec));
-            return preceding.IsError ? preceding.Error : dataError;
-        }
+        if (dataError != RpcTransactionErrors.DataAndInputDiffer) return conversionError;
+        if (MaxFeePerBlobGas?.IsZero == true) return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
 
-        return conversionError ?? dataError;
+        Result<Transaction> preceding = CheckFeeCapOrder(base.ToTransaction(validateUserInput: true, gasCap, spec));
+        return preceding.IsError ? preceding.Error : dataError;
     }
 
     public override Result FillDefaults(in TxFillContext context)

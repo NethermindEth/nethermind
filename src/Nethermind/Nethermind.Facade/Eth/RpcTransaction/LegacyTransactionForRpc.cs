@@ -79,12 +79,15 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     void IJsonOnDeserialized.OnDeserialized() => _isDeserializing = false;
 
-    internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null) =>
-        conversionError ?? (_data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data)
-            ? RpcTransactionErrors.DataAndInputDiffer
-            : Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 }
-                ? RpcTransactionErrors.ContractCreationWithoutData
-                : null);
+    internal override string? GetSubmissionDataError(string? conversionError = null, ulong? gasCap = null, IReleaseSpec? spec = null)
+    {
+        if (conversionError is not null) return conversionError;
+        if (_data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data))
+            return RpcTransactionErrors.DataAndInputDiffer;
+        if (Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
+            return RpcTransactionErrors.ContractCreationWithoutData;
+        return null;
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
