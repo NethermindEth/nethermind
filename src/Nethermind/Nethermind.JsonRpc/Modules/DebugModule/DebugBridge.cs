@@ -22,7 +22,6 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;

@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;

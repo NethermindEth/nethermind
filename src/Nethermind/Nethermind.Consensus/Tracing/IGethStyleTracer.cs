@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;

@@ -8,6 +8,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -80,25 +81,25 @@ public class GuestSecuredPathTests
             Malformation.InvalidRlp => witness.Hashed(Enumerable.Repeat((byte)0xff, 40).ToArray()),
             Malformation.BranchWithOneChild => witness.Branch((KeyPath[1], witness.Leaf(KeyPath[2..]))),
             Malformation.BranchWithValue => witness.Branch([1], (KeyPath[1], witness.Leaf(KeyPath[2..])), (KeyPath[1] ^ 1, witness.Leaf(new byte[KeyNibbles - 2]))),
-            Malformation.BranchWithListValue => Witness.BranchOfReferences(new Rlp([0xc1, 0x80]),
+            Malformation.BranchWithListValue => Witness.BranchOfReferences([0xc1, 0x80],
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, witness.Reference(witness.Leaf(new byte[KeyNibbles - 2])))),
-            Malformation.BranchWithShortHashReference => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
+            Malformation.BranchWithShortHashReference => Witness.BranchOfReferences(EmptyByteArray,
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))),
             Malformation.ExtensionToLeaf => witness.Extension(KeyPath[1..2], witness.Leaf(KeyPath[2..])),
             // Flag nibble 5: an extension, as the spec reads only its two low bits.
             Malformation.HighFlagExtensionToLeaf => HighFlagExtension(witness, KeyPath[1..2], witness.Leaf(KeyPath[2..])),
-            Malformation.ExtensionToNothing => witness.ExtensionOfReference(KeyPath[1..2], Rlp.OfEmptyByteArray),
+            Malformation.ExtensionToNothing => witness.ExtensionOfReference(KeyPath[1..2], EmptyByteArray),
             // Accepted in its parent, as an embedded node, but a node of no items once reached.
             Malformation.EmptyListChild => [0xc0],
-            Malformation.OversizedEmbeddedChild => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
-                (KeyPath[1], new Rlp(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, witness.Reference(witness.Leaf(new byte[KeyNibbles - 2])))),
+            Malformation.OversizedEmbeddedChild => Witness.BranchOfReferences(EmptyByteArray,
+                (KeyPath[1], witness.Leaf(KeyPath[2..])), (KeyPath[1] ^ 1, witness.Reference(witness.Leaf(new byte[KeyNibbles - 2])))),
             // In a slot the walk does not take: the spec decodes the whole branch.
-            Malformation.MalformedEmbeddedChild => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
-                (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, new Rlp([0xc1, 0x81]))),
+            Malformation.MalformedEmbeddedChild => Witness.BranchOfReferences(EmptyByteArray,
+                (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, [0xc1, 0x81])),
             Malformation.NonCanonicalListHeader => LongListHeader(witness.Leaf(LeafPath(0))),
-            Malformation.NonCanonicalLeafValue => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), new Rlp([0x81, 0x01])).Bytes,
+            Malformation.NonCanonicalLeafValue => Sequence(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), [0x81, 0x01]),
             // Deep enough to overflow the stack were it measured before its prefix is checked.
-            Malformation.DeeplyNestedItem => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(KeyPath[1..2], isLeaf: false)), new Rlp(NestedLists(20_000))).Bytes,
+            Malformation.DeeplyNestedItem => Sequence(Rlp.Encode(HexPrefix.ToBytes(KeyPath[1..2], isLeaf: false)), NestedLists(20_000)),
             _ => witness.Hashed(witness.Branch((0, witness.Leaf([1])), (1, witness.Leaf([1])))),
         };
         PatriciaTree tree = witness.Tree(witness.Branch((KeyPath[0], slotChild), (KeyPath[0] ^ 1, witness.Leaf(new byte[KeyNibbles - 1]))));
@@ -112,9 +113,9 @@ public class GuestSecuredPathTests
     public void Branch_at_the_key_length_is_rejected([Values] bool full, [Values] bool write)
     {
         Witness witness = new();
-        (int Slot, Rlp Reference)[] children = new (int, Rlp)[full ? 16 : 2];
+        (int Slot, byte[] Reference)[] children = new (int, byte[])[full ? 16 : 2];
         for (int i = 0; i < children.Length; i++) children[i] = (i, Rlp.Encode(FakeHash(0x100 + i).Bytes));
-        byte[] branchAtKeyLength = Witness.BranchOfReferences(Rlp.OfEmptyByteArray, children);
+        byte[] branchAtKeyLength = Witness.BranchOfReferences(EmptyByteArray, children);
         byte[] branch = witness.Branch((KeyPath[KeyNibbles - 1], branchAtKeyLength), (KeyPath[KeyNibbles - 1] ^ 1, witness.Leaf([])));
         PatriciaTree tree = witness.Tree(witness.Extension(KeyPath[..(KeyNibbles - 1)], branch));
 
@@ -139,8 +140,8 @@ public class GuestSecuredPathTests
     {
         Witness witness = new();
         byte[] unreached = witness.Branch([1], (0, witness.Leaf(new byte[KeyNibbles])), (1, witness.Leaf(new byte[KeyNibbles])));
-        PatriciaTree tree = witness.Tree(Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
-            (KeyPath[0], witness.Reference(witness.Leaf(LeafPath(0)))), (KeyPath[0] ^ 1, witness.Reference(unreached)), (KeyPath[0] ^ 2, new Rlp([0xc0]))));
+        PatriciaTree tree = witness.Tree(Witness.BranchOfReferences(EmptyByteArray,
+            (KeyPath[0], witness.Reference(witness.Leaf(LeafPath(0)))), (KeyPath[0] ^ 1, witness.Reference(unreached)), (KeyPath[0] ^ 2, [0xc0])));
 
         Assert.That(() => ReadOrWrite(tree, write), Throws.Nothing);
     }
@@ -250,7 +251,22 @@ public class GuestSecuredPathTests
     {
         byte[] path = HexPrefix.ToBytes(nibbles, isLeaf: false);
         path[0] |= 0x40;
-        return Rlp.Encode(Rlp.Encode(path), witness.Reference(child)).Bytes;
+        return Sequence(Rlp.Encode(path), witness.Reference(child));
+    }
+
+    private static readonly byte[] EmptyByteArray = [Rlp.EmptyByteArrayByte];
+
+    /// <summary>Wraps items that are already RLP in a sequence.</summary>
+    private static byte[] Sequence(params ReadOnlySpan<byte[]> items)
+    {
+        int contentLength = 0;
+        foreach (byte[] item in items) contentLength += item.Length;
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        foreach (byte[] item in items) writer.WriteEncoded(item);
+        writer.EndSequence(sequence);
+        return bytes;
     }
 
     /// <summary>The same node with its short list header in the long form, which RLP does not allow for under 56 bytes.</summary>
@@ -290,11 +306,11 @@ public class GuestSecuredPathTests
 
         public PatriciaTree Tree(byte[] root) => new(new RawScopedTrieStore(_storage), NullLogManager.Instance) { RootHash = HashOf(root) };
 
-        public byte[] Leaf(byte[] nibbles) => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(new byte[] { 1 })).Bytes;
+        public byte[] Leaf(byte[] nibbles) => Sequence(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: true)), Rlp.Encode(new byte[] { 1 }));
 
         public byte[] Extension(byte[] nibbles, byte[] child) => ExtensionOfReference(nibbles, Reference(child));
 
-        public byte[] ExtensionOfReference(byte[] nibbles, Rlp child) => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), child).Bytes;
+        public byte[] ExtensionOfReference(byte[] nibbles, byte[] child) => Sequence(Rlp.Encode(HexPrefix.ToBytes(nibbles, isLeaf: false)), child);
 
         public byte[] Branch(params (int Slot, byte[] Child)[] children) => Branch([], children);
 
@@ -309,15 +325,15 @@ public class GuestSecuredPathTests
         }
 
         /// <summary>A parent's reference to <paramref name="child"/>: the child itself when shorter than a hash.</summary>
-        public Rlp Reference(byte[] child) => child.Length < Hash256.Size && !_hashed.ContainsValue(child) ? new Rlp(child) : Rlp.Encode(HashOf(child).Bytes);
+        public byte[] Reference(byte[] child) => child.Length < Hash256.Size && !_hashed.ContainsValue(child) ? child : Rlp.Encode(HashOf(child).Bytes);
 
-        public static byte[] BranchOfReferences(Rlp value, params (int Slot, Rlp Reference)[] children)
+        public static byte[] BranchOfReferences(byte[] value, params (int Slot, byte[] Reference)[] children)
         {
-            Rlp[] items = new Rlp[17];
-            Array.Fill(items, Rlp.OfEmptyByteArray);
-            foreach ((int slot, Rlp reference) in children) items[slot] = reference;
+            byte[][] items = new byte[17][];
+            Array.Fill(items, EmptyByteArray);
+            foreach ((int slot, byte[] reference) in children) items[slot] = reference;
             items[16] = value;
-            return Rlp.Encode(items).Bytes;
+            return Sequence(items);
         }
 
         private Hash256 HashOf(byte[] node)

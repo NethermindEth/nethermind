@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;

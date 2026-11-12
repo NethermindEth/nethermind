@@ -10,7 +10,6 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test;
