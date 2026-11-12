@@ -77,7 +77,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             // Skip the GetOrAddAccountChanges probe when physical existence is already recorded.
             if (accountChanges?.AccountExists is not true) _generatingBlockAccessList.RecordAccountExistence(address, true);
-            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+            // A zero credit records only the account's entry, which the line above or an earlier access already made.
+            if (!balanceChange.IsZero) _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
         return wasCreated;

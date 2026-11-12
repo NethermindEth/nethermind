@@ -35,6 +35,17 @@ public class GuestSecuredPathTests
         Assert.That(() => ReadOrWrite(tree, write), extraNibbles == 0 ? Throws.Nothing : Throws.TypeOf<TrieException>());
     }
 
+    /// <remarks>A value of 56 bytes or more takes a long-form length: one byte up to 255, two above.</remarks>
+    [Test]
+    public void Reached_leaf_may_hold_a_long_value([Values(55, 56, 255, 256)] int valueLength, [Values] bool write)
+    {
+        Witness witness = new();
+        byte[] leaf = Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), Rlp.Encode(new byte[valueLength])).Bytes;
+        PatriciaTree tree = witness.Tree(witness.Branch((KeyPath[0], leaf), (KeyPath[0] ^ 1, witness.Leaf(new byte[KeyNibbles - 1]))));
+
+        Assert.That(() => ReadOrWrite(tree, write), Throws.Nothing);
+    }
+
     /// <remarks>An extension reaching the key's length, or a branch below it, leaves no nibble for the leaf. An empty
     /// extension is invalid at any depth.</remarks>
     [Test]
@@ -57,6 +68,7 @@ public class GuestSecuredPathTests
         BranchWithValue,
         BranchWithListValue,
         BranchWithShortHashReference,
+        BranchWithEmbeddedChildAndShortHashReference,
         ExtensionToLeaf,
         HighFlagExtensionToLeaf,
         ExtensionToNothing,
@@ -66,6 +78,7 @@ public class GuestSecuredPathTests
         HashReferenceToShortNode,
         NonCanonicalListHeader,
         NonCanonicalLeafValue,
+        LeafValueLengthWithLeadingZero,
         DeeplyNestedItem,
     }
 
@@ -84,6 +97,9 @@ public class GuestSecuredPathTests
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, witness.Reference(witness.Leaf(new byte[KeyNibbles - 2])))),
             Malformation.BranchWithShortHashReference => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))),
+            // An embedded child before the short reference, so the check reads the branch's slots up to it.
+            Malformation.BranchWithEmbeddedChildAndShortHashReference => Witness.BranchOfReferences(Rlp.OfEmptyByteArray,
+                (0, new Rlp([0xc2, 0x01, 0x02])), (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (15, Rlp.Encode(new byte[Hash256.Size - 1]))),
             Malformation.ExtensionToLeaf => witness.Extension(KeyPath[1..2], witness.Leaf(KeyPath[2..])),
             // Flag nibble 5: an extension, as the spec reads only its two low bits.
             Malformation.HighFlagExtensionToLeaf => HighFlagExtension(witness, KeyPath[1..2], witness.Leaf(KeyPath[2..])),
@@ -97,6 +113,7 @@ public class GuestSecuredPathTests
                 (KeyPath[1], witness.Reference(witness.Leaf(KeyPath[2..]))), (KeyPath[1] ^ 1, new Rlp([0xc1, 0x81]))),
             Malformation.NonCanonicalListHeader => LongListHeader(witness.Leaf(LeafPath(0))),
             Malformation.NonCanonicalLeafValue => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), new Rlp([0x81, 0x01])).Bytes,
+            Malformation.LeafValueLengthWithLeadingZero => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(LeafPath(0), isLeaf: true)), new Rlp([0xb9, 0x00, 0x40, .. new byte[0x40]])).Bytes,
             // Deep enough to overflow the stack were it measured before its prefix is checked.
             Malformation.DeeplyNestedItem => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(KeyPath[1..2], isLeaf: false)), new Rlp(NestedLists(20_000))).Bytes,
             _ => witness.Hashed(witness.Branch((0, witness.Leaf([1])), (1, witness.Leaf([1])))),
