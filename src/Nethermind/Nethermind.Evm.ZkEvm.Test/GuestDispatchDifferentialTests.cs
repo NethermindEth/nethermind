@@ -41,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -567,6 +567,38 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Indices inside the list, at its end, past it and past a native word, with no hashes and with several, and every
+    /// amount of gas up to the program's need, against the shared handler; the hash is stored to memory.
+    /// </remarks>
+    [Test]
+    public void Blob_hashes_match_the_shared_handlers([Values(0, 1, 3)] int count, [Values(0ul, 1ul, 2ul, 3ul, 1ul << 40)] ulong index, [Values] bool wide)
+    {
+        byte[]?[] hashes = new byte[]?[count];
+        for (int i = 0; i < count; i++)
+        {
+            hashes[i] = new byte[EvmStack.WordSize];
+            hashes[i]![0] = 0x01;
+            hashes[i]![EvmStack.WordSize - 1] = (byte)(i + 1);
+        }
+
+        UInt256 word = wide ? new UInt256(index, 0, 1, 0) : (UInt256)index;
+        byte[] code = [(byte)Instruction.PUSH32, .. word.ToBigEndian(), (byte)Instruction.BLOBHASH, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, blobHashes: hashes).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, blobHashes: hashes);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, blobHashes: hashes);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
     /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
     /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the
@@ -1070,12 +1102,14 @@ public class GuestDispatchDifferentialTests
 
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
+    /// <param name="blobHashes">The transaction's versioned blob hashes; without them BLOBHASH runs as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null)
+        ICodeInfoRepository? codeInfoRepository = null, byte[]?[]? blobHashes = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
+        if (blobHashes is not null) vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, Substitute.For<ICodeInfoRepository>(), blobHashes, UInt256.Zero));
         if (codeInfoRepository is not null)
         {
             vm.UseCodeInfoRepository(codeInfoRepository);
@@ -1113,7 +1147,8 @@ public class GuestDispatchDifferentialTests
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
-                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL) &&
+                !(blobHashes is not null && (Instruction)opcode is Instruction.BLOBHASH))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -1123,7 +1158,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, blobHashes is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
