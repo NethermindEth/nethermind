@@ -29,6 +29,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Int256;
@@ -698,7 +699,7 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
-        catch (RlpException exception)
+        catch (RlpReaderException exception)
         {
             return GetRlpDecodingFailureResult<IReadOnlyCollection<GethLikeTxTrace>>(exception.Message);
         }
@@ -1670,7 +1671,7 @@ public class DebugRpcModule(
             {
                 int lengthOfLength = encoded[0] - 0xf7;
                 if (lengthOfLength >= encoded.Length)
-                    throw new RlpException("rlp: value size exceeds available input length");
+                    throw new RlpReaderException("rlp: value size exceeds available input length");
 
                 // Bound the root's eight-byte RLP length before the int-sized reader sees it.
                 if (encoded[1] != 0)
@@ -1679,13 +1680,13 @@ public class DebugRpcModule(
                     for (int i = 1; i <= lengthOfLength; i++)
                         length = (length << 8) | encoded[i];
                     if (length >= 56 && length > (ulong)(encoded.Length - lengthOfLength - 1))
-                        throw new RlpException("rlp: value size exceeds available input length");
+                        throw new RlpReaderException("rlp: value size exceeds available input length");
                 }
             }
 
             RlpReader context = new(blockRlp.Bytes);
-            if (context.PeekNextRlpLength() > blockRlp.Bytes.Length)
-                throw new RlpException("rlp: value size exceeds available input length");
+            RlpReader root = context;
+            root.SkipItem();
             decodingBlock = true;
             block = requireCompleteInput ? _blockDecoder.DecodeComplete(ref context) : _blockDecoder.Decode(ref context);
             if (block is null)
@@ -1699,7 +1700,7 @@ public class DebugRpcModule(
                 block.Header.TotalDifficulty = 1;
             }
         }
-        catch (RlpException exception)
+        catch (RlpReaderException exception)
         {
             string diagnostic = !decodingBlock && exception.Message == "RLP data is truncated: not enough bytes for the declared length prefix"
                 ? "rlp: value size exceeds available input length" : exception.Message;

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -90,6 +91,6 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.MultiBlock;
         public ReadOnlySpan<byte> GetEncodedValue(TxReceipt item) => default;
         public int GetLength(TxReceipt item) => decoder.GetLength(item, behavior);
-        public void Encode<TWriter>(ref TWriter writer, TxReceipt item) where TWriter : struct, IRlpWriteBackend, allows ref struct => decoder.Encode(ref writer, item, behavior);
+        public void Encode(ref RlpWriter writer, TxReceipt item) => decoder.Encode(ref writer, item, behavior);
     }
 }

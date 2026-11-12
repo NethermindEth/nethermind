@@ -10,7 +10,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             if (trailingByte)
             {
                 packet.WriteByte(0);
-                Assert.Throws<RlpException>(() => Deserialize());
+                Assert.Throws<RlpReaderException>(() => Deserialize());
                 Assert.That(packet.ReferenceCount, Is.EqualTo(1), "packet released with the rejected message");
                 packet.Release();
                 return;

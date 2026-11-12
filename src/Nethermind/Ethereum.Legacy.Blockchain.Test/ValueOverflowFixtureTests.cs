@@ -10,6 +10,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -48,7 +49,7 @@ public class ValueOverflowFixtureTests
             foreach ((string fork, string exception, byte[] txBytes) in posts)
             {
                 Assert.That(exception, Is.EqualTo("TR_RLP_WRONGVALUE"), fork);
-                Assert.That(() => Rlp.Decode<Transaction>(txBytes, RlpBehaviors.SkipTypedWrapping), Throws.InstanceOf<RlpException>(), fork);
+                Assert.That(() => Rlp.Decode<Transaction>(txBytes, RlpBehaviors.SkipTypedWrapping), Throws.InstanceOf<RlpReaderException>(), fork);
             }
         }
     }

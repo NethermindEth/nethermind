@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -12,45 +13,28 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
 {
     protected override Timeout DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        ulong round = decoderContext.DecodeULong();
+        ulong round = fields.DecodeULong();
 
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            signature = decoderContext.DecodeSignature();
+            signature = fields.DecodeSignature();
         }
 
-        ulong gapNumber = decoderContext.DecodeULong();
+        ulong gapNumber = fields.DecodeULong();
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(endPosition);
-        }
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return new Timeout(round, signature, gapNumber);
     }
 
-    public override Rlp Encode(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -58,7 +42,7 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
             return;
         }
 
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
 
         writer.Encode(item.Round);
 
@@ -76,6 +60,7 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         }
 
         writer.Encode(item.GapNumber);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
