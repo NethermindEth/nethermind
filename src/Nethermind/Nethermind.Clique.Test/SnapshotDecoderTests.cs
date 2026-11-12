@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -29,7 +32,7 @@ namespace Nethermind.Clique.Test
             Snapshot expected = GenerateSnapshot(hash, number, candidate);
             // Encode snapshot
             byte[] bytes = new byte[decoder.GetLength(expected, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             decoder.Encode(ref writer, expected);
             // Decode snapshot
             Snapshot actual = decoder.Decode(bytes);
@@ -54,6 +57,21 @@ namespace Nethermind.Clique.Test
                     Assert.That(actual.Tally[address].Authorize, Is.EqualTo(expected.Tally[address].Authorize));
                 }
             }
+        }
+
+        [Test]
+        public void Decodes_with_a_trailing_item([Values(-1, 2, 3, 4)] int listIndex)
+        {
+            SnapshotDecoder decoder = new();
+            Snapshot expected = GenerateSnapshot(TestItem.KeccakA, 3305206UL, TestItem.AddressA);
+            byte[] canonical = decoder.EncodeAsBytes(expected);
+            byte[] withTrailingItem = listIndex < 0
+                ? RlpTestHelper.WithTrailingItem(canonical)
+                : RlpTestHelper.WithTrailingItem(canonical, listIndex);
+
+            Snapshot actual = decoder.Decode(withTrailingItem);
+
+            Assert.That(decoder.EncodeAsBytes(actual), Is.EqualTo(canonical));
         }
 
         private Snapshot GenerateSnapshot(Hash256 hash, ulong number, Address candidate)

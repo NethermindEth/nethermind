@@ -12,8 +12,9 @@ namespace Nethermind.State.Flat.Persistence;
 /// has been released, so one filter can back several <see cref="PersistedSnapshots.PersistedSnapshot"/>s.
 /// </summary>
 /// <remarks>
-/// A large compaction adopts its merged bloom as the (superset) pre-filter of every snapshot it contains:
-/// each contained snapshot is re-registered as a twin holding a lease on this wrapper, and the filter
+/// A compaction at a large boundary adopts its merged bloom as the pre-filter of every snapshot it
+/// contains when its range holds no storage clear (only then does the bloom cover their keys): each
+/// contained snapshot is re-registered as a twin holding a lease on this wrapper, and the filter
 /// survives until the big snapshot and all twins (and their in-flight readers) drain. Keeping the lease
 /// count out of <see cref="BloomFilter"/> leaves that type a pure data structure.
 /// </remarks>

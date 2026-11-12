@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
