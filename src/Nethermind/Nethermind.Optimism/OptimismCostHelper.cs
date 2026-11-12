@@ -195,6 +195,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         {
             RlpWriter writer = RlpWriter.ContentWriter(encoded.AsSpan(0, length));
             decoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+            Rlp.CheckLength(in writer, length);
             return FlzCompressLen(encoded, length);
         }
         finally

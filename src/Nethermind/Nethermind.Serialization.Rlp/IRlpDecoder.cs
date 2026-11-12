@@ -23,7 +23,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// <remarks>Writes exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes, so that callers can write to an exact-size buffer.</remarks>
     void Encode(ref RlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    /// <summary>Encodes <paramref name="item"/> into a new array; <see langword="null"/> encodes as the empty list.</summary>
+    /// <summary>Encodes <paramref name="item"/> into a new array; <see langword="null"/> encodes as the decoder's null item (the empty list, or the empty string for <see cref="KeccakDecoder"/>).</summary>
     byte[] Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     byte[] Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

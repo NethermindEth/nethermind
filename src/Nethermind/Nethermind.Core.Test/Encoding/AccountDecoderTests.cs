@@ -50,6 +50,10 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Encodes_null_as_empty_list([Values] bool slim) =>
+            Assert.That(new AccountDecoder(slim).Encode((Account?)null), Is.EqualTo(RlpTestHelper.OfEmptyList));
+
+        [Test]
         public void Decode_reads_back_every_field(
             [Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong nonce, [ValueSource(nameof(Words))] UInt256 balance, [Values] bool slim, [Values] bool hasStorageAndCode, [Values] bool trusted)
         {
