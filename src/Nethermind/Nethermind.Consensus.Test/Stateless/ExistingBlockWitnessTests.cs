@@ -50,13 +50,18 @@ public class ExistingBlockWitnessTests
         Transaction transaction = Build.A.Transaction.WithTo(ECRecoverPrecompile.Address).WithData(call)
             .WithGasLimit(100000).WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(
-            amsterdam: true, requests: false, transaction: transaction);
+            amsterdam: true, currentChainActivation: true, requests: false, transaction: transaction);
         using (witness)
         {
             byte[] stateless = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
             byte[] trusted = TrustedInput.FromStatelessInput(stateless);
+            StatelessValidationResult.Decode(StatelessExecutor.ExecuteTrusted(trusted), out StatelessValidationResult result);
 
-            Assert.That(StatelessExecutor.CollectRecoveryInputs(trusted), Is.EqualTo(new[] { call }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsSuccess, Is.True, "The input must execute before recovery calls can be collected.");
+                Assert.That(StatelessExecutor.CollectRecoveryInputs(trusted), Is.EqualTo(new[] { call }));
+            }
         }
     }
 
@@ -99,6 +104,7 @@ public class ExistingBlockWitnessTests
         IBlockTracer tracer = Substitute.For<IBlockTracer>();
         tracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
         Block candidate = block.WithReplacedHeader(block.Header.Clone());
+        candidate.Header.TotalDifficulty = null;
         StatelessBlockProcessingResult result = traced ? stateless.Process(candidate, true, tracer) : stateless.Process(candidate);
 
         using (Assert.EnterMultipleScope())
