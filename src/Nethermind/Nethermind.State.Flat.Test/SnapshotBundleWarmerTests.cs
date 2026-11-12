@@ -366,8 +366,12 @@ public class SnapshotBundleWarmerTests
     // persists a distinct root, so a warm-up writing into another epoch's recycled transient shows up as a foreign record when
     // the owner retires its transient. The prewarm dedupe bloom lives on the same resource, so it is exercised here too:
     // unpinned, its BloomFilter can be freed by a pool overflow mid-read.
+    // The free-running churn alone can retire every transient before a reader publishes into it, so before the clock starts
+    // one reader warms the first epoch and the owner retires that same epoch, witnessing a warmed retirement and a prewarm.
+    // The churn then runs for ChurnMilliseconds and, within the bail-out, until the readers have warmed and prewarmed during it.
+    // The reader counts are captured when the churn ends, before cleanup, so work done while stopping cannot stand in for them.
     [Test]
-    public void Warm_ups_survive_owner_churn_without_foreign_records()
+    public async Task Warm_ups_survive_owner_churn_without_foreign_records()
     {
         int epochs = 0;
         ChurnEpoch NewEpoch()
@@ -382,60 +386,73 @@ public class SnapshotBundleWarmerTests
         Exception? readerException = null;
         bool stop = false;
         ChurnEpoch published = NewEpoch();
-
-        Task[] readers = new Task[Math.Max(2, Environment.ProcessorCount - 2)];
-        for (int t = 0; t < readers.Length; t++)
-        {
-            readers[t] = Task.Run(() =>
-            {
-                try
-                {
-                    while (!Volatile.Read(ref stop))
-                    {
-                        ChurnEpoch epoch = Volatile.Read(ref published);
-                        if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
-                        try
-                        {
-                            epoch.Bundle.WarmUp(null, epoch.Root, ValueKeccak.Zero, forDelete: false);
-                            Interlocked.Increment(ref warmUps);
-
-                            UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
-                            if (epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot)) Interlocked.Increment(ref queuedPrewarms);
-                        }
-                        finally
-                        {
-                            epoch.Bundle.ReleaseReadOnlyBundleLease();
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Interlocked.CompareExchange(ref readerException, e, null);
-                    Volatile.Write(ref stop, true);
-                }
-            });
-        }
-
-        Stopwatch sw = Stopwatch.StartNew();
+        ChurnEpoch first = published;
+        ChurnEpoch current = published;
         int retirements = 0;
         int disposals = 0;
         int retiredRecords = 0;
         int foreignRecords = 0;
         ulong blockNumber = 0;
-        ChurnEpoch current = published;
-        while (sw.ElapsedMilliseconds < ChurnMilliseconds && !Volatile.Read(ref stop))
+
+        // A reader step: holds the read-only lease as the real warmer job does, warms the epoch's root and asks to prewarm a fresh
+        // slot. Null when the epoch's bundle is already fully disposed, otherwise whether the prewarm was accepted.
+        bool? WarmAndQueue(ChurnEpoch epoch)
+        {
+            if (!epoch.Bundle.TryLeaseReadOnlyBundle()) return null;
+            try
+            {
+                epoch.Bundle.WarmUp(null, epoch.Root, ValueKeccak.Zero, forDelete: false);
+                Interlocked.Increment(ref warmUps);
+
+                UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
+                bool queued = epoch.Bundle.ShouldQueuePrewarm(TestItem.AddressA, slot);
+                if (queued) Interlocked.Increment(ref queuedPrewarms);
+                return queued;
+            }
+            finally
+            {
+                epoch.Bundle.ReleaseReadOnlyBundleLease();
+            }
+        }
+
+        // The owner's retirement: collects the epoch's snapshot and counts the records of its retired transient that belong to another
+        // epoch. With requireWarm, the retired transient must hold exactly the epoch's warmed root.
+        void RetireAndInspect(ChurnEpoch epoch, bool requireWarm)
         {
             StateId from = new(blockNumber, TestItem.KeccakA);
             StateId to = new(++blockNumber, TestItem.KeccakA);
-            (Snapshot? snapshot, TransientResource? retired) = current.Bundle.CollectAndApplySnapshot(from, to, null);
-            int recordCount = retired!.WarmedNodeBuffer.Count;
+            (Snapshot? snapshot, TransientResource? retired) = epoch.Bundle.CollectAndApplySnapshot(from, to, null);
+            int recordCount;
+            bool rootFound;
+            ValueHash256 rootHash = default;
+            try
+            {
+                recordCount = retired!.WarmedNodeBuffer.Count;
+                rootFound = retired.WarmedNodeBuffer.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _);
+                if (rootFound) rootHash = warmedRoot.Hash;
+            }
+            finally
+            {
+                snapshot?.Dispose();
+                retired?.ReleaseLease();
+            }
+
+            retirements++;
             retiredRecords += recordCount;
             foreignRecords += Math.Max(0, recordCount - 1);
-            if (recordCount != 0 && !(retired.WarmedNodeBuffer.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _) && warmedRoot.Hash == current.Root.Hash)) foreignRecords++;
-            snapshot!.Dispose();
-            retired.ReleaseLease();
-            retirements++;
+            if (recordCount != 0 && !(rootFound && rootHash == epoch.Root.Hash)) foreignRecords++;
+            if (!requireWarm) return;
 
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recordCount, Is.EqualTo(1), "the witnessed retirement holds one warmed record");
+                Assert.That(rootFound, Is.True, "the witnessed retirement indexes the warmed root");
+                Assert.That(rootHash, Is.EqualTo(epoch.Root.Hash), "the witnessed retirement holds its own epoch's root");
+            }
+        }
+
+        void PublishNextAndDisposeCurrent()
+        {
             ChurnEpoch next = NewEpoch();
             Volatile.Write(ref published, next);
             current.Bundle.Dispose();
@@ -443,14 +460,85 @@ public class SnapshotBundleWarmerTests
             disposals++;
         }
 
-        Volatile.Write(ref stop, true);
-        bool readersFinished = Task.WaitAll(readers, BailOutTimeout);
-        // Leave the last bundle alive if a reader is stuck; disposing under it would only mask the hang.
-        if (readersFinished) current.Bundle.Dispose();
+        TaskCompletionSource<bool>[] ready = new TaskCompletionSource<bool>[Math.Max(2, Environment.ProcessorCount - 2)];
+        TaskCompletionSource<bool> firstWarmUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> startChurn = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task[] readers = new Task[ready.Length];
+        for (int t = 0; t < readers.Length; t++)
+        {
+            int reader = t;
+            ready[reader] = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            readers[reader] = Task.Run(async () =>
+            {
+                try
+                {
+                    ready[reader].SetResult(true);
+                    // Only reader 0 runs before the churn, so nothing else touches the first epoch until the owner retires it.
+                    if (reader == 0) firstWarmUp.SetResult(WarmAndQueue(first) ?? throw new InvalidOperationException("the first epoch was disposed before its warm-up"));
+                    await startChurn.Task;
+                    while (!Volatile.Read(ref stop)) WarmAndQueue(Volatile.Read(ref published));
+                }
+                catch (Exception e)
+                {
+                    Interlocked.CompareExchange(ref readerException, e, null);
+                    firstWarmUp.TrySetException(e);
+                    Volatile.Write(ref stop, true);
+                }
+            });
+        }
 
+        (int Retirements, int Disposals, long WarmUps, long QueuedPrewarms, int RetiredRecords) startup = default;
+        bool readersFinished = false;
+        long churnMilliseconds = 0;
+        long churnWarmUps = 0;
+        long churnQueuedPrewarms = 0;
+
+        // Whether the readers have warmed up and had a prewarm accepted since the startup witness, i.e. during the timed churn.
+        bool ReadersWorkedDuringChurn() =>
+            Volatile.Read(ref warmUps) > startup.WarmUps && Volatile.Read(ref queuedPrewarms) > startup.QueuedPrewarms;
+
+        try
+        {
+            await WithinBailOut(Task.WhenAll(ready.Select(static gate => gate.Task)), "readers reporting ready");
+            Assert.That(await WithinBailOut(firstWarmUp.Task, "the first epoch's warm-up"), Is.True, "the first warm-up prewarms a fresh slot");
+            RetireAndInspect(first, requireWarm: true);
+            PublishNextAndDisposeCurrent();
+            startup = (retirements, disposals, Volatile.Read(ref warmUps), Volatile.Read(ref queuedPrewarms), retiredRecords);
+
+            Stopwatch sw = Stopwatch.StartNew();
+            startChurn.SetResult(true);
+            do
+            {
+                RetireAndInspect(current, requireWarm: false);
+                PublishNextAndDisposeCurrent();
+            }
+            while (!Volatile.Read(ref stop) && (sw.ElapsedMilliseconds < ChurnMilliseconds || (!ReadersWorkedDuringChurn() && sw.Elapsed < BailOutTimeout)));
+
+            // Captured before cleanup sets the stop flag and releases the readers.
+            churnMilliseconds = sw.ElapsedMilliseconds;
+            churnWarmUps = Volatile.Read(ref warmUps) - startup.WarmUps;
+            churnQueuedPrewarms = Volatile.Read(ref queuedPrewarms) - startup.QueuedPrewarms;
+        }
+        finally
+        {
+            Volatile.Write(ref stop, true);
+            startChurn.TrySetResult(true);
+            Task allReaders = Task.WhenAll(readers);
+            readersFinished = await Task.WhenAny(allReaders, Task.Delay(BailOutTimeout)) == allReaders;
+            // Leave the last bundle alive if a reader is stuck; disposing under it would only mask the hang.
+            if (readersFinished) current.Bundle.Dispose();
+        }
+
+        long totalWarmUps = Volatile.Read(ref warmUps);
+        long totalQueuedPrewarms = Volatile.Read(ref queuedPrewarms);
         TestContext.Out.WriteLine(
-            $"retirements={retirements} disposals={disposals} warmUps={Volatile.Read(ref warmUps)} " +
-            $"queuedPrewarms={Volatile.Read(ref queuedPrewarms)} retiredRecords={retiredRecords} foreignRecords={foreignRecords}");
+            $"startup: retirements={startup.Retirements} disposals={startup.Disposals} warmUps={startup.WarmUps} " +
+            $"queuedPrewarms={startup.QueuedPrewarms} retiredRecords={startup.RetiredRecords}; " +
+            $"stress: retirements={retirements - startup.Retirements} disposals={disposals - startup.Disposals} " +
+            $"warmUps={churnWarmUps} queuedPrewarms={churnQueuedPrewarms} " +
+            $"retiredRecords={retiredRecords - startup.RetiredRecords} churnMs={churnMilliseconds}; " +
+            $"cleanup: warmUps={totalWarmUps - startup.WarmUps - churnWarmUps} queuedPrewarms={totalQueuedPrewarms - startup.QueuedPrewarms - churnQueuedPrewarms}; " +
+            $"foreignRecords={foreignRecords}");
 
         using (Assert.EnterMultipleScope())
         {
@@ -460,9 +548,26 @@ public class SnapshotBundleWarmerTests
             // Prove both churn paths and the leased warm-ups actually ran, so the assertions above are not vacuous.
             Assert.That(retirements, Is.GreaterThan(0));
             Assert.That(disposals, Is.GreaterThan(0));
-            Assert.That(Volatile.Read(ref warmUps), Is.GreaterThan(0));
+            Assert.That(totalWarmUps, Is.GreaterThan(0));
             Assert.That(retiredRecords, Is.GreaterThan(0));
-            Assert.That(Volatile.Read(ref queuedPrewarms), Is.GreaterThan(0));
+            Assert.That(totalQueuedPrewarms, Is.GreaterThan(0));
+            Assert.That(retirements - startup.Retirements, Is.GreaterThan(0), "the timed churn retired a transient");
+            Assert.That(disposals - startup.Disposals, Is.GreaterThan(0), "the timed churn disposed a bundle");
+            Assert.That(churnWarmUps, Is.GreaterThan(0), $"no reader warmed up during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
+            Assert.That(churnQueuedPrewarms, Is.GreaterThan(0), $"no reader prewarm was accepted during the timed churn, which ran {churnMilliseconds} ms (bail-out {BailOutTimeout})");
+        }
+    }
+
+    /// <summary>Awaits <paramref name="task"/> for at most <see cref="BailOutTimeout"/>, naming the <paramref name="phase"/> that timed out.</summary>
+    private static async Task<T> WithinBailOut<T>(Task<T> task, string phase)
+    {
+        try
+        {
+            return await task.WaitAsync(BailOutTimeout);
+        }
+        catch (TimeoutException) when (!task.IsCompleted)
+        {
+            throw new TimeoutException($"{phase} did not complete within {BailOutTimeout}");
         }
     }
 

@@ -23,6 +23,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -121,6 +122,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
+
+            if (StateOverrideValidation.GetStorageConflictError(stateOverride) is { } storageError)
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(storageError, ErrorCodes.InvalidInput);
 
             Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
@@ -306,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
                 return TraceTx(tx, traceTypes, blockFinder.SearchForHeader(BlockParameter.Latest), isSigned: true);
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
             }

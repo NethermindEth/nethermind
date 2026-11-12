@@ -49,7 +49,7 @@ inputs:
   runner_version:
     description: Pinned actions/runner version.
     required: false
-    default: 2.336.0
+    default: 2.338.2
   runner_group_id:
     description: Runner group id to register into.
     required: false
@@ -158,7 +158,7 @@ runs:
     - name: Set up .NET for CI scripts
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 10.0.402
+        dotnet-version: 10.0.403
 
     - name: Authenticate to GCP
       if: inputs.skip_auth != 'true'
@@ -212,4 +212,4 @@ runs:
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
         EXPECT_INSTANCE: ${{ inputs.expect_instance }}
-      run: dotnet run --file "${GITHUB_ACTION_PATH}/destroy.cs" -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/destroy.cs" -p:PublishAot=false -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"

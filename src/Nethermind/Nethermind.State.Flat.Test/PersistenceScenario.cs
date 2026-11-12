@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.Persistence;
@@ -52,6 +53,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
+            // Resolves to Flat or FlatInTrie by the machine's memory.
+            if (layout == FlatLayout.Auto) continue;
+
             yield return new TestConfiguration(new FlatDbConfig()
             {
                 Enabled = true,

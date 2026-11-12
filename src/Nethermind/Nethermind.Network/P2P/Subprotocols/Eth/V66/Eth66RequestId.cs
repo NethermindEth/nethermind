@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -12,34 +13,24 @@ internal static class Eth66RequestId
     /// Reads the request id that leads an eth/66-style <c>[request-id, ...]</c> message without decoding the rest.
     /// </summary>
     /// <returns><see langword="false"/> when the payload does not start with a list holding a request id.</returns>
-    public static bool TryPeek(IByteBuffer content, out long requestId)
+    public static bool TryPeek(ReadOnlySpan<byte> content, out long requestId)
     {
         requestId = 0;
-        RlpReader ctx = new(content.AsSpan());
+        RlpReader ctx = new(content);
         try
         {
-            if (!NextItemFits(ref ctx, ctx.Length))
+            RlpReader fields = ctx.EnterSequence(out _);
+            if (!fields.HasNext)
             {
                 return false;
             }
 
-            int end = ctx.ReadSequenceLength() + ctx.Position;
-            if (!NextItemFits(ref ctx, end))
-            {
-                return false;
-            }
-
-            requestId = ctx.DecodeLong();
+            requestId = fields.DecodeLong();
             return true;
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return false;
         }
     }
-
-    // The RLP readers index prefix and content bytes without bounds checks, so a truncated
-    // payload would throw IndexOutOfRangeException instead of being reported as unreadable.
-    private static bool NextItemFits(ref RlpReader ctx, int end) =>
-        ctx.Position < end && ctx.Position + ctx.PeekNextRlpLength() <= end;
 }

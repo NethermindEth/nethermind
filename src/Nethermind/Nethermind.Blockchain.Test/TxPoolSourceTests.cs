@@ -182,7 +182,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
         (Transaction, ulong)[] expected = null!;
         ITxFilterPipeline filter = Substitute.For<ITxFilterPipeline>();
-        filter.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        filter.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(call =>
             {
                 if (ReferenceEquals(call.Arg<Transaction>(), first)) return true;
@@ -244,7 +244,7 @@ public class TxPoolSourceTests
         SetPendingForProduction(txPool, blobTransactions: transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit }, CreateSpecChangeTxValidator(specProvider));
 
@@ -339,7 +339,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
@@ -373,7 +373,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = blobLimit },
@@ -506,7 +506,7 @@ public class TxPoolSourceTests
         TestSingleReleaseSpecProvider specProvider = new(BogotaFrames);
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Build.A.BlockTree().TestObject),
             LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
 
@@ -563,7 +563,7 @@ public class TxPoolSourceTests
             { new AddressAsKey(transaction.SenderAddress!), [transaction] }
         });
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
         specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>())
             .Returns(new ValidationResult("chain-specific rejection"));
@@ -651,11 +651,8 @@ public class TxPoolSourceTests
             .WithHeadTxFilter()
             .Build;
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
-            realTxFilterPipeline.Execute(
-                callInfo.ArgAt<Transaction>(0),
-                callInfo.ArgAt<BlockHeader>(1),
-                callInfo.ArgAt<IReleaseSpec>(2)));
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(callInfo =>
+            realTxFilterPipeline.Execute(callInfo.ArgAt<Transaction>(0), callInfo.ArgAt<TxFilterContext>(1)));
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
@@ -670,13 +667,13 @@ public class TxPoolSourceTests
         {
             Assert.That(result, Is.EqualTo(expected).UsingTransactionComparer());
             txPool.Received(expectValidBlob ? 1 : 0).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
-            txFilterPipeline.DidNotReceive().Execute(validBlob, parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(validBlob, Arg.Any<TxFilterContext>());
         }
 
         for (int i = 0; i < invalidBlobs.Length; i++)
         {
             txPool.Received(1).TryGetPendingBlobTransaction(invalidBlobs[i].Hash!, out Arg.Any<Transaction?>());
-            txFilterPipeline.DidNotReceive().Execute(invalidBlobs[i], parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(invalidBlobs[i], Arg.Any<TxFilterContext>());
         }
     }
 
@@ -723,7 +720,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
@@ -767,7 +764,7 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
@@ -780,7 +777,7 @@ public class TxPoolSourceTests
         }
 
         txPool.Received(1).GetPendingForProduction(targetBlock, Arg.Any<bool>(), Arg.Any<UInt256>());
-        txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
+        txFilterPipeline.DidNotReceive().Execute(blobTx, Arg.Any<TxFilterContext>());
     }
 
     [Test]
@@ -807,7 +804,7 @@ public class TxPoolSourceTests
         }, isRevalidated: true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
@@ -841,7 +838,7 @@ public class TxPoolSourceTests
         }, isRevalidated: true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
@@ -969,7 +966,7 @@ public class TxPoolSourceTests
         });
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
@@ -1038,7 +1035,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
-        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource source = new(
             txPool,
             specProvider,
@@ -1102,7 +1099,7 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
         ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
-        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
         TxPoolTxSource source = new(
             txPool,
             specProvider,
@@ -1137,7 +1134,7 @@ public class TxPoolSourceTests
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>()).Returns(true);
 
         TxPoolTxSource txSource = new(
             txPool,

@@ -135,7 +135,7 @@ public class Eth67ProtocolHandlerTests
     {
         using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getZeroPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
+        _handler.HandleMessage(new NettyBufferPacket(getZeroPacket) { PacketType = (byte)messageCode });
     }
 
     private void HandleIncomingStatusMessage()
@@ -146,6 +146,6 @@ public class Eth67ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 }

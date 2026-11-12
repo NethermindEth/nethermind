@@ -18,6 +18,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -377,7 +378,7 @@ public class TxValidatorTests
             TxValidator txValidator = new(BlockchainIds.Mainnet);
             return txValidator.IsWellFormed(tx, London.Instance);
         }
-        catch (Exception e) when (e is RlpException or ArgumentException)
+        catch (Exception e) when (e is RlpReaderException or ArgumentException)
         {
             return false; // RLP or Argument Exception means that we rejected transaction
         }
@@ -979,7 +980,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(cap + 1, cap)));
-            Assert.That(result.IsIntrinsicGasError, Is.False);
         }
 
         static Transaction TxWithGasLimit(ulong gasLimit) => Build.A.Transaction
@@ -1008,7 +1008,6 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
-            Assert.That(result.IsIntrinsicGasError, Is.True);
             Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
             Assert.That(result.Error, skipErrorDetails
                 ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)

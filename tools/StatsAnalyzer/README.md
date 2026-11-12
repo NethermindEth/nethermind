@@ -63,7 +63,7 @@ Note: The user can set either the pair (buckets, hash functions) or (error, conf
 
 ### NGram
 
-This component handles efficient encoding of of opcode patterns observed packing a given pattern into a ulong value. It also has an efficient way to derive all the sub-sequences from a pattern and apply a given processing function to them.
+This component handles efficient encoding of opcode patterns observed packing a given pattern into a ulong value. It also has an efficient way to derive all the sub-sequences from a pattern and apply a given processing function to them.
 
 ### StatsProcessingQueue.
 

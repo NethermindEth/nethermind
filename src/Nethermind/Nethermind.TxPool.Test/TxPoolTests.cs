@@ -43,6 +43,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs;
@@ -633,7 +634,6 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(beforeRecovery.AsBool(), Is.False);
-                Assert.That(beforeRecovery.IsIntrinsicGasError, Is.True);
                 Assert.That(tx.SenderAddress, Is.EqualTo(sender));
                 Assert.That(afterRecovery.AsBool(), Is.True);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -2466,7 +2466,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
         }
 
-        public enum HeadDropCause { NonceGap, InsufficientBalance }
+        public enum HeadDropCause { NonceGap, InsufficientBalance, InvalidUnderNewFork }
 
         [TestCase(HeadDropCause.NonceGap, false, false, false, true, TestName = "nonce gap")]
         [TestCase(HeadDropCause.InsufficientBalance, false, false, false, true, TestName = "insufficient balance")]
@@ -2516,6 +2516,52 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount(), Is.Zero);
                 Assert.That(evicted, Is.EquivalentTo(expectEvicted ? txs : Array.Empty<Transaction>()), "each drop is surfaced once");
+            }
+        }
+
+        [Test]
+        public async Task Tx_dropped_by_the_fork_revalidation_pass_is_surfaced_as_evicted_unless_a_block_up_to_the_head_includes_it(
+            [Values] HeadDropCause cause, [Values] bool includedAhead)
+        {
+            _blockTree.BestSuggestedHeader = _blockTree.Head.Header;
+            _txPool = CreatePool(specProvider: new TestSpecProvider(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = _blockTree.Head.Number + 1
+            });
+            Address sender = TestItem.AddressA;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+
+            ulong firstNonce = cause == HeadDropCause.NonceGap ? 1ul : 0ul;
+            // Only the first tx is invalid under the new fork, so the follower is dropped behind it while still valid.
+            Transaction[] txs = new Transaction[2];
+            for (int i = 0; i < txs.Length; i++)
+            {
+                txs[i] = Build.A.Transaction
+                    .WithType(TxType.AccessList)
+                    .WithAccessList(BuildUnderGassedAccessList())
+                    .WithGasLimit(cause == HeadDropCause.InvalidUnderNewFork && i == 0 ? UnderGassedTransactionGasLimit : TxGasLimit)
+                    .WithNonce(firstNonce + (ulong)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(txs[i], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            List<Transaction> evicted = [];
+            _txPool.EvictedPending += (_, e) => evicted.Add(e.Transaction);
+
+            _stateProvider.CreateAccount(
+                sender,
+                cause == HeadDropCause.InsufficientBalance ? txs[0].Value : UInt256.MaxValue,
+                includedAhead ? firstNonce + (ulong)txs.Length : 0);
+            await AddEmptyBlock();
+            AssertRevalidatedForHead();
+            // A later head must not surface the same drops again.
+            await AddEmptyBlock();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(evicted, Is.EquivalentTo(includedAhead ? Array.Empty<Transaction>() : txs), "each drop is surfaced once");
             }
         }
 
@@ -4378,7 +4424,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task Expired_frame_transaction_releases_its_payer_exposure_on_eviction()
         {
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 200_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 300_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
 
             Transaction SignedFrameTx(ulong deadline)
             {
@@ -4776,13 +4822,13 @@ namespace Nethermind.TxPool.Test
 
         // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
         // still consensus-valid, so the pool must refuse it at ingress rather than the validator.
-        [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
-        [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
-        [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
-        [TestCase(97_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        [TestCase(300_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
+        [TestCase(300_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
+        [TestCase(300_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
+        [TestCase(297_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
         public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withSignature, bool expectedAccepted)
         {
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 300_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
             peer.Id.Returns(TestItem.PublicKeyA);
@@ -4791,7 +4837,7 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
             if (withSignature)
             {
-                // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 97 200-gas
+                // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 297 200-gas
                 // prefix. It must actually verify: the pool rejects a bad one before comparing the budget.
                 frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
                 frameTx.Hash = frameTx.CalculateHash();
@@ -4830,12 +4876,12 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void Frame_transaction_execution_gas_is_outside_the_verify_budget()
         {
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 300_000 }, new TestSpecProvider(Eip8141Prototype.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             // The validation prefix ends at the frame that approves payment; the execution frame after it
             // is paid for out of the transaction's own gas and must not count against the budget.
-            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 100_000);
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 300_000);
             frameTx.Frames =
             [
                 frameTx.Frames![0],

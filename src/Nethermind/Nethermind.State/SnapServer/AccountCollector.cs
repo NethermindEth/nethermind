@@ -3,8 +3,8 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -17,21 +17,22 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector, IDisposab
 
     private readonly DeferredRlpItemList.Builder _builder = new();
 
-    public int Collect(in ValueHash256 path, CappedArray<byte> value)
+    public int Collect(in ValueHash256 path, ReadOnlySpan<byte> value)
     {
-        if (value.IsNull)
+        if (value.IsEmpty)
         {
             // A null leaf goes out as an empty account list, which is how AccountDecoder encodes a null account.
             Span<byte> nullPair = stackalloc byte[Rlp.LengthOfSequence(NullPairContentLength)];
-            RlpWriter nullPairWriter = new(nullPair);
-            nullPairWriter.StartSequence(NullPairContentLength);
+            RlpWriter nullPairWriter = RlpWriter.ContentWriter(nullPair);
+            RlpSequence nullPairSequence = nullPairWriter.StartSequence(NullPairContentLength);
             nullPairWriter.Encode(path);
             nullPairWriter.EncodeNullObject();
+            nullPairWriter.EndSequence(nullPairSequence);
             _builder.BeginRootContainer().WriteRaw(nullPair);
             return 32 + 1;
         }
 
-        if (!AccountDecoder.Instance.TryDecodeStruct(value.AsSpan(), out AccountStruct account))
+        if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(value, out AccountStruct account))
             throw new TrieException("An account leaf must contain a decodable account value.");
 
         ValueHash256 storageRoot = account.StorageRoot;
@@ -42,14 +43,16 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector, IDisposab
         int pairContentLength = Rlp.LengthOfKeccakRlp + Rlp.LengthOfSequence(accountContentLength);
 
         Span<byte> pair = stackalloc byte[Rlp.LengthOfSequence(pairContentLength)];
-        RlpWriter writer = new(pair);
-        writer.StartSequence(pairContentLength);
+        RlpWriter writer = RlpWriter.ContentWriter(pair);
+        RlpSequence pairSequence = writer.StartSequence(pairContentLength);
         writer.Encode(path);
-        writer.StartSequence(accountContentLength);
+        RlpSequence accountSequence = writer.StartSequence(accountContentLength);
         writer.Encode(account.Nonce);
         writer.Encode(account.Balance);
         writer.Encode(slimStorageRoot);
         writer.Encode(slimCodeHash);
+        writer.EndSequence(accountSequence);
+        writer.EndSequence(pairSequence);
         // A root writer carries only the root entry index, so a fresh one per pair appends to the same list.
         _builder.BeginRootContainer().WriteRaw(pair);
         return 32 + Rlp.LengthOfSequence(accountContentLength);

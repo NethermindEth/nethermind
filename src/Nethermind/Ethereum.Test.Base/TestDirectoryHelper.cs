@@ -82,18 +82,36 @@ public static class TestDirectoryHelper
         IEnumerable<string> categoryNames,
         Func<string, string> expectedNameMapper)
     {
-        Type[] types = assemblyType.Assembly.GetTypes();
-        List<string> missingCategories = [];
-        foreach (string name in categoryNames)
-        {
-            string expected = expectedNameMapper(name);
-            if (types.All(t => !string.Equals(t.Name, expected, StringComparison.InvariantCultureIgnoreCase)))
-                missingCategories.Add($"{name} expected {expected}");
-        }
+        List<string> missingCategories = FindUntestedCategories(assemblyType, categoryNames, expectedNameMapper);
 
         foreach (string missing in missingCategories)
             Console.WriteLine($"{missing} category is missing");
 
         Assert.That(missingCategories, Is.Empty);
+    }
+
+    /// <summary>
+    /// Lists the categories that have no test class in the assembly of <paramref name="assemblyType"/>, each as
+    /// "<c>{category} expected {class name}</c>".
+    /// </summary>
+    /// <remarks>
+    /// Class names are compared ordinally: the fixture loader finds a category's directory by its exact name on a
+    /// case-sensitive file system, so a class whose name differs only in case runs no cases there.
+    /// </remarks>
+    public static List<string> FindUntestedCategories(
+        Type assemblyType,
+        IEnumerable<string> categoryNames,
+        Func<string, string> expectedNameMapper)
+    {
+        HashSet<string> typeNames = new(assemblyType.Assembly.GetTypes().Select(static t => t.Name), StringComparer.Ordinal);
+        List<string> missingCategories = [];
+        foreach (string name in categoryNames)
+        {
+            string expected = expectedNameMapper(name);
+            if (!typeNames.Contains(expected))
+                missingCategories.Add($"{name} expected {expected}");
+        }
+
+        return missingCategories;
     }
 }

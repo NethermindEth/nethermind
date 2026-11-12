@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
 
             switch (message.PacketType)
             {
@@ -89,28 +89,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
-                    HandleCorrelatedResponse(_getAccountRangeRequests, message.Content, size, SelectAccountRange);
+                    HandleCorrelatedResponse(_getAccountRangeRequests, message, size, SelectAccountRange);
                     return true;
                 case Snap1MessageCode.GetStorageRanges:
                     if (ShouldServeSnap())
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
-                    HandleCorrelatedResponse(_getStorageRangeRequests, message.Content, size, SelectStorageRanges);
+                    HandleCorrelatedResponse(_getStorageRangeRequests, message, size, SelectStorageRanges);
                     return true;
                 case Snap1MessageCode.GetByteCodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
-                    HandleCorrelatedResponse(_getByteCodesRequests, message.Content, size, SelectByteCodes);
+                    HandleCorrelatedResponse(_getByteCodesRequests, message, size, SelectByteCodes);
                     return true;
                 case Snap1MessageCode.GetTrieNodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
-                    HandleCorrelatedResponse(_getTrieNodesRequests, message.Content, size, SelectTrieNodes);
+                    HandleCorrelatedResponse(_getTrieNodesRequests, message, size, SelectTrieNodes);
                     return true;
                 default:
                     return false;

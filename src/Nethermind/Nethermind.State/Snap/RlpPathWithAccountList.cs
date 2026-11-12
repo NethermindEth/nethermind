@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap;
@@ -18,8 +19,7 @@ public sealed class RlpPathWithAccountList(IRlpItemList inner) : IPathWithAccoun
 
     public int RlpLength => inner.RlpLength;
 
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => inner.Write(ref writer);
+    public void Write(ref RlpWriter writer) => inner.Write(ref writer);
 
     public void Dispose() => inner.Dispose();
 }

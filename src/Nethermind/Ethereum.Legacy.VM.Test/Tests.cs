@@ -17,7 +17,7 @@ public class Tests : LegacyStateTestFixture<Tests, VmPrefix>;
 
 public class BitwiseLogicOperation : LegacyStateTestFixture<BitwiseLogicOperation, VmPrefix>;
 
-public class IOAndFlowOperations : LegacyStateTestFixture<IOAndFlowOperations, VmPrefix>;
+public class IOandFlowOperations : LegacyStateTestFixture<IOandFlowOperations, VmPrefix>;
 
 public class LogTest : LegacyStateTestFixture<LogTest, VmPrefix>;
 

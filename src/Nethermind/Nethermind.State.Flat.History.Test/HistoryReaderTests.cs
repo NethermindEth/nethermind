@@ -403,7 +403,7 @@ public class HistoryReaderTests
         }
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
         HistoryColumnsWriter.SetWatermarkV3(history, 20);
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         List<TrackedView> views = [];
         HookedColumns<FlatHistoryColumns> observed = new(history,
             storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { }, view =>

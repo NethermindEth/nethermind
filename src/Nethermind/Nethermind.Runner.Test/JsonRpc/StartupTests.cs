@@ -46,6 +46,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
 using JsonRpcMetrics = Nethermind.JsonRpc.Metrics;
+using QueuedRentalFixture = Nethermind.JsonRpc.Test.QueuedRentalFixture;
 
 namespace Nethermind.Runner.Test.JsonRpc;
 
@@ -1059,7 +1060,8 @@ public class StartupTests
         long? maxRequestBodySize = null,
         Startup? startup = null,
         bool isAuthenticated = false,
-        Action<DefaultHttpContext>? configureContext = null)
+        Action<DefaultHttpContext>? configureContext = null,
+        string[]? enabledModules = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -1077,10 +1079,36 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine], maxRequestBodySize);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, enabledModules ?? [ModuleType.Engine], maxRequestBodySize);
         await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
+    }
+
+    [Test]
+    public async Task Aborted_queued_request_is_neither_executed_nor_answered([Values] bool batch, [Values] bool bufferResponses, [Values] bool isAuthenticated)
+    {
+        using QueuedRentalFixture fixture = new(new JsonRpcConfig { BufferResponses = bufferResponses });
+        Startup startup = new(fixture.CreateProcessor(), fixture.Service, Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), fixture.Config, NoAuthentication.Instance);
+        // In the batch an earlier item is answered first, so there is a started response that must not be finished.
+        byte[] request = Encoding.UTF8.GetBytes(batch
+            ? $"[{CreateJsonRpcRequest("unknown_method")},{QueuedRentalFixture.Request("2")}]"
+            : QueuedRentalFixture.Request());
+        QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+        using CancellationTokenSource abort = new();
+
+        Task<(string Response, int StatusCode)> processing = ProcessJsonRpcRequestWithStatus(new MemoryStream(request), request.Length,
+            startup: startup, isAuthenticated: isAuthenticated, configureContext: ctx => ctx.RequestAborted = abort.Token, enabledModules: [ModuleType.Eth]);
+        await fixture.WaitUntilQueued(1);
+        await abort.CancelAsync();
+        (string response, _) = await processing.WaitAsync(QueuedRentalFixture.Watchdog);
+        await fixture.ReleaseAndAssertUsable(held);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.Empty);
+            Assert.That(fixture.Invocations, Is.Zero);
+        }
     }
 
     private static string CreateJsonRpcRequest(string method = GetBlobsV1Method, string idJson = "1", string paramsJson = "[[]]") =>

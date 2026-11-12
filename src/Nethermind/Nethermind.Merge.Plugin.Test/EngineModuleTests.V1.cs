@@ -45,12 +45,14 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -2173,6 +2175,10 @@ public partial class EngineModuleTests
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> =>
             inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 
     /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>

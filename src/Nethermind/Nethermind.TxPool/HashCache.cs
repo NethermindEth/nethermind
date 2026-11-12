@@ -29,8 +29,9 @@ namespace Nethermind.TxPool
         private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
 
-        // Current-block hashes whose verdict was InvalidBlobProofs: the hash does not cover the sidecar,
-        // so only these may be forgotten for another copy to be judged.
+        // Current-block hashes rejected for their sidecar (InvalidBlobProofs, or Invalid with
+        // TxFilteringState.SidecarRejected): the hash does not cover the sidecar, so only these may be
+        // forgotten for another copy to be judged.
         private readonly AssociativeKeyCache<ValueHash256> _invalidBlobProofsCache = new(
             InvalidBlobProofsCapacity);
 
@@ -68,7 +69,7 @@ namespace Nethermind.TxPool
         public void SetInvalidBlobProofs(Hash256 hash) => _invalidBlobProofsCache.Set(in hash.ValueHash256);
 
         /// <summary>
-        /// Deletes <paramref name="hash"/> from the current block cache only when its verdict was InvalidBlobProofs.
+        /// Deletes <paramref name="hash"/> from the current block cache only when it was rejected for its sidecar.
         /// </summary>
         public bool TryDeleteInvalidBlobProofs(Hash256 hash)
         {

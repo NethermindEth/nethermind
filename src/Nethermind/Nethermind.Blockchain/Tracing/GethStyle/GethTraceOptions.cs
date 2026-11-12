@@ -48,7 +48,7 @@ public record GethTraceOptions
     /// and small stack values. Storage updates are counted without tracking distinct slots for the estimate.
     /// JSON Lines file budgets count emitted records including their terminating line feeds and suppress
     /// the final summary once the budget has been exceeded.
-    /// The ByNumber, ByHash and traceTransaction RPC entry points normalize their step-count limits separately from this byte budget.</remarks>
+    /// The traceBlock, ByNumber, ByHash and traceTransaction RPC entry points normalize their step-count limits separately from this byte budget.</remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 

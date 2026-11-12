@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -33,6 +34,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
@@ -48,10 +50,13 @@ public class GethStyleTracer(
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
+    ILogManager logManager,
     IParallelBlockTracer? parallelTracer = null,
     GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<GethStyleTracer>();
+
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
@@ -130,6 +135,9 @@ public class GethStyleTracer(
     private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
     {
         BlockHeader header = block.Header.Clone();
+        // Taken before preprocessing restores IsPostMerge, which stored headers do not carry. Only ever set it:
+        // a chain such as Taiko keeps post-merge headers with a nonzero difficulty.
+        if (header.Difficulty == 0) header.IsPostMerge = true;
         options.BlockOverrides?.ApplyOverrides(header);
         if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
         return (header, specProvider.GetSpec(header));
@@ -139,7 +147,7 @@ public class GethStyleTracer(
         GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
         Utf8JsonWriter? writer, PipeWriter? pipeWriter, bool tracePreceding)
     {
-        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash };
+        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash, ExecutionCancellationToken = cancellationToken };
         BlockLogIndex logIndex = new();
         return writer is null
             ? CreateOptionsTracer(header, filtered, state, specProvider, tracePreceding ? (_, _) => logIndex : null)
@@ -261,7 +269,7 @@ public class GethStyleTracer(
 
         block = new Block(block.Header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash, ExecutionCancellationToken = cancellationToken }, scope.Component.WorldState, specProvider);
         try
         {
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);
@@ -276,7 +284,7 @@ public class GethStyleTracer(
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block? block = FindBlockForTrace(blockParameter);
-        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter);
+        return TraceBlockImpl(block, options, cancellationToken, writer, pipeWriter, includeErrorResult: options.Tracer is { Length: > 0 });
     }
 
     private Block? FindBlockForTrace(BlockParameter selector)
@@ -310,7 +318,15 @@ public class GethStyleTracer(
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
-        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
+        try
+        {
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
+        }
+        catch (InvalidTransactionException e)
+        {
+            // Mirror geth: a rejected transaction ends the replay, returning the roots of the transactions before it.
+            if (_logger.IsDebug) _logger.Debug($"Intermediate roots replay of block {block.ToString(Block.Format.FullHashAndNumber)} stopped: {e.Message}");
+        }
         return tracer.BuildResult();
     }
 
@@ -411,6 +427,7 @@ public class GethStyleTracer(
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
         }
 
+        options = options with { ExecutionCancellationToken = cancellationToken };
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         long destroyRefund = (long)spec.GasCosts.DestroyRefund;
@@ -449,6 +466,11 @@ public class GethStyleTracer(
         }
     }
 
+    /// <summary>Creates the block tracer for <paramref name="options"/>; a JavaScript tracer stops when <paramref name="cancellationToken"/> is cancelled, including while it is being created.</summary>
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider,
+        Func<Block, Transaction, BlockLogIndex>? logIndex, CancellationToken cancellationToken) =>
+        CreateOptionsTracer(block, options with { ExecutionCancellationToken = cancellationToken }, worldState, specProvider, logIndex);
+
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, BlockLogIndex>? logIndex = null) =>
         options switch
         {
@@ -468,7 +490,7 @@ public class GethStyleTracer(
             logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header));
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true,
-        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
+        ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay, bool includeErrorResult = false)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -505,7 +527,7 @@ public class GethStyleTracer(
             }
             else
             {
-                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken);
+                GethLikeTraceStream stream = GethLikeTraceStream.Rent(writer, pipeWriter, cancellationToken, includeErrorResult);
                 bool streamed;
                 try
                 {
@@ -539,7 +561,7 @@ public class GethStyleTracer(
                 effective => CreateOptionsTracer(block.Header, options with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex),
                 options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken)
             : streamsNative
-                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
+                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken, includeErrorResult)
                 : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -680,9 +702,8 @@ public class GethStyleTracer(
         if (receipt.Logs is not null) return receipt.Logs.Length;
         if (receipt.LogsRlp.IsEmpty) return 0;
 
-        RlpReader logs = new(receipt.LogsRlp);
-        logs.SkipLength();
-        return logs.PeekNumberOfItemsRemaining();
+        RlpReader logs = new RlpReader(receipt.LogsRlp).EnterSequence<OffFlag>(out _);
+        return logs.CountItems<OffFlag>(int.MaxValue);
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
@@ -707,7 +728,7 @@ public class GethStyleTracer(
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
         Block block = Rlp.Decode<Block>(blockRlp)
-            ?? throw new RlpException("Block decoded as null.");
+            ?? throw new RlpReaderException("Block decoded as null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

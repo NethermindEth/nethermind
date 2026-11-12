@@ -87,6 +87,16 @@ public class TrieNodeLogTests
         return reader.TryLoadStateRlp(TopPath, ReadFlags.None);
     }
 
+    /// <summary>Loads the state node at <paramref name="path"/>, through the span-action overload when <paramref name="spanAction"/> is set.</summary>
+    private static byte[]? LoadState(IPersistence.IPersistenceReader reader, in TreePath path, bool spanAction)
+    {
+        if (!spanAction) return reader.TryLoadStateRlp(path, ReadFlags.None);
+
+        byte[]? rlp = null;
+        reader.TryLoadStateRlp(path, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
+    }
+
     /// <summary>Reads the trie columns directly, bypassing the log.</summary>
     private BaseTriePersistence.Reader Raw() => new(
         _db.GetColumnDb(FlatDbColumns.StateTopNodes),
@@ -208,7 +218,7 @@ public class TrieNodeLogTests
             static (_, exception) => throw exception);
 
     [Test]
-    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
+    public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges([Values] bool spanAction)
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
         WriteTop(0, 1, Rlp1);
@@ -221,10 +231,10 @@ public class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before.TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
-            Assert.That(atV1.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
-            Assert.That(atV2.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
-            Assert.That(afterMerge.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(LoadState(before, TopPath, spanAction), Is.Null);
+            Assert.That(LoadState(atV1, TopPath, spanAction), Is.EqualTo(Rlp1));
+            Assert.That(LoadState(atV2, TopPath, spanAction), Is.EqualTo(Rlp2));
+            Assert.That(LoadState(afterMerge, TopPath, spanAction), Is.EqualTo(Rlp2));
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp2));
             Assert.That(LogFiles(), Is.Not.Empty, "the merged generation stays on disk while a reader pins it");
         }
@@ -235,7 +245,7 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones()
+    public void Merge_writes_only_the_latest_record_per_key_and_applies_tombstones([Values] bool spanAction)
     {
         // The node must be in RocksDB for the range delete's scan to find it: sync batches bypass the log.
         using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
@@ -254,8 +264,8 @@ public class TrieNodeLogTests
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
-            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "tombstone hides the RocksDB value");
+            Assert.That(LoadState(reader, TopPath, spanAction), Is.EqualTo(Rlp3));
+            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Null, "tombstone hides the RocksDB value");
             Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
         }
 
@@ -267,6 +277,32 @@ public class TrieNodeLogTests
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3));
             Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null);
             Assert.That(FlushedStateBytes() - flushedBefore, Is.EqualTo(3 + Rlp3.Length + 8), "one 3-byte top key with its latest value and one 8-byte tombstone key");
+        }
+    }
+
+    [Test]
+    public void A_null_span_deletes_and_an_empty_value_is_stored([Values] bool spanAction)
+    {
+        WriteTop(0, 1, Rlp1);
+        using (IPersistence.IWriteBatch batch = Batch(1, 2))
+        {
+            batch.SetStateTrieNode(TopPath, default);
+            batch.SetStateTrieNode(MediumPath, Array.Empty<byte>());
+        }
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LoadState(reader, TopPath, spanAction), Is.Null);
+            Assert.That(LoadState(reader, MediumPath, spanAction), Is.Empty);
+        }
+
+        _log.Drain();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Empty);
         }
     }
 

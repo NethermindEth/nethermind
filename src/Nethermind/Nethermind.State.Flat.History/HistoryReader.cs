@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 
@@ -142,7 +143,7 @@ public sealed class HistoryReader
         }
 
         RlpReader context = new(valueBuffer[..written]);
-        return AccountDecoder.Slim.TryDecodeStruct(ref context, out account);
+        return AccountDecoder.Slim.TryDecodeStruct<OffFlag>(ref context, out account);
     }
 
     /// <remarks>A found row is always the answer. A miss falls through to the live column, and a capture round can
@@ -319,7 +320,7 @@ public sealed class HistoryReader
         if (_rlpWrapSlots)
         {
             RlpReader context = new(stored);
-            stored = context.DecodeByteArraySpan();
+            stored = context.DecodeByteArraySpan<OffFlag>();
         }
 
         return BaseFlatPersistence.DecodeSlotValue(stored);

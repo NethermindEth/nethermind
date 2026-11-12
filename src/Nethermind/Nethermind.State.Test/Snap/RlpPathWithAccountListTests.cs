@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
@@ -59,7 +60,7 @@ public class RlpPathWithAccountListTests
     private static byte[] Write(IPathWithAccountList list)
     {
         byte[] bytes = new byte[list.RlpLength];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         list.Write(ref writer);
         return bytes;
     }

@@ -290,6 +290,11 @@ public class GuestDispatchDifferentialTests
             "6001600657005B1900",
             "6001600457005B1900",
             "61000556005B1900",
+            "611234501900",
+            "6100145A10600957005B1900",
+            "6100145A10600857005B1900",
+            "6100005A10600957005B1900",
+            "61FFFF5A10600957005B1900",
             "600061000757005B1900",
             "600161000757005B1900",
             "63123456788063123456781461001157005B1900",
@@ -458,25 +463,47 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
+    [Test]
+    public void Addmod_with_small_modulus_continues_at_the_following_opcode()
+    {
+        byte[] program =
+        [
+            (byte)Instruction.PUSH1, 7, (byte)Instruction.PUSH1, 3, (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.ADDMOD, (byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        Outcome untraced = Run(100, [], 0, new CodeInfo(program), Table.Untraced);
+        Outcome traced = Run(100, [], 0, new CodeInfo(program), Table.Traced);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(untraced, Is.EqualTo(traced));
+            Assert.That(untraced.Memory, Is.EqualTo(Convert.ToHexString(new UInt256(6).ToBigEndian())));
+        }
+    }
+
     /// <remarks>
-    /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
-    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
-    /// above the modulus takes the general path.
+    /// Addends below the modulus take the guest's ADDMOD: the inline one when both top limbs are below the modulus's,
+    /// and the full compare otherwise, as for the largest addend or any modulus below 2^192. Their sums fall on both
+    /// sides of the modulus, and above 2^256 for a modulus above 2^255; the largest addend and one sum to the modulus
+    /// exactly. An addend at or above the modulus takes the shared handler.
     /// </remarks>
     [Test]
     public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
     {
         UInt256 bn254 = UInt256.Parse("21888242871839275222246405745257275088696311169201772083599007584476017209221");
+        UInt256 goldilocks = ulong.MaxValue - uint.MaxValue + 1;
         List<string> mismatches = [];
         Random random = new(seed * 7883);
         for (int i = 0; i < 400 && mismatches.Count < 5; i++)
         {
-            UInt256 modulus = random.Next(5) switch
+            UInt256 modulus = random.Next(6) switch
             {
                 0 => bn254,
                 1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
                 2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
                 3 => UInt256.Zero,
+                4 => goldilocks,
                 _ => RandomWord(random) | UInt256.One,
             };
 

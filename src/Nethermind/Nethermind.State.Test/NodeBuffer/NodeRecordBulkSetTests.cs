@@ -38,6 +38,15 @@ internal class NodeRecordBulkSetTests
     private static readonly Hash256 CollapseKeyC = new("0x2000000000000000000000000000000000000000000000000000000000000000");
     private static readonly Hash256 CollapseKeyD = new("0x1000000000000000000000000000000000000000000000000000000000000003");
 
+    // One-byte values under keys sharing 62 nibbles make a 22-byte branch embedded in its parent, which keccak keys only theoretically do.
+    private static readonly byte[] OneByteValue = [1];
+    private static readonly Hash256 EmbeddedBranchKeyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
+    private static readonly Hash256 EmbeddedBranchKeyB = new("0x1000000000000000000000000000000000000000000000000000000000000012");
+    private static readonly Hash256 EmbeddedBranchKeyC = new("0x1000000000000000000000000000000000000000000000000000000000000023");
+    // Diverging from those at nibble 60 embeds a one-nibble extension above their branch, and at nibble 61 embeds the branch in a branch.
+    private static readonly Hash256 DivergingAt60Key = new("0x1000000000000000000000000000000000000000000000000000000000001000");
+    private static readonly Hash256 DivergingAt61Key = new("0x1000000000000000000000000000000000000000000000000000000000000300");
+
     private readonly List<WarmedNodeBuffer> _warmedNodeLogs = [];
 
     [TearDown]
@@ -70,10 +79,18 @@ internal class NodeRecordBulkSetTests
             .. Enumerable.Range(0, 144).Select(i => (Key((byte)((i / 9) << 4 | i % 9), 0), ExistingValue)),
             (Key(0, 1), ExistingValue),
         ];
+        List<(Hash256 key, byte[] value)> embeddedBranch = Items((EmbeddedBranchKeyA, OneByteValue), (EmbeddedBranchKeyB, OneByteValue), (CollapseKeyC, ExistingValue));
+        List<(Hash256 key, byte[] value)> embeddedExtension = [.. embeddedBranch, (DivergingAt60Key, ExistingValue)];
         IEnumerable<TestCaseData> cases = PatriciaTreeBulkSetterTests.BulkSetTestGen()
             .Append(new TestCaseData(existing, changes).SetName("10k inserts then 2.5k updates, 2.5k deletes and 5k inserts"))
             .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..])).SetName("Full root then deletes of all but one leaf"))
-            .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..^1])).SetName("Full root then deletes of all but an extension"));
+            .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..^1])).SetName("Full root then deletes of all but an extension"))
+            .Append(new TestCaseData(embeddedBranch, Items((EmbeddedBranchKeyC, OneByteValue))).SetName("Extension over an embedded branch, then a set into the branch"))
+            .Append(new TestCaseData(embeddedBranch, Items((EmbeddedBranchKeyA, null), (EmbeddedBranchKeyB, NewValue))).SetName("Extension over an embedded branch, then a delete collapsing it"))
+            .Append(new TestCaseData(embeddedBranch, Items((DivergingAt60Key, ExistingValue))).SetName("Extension over an embedded branch, then a set embedding a shorter extension"))
+            .Append(new TestCaseData(embeddedBranch, Items((DivergingAt61Key, ExistingValue))).SetName("Extension over an embedded branch, then a set embedding it in a branch"))
+            .Append(new TestCaseData(embeddedExtension, Items((DivergingAt60Key, null))).SetName("Embedded extension, then a delete of its sibling"))
+            .Append(new TestCaseData(embeddedExtension, Items((EmbeddedBranchKeyA, null), (EmbeddedBranchKeyC, OneByteValue))).SetName("Embedded extension, then a delete and a set in its branch"));
         foreach (TestCaseData testCase in cases)
         {
             foreach (bool smallGenerations in new[] { false, true })
@@ -98,6 +115,8 @@ internal class NodeRecordBulkSetTests
         }
 
         static List<(Hash256 key, byte[] value)> Deletes(List<(Hash256 key, byte[] value)> items) => [.. items.Select(item => (item.key, (byte[])null))];
+
+        static List<(Hash256 key, byte[] value)> Items(params (Hash256 key, byte[] value)[] items) => [.. items];
     }
 
     [TestCaseSource(nameof(PatriciaTreeCases))]
@@ -448,6 +467,26 @@ internal class NodeRecordBulkSetTests
         deleteSource.WarmUp(buffer, persistedRoot, missing.ValueHash256, forDelete: true);
 
         Assert.That(deleteSource.FetchCount, Is.EqualTo(pathSource.FetchCount));
+    }
+
+    [Test]
+    public void Warm_up_stops_at_an_embedded_branch_or_extension([Values] bool embeddedExtension, [Values] bool forDelete)
+    {
+        List<(Hash256 key, byte[] value)> items = [(EmbeddedBranchKeyA, OneByteValue), (EmbeddedBranchKeyB, OneByteValue), (embeddedExtension ? DivergingAt60Key : DivergingAt61Key, ExistingValue)];
+        (DictionaryNodeSource source, _, _, (ValueHash256 Hash, ulong Pointer) persistedRoot) = PersistedTrie(items);
+        using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
+        using NodeRecordBufferPin retain = buffer.PinHead();
+
+        source.WarmUp(buffer, persistedRoot, EmbeddedBranchKeyA.ValueHash256, forDelete);
+        int warmUpFetches = source.FetchCount;
+        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, persistedRoot, [(EmbeddedBranchKeyA, null)], false);
+        (Hash256 expectedRoot, _) = BuildExpectedTrie(items[1..].ToDictionary(item => item.key, item => item.value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmUpFetches, Is.EqualTo(2), "the root extension and the branch holding the embedded nodes");
+            Assert.That(source.FetchCount, Is.EqualTo(warmUpFetches), "the delete collapses nothing beyond the warmed path");
+            Assert.That(updated.Hash, Is.EqualTo(expectedRoot.ValueHash256));
+        }
     }
 
     [Test]

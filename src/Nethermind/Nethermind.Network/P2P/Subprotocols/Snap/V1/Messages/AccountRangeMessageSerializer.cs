@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -12,8 +13,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
     {
         public int Serialize(Span<byte> destination, AccountRangeMessage message)
         {
-            RlpWriter writer = new(destination);
-            writer.StartSequence(GetContentLength(message));
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
             writer.Encode(message.RequestId);
             if (message.PathsWithAccounts is null)
@@ -26,7 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
 
             writer.WriteByteArrayList(message.Proofs);
-            return writer.Position;
+
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
@@ -39,21 +42,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             try
             {
-                RlpReader ctx = new(data.Span);
-                ctx.ReadSequenceLength();
+                RlpReader outer = new(data.Span);
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 message.RequestId = ctx.DecodeLong();
 
-                int pwasStart = ctx.Position;
-                int count = ValidatePathsWithAccounts(ref ctx);
+                int count = ValidatePathsWithAccounts(ctx);
+                Memory<byte> pwasRegion = data.SliceOf(ctx.ReadEncodedItem());
 
                 RefCountingMemoryOwner<byte> sharedOwner = new(owner);
                 memoryOwner = sharedOwner;
-                message.PathsWithAccounts = new RlpPathWithAccountList(new RlpItemList(sharedOwner, data[pwasStart..ctx.Position], count));
+                message.PathsWithAccounts = new RlpPathWithAccountList(new RlpItemList(sharedOwner, pwasRegion, count));
                 // The proofs stay in the same memory, so they take a lease of their own on its owner.
                 sharedOwner.AcquireLease();
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, sharedOwner, data, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
-                ctx.CheckEnd();
+
+                outer.ExitSequence(ctx, itemLength);
+                outer.CheckEnd();
 
                 return message;
             }
@@ -68,22 +73,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         public int GetLength(AccountRangeMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
 
         /// <summary>Walks the untrusted entries once, so that reading them from the message later cannot fail.</summary>
+        /// <param name="ctx">A copy of the message reader, positioned at the entries.</param>
         /// <returns>The number of entries.</returns>
-        private static int ValidatePathsWithAccounts(ref RlpReader ctx)
+        private static int ValidatePathsWithAccounts(RlpReader ctx)
         {
-            int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
-            ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
+            RlpReader pwasReader = ctx.EnterSequence(out int pwasLength);
+            int count = pwasReader.CountItems(SnapMessageLimits.AccountRangeEntriesRlpLimit);
             for (int i = 0; i < count; i++)
             {
-                int length = ctx.ReadSequenceLength();
-                int checkPosition = ctx.Position + length;
-                ctx.DecodeValueKeccakNonNull();
-                if (!AccountDecoder.Slim.TryDecodeStruct(ref ctx, out _))
-                    throw new RlpException("An account range entry must contain an account value.");
-                ctx.Check(checkPosition);
+                RlpReader pwaReader = pwasReader.EnterSequence(out int length);
+                pwaReader.DecodeValueKeccakNonNull();
+                if (!AccountDecoder.Slim.TryDecodeStruct(ref pwaReader, out _))
+                    throw new RlpReaderException("An account range entry must contain an account value.");
+                pwasReader.ExitSequence(pwaReader, length);
             }
 
+            ctx.ExitSequence(pwasReader, pwasLength);
             return count;
         }
 

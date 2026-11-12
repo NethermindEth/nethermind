@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -26,18 +25,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     {
         protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
 
-        public override void HandleMessage(Packet message)
-        {
-            ZeroPacket zeroPacket = new(message);
-            try
-            {
-                HandleMessage(zeroPacket);
-            }
-            finally
-            {
-                zeroPacket.SafeRelease();
-            }
-        }
+        public override void HandleMessage(Packet message) => HandleMessage((ZeroPacket)message);
 
         public void HandleMessage(ZeroPacket message)
         {

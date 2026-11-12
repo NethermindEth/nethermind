@@ -45,15 +45,13 @@ using (var shards = JsonDocument.Parse(options["shards"]))
 }
 
 // A shard writes `<gas>-<shard>.json` with the rows of the blocks that passed once all of its blocks
-// ran, `<gas>-<shard>.failed.json` beside it for the ones that did not, and
-// `<gas>-<shard>.skipped.json` for the known failures it left out, so a missing rows file is a shard
-// that never got as far as measuring.
+// ran and `<gas>-<shard>.failed.json` beside it for the ones that did not, so a missing rows file is a
+// shard that never got as far as measuring.
 var files = Directory.GetFiles(options["results"], "*.json", SearchOption.AllDirectories);
 Array.Sort(files, StringComparer.Ordinal);
 List<string> rowFiles = [];
 List<Row> rows = [];
 List<Failure> failures = [];
-List<KnownFailure> skipped = [];
 foreach (var file in files)
 {
     using var stream = File.OpenRead(file);
@@ -67,14 +65,6 @@ foreach (var file in files)
                 failure.GetProperty("id").GetString()!,
                 failure.GetProperty("reason").GetString()!));
         }
-
-        continue;
-    }
-
-    if (file.EndsWith(".skipped.json", StringComparison.Ordinal))
-    {
-        foreach (var known in shard.RootElement.EnumerateArray())
-            skipped.Add(new KnownFailure(known.GetProperty("gas").GetString()!, known.GetProperty("id").GetString()!));
 
         continue;
     }
@@ -103,8 +93,8 @@ report.AppendLine("## Stateless benchmark fixtures")
     .AppendLine()
     .AppendLine($"ZisK guest cost per benchmark block of `{options["release"]}`, built from `{options["commit"]}`.")
     .AppendLine()
-    .AppendLine("| Gas value | Shards | Blocks | Failed | Skipped | Max cost | Total cost |")
-    .AppendLine("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
+    .AppendLine("| Gas value | Shards | Blocks | Failed | Max cost | Total cost |")
+    .AppendLine("| --- | ---: | ---: | ---: | ---: | ---: |");
 
 var incomplete = false;
 foreach (var gas in gasValues)
@@ -116,8 +106,7 @@ foreach (var gas in gasValues)
     incomplete |= done != expected;
     var shardCell = done == expected ? $"{done}" : $"{done} of {expected}";
     var max = measured.Count == 0 ? 0 : measured.Max(static row => row.Total);
-    var skippedCount = skipped.Count(known => known.Gas == gas);
-    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {failed} | {skippedCount} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
+    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {failed} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
 }
 
 if (failures.Count > 0)
@@ -126,15 +115,6 @@ if (failures.Count > 0)
         .AppendLine("| Gas value | Case | Reason |").AppendLine("| --- | --- | --- |");
     foreach (var failure in failures.OrderBy(static failure => GasKey(failure.Gas)).ThenBy(static failure => failure.Id, StringComparer.Ordinal))
         report.AppendLine($"| {failure.Gas} | `{Case(failure.Id)}` | {failure.Reason} |");
-}
-
-if (skipped.Count > 0)
-{
-    report.AppendLine().AppendLine("<details><summary>Known failures, not run</summary>").AppendLine()
-        .AppendLine("| Gas value | Case |").AppendLine("| --- | --- |");
-    foreach (var known in skipped.OrderBy(static known => GasKey(known.Gas)).ThenBy(static known => known.Id, StringComparer.Ordinal))
-        report.AppendLine($"| {known.Gas} | `{Case(known.Id)}` |");
-    report.AppendLine().AppendLine("</details>");
 }
 
 foreach (var gas in gasValues)
@@ -215,8 +195,6 @@ static void WriteResults(string path, List<Row> rows)
 record Row(string Gas, string Id, long Steps, long Main, long Opcodes, long Precompiles, long Memory, long Total);
 
 record Failure(string Gas, string Id, string Reason);
-
-record KnownFailure(string Gas, string Id);
 
 static partial class ModuleRegex
 {

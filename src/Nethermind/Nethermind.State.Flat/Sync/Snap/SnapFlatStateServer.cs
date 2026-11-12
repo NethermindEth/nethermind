@@ -6,7 +6,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
@@ -237,7 +239,7 @@ public class SnapFlatStateServer(
         }
     }
 
-    private (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
+    private static (long bytesSize, IByteArrayList proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
         ReadOnlySnapshotBundle bundle,
         in ValueHash256 rootHash,
         in ValueHash256 startingHash,
@@ -248,11 +250,9 @@ public class SnapFlatStateServer(
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
-        ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-        PatriciaTree tree = new(trieStore, logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: RangeReadFlags, cancellationToken);
-        VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        new NodeRecordBufferVisitor<TreePathContext>(bundle, bundle.StateSnapshot, visitor, VisitingOptions.Default, null)
+            .Accept((storageRoot ?? rootHash).ToCommitment(), storage?.ToCommitment());
 
         IByteArrayList proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? new ByteArrayListAdapter(visitor.GetProofs()) : EmptyByteArrayList.Instance;
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
@@ -277,7 +277,7 @@ public class SnapFlatStateServer(
 
                 return account.HasStorage ? account.StorageRoot.ToCommitment() : Keccak.EmptyTreeHash;
             }
-            catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
                 return AccountDecoder.Instance.Decode(bytes)?.StorageRoot;
             }

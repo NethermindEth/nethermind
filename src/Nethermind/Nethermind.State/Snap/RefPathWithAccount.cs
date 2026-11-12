@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap;
@@ -17,14 +18,20 @@ public readonly ref struct RefPathWithAccount
     public RefPathWithAccount(ReadOnlySpan<byte> rlp)
     {
         _rlp = rlp;
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
-        _pathOffset = reader.Position;
-        reader.SkipItem();
-        _accountOffset = reader.Position;
+        RlpReader pair = new RlpReader(rlp).EnterSequence(out _);
+        _pathOffset = rlp.Length - pair.Remaining;
+        pair.SkipItem();
+        _accountOffset = rlp.Length - pair.Remaining;
     }
 
-    public ValueHash256 Path => new RlpReader(_rlp[_pathOffset.._accountOffset]).DecodeValueKeccakNonNull();
+    public ValueHash256 Path
+    {
+        get
+        {
+            RlpReader reader = new(_rlp[_pathOffset.._accountOffset]);
+            return reader.DecodeValueKeccakNonNull();
+        }
+    }
 
     public RefSlimAccount Account => new(_rlp[_accountOffset..]);
 }

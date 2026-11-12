@@ -11,11 +11,13 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -37,7 +39,7 @@ public class TxCertifierFilterTests
         _notCertifiedFilter = Substitute.For<ITxFilter>();
         _specProvider = Substitute.For<ISpecProvider>();
 
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(AcceptTxResult.Invalid);
 
         _certifierContract.Certified(Arg.Any<BlockHeader>(),
@@ -75,16 +77,39 @@ public class TxCertifierFilterTests
     [Test]
     public void should_default_to_inner_contract_on_non_zero_transactions([Values] bool expected)
     {
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<TxFilterContext>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
 
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
     }
 
+    [Test]
+    public void Passes_the_context_to_the_filter_for_transactions_it_does_not_certify()
+    {
+        TxCertifierFilter filter = new(_certifierContract, new BaseFeeTxFilter(), LimboLogs.Instance);
+        ReleaseSpec london = new() { IsEip1559Enabled = true };
+        // The parent used its gas target at 1 gwei, so its next base fee is 1 gwei; the context carries 7 gwei.
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithBaseFee(1.GWei).WithGasLimit(30_000_000).WithGasUsed(15_000_000).TestObject;
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(5.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .WithSenderAddress(TestItem.AddressA).TestObject;
+        Transaction certified = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(0).WithMaxPriorityFeePerGas(0)
+            .WithSenderAddress(TestItem.Addresses.First()).TestObject;
+        TxFilterContext context = new(parent, london, 7.GWei);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)filter.IsAllowed(tx, new TxFilterContext(parent, london)), Is.True);
+            Assert.That(filter.IsAllowed(tx, in context).ToString(), Is.EqualTo(
+                $"{AcceptTxResult.FeeTooLow}, MaxFeePerGas too low. MaxFeePerGas: 5000000000, BaseFee: 7000000000, MaxPriorityFeePerGas:1000000000, Block number: 11"));
+            Assert.That(filter.IsAllowed(certified, in context).ToString(), Is.EqualTo(nameof(AcceptTxResult.Accepted)));
+            Assert.That(certified.IsServiceTransaction, Is.True);
+        }
+    }
+
     private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true) =>
         Assert.That(_filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create()).Equals(AcceptTxResult.Accepted), Is.EqualTo(expected));
+            new TxFilterContext(Build.A.BlockHeader.TestObject, ReleaseSpecSubstitute.Create())).Equals(AcceptTxResult.Accepted), Is.EqualTo(expected));
 
     [Test]
     public async Task should_only_allow_addresses_from_contract_on_chain()

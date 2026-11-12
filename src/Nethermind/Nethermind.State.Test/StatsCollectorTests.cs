@@ -66,7 +66,7 @@ namespace Nethermind.Store.Test
                 MaxDegreeOfParallelism = parallel ? 0 : 1
             };
 
-            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
+            stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions, diagnostics: null);
             TrieStats stats = statsCollector.Stats;
 
             using (Assert.EnterMultipleScope())

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -64,21 +65,20 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
 
     public int RlpLength => Rlp.LengthOfSequence(Entries[_entryStart].Length);
 
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public void Write(ref RlpWriter writer)
     {
         Span<Builder.Entry> entries = Entries;
         Span<byte> values = ValueBuffer;
-        writer.StartSequence(entries[_entryStart].Length);
+        writer.WriteSequencePrefix(entries[_entryStart].Length);
         for (int i = _entryStart + 1; i < _entryEnd; i++)
         {
             ref Builder.Entry entry = ref entries[i];
             if (entry.IsRaw)
-                writer.Write(values.Slice(entry.ValueOffset, entry.Length));
+                writer.WriteEncoded(values.Slice(entry.ValueOffset, entry.Length));
             else if (entry.IsLeaf)
                 writer.Encode(values.Slice(entry.ValueOffset, entry.Length));
             else
-                writer.StartSequence(entry.Length);
+                writer.WriteSequencePrefix(entry.Length);
         }
     }
 
@@ -87,7 +87,7 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
         ref Builder.Entry entry = ref entries[pos];
-        if (!entry.IsLeaf || entry.IsRaw) throw new RlpException("Item is not a byte string");
+        if (!entry.IsLeaf || entry.IsRaw) throw new RlpReaderException("Item is not a byte string");
         return ValueBuffer.Slice(entry.ValueOffset, entry.Length);
     }
 
@@ -98,7 +98,7 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
         ref Builder.Entry entry = ref entries[pos];
-        if (!entry.IsRaw) throw new RlpException("Item was not written as raw RLP");
+        if (!entry.IsRaw) throw new RlpReaderException("Item was not written as raw RLP");
         return ValueBuffer.Slice(entry.ValueOffset, entry.Length);
     }
 
@@ -107,7 +107,7 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
         Span<Builder.Entry> entries = Entries;
         int pos = GetDirectChildEntryIndex(entries, index);
         ref Builder.Entry entry = ref entries[pos];
-        if (entry.IsLeaf) throw new RlpException("Item is not an RLP list");
+        if (entry.IsLeaf) throw new RlpReaderException("Item is not an RLP list");
 
         int childEnd = pos + 1 + entry.EntriesLength;
 

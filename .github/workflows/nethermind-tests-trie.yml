@@ -46,73 +46,78 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs);
+        # each pack takes about 5 minutes, sized from the per-project times of a PR run.
         project:
           - Nethermind.JsonRpc.Test
           - Nethermind.Mcp.Plugin.Test
           - Nethermind.TxPool.Test
           - name: Nethermind tests 1
             list: >-
+              Nethermind.Abi.Test
               Nethermind.AuRa.Test
+              Nethermind.Clique.Test
               Nethermind.Db.Test
-              Nethermind.Era1.Test
-              Nethermind.Facade.Test
-              Nethermind.Network.Test
-              Nethermind.Specs.Test
-              Nethermind.State.Flat.History.Test
+              Nethermind.Init.Test
+              Nethermind.Network.Dns.Test
+              Nethermind.Optimism.Test
+              Nethermind.State.Test
               Nethermind.Wallet.Test
           - name: Nethermind tests 2
             list: >-
-              Nethermind.Blockchain.Test
-              Nethermind.Consensus.Test
-              Nethermind.Flashbots.Test
-              Nethermind.Init.Snapshot.Test
-              Nethermind.KeyStore.Test
-              Nethermind.Optimism.Test
-              Nethermind.State.Flat.Test
-              Nethermind.State.Test
-          - name: Nethermind tests 3
-            list: >-
-              Nethermind.Abi.Test
               Nethermind.Analyzers.Test
               Nethermind.Api.Test
-              Nethermind.BalRecorder.Test
-              Nethermind.CensorshipDetector.Plugin.Test
-              Nethermind.Clique.Test
-              Nethermind.Config.Test
               Nethermind.Core.Test
-              Nethermind.EraE.Test
-              Nethermind.EthStats.Test
               Nethermind.Ethash.Test
-              Nethermind.HealthChecks.Test
-              Nethermind.History.Test
-              Nethermind.Hive.Test
-              Nethermind.Init.Test
-              Nethermind.JsonRpc.TraceStore.Test
-              Nethermind.Logging.NLog.Test
-              Nethermind.Merge.Plugin.Test
-              Nethermind.Mining.Test
-              Nethermind.Monitoring.Test
-              Nethermind.Network.Dns.Test
-              Nethermind.Network.Enr.Test
-              Nethermind.OpcodeTracing.Plugin.Test
-              Nethermind.PortfolioViewer.Plugin.Test
-              Nethermind.Runner.Test
-              Nethermind.SendPolicy.Plugin.Test
-              Nethermind.Serialization.Ssz.Test
-              Nethermind.Serialization.SszGenerator.Test
+              Nethermind.Shutter.Test
               Nethermind.Sockets.Test
+              Nethermind.Specs.Test
               Nethermind.State.Test.Runner.Test
-              Nethermind.StateDiffsWriter.Test
+              Nethermind.Trie.Test
+          - name: Nethermind tests 3
+            list: >-
+              Nethermind.BalRecorder.Test
+              Nethermind.History.Test
+              Nethermind.JsonRpc.TraceStore.Test
+              Nethermind.Monitoring.Test
+              Nethermind.OpcodeTracing.Plugin.Test
+              Nethermind.Serialization.SszGenerator.Test
+              Nethermind.State.Flat.History.Test
+              Nethermind.State.Flat.Test
+              Nethermind.Xdc.Test
           - name: Nethermind tests 4
             list: >-
-              Nethermind.Evm.Test
-              Nethermind.Merge.AuRa.Test
-              Nethermind.Network.Discovery.Test
-              Nethermind.Shutter.Test
+              Nethermind.Blockchain.Test
+              Nethermind.Config.Test
+              Nethermind.Era1.Test
+              Nethermind.Init.Snapshot.Test
+              Nethermind.KeyStore.Test
+              Nethermind.PortfolioViewer.Plugin.Test
+              Nethermind.Runner.Test
+              Nethermind.Serialization.Ssz.Test
               Nethermind.Taiko.Test
-              Nethermind.Trie.Test
-              Nethermind.Xdc.Test
+          - name: Nethermind tests 5
+            list: >-
+              Nethermind.CensorshipDetector.Plugin.Test
+              Nethermind.Evm.Test
+              Nethermind.Facade.Test
+              Nethermind.Flashbots.Test
+              Nethermind.HealthChecks.Test
+              Nethermind.Logging.NLog.Test
+              Nethermind.Merge.Plugin.Test
+              Nethermind.Network.Discovery.Test
+              Nethermind.SendPolicy.Plugin.Test
+              Nethermind.StateDiffsWriter.Test
+          - name: Nethermind tests 6
+            list: >-
+              Nethermind.Consensus.Test
+              Nethermind.EraE.Test
+              Nethermind.EthStats.Test
+              Nethermind.Hive.Test
+              Nethermind.Merge.AuRa.Test
+              Nethermind.Mining.Test
+              Nethermind.Network.Enr.Test
+              Nethermind.Network.Test
         chunk: ['']
         include: # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
           - { project: Nethermind.Synchronization.Test, chunk: 1of4 }

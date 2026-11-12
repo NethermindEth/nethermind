@@ -37,11 +37,13 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -233,7 +235,7 @@ public partial class EngineModuleTests
     public async Task Inclusion_list_recheck_needs_a_valid_bal_only_for_account_checks([Values] UnavailableBal reason, [Values] bool omittedEntry)
     {
         IBlockAccessListStore unavailable = Substitute.For<IBlockAccessListStore>();
-        if (reason == UnavailableBal.Corrupt) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new RlpException("Malformed BAL"));
+        if (reason == UnavailableBal.Corrupt) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new RlpReaderException("Malformed BAL"));
         if (reason == UnavailableBal.Mismatched) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(new ReadOnlyBlockAccessList([], 0, Keccak.Zero));
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton(unavailable)));
@@ -1805,6 +1807,9 @@ public partial class EngineModuleTests
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> => Inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
 
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> => Inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
+
         private static bool Matches(BlockHeader? header, Hash256? hash) => hash is not null && header?.Hash == hash;
     }
 
@@ -1996,6 +2001,9 @@ public partial class EngineModuleTests
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> => inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 
     /// <summary>Builds an empty block on <paramref name="parent"/>, inserts it and makes it the head.</summary>

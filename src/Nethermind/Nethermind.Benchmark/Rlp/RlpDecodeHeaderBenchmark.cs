@@ -4,6 +4,7 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -36,6 +37,18 @@ namespace Nethermind.Benchmarks.Rlp
             for (int i = 0; i < Batch; i++)
             {
                 header = Serialization.Rlp.Rlp.Decode<BlockHeader>(_header);
+            }
+
+            return header;
+        }
+
+        [Benchmark(OperationsPerInvoke = Batch)]
+        public BlockHeader ExcludeHashes()
+        {
+            BlockHeader header = null;
+            for (int i = 0; i < Batch; i++)
+            {
+                header = Serialization.Rlp.Rlp.Decode<BlockHeader>(_header, RlpBehaviors.ExcludeHashes);
             }
 
             return header;

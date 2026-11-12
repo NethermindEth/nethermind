@@ -8,6 +8,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -91,10 +92,10 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
             ReadOnlySpan<byte> cached = transactions[i].PreHash.Span;
             if (cached.IsEmpty)
             {
-                RlpWriter writer = new(value.Span);
+                RlpWriter writer = RlpWriter.ContentWriter(value.Span);
                 // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
                 _txDecoder.Encode(ref writer, transactions[i], RlpBehaviors.SkipTypedWrapping);
-                Debug.Assert(writer.Position == length);
+                Debug.Assert(writer.Length == length);
             }
             else
             {
@@ -139,7 +140,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.None;
         public ReadOnlySpan<byte> GetEncodedValue(Transaction item) => item.PreHash.Span;
         public int GetLength(Transaction item) => _txDecoder.GetLength(item, RlpBehaviors.SkipTypedWrapping);
-        public void Encode<TWriter>(ref TWriter writer, Transaction item) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.Encode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
+        public void Encode(ref RlpWriter writer, Transaction item) => _txDecoder.Encode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
     }
 
     private readonly struct EncodedTransactionEncoder : IndexedTrieRoot.IValueEncoder<byte[]>
@@ -147,7 +148,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => item;
         public int GetLength(byte[] item) => item.Length;
-        public void Encode<TWriter>(ref TWriter writer, byte[] item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+        public void Encode(ref RlpWriter writer, byte[] item) => writer.WriteEncoded(item);
     }
 
     private readonly struct EncodedMemoryEncoder : IndexedTrieRoot.IValueEncoder<ReadOnlyMemory<byte>>
@@ -155,6 +156,6 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(ReadOnlyMemory<byte> item) => item.Span;
         public int GetLength(ReadOnlyMemory<byte> item) => item.Length;
-        public void Encode<TWriter>(ref TWriter writer, ReadOnlyMemory<byte> item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item.Span);
+        public void Encode(ref RlpWriter writer, ReadOnlyMemory<byte> item) => writer.WriteEncoded(item.Span);
     }
 }

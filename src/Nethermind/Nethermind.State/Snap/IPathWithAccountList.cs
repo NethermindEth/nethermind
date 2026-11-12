@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Snap;
@@ -20,8 +21,7 @@ public sealed class EmptyPathWithAccountList : IPathWithAccountList
     public int Count => 0;
     public RefPathWithAccount this[int index] => throw new IndexOutOfRangeException();
     public int RlpLength => Rlp.LengthOfSequence(0);
-    public void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.EncodeNullObject();
+    public void Write(ref RlpWriter writer) => writer.EncodeNullObject();
     public void Dispose() { }
 }
 

@@ -15,10 +15,11 @@ public class ClearAllColumnsBatchingTests
 {
     // #11442/#11996: seed more keys than one batch, then confirm the column is fully wiped across batch
     // boundaries while the Metadata format markers survive and only CurrentState resets.
+    // The read-only view's columns cannot remove a key range, so they are wiped key by key.
     [Test]
-    public void ClearAllColumns_clears_data_across_batch_boundaries_and_preserves_format_markers()
+    public void ClearAllColumns_clears_data_across_batch_boundaries_and_preserves_format_markers([Values] bool rangeRemovable)
     {
-        using MemColumnsDb<FlatDbColumns> db = new();
+        using IColumnsDb<FlatDbColumns> db = rangeRemovable ? new MemColumnsDb<FlatDbColumns>() : new MemColumnsDb<FlatDbColumns>().CreateReadOnly(true);
         IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
         IDb storage = db.GetColumnDb(FlatDbColumns.Storage);
 
