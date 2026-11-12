@@ -55,6 +55,9 @@ public class GuestDispatchDifferentialTests
     // Differs from the caller and the beneficiary, so a read of the wrong account fails.
     private static readonly Address BalanceOwner = new("0x00000000000000000000000000000000000000aa");
 
+    /// <summary>An account with no code that a frame with a balance sees as dead.</summary>
+    private static readonly Address DeadAccount = new("0x00000000000000000000000000000000000000ab");
+
     public enum Table { Untraced, Cancelable, Traced }
 
     [Test]
@@ -882,11 +885,24 @@ public class GuestDispatchDifferentialTests
         [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
         [Values] CallTarget target,
         [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
-        [Values] bool isStatic)
+        [Values] bool isStatic) =>
+        AssertCallsMatch(op, target, spec, isStatic, value: isStatic ? (byte)1 : (byte)0, balance: null);
+
+    /// <remarks>
+    /// The calls of <see cref="Calls_match_the_shared_handlers"/>, each moving value out of a frame that is not static, to
+    /// the same targets. The account with no code is dead, so each transfer to it pays for a new account. The caller
+    /// covers the value, or cannot, in which case each call returns failure without a frame and refunds that charge.
+    /// </remarks>
+    [Test]
+    public void Value_calls_match_the_shared_handlers(
+        [Values] CallTarget target,
+        [ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec,
+        [Values] bool covered) =>
+        AssertCallsMatch(Instruction.CALL, target, spec, isStatic: false, value: 1, balance: covered ? (UInt256)10 : UInt256.Zero);
+
+    private static void AssertCallsMatch(Instruction op, CallTarget target, IReleaseSpec spec, bool isStatic, byte value, UInt256? balance)
     {
-        // A value transfer outside a static frame reads the balance, which the substitute world state cannot return by reference.
-        byte value = isStatic ? (byte)1 : (byte)0;
-        Address noCode = new("0x00000000000000000000000000000000000000aa");
+        Address noCode = DeadAccount;
         Address withCode = new("0x00000000000000000000000000000000000000bb");
         Address delegating = new("0x00000000000000000000000000000000000000cc");
         Address identity = new("0x0000000000000000000000000000000000000004");
@@ -911,20 +927,38 @@ public class GuestDispatchDifferentialTests
             .. Call(op, last, 0x10, 0x20, 0xe0, 0x20, value),
             (byte)Instruction.STOP
         ];
-        const ulong ample = 100_000;
-        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository).GasLeft;
+        // Value transfers that create accounts need several times the gas; a stride keeps their runs few. A transfer's
+        // stipend and refunded charges come back, so such a run must hold more than it uses: search for the least it needs.
+        bool movesValue = value != 0 && !isStatic;
+        ulong ample = movesValue ? 1_000_000UL : 100_000UL;
+        ulong stride = movesValue ? 7UL : 1UL;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository, balance: balance).GasLeft;
+        if (movesValue)
+        {
+            ulong enough = ample;
+            while (needed < enough)
+            {
+                ulong middle = needed + (enough - needed) / 2;
+                if (Run(middle, [], 0, new CodeInfo(program), Table.Cancelable, spec, codeInfoRepository: repository, balance: balance).Exception == EvmExceptionType.Stop)
+                    enough = middle;
+                else
+                    needed = middle + 1;
+            }
+        }
 
         List<string> mismatches = [];
-        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        IEnumerable<ulong> amounts = Enumerable.Range(0, (int)(needed / stride) + 1).Select(step => (ulong)step * stride).Append(needed - 1).Append(needed);
+        foreach (ulong gas in amounts.Distinct())
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
-            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository);
+            if (mismatches.Count >= 5) break;
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository, balance: balance);
+            Outcome shared = Run(gas, [], 0, new CodeInfo(program), Table.Cancelable, spec, isStatic: isStatic, codeInfoRepository: repository, balance: balance);
             // A frame entered is not a fault: the gas, stack and counter it leaves the caller at must match too.
             if (untraced.Exception == EvmExceptionType.Suspend ? untraced != shared : !Matches(untraced, shared))
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n shared   {shared}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(program), Table.Untraced, spec, isStatic: isStatic, codeInfoRepository: repository, balance: balance);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
@@ -1324,6 +1358,8 @@ public class GuestDispatchDifferentialTests
             Reads++;
             return ref _balance;
         }
+
+        public override bool IsDeadAccount(Address address) => base.IsDeadAccount(address) || address == DeadAccount;
     }
 
     private sealed class SilentTracer : TxTracer;

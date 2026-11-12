@@ -18,7 +18,7 @@ namespace Nethermind.Evm;
 public static partial class EvmInstructions
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
+    internal static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
     {
         if (state.GetBalance(account) < value) return false;
         state.NoteMinimumBalance(account, in value);
@@ -338,7 +338,7 @@ public static partial class EvmInstructions
 
     /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
+    internal static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
         where TSpec : struct, ICallSpec =>
         TSpec.IsEip8038Enabled
             ? hasValueTransfer && state.IsDeadAccount(target)

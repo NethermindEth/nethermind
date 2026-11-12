@@ -206,11 +206,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
     {
         lookup[(int)Instruction.CALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpCall, TAmsterdam, TAmsterdam,
-            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>, OffFlag>);
         lookup[(int)Instruction.STATICCALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpStaticCall, TAmsterdam, TAmsterdam,
-            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>, OffFlag>);
         lookup[(int)Instruction.DELEGATECALL] = AsTableEntry(&RawCalliHelper.ExecuteCall<EvmInstructions.OpDelegateCall, TAmsterdam, TAmsterdam,
-            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>>);
+            EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, TAmsterdam, Eip8038, OffFlag, OffFlag>, OffFlag>);
     }
 
     private static partial class RawCalliHelper
@@ -2599,18 +2599,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>CALL without value, STATICCALL or DELEGATECALL, with the operands read in their stack slots.</summary>
+        /// <summary>CALL, STATICCALL or DELEGATECALL, with the operands read in their stack slots; a CALL with value when <typeparamref name="TValueTransfer"/> is on.</summary>
         /// <remarks>
         /// The shared handler copies its six or seven operands off the stack and keeps them in stack slots across
-        /// its calls. The charges, the state reads and their order are those of
-        /// <see cref="EvmInstructions.InstructionCall{TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec}"/>
-        /// without a value transfer, which charges no value or new-account cost. Running out of gas leaves the chain
-        /// here, since the target is warm by then and the shared handler would charge it as warm. A CALL with value,
-        /// a short stack and traced actions run the shared handler instead.
+        /// its calls. The charges, the state reads and writes, and their order are those of
+        /// <see cref="EvmInstructions.InstructionCall{TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec}"/>: a CALL with value
+        /// pays for the transfer before it touches the target and for a new account after, adds the stipend, and returns
+        /// failure without a frame when the caller cannot cover the value. Running out of gas leaves the chain here, since
+        /// the target is warm by then and the shared handler would charge it as warm. The table holds the value-free
+        /// instantiation, which passes a CALL with value to the one with <typeparamref name="TValueTransfer"/> on, so the
+        /// common calls keep their code. A CALL with value in a static frame, a short stack and traced actions run the
+        /// shared handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteCall<TOpCall, TEip8037, TEip7708, TSpec>(
+        internal static EvmExceptionType ExecuteCall<TOpCall, TEip8037, TEip7708, TSpec, TValueTransfer>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -2623,12 +2626,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TEip8037 : struct, IFlag
             where TEip7708 : struct, IFlag
             where TSpec : struct, EvmInstructions.ICallSpec
+            where TValueTransfer : struct, IFlag
         {
             nint inputs = TOpCall.ExecutionType == ExecutionType.CALL ? 7 : 6;
             VirtualMachine<TGasPolicy> vm = state.Vm;
-            if (head >= inputs && (nint)gas >= 0 && !vm.IsTracingActions && !TSpec.IsEip8279Enabled
-                && (TOpCall.ExecutionType != ExecutionType.CALL || Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 3)).IsZero))
+            if (head >= inputs && (nint)gas >= 0 && !vm.IsTracingActions && !TSpec.IsEip8279Enabled && !TSpec.IsEip8360Enabled)
             {
+                if (TOpCall.ExecutionType == ExecutionType.CALL && !TValueTransfer.IsActive && !Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 3)).IsZero)
+                {
+                    // A static frame cannot move value: the shared handler faults on it.
+                    nint transfer = vm.VmState.IsStatic
+                        ? Entry(&ExecuteOpcode<CallOpcode<TOpCall, OffFlag, TEip8037, TEip7708, TSpec>, OffFlag, OffFlag, OnFlag>)
+                        : Entry(&ExecuteCall<TOpCall, TEip8037, TEip7708, TSpec, OnFlag>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, transfer);
+                }
+
                 vm.MetricsCounters.IncrementCalls();
                 ref UInt256 gasLimit = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
                 ref UInt256 dataOffset = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, inputs - 3));
@@ -2641,6 +2653,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 IReleaseSpec spec = vm.Spec;
                 ref TGasPolicy policy = ref state.Gas;
                 SetExecutionGas(ref policy, gas);
+                UInt256 callValue = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Value
+                    : TValueTransfer.IsActive ? Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 3))
+                    : default;
+                bool hasValueTransfer = TValueTransfer.IsActive;
+                // Charged before the target is touched, so running out of gas on the transfer leaves the target cold.
+                if (hasValueTransfer && !(TSpec.IsEip2780Enabled
+                        ? TGasPolicy.TryConsumeCallValueTransferEip2780(ref policy)
+                        : TGasPolicy.TryConsumeCallValueTransfer(ref policy)))
+                    goto OutOfGas;
+
                 ref EvmPooledMemory memory = ref AlignedMemory(ref state);
                 if (!TGasPolicy.UpdateMemoryCost(ref policy, in dataOffset, in dataLength, ref memory) ||
                     !TGasPolicy.UpdateMemoryCost(ref policy, in outputOffset, in outputLength, ref memory) ||
@@ -2649,29 +2671,39 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 ICodeInfoRepository codeInfoRepository = vm.CodeInfoRepository;
                 CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
+                if (delegated is not null && !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, delegated))
+                    goto OutOfGas;
+
+                Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
+                Address target = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.ExecutingAccount : codeSource;
+                IWorldState worldState = vm.WorldState;
+                bool chargesNewAccount = hasValueTransfer && EvmInstructions.ChargesNewAccount<TSpec>(worldState, target, hasValueTransfer);
+                if (chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref policy))
+                    goto OutOfGas;
+
                 if (delegated is not null)
                 {
-                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, delegated))
-                        goto OutOfGas;
-
-                    vm.WorldState.AddAccountRead(delegated);
+                    worldState.AddAccountRead(delegated);
                     codeInfo = codeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
                 }
 
                 if (!TSpec.TryReserveChildGas(ref policy, in gasLimit, spec, out ulong childGas))
                     goto OutOfGas;
 
-                UInt256 callValue = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Value : default;
-                Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-                Address target = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.ExecutingAccount : codeSource;
+                if (hasValueTransfer)
+                    childGas += GasCostOf.CallStipend;
                 head -= inputs;
                 // The status takes the slot of the deepest operand, the output length.
                 ref ulong status = ref Unsafe.As<UInt256, ulong>(ref outputLength);
-                if (env.CallDepth >= VirtualMachineStatics.MaxCallDepth)
+                if (env.CallDepth >= VirtualMachineStatics.MaxCallDepth ||
+                    (hasValueTransfer && !EvmInstructions.HasAtLeast(worldState, env.ExecutingAccount, in callValue)))
                 {
                     vm.ReturnDataBuffer = default;
                     SetWord(ref status, 0);
                     TGasPolicy.UpdateGasUp(ref policy, childGas);
+                    // EIP-8037: the call creates no account, so the up-front new-account charge comes back.
+                    if (chargesNewAccount)
+                        vm.CreditStateGasRefund<TEip8037>(ref policy, TGasPolicy.GetNewAccountStateCost());
                     head++;
                     goto Dispatch;
                 }
@@ -2682,7 +2714,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     SetWord(ref status, 1);
                     TGasPolicy.UpdateGasUp(ref policy, childGas);
                     if (caller != target)
-                        vm.WorldState.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
+                    {
+                        if (hasValueTransfer)
+                        {
+                            worldState.SubtractFromBalance(caller, in callValue, spec);
+                            vm.AddTransferLog<TEip7708>(caller, target, in callValue);
+                        }
+                        worldState.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
+                    }
                     vm.MetricsCounters.IncrementEmptyCalls();
                     head++;
                     goto Dispatch;
@@ -2691,7 +2730,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.Head = head;
                 EvmExceptionType result = EvmInstructions.CreateFullCallFrame<TGasPolicy, TOpCall, OffFlag, OffFlag>(
                     vm, ref stack, ref policy, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller,
-                    codeSource, env, in callValue, childGas, newAccountCharged: false);
+                    codeSource, env, in callValue, childGas, newAccountCharged: chargesNewAccount);
                 if (result == EvmExceptionType.Suspend)
                     vm.TryRunStagedFrameNested(ref stack, out result);
                 head = stack.Head;
