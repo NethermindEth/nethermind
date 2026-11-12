@@ -484,9 +484,9 @@ namespace Nethermind.Trie
             }
 
             ReadOnlySpan<byte> span = rlp.AsSpan();
-            int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            nint itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
             if (itemsStart == 0) _nodeData = new BranchData();
-            else DecodeLeafOrExtension(span, itemsStart, null);
+            else DecodeLeafOrExtension(span, (int)itemsStart, null);
         }
 
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
