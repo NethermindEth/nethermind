@@ -28,6 +28,88 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
+    [Test]
+    public void Swizzled_move_matches_memmove([Range(0, 7)] int source, [Range(0, 7)] int destination,
+        [Values(0, 1, 3, 4, 31, 32, 255, 256, 257, 1024)] int length)
+    {
+        byte[] expected = new byte[length + 16];
+        new Random(42).NextBytes(expected);
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(expected);
+        expected.AsSpan(source, length).CopyTo(expected.AsSpan(destination, length));
+        ref byte data = ref MemoryMarshal.GetReference(swizzled.Span);
+        SwizzledMemory.Move(ref Unsafe.Add(ref data, destination), ref Unsafe.Add(ref data, source), length);
+        Assert.That(SwizzledMemory.ToNatural(swizzled).ToArray(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Swizzled_move_does_not_allocate([Values(0, 1, 4, 65540, 65541)] int destination)
+    {
+        byte[] data = new byte[131080];
+        SwizzledMemory.Move(ref data[destination], ref data[0], 65536);
+        // A per-call allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < 5; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++) SwizzledMemory.Move(ref data[destination], ref data[0], 65536);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.That(allocated, Is.Zero);
+    }
+
+    [Test]
+    public void Swizzled_hash_matches_natural([Range(0, 3)] int offset,
+        [Values(0, 1, 32, 64, 135, 136, 137, 256, 257, 65536, 65537, 131073)] int length)
+    {
+        byte[] data = new byte[length + offset];
+        new Random(42).NextBytes(data);
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(data);
+        SwizzledMemory.ComputeHash(ref Unsafe.Add(ref MemoryMarshal.GetReference(swizzled.Span), offset), length, out ValueHash256 hash);
+        Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(data.AsSpan(offset))));
+    }
+
+    [Test]
+    public void Swizzled_hash_reuses_scratch([Values(32, 257, 65536, 131072)] int length)
+    {
+        byte[] data = new byte[length + 8];
+        SwizzledMemory.ComputeHash(ref data[1], length, out _);
+        SwizzledMemory.ComputeHash(ref data[1], length, out _);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+    }
+
+    [Test]
+    public void Swizzled_input_realigns_without_changing_bytes([Range(0, 3)] int offset,
+        [Values(0, 1, 2, 3, 4, 31, 32, 33)] int length)
+    {
+        byte[] natural = Enumerable.Range(0, 40).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+        ReadOnlyMemory<byte> aligned = SwizzledMemory.Realign(swizzled.Span.Slice(offset, length));
+        Assert.That(SwizzledMemory.ToNatural(aligned).ToArray(), Is.EqualTo(natural.AsSpan(offset, length).ToArray()));
+    }
+
+    [Test]
+    public void Swizzled_input_keeps_its_length_in_whole_groups([Range(0, 9)] int length)
+    {
+        byte[] natural = Enumerable.Range(1, length).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+
+        // The byte at offset o lies at o ^ 3; the positions of the last group no byte takes are zero.
+        byte[] expected = new byte[(length + 3) & ~3];
+        for (int i = 0; i < length; i++) expected[i ^ 3] = natural[i];
+
+        Assert.That(MemoryMarshal.TryGetArray(swizzled, out ArraySegment<byte> segment), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(segment.Count, Is.EqualTo(length));
+            Assert.That(segment.Array, Is.EqualTo(expected));
+            Assert.That(SwizzledMemory.ToNatural(swizzled).ToArray(), Is.EqualTo(natural));
+        }
+    }
+
     public enum StoreKind
     {
         Byte,

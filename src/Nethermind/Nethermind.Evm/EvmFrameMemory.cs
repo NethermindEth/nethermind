@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm;
 
@@ -18,10 +19,12 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal sealed class EvmFrameMemory : MemoryManager<byte>
 {
-    [InlineArray(EvmPooledMemory.InlineCapacity)]
+    // Words rather than bytes, so the memory starts on a word boundary, as the swizzled layout a guest may keep it in
+    // needs (see SwizzledMemory).
+    [InlineArray(EvmPooledMemory.InlineCapacity / sizeof(uint))]
     private struct InlineMemory
     {
-        private byte _element0;
+        private uint _element0;
     }
 
     private InlineMemory _inlineMemory;
@@ -30,7 +33,7 @@ internal sealed class EvmFrameMemory : MemoryManager<byte>
     internal byte[]? BackingArray => _backingArray;
 
     public override Span<byte> GetSpan()
-        => _backingArray is null ? _inlineMemory : _backingArray;
+        => _backingArray is null ? MemoryMarshal.AsBytes((Span<uint>)_inlineMemory) : _backingArray;
 
     public override MemoryHandle Pin(int elementIndex = 0)
         => (_backingArray ?? Spill()).AsMemory(elementIndex).Pin();
@@ -58,8 +61,7 @@ internal sealed class EvmFrameMemory : MemoryManager<byte>
     private byte[] Spill()
     {
         byte[] backingArray = new byte[EvmPooledMemory.InlineCapacity];
-        Span<byte> inlineMemory = _inlineMemory;
-        inlineMemory.CopyTo(backingArray);
+        MemoryMarshal.AsBytes((Span<uint>)_inlineMemory).CopyTo(backingArray);
         _backingArray = backingArray;
         return backingArray;
     }

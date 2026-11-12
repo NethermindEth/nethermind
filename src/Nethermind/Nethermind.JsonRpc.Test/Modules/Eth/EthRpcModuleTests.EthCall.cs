@@ -989,13 +989,14 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task Eth_call_with_revert()
+    [TestCase("wrong-parameters")]
+    [TestCase("réverted ✓")]
+    [TestCase("a\nb\tc", @"a\nb\tc")]
+    public async Task Eth_call_with_revert(string errorMessage, string? jsonEscapedMessage = null)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         AbiSignature<string> errorSignature = new AbiSignature("Error").With(AbiType.String);
-        string errorMessage = "wrong-parameters";
         byte[] encodedError = AbiCodec.Encode(errorSignature, errorMessage);
         string abiEncodedErrorMessage = encodedError.ToHexString(true);
 
@@ -1008,7 +1009,7 @@ public partial class EthRpcModuleTests
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""")!;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{jsonEscapedMessage ?? errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [Test]

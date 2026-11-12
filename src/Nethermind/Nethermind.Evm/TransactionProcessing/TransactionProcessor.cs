@@ -164,7 +164,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
-        protected IWorldState WorldState { get; }
+        protected IWorldState WorldState { get; private set; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         protected readonly ICodeInfoRepository _codeInfoRepository;
         private readonly bool _isCodeOverridable;
@@ -279,6 +279,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
+                IWorldState worldState = WorldState;
                 IBlockAccessListSource? diffRecorder = BeginAssertFrameDiffRecording(tx, opts, spec);
                 try
                 {
@@ -289,6 +290,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 finally
                 {
                     diffRecorder?.SetGeneratingBlockAccessList(null);
+                    WorldState = worldState;
                     // The VM holds its last TxExecutionContext, and RPC processors are pooled, so the
                     // view's diff and log payload would stay rooted while the processor sits idle.
                     if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
@@ -898,7 +900,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
                 }
             }
 
@@ -1437,6 +1439,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // A guest whose memory is swizzled takes call input laid out the same way (see EvmPooledMemory.LoadInputAfterGas).
+            if (EvmPooledMemory.IsSwizzled && !inputData.IsEmpty) inputData = SwizzledMemory.FromNatural(inputData.Span);
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
@@ -1868,7 +1872,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (VirtualMachine.TxExecutionContext.BalDataMeter?.TryMeter((ulong)code.Length) == false)
                 return false;
 
-            _codeInfoRepository.InsertCode(code, codeOwner, spec);
+            _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
 
             unspentGas = gasAfterCodeDeposit;
             return true;
