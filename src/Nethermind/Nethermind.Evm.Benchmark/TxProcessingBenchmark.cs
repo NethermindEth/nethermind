@@ -236,6 +236,19 @@ public class TxProcessingBenchmark
         return result;
     }
 
+    /// <summary>Simple transfer seen for the first time: intrinsic gas is calculated and memoized on every run, as for each new block transaction.</summary>
+    [Benchmark(OperationsPerInvoke = N)]
+    public TransactionResult SimpleTxFirstSeen()
+    {
+        TransactionResult result = default;
+        for (int i = 0; i < N; i++)
+        {
+            _simpleTx.IntrinsicGasMemo = null;
+            result = _processor.CallAndRestore(_simpleTx, NullTxTracer.Instance);
+        }
+        return result;
+    }
+
     /// <summary>Transfer + 128 B mixed (non-zero / zero) calldata.</summary>
     [Benchmark(OperationsPerInvoke = N)]
     public TransactionResult MixedDataTx()
