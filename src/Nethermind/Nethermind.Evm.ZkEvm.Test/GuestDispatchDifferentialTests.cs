@@ -569,6 +569,7 @@ public class GuestDispatchDifferentialTests
     /// <remarks>
     /// Every immediate, valid or not, at stack heights on both sides of the depths they decode to and at the limit, with
     /// too little gas and enough. The opcode alone, as the whole program, reads its immediate from the code's padding.
+    /// The outcome does not hold the stack, so a second program stores the word on top of the stack to memory.
     /// </remarks>
     [Test]
     public void Eip8024_stack_ops_match_the_shared_handlers(
@@ -578,7 +579,11 @@ public class GuestDispatchDifferentialTests
         List<string> mismatches = [];
         for (int immediate = -1; immediate < 256 && mismatches.Count < 5; immediate++)
         {
-            byte[] code = immediate < 0 ? [(byte)op] : [(byte)op, (byte)immediate, (byte)Instruction.STOP];
+            byte[][] programs = immediate < 0
+                ? [[(byte)op]]
+                : [[(byte)op, (byte)immediate, (byte)Instruction.STOP],
+                    [(byte)op, (byte)immediate, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]];
+            foreach (byte[] code in programs)
             foreach (int head in heads)
             {
                 Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, Amsterdam.Instance);
@@ -709,6 +714,11 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Guest_call_handlers_are_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.CallsThroughGuestHandlerForTests(spec), Is.True);
+
+    /// <remarks>The guest handlers fall back to the shared ones, so only the table shows that they are installed.</remarks>
+    [Test]
+    public void Guest_eip8024_stack_handlers_are_installed_from_eip8024([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.RunsEip8024StackOpsThroughGuestHandlersForTests(spec), Is.EqualTo(spec.IsEip8024Enabled));
 
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
@@ -1126,7 +1136,7 @@ public class GuestDispatchDifferentialTests
                 case 1: stackBytes[at + 8] = 1; break;
                 case 2: break;
                 default:
-                    stackBytes[at] = (byte)values.Next(256);
+                    stackBytes[at] = stackBytes[at + 16] = (byte)values.Next(256);
                     stackBytes[at + 1] = (byte)(values.Next(3) == 0 ? values.Next(0, 5) : 0);
                     break;
             }

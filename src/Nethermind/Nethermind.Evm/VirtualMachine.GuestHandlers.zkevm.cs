@@ -1809,7 +1809,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             int r = k & 0x0F;
             nint first = q < r ? q + 2 : r + 2;
             nint second = q < r ? r + 2 : 30 - q;
-            if (EvmInstructions.IsValidEip8024PairImmediate(immediate) && head >= Math.Max(first, second) && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
+            if (EvmInstructions.IsValidEip8024PairImmediate(immediate) && head >= second && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 SwapWords(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), first, second);
                 ip = ref Unsafe.Add(ref ip, 2);

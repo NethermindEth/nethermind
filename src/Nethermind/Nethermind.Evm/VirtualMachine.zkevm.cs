@@ -76,6 +76,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return true;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs DUPN, SWAPN and EXCHANGE on the guest handlers.</summary>
+    internal static bool RunsEip8024StackOpsThroughGuestHandlersForTests(IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        return (nint)handlers[(int)Instruction.DUPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteDupN)
+            && (nint)handlers[(int)Instruction.SWAPN] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSwapN)
+            && (nint)handlers[(int)Instruction.EXCHANGE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteExchange);
+    }
+
     public object? ReturnData;
 
     /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
