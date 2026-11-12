@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -121,7 +122,7 @@ namespace Nethermind.State
                 return;
             }
             RlpReader reader = new(encoded);
-            ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan();
+            ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan<OffFlag>();
             if (decoded.Length > 32) throw new TrieException("Storage value exceeds 256 bits");
             // Right-aligned into a full word first: UInt256 assembles a shorter value a byte at a time.
             EvmWord padded = default;

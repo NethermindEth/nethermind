@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -16,8 +17,9 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
         GetDataLength(msg, out int contentLength);
 
         RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.ExpirationTime);
+        writer.EndSequence(sequence);
 
         int length = CompletePacket(destination, in writer, out ValueHash256 mdc);
         msg.Hash = mdc;
@@ -27,9 +29,7 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
     public EnrRequestMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
         (PublicKey farPublicKey, ValueHash256 mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
-        RlpReader ctx = new(data);
-
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
         long expirationTime = ctx.DecodeLong();
 
         EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);

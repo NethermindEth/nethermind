@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
@@ -209,7 +210,8 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             {
                 if (_value.Length == 0) return null;
                 using TPin pin = _reader.PinBuffer(_value);
-                ReadOnlySpan<byte> value = new RlpReader(pin.Buffer).DecodeByteArraySpan();
+                RlpReader valueReader = new(pin.Buffer);
+                ReadOnlySpan<byte> value = valueReader.DecodeByteArraySpan<OffFlag>();
                 return BaseFlatPersistence.DecodeSlotValue(value);
             }
         }
