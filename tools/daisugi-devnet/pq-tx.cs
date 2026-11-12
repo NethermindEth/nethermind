@@ -86,7 +86,8 @@ tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key
 tx.Hash = tx.CalculateHash();
 
 var resolved = Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue);
-var witnesses = resolved.Select(d => Witness(d.Scheme, d.DataHash)[32..]).ToArray();
+// A leanSPHINCS witness is `key ‖ signature`; a leanSTARK witness is the proof alone.
+var witnesses = resolved.Select(d => d.Scheme == Eip8288Constants.LeanStarkScheme ? Witness(d.Scheme, d.DataHash)[32..] : Witness(d.Scheme, d.DataHash)).ToArray();
 
 string Encode(byte[][] proofs) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
 {

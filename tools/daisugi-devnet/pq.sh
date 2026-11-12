@@ -26,8 +26,9 @@ dotnet build --disable-build-servers -c release "$KIT/pq-tx.cs" > "$OUT/pq-tx.bu
 PQTX=(dotnet run -c release --no-build --file "$KIT/pq-tx.cs" --)
 
 call() {
-  curl -sf -XPOST -H 'content-type: application/json' "http://127.0.0.1:$PORT" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":[\"$2\"${3:+,\"$3\"}]}" || die "$1 to port $PORT failed"
+  # The body goes through stdin: a leanSTARK wrapper exceeds the argument size limit.
+  printf '{"jsonrpc":"2.0","id":1,"method":"%s","params":["%s"%s]}' "$1" "$2" "${3:+,\"$3\"}" \
+    | curl -sf -XPOST -H 'content-type: application/json' "http://127.0.0.1:$PORT" --data-binary @- || die "$1 to port $PORT failed"
 }
 
 build() {

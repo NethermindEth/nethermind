@@ -12,9 +12,9 @@ export DEVNET_USER="$(id -u):$(id -g)"
 
 ip() { docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"; }
 # Nethermind logs its enode with an unresolved external IP, so the container address replaces it.
-ENODE=$(docker logs daisugi-nethermind 2>&1 | grep -aoE 'enode://[0-9a-f]+@' | head -1)$(ip daisugi-nethermind):30303
-PEER_ID=$(curl -sf http://127.0.0.1:25052/eth/v1/node/identity | jq -r .data.peer_id)
-export BEACON_MULTIADDR=/ip4/$(ip daisugi-beacon)/tcp/9000/p2p/$PEER_ID
+ENODE=$(docker logs ${DEVNET_PREFIX:-daisugi}-nethermind 2>&1 | grep -aoE 'enode://[0-9a-f]+@' | head -1)$(ip ${DEVNET_PREFIX:-daisugi}-nethermind):30303
+PEER_ID=$(curl -sf http://127.0.0.1:${CL_HTTP_PORT:-25052}/eth/v1/node/identity | jq -r .data.peer_id)
+export BEACON_MULTIADDR=/ip4/$(ip ${DEVNET_PREFIX:-daisugi}-beacon)/tcp/9000/p2p/$PEER_ID
 
 mkdir -p "$GENESIS_DIR/sync-$PAIR"/{nethermind,beacon}
 echo "[\"$ENODE\"]" > "$GENESIS_DIR/sync-$PAIR/nethermind/static-nodes.json"

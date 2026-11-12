@@ -4,8 +4,8 @@
 # payloads, and the finalized heads.
 # Usage: sync-check.sh <proof-block-number>...
 set -euo pipefail
-ELS=(28545 28547 28548)
-CLS=(25052 25053 25054)
+ELS=(${EL_RPC_PORT:-28545} 28547 28548)
+CLS=(${CL_HTTP_PORT:-25052} 25053 25054)
 rpc() { curl -sf -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$2\",\"params\":$3}" "http://127.0.0.1:$1" | jq -c .result; }
 fail() { echo "FAIL: $*"; exit 1; }
 

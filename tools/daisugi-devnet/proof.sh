@@ -29,6 +29,6 @@ case "$1" in
       docker compose --profile replay up -d nethermind-replay
     until curl -sf -o /dev/null -X POST -H 'content-type: application/json' \
       --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' http://127.0.0.1:28546; do sleep 2; done
-    "${TOOL[@]}" replay http://127.0.0.1:25052 http://127.0.0.1:28551 "$G/data/jwt/jwtsecret" "$G/proof" "${4:?proof slot}" ;;
+    "${TOOL[@]}" replay http://127.0.0.1:${CL_HTTP_PORT:-25052} http://127.0.0.1:28551 "$G/data/jwt/jwtsecret" "$G/proof" "${4:?proof slot}" ;;
   *) echo "usage: proof.sh send|replay ..." >&2; exit 1 ;;
 esac
