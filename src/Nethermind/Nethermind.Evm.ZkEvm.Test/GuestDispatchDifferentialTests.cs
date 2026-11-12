@@ -601,6 +601,49 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Memory holds words up to 0x80. Operands of 2^32 or more, a destination past the initialized memory and the gap it
+    /// clears, and a stack of two words make the guest handler run the shared one. Each copy also runs one and three gas
+    /// short of its need.
+    /// </remarks>
+    [Test]
+    public void Memory_copy_fallbacks_match_the_shared_handlers()
+    {
+        byte[] prefix = [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH1, 0x60, (byte)Instruction.MSTORE];
+        UInt256[] destinations = [0, 0xa0, 0xc1, 0x400, 0x441, 0x800, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 0x10, 0x800, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] lengths = [0, 1, 32, 0x100, UInt256.One << 32, UInt256.One << 64];
+        List<byte[]> programs = [[.. prefix, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0, (byte)Instruction.MCOPY, (byte)Instruction.MSIZE, (byte)Instruction.STOP]];
+        foreach (UInt256 destination in destinations)
+            foreach (UInt256 source in sources)
+                foreach (UInt256 length in lengths)
+                    programs.Add(
+                    [
+                        .. prefix, (byte)Instruction.PUSH32, .. length.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)Instruction.MCOPY, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                    ]);
+
+        List<string> mismatches = [];
+        foreach (byte[] code in programs)
+        {
+            ulong needed = 100_000 - Run(100_000, [], 0, new CodeInfo(code), Table.Traced).GasLeft;
+            foreach (ulong gas in (ulong[])[100_000, needed, needed - 1, needed - 3])
+            {
+                Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced);
+                Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced);
+                if (!Matches(untraced, traced) && mismatches.Count < 5)
+                    mismatches.Add($"gas {gas} code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
+            }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>MCOPY falls back to the shared handler, so only the table shows that the guest handler is installed.</remarks>
+    [Test]
+    public void Guest_memory_copy_handler_is_installed_from_eip5656([ValueSource(nameof(Forks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.CopiesMemoryThroughGuestHandlerForTests(spec), Is.EqualTo(spec.MCopyIncluded));
+
+    /// <remarks>
     /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
     /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
     /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the

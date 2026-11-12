@@ -1873,7 +1873,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>MCOPY (EIP-5656) from a range the memory holds initialized, with the operands read in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies the three operands off the stack and charges through 256-bit helpers. A source reaching
-        /// past the initialized memory, a destination <see cref="EvmPooledMemory.TryPrepareRangeOverwrite"/> refuses, an
+        /// past the initialized memory or past the larger of the memory's size and the destination's end, a destination <see cref="EvmPooledMemory.TryPrepareRangeOverwrite"/> refuses, an
         /// operand of 2^32 or more, a short stack or a short gas runs the shared handler instead, which charges and faults on it.
         /// </remarks>
         [SkipLocalsInit]
