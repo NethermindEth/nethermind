@@ -597,7 +597,7 @@ public class BlockAccessListDecoderTests
     [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "RLP integer has leading zero bytes", TestName = "value_with_leading_zero")]
     [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "RLP single byte below 0x80 must not have a prefix", TestName = "single_byte_index_as_string")]
     [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "RLP single byte below 0x80 must not have a prefix", TestName = "single_byte_value_as_string")]
-    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "RLP length below 56 must use the short form", TestName = "short_list_with_long_header")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Expected length greater than or equal to 56 and was 34", TestName = "short_list_with_long_header")]
     [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "RLP byte string has another length than expected", TestName = "short_address_with_long_header")]
     public void Decoding_non_canonical_encoding_of_valid_block_access_list_throws(string nonCanonicalRlp, string expectedMessage) =>
         Assert.That(

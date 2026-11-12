@@ -82,7 +82,7 @@ public class FrameExceptionFragmentsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(message, Does.Contain("RLP is truncated"));
+            Assert.That(message, Does.Contain("RLP data is truncated"));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
         }
     }
@@ -198,9 +198,9 @@ public class FrameExceptionFragmentsTests
         yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "RLP integer has leading zero bytes")
             .SetName("Decode covers a frame mode with a leading zero");
         // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
-        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "RLP length below 56 must use the short form")
+        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
             .SetName("Decode covers short frame data under a long-form header");
-        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "RLP is truncated")
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "RLP data is truncated")
             .SetName("Decode covers frame limits missing an element");
     }
 

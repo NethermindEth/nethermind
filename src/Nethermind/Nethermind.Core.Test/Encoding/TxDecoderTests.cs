@@ -672,13 +672,13 @@ namespace Nethermind.Core.Test.Encoding
             yield return TestCase(
                 "Legacy transaction with incomplete signature",
                 Convert.FromHexString("C88080808080801B01"),
-                error: "RLP is truncated"
+                error: "RLP data is truncated"
             );
 
             yield return TestCase(
                 "Legacy transaction with truncated signature length",
                 Convert.FromHexString("C98080808080801B01B8"),
-                error: "RLP is truncated"
+                error: "RLP data is truncated"
             );
         }
 

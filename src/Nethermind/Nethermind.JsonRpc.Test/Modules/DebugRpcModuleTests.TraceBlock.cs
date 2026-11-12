@@ -67,9 +67,9 @@ public partial class DebugRpcModuleTests
         ("0xfc0100000000", "rlp: value size exceeds available input length"),
         ("0xff0100000000000000", "rlp: value size exceeds available input length"),
         ("0xffffffffffffffffff", "rlp: value size exceeds available input length"),
-        ("0xf801", "RLP length below 56 must use the short form"),
-        ("0xf90038", "RLP length has leading zero bytes"),
-        ("0xf83af9ffff" + new string('0', 110), "RLP is truncated"),
+        ("0xf801", "Expected length greater than or equal to 56 and was 1"),
+        ("0xf90038", "Length starts with 0"),
+        ("0xf83af9ffff" + new string('0', 110), "RLP data is truncated: not enough bytes for the declared length prefix"),
         ("0xc0", "rlp: too few elements for types.extblock"),
         ("0x", "EOF")
     ];

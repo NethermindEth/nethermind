@@ -124,14 +124,14 @@ public static class FrameExceptionFragments
         // A field of the wrong width, such as a bad address.
         "RLP byte string has another length than expected",
         "RLP does not correspond to a sequence",
-        "RLP is truncated",
+        "RLP data is truncated",
         // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
         // not need, a one-byte field (mode, flags) under a list prefix, and a long-form length on a string
         // shorter than 56 bytes.
         "RLP integer has leading zero bytes",
         "RLP single byte below 0x80 must not have a prefix",
         "RLP does not correspond to a byte string",
-        "RLP length below 56 must use the short form",
+        "Expected length greater than or equal to 56",
         // A list header that does not match the bytes its elements take up.
         "RLP has trailing bytes",
         // A fees list without both max_fee and max_priority_fee_per_gas.

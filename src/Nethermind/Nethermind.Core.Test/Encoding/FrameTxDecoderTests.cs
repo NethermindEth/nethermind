@@ -768,7 +768,7 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("RLP is truncated"));
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("RLP data is truncated"));
     }
 
     [TestCaseSource(nameof(TruncatedPayloadCases))]
@@ -779,7 +779,7 @@ public class FrameTxDecoderTests
     /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.</summary>
     private static IEnumerable<TestCaseData> TruncatedPayloadCases()
     {
-        const string truncated = "RLP is truncated";
+        const string truncated = "RLP data is truncated: not enough bytes for the declared length prefix";
         Rlp chainId = Rlp.Encode(TestBlockchainIds.ChainId);
         Rlp nonce = Rlp.Encode(0L);
         Rlp sender = Rlp.Encode(TestItem.AddressA.Bytes);

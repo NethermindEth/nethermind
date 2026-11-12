@@ -1630,7 +1630,7 @@ public class DebugRpcModule(
         }
         catch (RlpReaderException exception)
         {
-            string diagnostic = !decodingBlock && exception.Message == "RLP is truncated"
+            string diagnostic = !decodingBlock && exception.Message == "RLP data is truncated: not enough bytes for the declared length prefix"
                 ? "rlp: value size exceeds available input length" : exception.Message;
             error = GetRlpDecodingFailureResult<TResult>(diagnostic);
             return null;

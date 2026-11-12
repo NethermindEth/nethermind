@@ -106,7 +106,7 @@ public abstract class TransactionTestBase
             // An empty envelope fails before any RLP item is read, where the decoder gives only its generic wrapper message.
             if (bytes.Length == 0)
             {
-                error = "RLP is truncated";
+                error = "RLP data is truncated";
                 return false;
             }
 
@@ -182,9 +182,9 @@ public abstract class TransactionTestBase
         ["TransactionException.ADDRESS_TOO_SHORT"] = ["RLP byte string has another length than expected"],
         ["TransactionException.INVALID_CHAINID"] = ["InvalidTxChainId", "InvalidTxSignature"],
         ["TransactionException.INVALID_SIGNATURE_VRS"] = ["VRS is 0 length", "InvalidTxSignature"],
-        ["TransactionException.RLP_ERROR_EOF"] = ["RLP is truncated"],
+        ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated"],
         ["TransactionException.RLP_ERROR_SIZE"] = ["RLP has trailing bytes"],
-        ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["RLP length has leading zero bytes"],
+        ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["Length starts with 0"],
         ["TransactionException.RLP_INVALID_DATA"] = ["RLP does not correspond to a byte string"],
         ["TransactionException.RLP_INVALID_GASLIMIT"] = ["RLP does not correspond to a byte string"],
         ["TransactionException.RLP_INVALID_HEADER"] = ["RLP does not correspond to a sequence", "RLP length is too large"],
@@ -195,7 +195,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_INVALID_SIGNATURE_S"] = ["RLP does not correspond to a byte string", "Collection count"],
         ["TransactionException.RLP_INVALID_TO"] = ["RLP byte string has another length than expected"],
         ["TransactionException.RLP_INVALID_VALUE"] = ["RLP does not correspond to a byte string"],
-        ["TransactionException.RLP_LEADING_ZEROS_DATA_SIZE"] = ["RLP length has leading zero bytes"],
+        ["TransactionException.RLP_LEADING_ZEROS_DATA_SIZE"] = ["Length starts with 0"],
         ["TransactionException.RLP_LEADING_ZEROS_GASLIMIT"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_GASPRICE"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE"] = ["RLP integer has leading zero bytes"],
@@ -203,7 +203,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["RLP integer has leading zero bytes"],
         ["TransactionException.RLP_LEADING_ZEROS_VALUE"] = ["RLP integer has leading zero bytes"],
-        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP is truncated"],
+        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP data is truncated"],
         ["TransactionException.RLP_TOO_MANY_ELEMENTS"] = ["RLP has trailing bytes"],
         ["TransactionException.VALUE_OVERFLOW"] = ["RLP integer is too large"],
         // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
