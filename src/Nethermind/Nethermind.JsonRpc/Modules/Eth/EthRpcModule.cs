@@ -1392,9 +1392,10 @@ public partial class EthRpcModule(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The error code is the one a block search returns when it misses below the floor. Every other miss is a
-    /// <c>null</c> result: the index gives no block hash, the block it names is not canonical or its header is not
-    /// stored, the block is at or above the floor, or its stored body does not hold the transaction.
+    /// The error code is the one a block search returns when it misses below the floor, and the one
+    /// <c>eth_getBlockReceipts</c> returns for a settled block whose receipts are missing. Every other miss is a
+    /// <c>null</c> result, among them: the index gives no block hash, the block it names is not canonical or its header
+    /// is not stored, or its stored body does not hold the transaction.
     /// </para>
     /// <para>
     /// History pruning deletes bodies and receipts but leaves the transaction index to a background sweep, so an entry

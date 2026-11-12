@@ -172,7 +172,7 @@ public class ProofRpcModuleTests
 
     [Test]
     public async Task When_transaction_not_servable_transaction_receipt_returns_null_result(
-        [Values(NotServableScenario.HeaderNotFound, NotServableScenario.ReceiptsPruned, NotServableScenario.MismatchedReceiptSet, NotServableScenario.TransactionAbsentFromResolvedBlock)] NotServableScenario scenario)
+        [Values(NotServableScenario.HeaderNotFound, NotServableScenario.TransactionAbsentFromResolvedBlock)] NotServableScenario scenario)
     {
         Hash256 txHash = ArrangeNotServable(scenario);
 
@@ -189,9 +189,12 @@ public class ProofRpcModuleTests
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.PrunedHistoryUnavailable}"));
     }
 
-    /// <remarks>The answer <c>eth_getTransactionReceipt</c> gives for the same miss.</remarks>
+    /// <remarks>
+    /// The answer <c>eth_getTransactionReceipt</c> gives for the same miss, and <c>eth_getBlockReceipts</c> for the block:
+    /// it is canonical, below the head, and has fewer receipts than its two transactions.
+    /// </remarks>
     [Test]
-    public async Task When_the_receipt_is_missing_below_the_served_floor_transaction_receipt_fails_with_pruned_history(
+    public async Task When_the_receipt_is_missing_from_a_settled_canonical_block_transaction_receipt_fails_with_pruned_history(
         [Values(NotServableScenario.ReceiptsPruned, NotServableScenario.MismatchedReceiptSet)] NotServableScenario scenario)
     {
         Hash256 txHash = ArrangeNotServable(scenario);
@@ -203,8 +206,8 @@ public class ProofRpcModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(atTheFloor, Is.EqualTo(NullResultResponse), "a receipt missing at the served floor is not pruned history");
-            Assert.That(belowTheFloor, Is.EqualTo(PrunedHistoryResponse));
+            Assert.That(atTheFloor, Is.EqualTo(PrunedHistoryResponse), "at the served floor");
+            Assert.That(belowTheFloor, Is.EqualTo(PrunedHistoryResponse), "below the served floor");
         }
     }
 
@@ -321,7 +324,7 @@ public class ProofRpcModuleTests
         ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);
 
         tracerEnv.DidNotReceiveWithAnyArgs().TryBuildAndOverrideAtTarget(null!, null, null, out _);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
     /// <remarks>

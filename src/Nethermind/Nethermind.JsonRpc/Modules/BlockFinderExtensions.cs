@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -47,26 +48,43 @@ namespace Nethermind.JsonRpc.Modules
 
         /// <summary>
         /// Whether a lookup by transaction hash that found no receipt misses pruned history: the transaction index names
-        /// a canonical block below <see cref="IBlockFinder.LowestServedBlock"/>, and that block's body, when it is still
-        /// stored, holds the transaction.
+        /// a canonical block, and either its body is not stored and the block is below
+        /// <see cref="IBlockFinder.LowestServedBlock"/>, or its stored body holds the transaction and the block is below
+        /// that floor or <c>eth_getBlockReceipts</c> fails it as pruned history.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
         /// history pruning, so a block below it may still be stored. A compact index entry names a height, so for a
         /// transaction reorganised out of that height it resolves to the block now canonical there; a stored body tells
-        /// the two apart, and is read only once the other conditions hold. Without a body the entry is taken as it is.
+        /// the two apart. Without a body the entry is taken as it is, below the floor only.
+        /// </para>
+        /// <para>
+        /// At or above the floor, the block reads as <c>eth_getBlockReceipts</c> reads it: pruned history when it is
+        /// settled (<c>LogFinder.WasPruned</c>) and its stored receipts do not match its transactions. The receipts are
+        /// read again here because the head moves before the index entry of a new block is published: a transaction
+        /// mined between the caller's lookup and this one has its receipts by then, and is not reported.
+        /// </para>
+        /// <para>A hash without an index entry costs one index read, and an entry that is not canonical reads no body.</para>
         /// </remarks>
         public static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
         {
             if (receiptFinder.FindBlockHash(txHash) is not { } blockHash
-                || blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is not { } header
-                || !blockFinder.IsBlockPruned(new BlockParameter(header.Number)))
+                || blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is not { } header)
             {
                 return false;
             }
 
+            bool belowTheFloor = blockFinder.IsBlockPruned(new BlockParameter(header.Number));
             Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
-            return block is null || block.GetTransactionIndex(txHash.ValueHash256) >= 0;
+            if (block is null)
+            {
+                return belowTheFloor;
+            }
+
+            return block.GetTransactionIndex(txHash.ValueHash256) >= 0
+                && (belowTheFloor
+                    || (LogFinder.WasPruned(blockFinder, header) && receiptFinder.Get(block).Length != block.Transactions.Length));
         }
 
         /// <param name="unknownBlockErrorCode">The code for a block that is not known, instead of <see cref="ErrorCodes.ResourceNotFound"/>.</param>
