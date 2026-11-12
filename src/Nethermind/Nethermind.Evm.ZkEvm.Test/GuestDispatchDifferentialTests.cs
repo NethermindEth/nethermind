@@ -616,10 +616,11 @@ public class GuestDispatchDifferentialTests
     /// The writes leave a slot as it was, reset one to zero and back, create one and clear it again, and reset and then
     /// clear a third, each slot first cold and then warm, so every charge and refund of EIP-2200 and EIP-3529 is taken.
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge and at the stipend sentry.
-    /// In a static frame the first write faults instead.
+    /// In a static frame the first write faults instead. Under EIP-8037 the state reservoir holds the slot's creation,
+    /// is one short of it or is empty, so the creation also spills into the execution gas and runs short of state gas there.
     /// </remarks>
-    [Test]
-    public void Storage_writes_match_the_shared_handlers([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec, [Values] bool isStatic)
+    [TestCaseSource(nameof(StorageWriteCases))]
+    public void Storage_writes_match_the_shared_handlers(IReleaseSpec spec, bool isStatic, long stateReservoir)
     {
         (int Key, UInt256 Value)[] writes =
         [
@@ -633,9 +634,9 @@ public class GuestDispatchDifferentialTests
 
         program.AddRange([(byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
         byte[] code = [.. program];
-        const ulong ample = 100_000;
+        const ulong ample = 200_000;
         // EIP-8037 charges the slot's creation as state gas, which the default policy does not hold.
-        EthereumGasPolicy? Funded(ulong gas) => spec.IsEip8037Enabled ? EthereumGasPolicy.FromULong(gas) with { StateReservoir = (long)ample } : null;
+        EthereumGasPolicy? Funded(ulong gas) => spec.IsEip8037Enabled ? EthereumGasPolicy.FromULong(gas) with { StateReservoir = stateReservoir } : null;
         ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, initial: Funded(ample)).GasLeft;
 
         List<string> mismatches = [];
@@ -666,6 +667,12 @@ public class GuestDispatchDifferentialTests
             }
         }
     }
+
+    private static IEnumerable<TestCaseData> StorageWriteCases() =>
+        from spec in StorageWriteForks
+        from isStatic in new[] { false, true }
+        from stateReservoir in spec.IsEip8037Enabled ? [GasCostOf.SSetState, GasCostOf.SSetState - 1, 0] : new long[] { 0 }
+        select new TestCaseData(spec, isStatic, stateReservoir);
 
     public enum FrameStorageOperation { Create, RestoreInSameFrame, RestoreInLaterFrame }
 

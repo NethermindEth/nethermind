@@ -102,10 +102,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CodeSource>);
         if (SpecFlags.Eip2929(spec))
         {
-            if (SpecFlags.Eip8038(spec))
-                SetStorageHandlers<Eip8038On>(lookup, spec);
-            else
+            // The EIP-8038 storage handlers do not fit Airbender's 4 MiB ROM, so there the shared handlers run them.
+            if (!SpecFlags.Eip8038(spec))
                 SetStorageHandlers<Eip8038Off>(lookup, spec);
+            else if (!AirbenderFlag.IsActive)
+                SetStorageHandlers<Eip8038On>(lookup, spec);
         }
         if (SpecFlags.Eip2929(spec) && SpecFlags.Eip150(spec) && SpecFlags.Eip158(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
         {
