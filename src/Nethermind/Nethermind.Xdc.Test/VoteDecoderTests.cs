@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
@@ -58,7 +59,7 @@ public class VoteDecoderTests
 
         VoteDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         decoder.Encode(ref writer, vote);
 
         RlpReader decoderContext = new(bytes);

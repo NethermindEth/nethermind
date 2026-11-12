@@ -5,8 +5,9 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Trie.NodeBuffer;
 
@@ -107,21 +108,20 @@ internal static class NodeRecordCodec
         hashMask = 0;
         try
         {
-            RlpReader reader = new(rlp);
-            int length = reader.ReadSequenceLength();
-            if (reader.Position + length != rlp.Length) return false;
+            RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out int length);
+            if (length != rlp.Length) return false;
 
-            int itemCount = reader.PeekNumberOfItemsRemaining(maxSearch: 3);
+            int itemCount = CountUpToThreeItems(reader);
             if (itemCount > 2) return TryDecodeBranch(ref reader, out kind, out hashMask);
             if (itemCount < 2) return false;
 
-            ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+            ReadOnlySpan<byte> hexPrefix = reader.ReadBytes<OffFlag>();
             if (!IsHexPrefix(hexPrefix)) return false;
 
             if (NodeRlp.IsLeafHexPrefix(hexPrefix))
             {
                 kind = NodeRecordKind.Leaf;
-                reader.DecodeByteArraySpan();
+                reader.ReadBytes<OffFlag>();
                 return true;
             }
 
@@ -131,11 +131,21 @@ internal static class NodeRecordCodec
             hashMask = (ushort)(child == ChildRefKind.Hash ? 1 : 0);
             return true;
         }
-        // RlpReader throws on malformed RLP, and indexes or slices past the end of a truncated item.
-        catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        catch (RlpReaderException)
         {
             return false;
         }
+    }
+
+    private static int CountUpToThreeItems(RlpReader reader)
+    {
+        int count = 0;
+        for (; count < 3 && reader.HasNext; count++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
+        return count;
     }
 
     /// <summary>Writes the record of <paramref name="rlp"/>, with every child pointer 0.</summary>
@@ -167,21 +177,20 @@ internal static class NodeRecordCodec
             else if (child == ChildRefKind.Inline) kind = NodeRecordKind.InlineBranch;
         }
 
-        return reader.DecodeByteArraySpan().IsEmpty && reader.Position == reader.Length;
+        return reader.ReadBytes<OffFlag>().IsEmpty && !reader.HasNext;
     }
 
     /// <returns>False for a child that is malformed or embeds an invalid node.</returns>
     private static bool TryDecodeChild(ref RlpReader reader, out ChildRefKind kind)
     {
-        if (reader.IsSequenceNext())
+        if (reader.IsNextSequence)
         {
             kind = ChildRefKind.Inline;
-            ReadOnlySpan<byte> inlineRlp = reader.PeekNextItem();
-            reader.SkipBytes(inlineRlp.Length);
+            ReadOnlySpan<byte> inlineRlp = reader.ReadEncodedItem<OffFlag>();
             return inlineRlp.Length < ValueHash256.MemorySize && TryDecode(inlineRlp, out _, out _);
         }
 
-        ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
+        ReadOnlySpan<byte> hash = reader.ReadBytes<OffFlag>();
         kind = hash.IsEmpty ? ChildRefKind.Empty : ChildRefKind.Hash;
         return hash.IsEmpty || hash.Length == ValueHash256.MemorySize;
     }
@@ -194,14 +203,13 @@ internal static class NodeRecordCodec
     /// </remarks>
     internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
     {
-        RlpReader reader = new(rlp);
-        reader.ReadSequenceLength();
+        RlpReader reader = new RlpReader(rlp).EnterSequence<OffFlag>(out int length);
         // Only a leaf has two strings: a branch may start with an embedded node, and an extension may end with one.
-        if (reader.IsSequenceNext()) return false;
-        ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
-        if (reader.IsSequenceNext()) return false;
-        reader.DecodeByteArraySpan();
-        return reader.Position == reader.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
+        if (!reader.HasNext || reader.IsNextSequence) return false;
+        ReadOnlySpan<byte> key = reader.ReadBytes<OffFlag>();
+        if (!reader.HasNext || reader.IsNextSequence) return false;
+        reader.ReadBytes<OffFlag>();
+        return !reader.HasNext && length == rlp.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
     }
 
     private static bool IsHexPrefix(ReadOnlySpan<byte> key) =>

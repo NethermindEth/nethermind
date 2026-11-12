@@ -372,19 +372,30 @@ namespace Nethermind.TxPool
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
-                NotifyAllPeers(_txsToSend, false);
-
-                _txsToSend.Reset();
+                try
+                {
+                    NotifyAllPeers(_txsToSend, false);
+                }
+                finally
+                {
+                    _txsToSend.Reset();
+                }
             }
 
-            // Don't broadcast txs while producing a block as it
-            // allocates a lot and we want to minimize GCs at this time
-            // also head about to change which could change the filter results
-            if (!_headInfo.IsProcessingBlock)
+            try
             {
-                NotifyPeers();
+                // Don't broadcast txs while producing a block as it
+                // allocates a lot and we want to minimize GCs at this time
+                // also head about to change which could change the filter results
+                if (!_headInfo.IsProcessingBlock)
+                {
+                    NotifyPeers();
+                }
             }
-            _timer.Enabled = true;
+            finally
+            {
+                _timer.Enabled = true;
+            }
         }
 
         private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
