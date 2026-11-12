@@ -53,7 +53,10 @@ namespace Nethermind.JsonRpc.Benchmark;
 /// <c>eth_chainId</c> and <c>eth_getBalance</c> through the processor are controls: the first touches neither the call parameters
 /// nor state, the second reads state without a world state scope. The batched case runs <see cref="Batch"/> requests per invocation.
 /// </remarks>
+// Differences of a few percent sit at the edge of one process's layout noise, so the result is spread over more launches.
 [MemoryDiagnoser]
+[ProcessCount(6)]
+[IterationCount(20)]
 public class EthCallPathBenchmarks
 {
     private const int Batch = 16;
