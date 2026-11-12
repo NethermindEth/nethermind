@@ -147,17 +147,19 @@ public class TransactionForRpcTests
 
     [Test]
     public void Blob_submission_alias_checks_preserve_fee_sidecar_and_call_precedence(
-        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("empty", "size", "version")] string hashKind)
+        [Values] bool suppliedBlobs, [Values] bool invalidFee, [Values("missing", "empty", "size", "version")] string hashKind)
     {
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
         string hashes = hashKind switch
         {
+            "missing" => "null",
             "size" => "[\"0x0100\"]",
             "version" => "[\"0x0200000000000000000000000000000000000000000000000000000000000000\"]",
             _ => "[]"
         };
         string blobError = hashKind switch
         {
+            "missing" => RpcTransactionErrors.BlobFeeCapWithoutBlobHashes,
             "size" => RpcTransactionErrors.InvalidBlobVersionedHashSize,
             "version" => RpcTransactionErrors.InvalidBlobVersionedHashVersion,
             _ => RpcTransactionErrors.AtLeastOneBlobInBlobTransaction

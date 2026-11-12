@@ -105,7 +105,8 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         string? dataError = base.GetSubmissionDataError();
         // Geth's setDefaults checks aliases after sidecars and fees, but before blob fields.
         if (Blobs is null && dataError == RpcTransactionErrors.DataAndInputDiffer
-            && conversionError is RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
+            && conversionError is RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
+                or RpcTransactionErrors.AtLeastOneBlobInBlobTransaction or RpcTransactionErrors.MissingToInBlobTx
                 or RpcTransactionErrors.InvalidBlobVersionedHashSize or RpcTransactionErrors.InvalidBlobVersionedHashVersion)
         {
             Result<Transaction> preceding = MaxFeePerBlobGas?.IsZero == true

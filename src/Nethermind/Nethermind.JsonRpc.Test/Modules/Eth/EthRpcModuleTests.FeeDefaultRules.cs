@@ -351,6 +351,21 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Blob_submission_calldata_conflicts_precede_blob_fee_cap_without_hashes(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee)
+    {
+        JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        request["gasPrice"] = invalidFee ? "0x0" : "0x1";
+        string expected = invalidFee ? "gasPrice must be non-zero after london fork"
+            : data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+            : RpcTransactionErrors.BlobFeeCapWithoutBlobHashes;
+
+        Assert.That(await FeeDefaultsError(method, request.ToJsonString(), london: true), Is.EqualTo(expected));
+    }
+
+    [Test]
     public async Task Blob_submission_calldata_conflicts_precede_invalid_hashes(
         [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
         [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidSize)
