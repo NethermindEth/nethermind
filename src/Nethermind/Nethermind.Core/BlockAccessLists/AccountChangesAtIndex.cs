@@ -241,7 +241,7 @@ public class AccountChangesAtIndex(Address address)
         public int Count => _owner._storageChangeCount;
 
         /// <summary>The capacity of the records behind the view, which also hold slots with only a prestate.</summary>
-        public int Capacity => _owner._storageSlots.Capacity;
+        internal int Capacity => _owner._storageSlots.Capacity;
 
         public StorageChange this[in UInt256 key] =>
             TryGetValue(in key, out StorageChange change) ? change : throw new KeyNotFoundException();
