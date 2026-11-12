@@ -270,7 +270,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
+                // As in Geth, an SSTORE missing its value underflows before it executes and reads no slot.
+                if (stackLen >= (_op == Instruction.SSTORE ? 2 : 1) && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     if (_prestate[_executingAccount!].Storage?.ContainsKey(index) != true)

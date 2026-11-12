@@ -518,19 +518,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
-    /// <summary>As in geth, a storage opcode that cannot pay its gas does not execute, so the slot it would read is not in the prestate.</summary>
-    [Test]
-    public void StorageOperation_WhenOutOfGas_LeavesSlotOutOfPrestate(
-        [Values(Instruction.SLOAD, Instruction.SSTORE)] Instruction opcode, [Values] bool affordable, [Values] bool wrapped)
+    /// <summary>As in geth, a storage opcode that fails before it executes reads no slot, so the slot is not in the prestate.</summary>
+    [TestCaseSource(nameof(FailedStorageOperationCases))]
+    public void StorageOperation_WhenItFailsBeforeExecuting_LeavesSlotOutOfPrestate(byte[] code, ulong gasAfterIntrinsic, bool executes, bool wrapped)
     {
-        byte[] code = opcode == Instruction.SLOAD
-            ? Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done
-            : Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Done;
-        ulong gasNeeded = opcode == Instruction.SLOAD
-            ? GasCostOf.VeryLow + GasCostOf.ColdSLoad
-            : 2 * GasCostOf.VeryLow + GasCostOf.ColdSLoad + GasCostOf.SSet;
-        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation,
-            GasCostOf.Transaction + gasNeeded - (affordable ? 0UL : 1UL), code);
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, GasCostOf.Transaction + gasAfterIntrinsic, code);
         IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
         using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(GetGethTraceOptions(), block, transaction, TestState, spec);
         using ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer)) : tracer;
@@ -539,7 +531,28 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         NativePrestateTracerAccount account =
             ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value)[transaction.To!];
-        Assert.That(account.Storage?.ContainsKey(1) ?? false, Is.EqualTo(affordable));
+        Assert.That(account.Storage?.ContainsKey(1) ?? false, Is.EqualTo(executes));
+    }
+
+    private static IEnumerable<TestCaseData> FailedStorageOperationCases()
+    {
+        byte[] sload = Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done;
+        byte[] sstore = Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Done;
+        const ulong sloadGas = GasCostOf.VeryLow + GasCostOf.ColdSLoad;
+        const ulong sstoreGas = 2 * GasCostOf.VeryLow + GasCostOf.ColdSLoad + GasCostOf.SSet;
+        (string Name, byte[] Code, ulong Gas, bool Executes)[] cases =
+        [
+            ("SLOAD", sload, sloadGas, true),
+            ("SLOAD out of gas", sload, sloadGas - 1, false),
+            ("SSTORE", sstore, sstoreGas, true),
+            ("SSTORE out of gas", sstore, sstoreGas - 1, false),
+            ("SSTORE stack underflow", Prepare.EvmCode.PushData(1).Op(Instruction.SSTORE).Done, 100000, false),
+        ];
+        foreach (bool wrapped in new[] { false, true })
+        {
+            foreach ((string name, byte[] code, ulong gas, bool executes) in cases)
+                yield return new TestCaseData(code, gas, executes, wrapped).SetArgDisplayNames(name, wrapped ? "wrapped" : "bare");
+        }
     }
 
     [Test]
