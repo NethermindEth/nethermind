@@ -9,11 +9,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -117,6 +122,46 @@ public class SendPolicyTxSenderTests
 
         await inner.Received(1).SendTransaction(tx, TxHandlingOptions.None);
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    /// <remarks>
+    /// A raw send arrives without a sender. Where the spec does not validate chain ids, the pool accepts a legacy signature
+    /// made for another chain, and block processing recovers its signer over the chain id the signature carries; where it
+    /// does, the transaction is signed for this chain. Either way the rules, the journal and the pool see the signer.
+    /// </remarks>
+    [Test]
+    public async Task Raw_legacy_send_is_checked_and_pooled_as_its_signer([Values] bool chainIdsValidated, [Values] bool destinationListed)
+    {
+        PrivateKey signer = TestItem.PrivateKeyB; // funded at genesis, and without code
+        using TempPath rules = WriteRules([$"from {signer.Address}", $"to {Friend}", $"cap {OneEther} 3600"]);
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(SpuriousDragon.Instance) { ValidateChainId = chainIdsValidated }))
+            .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = RulesFile(rules) })
+            .AddSingleton<IFileSystem>(FileSystem)
+            .AddModule(new SendPolicyModule()));
+        ulong chainId = chain.SpecProvider.ChainId;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.Legacy)
+            .WithNonce(0)
+            .To(destinationListed ? Friend : Unlisted)
+            .WithValue(0)
+            .WithGasPrice(20.GWei)
+            .WithGasLimit(GasCostOf.Transaction)
+            .Signed(new EthereumEcdsa(chainIdsValidated ? chainId : chainId + 1), signer)
+            .TestObject;
+        tx.SenderAddress = null; // as a raw transaction is decoded
+
+        (Hash256 _, AcceptTxResult? result) = await chain.Container.Resolve<ITxSender>().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+
+        string journal = RulesFile(rules) + ".journal";
+        string[] journaled = File.Exists(journal) ? [.. File.ReadAllLines(journal).Select(static line => line.Split(' ')[1])] : [];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.ToString(), Is.EqualTo(destinationListed ? AcceptTxResult.Accepted.ToString() : $"send policy, unlisted destination {Unlisted}, add 'to {Unlisted}'"));
+            Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
+            Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(destinationListed ? 1 : 0), "pooled");
+            Assert.That(journaled, Is.EqualTo(destinationListed ? new[] { signer.Address.ToString() } : []), "senders in the journal");
+        }
     }
 
     private static IEnumerable<TestCaseData> SendsUnderUnusableRules()
@@ -353,6 +398,7 @@ public class SendPolicyTxSenderTests
         .AddModule(new SendPolicyModule())
         .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = rulesPath })
         .AddSingleton<IEthereumEcdsa>(Ecdsa)
+        .AddSingleton<IChainHeadSpecProvider>(HeadSpecProvider())
         .AddSingleton<ITimestamper>(Timestamper.Default)
         .AddSingleton<IFileSystem>(FileSystem)
         .AddSingleton<ILogManager>(LimboLogs.Instance)
@@ -382,7 +428,14 @@ public class SendPolicyTxSenderTests
     private static SendPolicyTxSender CreateSender(ITxSender inner, string rulesPath, bool warnOnly = false, ITimestamper? clock = null)
     {
         SendPolicyConfig config = new() { Enabled = true, RulesPath = rulesPath, WarnOnly = warnOnly };
-        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, FileSystem, LimboLogs.Instance), new SendPolicyJournal(config, clock ?? Timestamper.Default, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
+        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, FileSystem, LimboLogs.Instance), new SendPolicyJournal(config, clock ?? Timestamper.Default, LimboLogs.Instance), config, Ecdsa, HeadSpecProvider(), LimboLogs.Instance);
+    }
+
+    private static IChainHeadSpecProvider HeadSpecProvider()
+    {
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Prague.Instance);
+        return specProvider;
     }
 
     private static Transaction Send(PrivateKey from, Address? to, UInt256 value, TxType type = TxType.EIP1559, ulong gasLimit = 60_000, ulong nonce = 0, UInt256? maxFeePerGas = null) =>
