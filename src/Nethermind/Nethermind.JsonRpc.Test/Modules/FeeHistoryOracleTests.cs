@@ -46,24 +46,46 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void GetFeeHistory_HashParameter_ReturnsFailingWrapper()
+        public async Task GetFeeHistory_NewestBlockByHash_ReturnsHistoryOfThatBlock([Values] bool canonical, [Values] bool requireCanonical)
         {
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
+            await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block mainBlock = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(50).TestObject;
+            Block sideBlock = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(25).TestObject;
+            AddToMainChain(blockTree, genesis);
+            AddToMainChain(blockTree, mainBlock);
+            blockTree.SuggestBlock(sideBlock);
+            Block block = canonical ? mainBlock : sideBlock;
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            // Caches the block, so the request below also checks that a cached block is not taken as canonical.
+            feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!), []).Dispose();
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA), []);
-            Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(block.Hash!, requireCanonical), []);
+
+            if (!canonical && requireCanonical)
+            {
+                Assert.That(resultWrapper.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(block.Number));
+                    Assert.That(resultWrapper.Data.GasUsedRatio, Is.EqualTo((double[])[block.GasUsed / (double)block.GasLimit]));
+                }
+            }
         }
 
         [Test]
-        public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper()
+        public void GetFeeHistory_NewestBlockIsNull_ReturnsFailingWrapper([Values] bool byHash)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock(Arg.Any<ulong>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
             ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(0UL), []);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, byHash ? new BlockParameter(TestItem.KeccakA) : new BlockParameter(0UL), []);
             Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
         }
 

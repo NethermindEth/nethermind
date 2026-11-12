@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
-            Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
+            Hash256? hash = blockParameter is { Type: BlockParameterType.BlockHash, RequireCanonical: false }
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
             headerFound = hash is not null;
@@ -195,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             if (blockCount > _maxBlockCount)
                 blockCount = _maxBlockCount;
 
-            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
+            ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
             {
                 return initialCheckResult;
@@ -496,13 +496,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ulong blockCount, double[] rewardPercentiles)
         {
-            if (newestBlock.Type == BlockParameterType.BlockHash)
-            {
-                return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
-            }
-
             if (blockCount < 1)
             {
                 return ResultWrapper<FeeHistoryResults>.Fail($"blockCount: Value {blockCount} is less than 1", ErrorCodes.InvalidParams);
