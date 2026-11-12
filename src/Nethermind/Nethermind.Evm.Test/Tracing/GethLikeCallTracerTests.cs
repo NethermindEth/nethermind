@@ -978,8 +978,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Prepare create = opcode == Instruction.CREATE
             ? Prepare.EvmCode.Create(initCode, 0)
             : Prepare.EvmCode.Create2(initCode, salt, 0);
-        // Return the CREATE result, so a surviving parent proves whether the address or zero was pushed.
-        byte[] code = create.PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        // Before EIP-150, a failed CREATE leaves no parent gas; STOP still exposes its result on the stack.
+        byte[] code = create.STOP().Done;
         (Block block, Transaction tx) = PrepareTx(activation, 100000, code);
         ulong nonce = TestState.GetNonce(Recipient);
         Address address = opcode == Instruction.CREATE ? ContractAddress.From(Recipient, nonce) : ContractAddress.From(Recipient, salt, initCode);
@@ -1003,7 +1003,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             Assert.That(root.Error, Is.Null, "the parent survives");
             Assert.That(root.GasUsed, Is.EqualTo(receipt.SpentGas));
-            Assert.That(root.Output.ToArray(), Is.EqualTo(success ? address.Bytes.PadLeft(32) : new byte[32]));
+            Assert.That(root.Output.IsEmpty, Is.True);
+            Assert.That(actualStruct.Entries[^1].Opcode, Is.EqualTo("STOP"));
+            Assert.That(actualStruct.Entries[^1].Depth, Is.EqualTo(1));
+            Assert.That(actualStruct.Entries[^1].Stack?.ToArray(), Is.EqualTo(success ? address.Bytes.PadLeft(32) : new byte[32]));
             Assert.That(root.Calls, Has.Count.EqualTo(onlyTopCall ? 0 : 1));
             Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
             if (success) Assert.That(TestState.GetCode(address).ToArray(), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
