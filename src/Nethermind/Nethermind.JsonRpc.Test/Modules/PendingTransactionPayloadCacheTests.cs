@@ -67,6 +67,32 @@ public class PendingTransactionPayloadCacheTests
     }
 
     [Test]
+    public void Get_AfterThePendingSpecChanges_ReportsTheGasOfTheNewSpec()
+    {
+        Transaction tx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify(100_000), new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 100_000, 1, default));
+        tx.GasLimit = 400_000;
+        tx.Hash = TestItem.KeccakA;
+        OverridableReleaseSpec beforeSpec = new(Eip8141Prototype.Instance) { IsEip2780Enabled = false };
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), (new ForkActivation(0, 6), beforeSpec), (new ForkActivation(0, 12), Eip8141Prototype.Instance));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(0).WithTimestamp(0).TestObject);
+        PendingTransactionPayloadCache payloads = new(specProvider, blockFinder, 6);
+        payloads.AddSubscriber();
+
+        string beforeChange = Encoding.UTF8.GetString(payloads.Get(tx).Utf8Json);
+        Block nextHead = Build.A.Block.WithNumber(1).WithTimestamp(6).TestObject;
+        blockFinder.Head.Returns(nextHead);
+        string afterChange = Encoding.UTF8.GetString(payloads.Get(tx).Utf8Json);
+
+        ulong gasUnderNewSpec = TransactionForRpc.FromTransaction(tx, TransactionForRpcContext.ForPending(specProvider, nextHead.Header, 6)).Gas!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeChange, Is.Not.EqualTo(afterChange), "the two specs must price the transaction differently for the check to tell them apart");
+            Assert.That(afterChange, Does.Contain($"\"gas\":\"0x{gasUnderNewSpec:x}\""), "a payload stored under the earlier pending spec must not be reused");
+        }
+    }
+
+    [Test]
     public void Get_ForAnotherTransaction_SerializesItsOwnPayload()
     {
         PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
@@ -102,11 +128,11 @@ public class PendingTransactionPayloadCacheTests
         PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance, Substitute.For<IBlockFinder>(), 12);
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         payloads.AddSubscriber();
-        AssociativeCache<ValueHash256, byte[]> readBeforeUnsubscribe = payloads.Generation;
+        AssociativeCache<ValueHash256, PendingTransactionPayloadCache.Entry> readBeforeUnsubscribe = payloads.Generation;
         byte[] late = payloads.Get(transaction).Utf8Json;
         payloads.RemoveSubscriber();
 
-        readBeforeUnsubscribe.Set(transaction.Hash!.ValueHash256, late);
+        readBeforeUnsubscribe.Set(transaction.Hash!.ValueHash256, new PendingTransactionPayloadCache.Entry(null, late));
         payloads.AddSubscriber();
 
         Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(late), "a send loop storing after the last subscriber left must not refill the table");
