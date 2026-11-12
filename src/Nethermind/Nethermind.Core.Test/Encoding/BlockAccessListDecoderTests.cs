@@ -593,12 +593,12 @@ public class BlockAccessListDecoderTests
 
     // The wire hash is the header commitment, so every accepted encoding must be the one the BAL re-encodes to.
     // Each case is a single-field mutation of CanonicalBlockAccessListRlp.
-    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 27", TestName = "zero_index_as_0x00")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 28", TestName = "value_with_leading_zero")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 32", TestName = "single_byte_index_as_string")]
-    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 33", TestName = "single_byte_value_as_string")]
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 0", TestName = "zero_index_as_0x00")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 1", TestName = "value_with_leading_zero")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 0", TestName = "single_byte_index_as_string")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 1", TestName = "single_byte_value_as_string")]
     [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Expected length greater than or equal to 56 and was 34", TestName = "short_list_with_long_header")]
-    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 3 in the message of length 36.", TestName = "short_address_with_long_header")]
+    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 1 in the message of length 34.", TestName = "short_address_with_long_header")]
     public void Decoding_non_canonical_encoding_of_valid_block_access_list_throws(string nonCanonicalRlp, string expectedMessage) =>
         Assert.That(
             () => Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(nonCanonicalRlp)),
