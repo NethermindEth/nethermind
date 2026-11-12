@@ -206,7 +206,7 @@ rm -rf run/devnet-1
 
 ## Known gaps
 
-- Wallet, RPC gateway and explorer in AA-PQ still use the live chain's formats: wrapper `[dep, [witness]]` instead of `[[deps], [witnesses]]`, a 24-field header with the proof in it instead of 25 fields with the proof in the body, keccak instead of BLAKE2s dependency hash. The gateway also accepts only 7-field frame transactions while the wallet sends 8. None of them works against this devnet yet. This devnet tests clients only.
+- AA-PQ's wallet, RPC gateway and explorer run against this devnet only with their `eip8288-lean` profile (asanso/AA-PQ #12, guide in #13); its default `daisugi-v1` profile keeps the live chain's formats.
 - Not configured: Osaka/Fulu (PeerDAS), Amsterdam, Gloas, Bogota, adaptive aggregation.
 - Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
