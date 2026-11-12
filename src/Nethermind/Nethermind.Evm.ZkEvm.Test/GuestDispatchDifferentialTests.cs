@@ -125,11 +125,11 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
-    /// Every word the fork has of those the block, the transaction and the frame hold, each with its bytes spread over all
-    /// four limbs, pushed in one program at stack heads that leave room for all, some or none of them, at every gas up to the program's need.
+    /// Every word the fork has of those the block, the transaction and the frame hold, each with distinct bytes in every limb
+    /// it fills, pushed in one program at stack heads that leave room for all, some, one or none of them, at every gas up to the program's need.
     /// </remarks>
     [Test]
-    public void Context_word_sequences_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Values(0, 1009, 1023, 1024)] int head)
+    public void Context_word_sequences_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Values(0, 1018, 1023, 1024)] int head)
     {
         UInt256 word = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
         BlockHeader header = new(Hash256.Zero, Hash256.Zero, new Address("0x0102030405060708090a0b0c0d0e0f1011121314"), word,
@@ -166,6 +166,50 @@ public class GuestDispatchDifferentialTests
 
         Assert.That(mismatches, Is.Empty);
     }
+
+    /// <remarks>
+    /// A frame with its own address, caller and value calls a child that returns its ADDRESS, CALLER, CALLVALUE, ORIGIN and
+    /// GASPRICE, then stores its own ADDRESS, CALLER and CALLVALUE. The child runs nested in the caller's dispatch chain, so a word
+    /// read from the wrong frame shows in the child's words, or in the caller's words after the child returns.
+    /// </remarks>
+    [Test]
+    public void Frame_words_follow_nested_frames([Values(Instruction.CALL, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction call)
+    {
+        Address child = ContextAddress(0xb0);
+        const byte childOutputSize = 5 * EvmStack.WordSize;
+        byte[] childCode =
+        [
+            .. StoreWords([Instruction.ADDRESS, Instruction.CALLER, Instruction.CALLVALUE, Instruction.ORIGIN, Instruction.GASPRICE], 0),
+            (byte)Instruction.PUSH1, childOutputSize, (byte)Instruction.PUSH0, (byte)Instruction.RETURN
+        ];
+        byte[] parentCode =
+        [
+            (byte)Instruction.PUSH1, childOutputSize, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            .. call is Instruction.CALL ? [(byte)Instruction.PUSH0] : (byte[])[],
+            (byte)Instruction.PUSH20, .. child.Bytes, (byte)Instruction.GAS, (byte)call, (byte)Instruction.POP,
+            .. StoreWords([Instruction.ADDRESS, Instruction.CALLER, Instruction.CALLVALUE], childOutputSize),
+            (byte)Instruction.PUSH2, 1, 0, (byte)Instruction.PUSH0, (byte)Instruction.RETURN
+        ];
+
+        GuestTransactionVirtualMachine vm = new(childCode, ContextOrigin, ContextGasPrice);
+        byte[] output = vm.Call(parentCode, 1_000_000, ContextAccount, ContextCaller, ContextCallValue);
+
+        (Address account, Address caller, UInt256 value) = call is Instruction.DELEGATECALL
+            ? (ContextAccount, ContextCaller, ContextCallValue)
+            : (child, ContextAccount, UInt256.Zero);
+        UInt256[] expected =
+        [
+            AddressWord(account), AddressWord(caller), value, AddressWord(ContextOrigin), ContextGasPrice,
+            AddressWord(ContextAccount), AddressWord(ContextCaller), ContextCallValue
+        ];
+        Assert.That(Convert.ToHexString(output), Is.EqualTo(string.Concat(expected.Select(static word => Convert.ToHexString(word.ToBigEndian())))));
+
+        static UInt256 AddressWord(Address address) => new(address.Bytes, isBigEndian: true);
+    }
+
+    /// <summary>Code that stores <paramref name="words"/> in consecutive memory words from <paramref name="offset"/>.</summary>
+    private static IEnumerable<byte> StoreWords(Instruction[] words, byte offset) =>
+        words.SelectMany((opcode, i) => (byte[])[(byte)opcode, (byte)Instruction.PUSH1, (byte)(offset + i * EvmStack.WordSize), (byte)Instruction.MSTORE]);
 
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
