@@ -25,10 +25,12 @@ public sealed class WarmedNodeBuffer(int capacity) : IDisposable
     // The path to pointer index is only for the warmer. The main buffer is not connected to the warmed one: its records never point
     // into it, as committed records drop transient pointers, so a warmed node below a main-buffer record is found by its position.
     private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
+    // Most leases, such as a read-only call's, never write; counting and clearing the index takes each of its locks.
+    private volatile bool _written;
 
     /// <summary>Number of indexed node positions.</summary>
-    /// <remarks>Takes every lock of the position index.</remarks>
-    public int Count => _pointers.Count;
+    /// <remarks>Takes every lock of the position index once anything was written since the last <see cref="Reset"/>.</remarks>
+    public int Count => _written ? _pointers.Count : 0;
 
     /// <summary>Finds the record at a pointer of this buffer; misses on any pointer without the transient prefix.</summary>
     public bool TryLocate(ulong pointer, out NodeRecord record)
@@ -56,18 +58,34 @@ public sealed class WarmedNodeBuffer(int capacity) : IDisposable
     /// hash its parent references, so a correct traversal writes correct nodes and links a correct graph. For the same reason, a record
     /// read back from the buffer is not verified either: it is always reached through that traversal.
     /// </remarks>
-    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new TransientWriteBatch(_buffer.StartWriteBatch(alignedTotalLength));
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength)
+    {
+        MarkWritten();
+        return new TransientWriteBatch(_buffer.StartWriteBatch(alignedTotalLength));
+    }
 
     /// <summary>Indexes the record at <paramref name="pointer"/> at its position, in place of any earlier one.</summary>
     /// <remarks>Called only once the record is written, so a reader of the position never sees a partial record.</remarks>
-    public void Index(Hash256? address, in TreePath path, ulong pointer) => _pointers[(address, path)] = pointer;
+    public void Index(Hash256? address, in TreePath path, ulong pointer)
+    {
+        MarkWritten();
+        _pointers[(address, path)] = pointer;
+    }
 
     /// <summary>Empties the position index and releases the records appended so far.</summary>
     /// <remarks>No reader or writer may be running, and no record or pointer handed out before may be used after.</remarks>
     public void Reset()
     {
+        if (!_written) return;
         _pointers.NoResizeClear();
         _buffer.Clear();
+        _written = false;
+    }
+
+    // Read before the write so concurrent warmers do not keep invalidating the line the flag shares.
+    private void MarkWritten()
+    {
+        if (!_written) _written = true;
     }
 
     public void Dispose() => _buffer.Dispose();
