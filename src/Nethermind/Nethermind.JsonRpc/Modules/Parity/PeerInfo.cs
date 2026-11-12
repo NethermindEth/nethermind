@@ -41,16 +41,15 @@ namespace Nethermind.JsonRpc.Modules.Parity
                 Id = session.RemoteNodeId.ToString();
                 peerNetworkInfo.RemoteAddress = session.State != SessionState.New ? session.RemoteHost : "Handshake";
 
-                if (session.TryGetProtocolHandler(Protocol.Eth, out IProtocolHandler handler))
+                if (session.TryGetProtocolHandler(Protocol.Eth, out IProtocolHandler handler)
+                    && handler is ISyncPeer { IsInitialized: true } syncPeer)
                 {
-                    EthProtocolInfo ethProtocolInfo = new() { Version = handler.ProtocolVersion };
-                    if (handler is ISyncPeer syncPeer)
+                    Protocols["eth"] = new EthProtocolInfo
                     {
-                        ethProtocolInfo.Difficulty = syncPeer.TotalDifficulty;
-                        ethProtocolInfo.HeadHash = syncPeer.HeadHash;
-                    }
-
-                    Protocols["eth"] = ethProtocolInfo;
+                        Version = handler.ProtocolVersion,
+                        Difficulty = syncPeer.TotalDifficulty,
+                        HeadHash = syncPeer.HeadHash
+                    };
                 }
 
                 if (session.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler p2PHandler))
