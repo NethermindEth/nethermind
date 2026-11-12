@@ -101,7 +101,6 @@ namespace Ethereum.Test.Base
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();

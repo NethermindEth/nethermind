@@ -43,6 +43,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly Address? _sender;
     private readonly TxFrame[]? _frames;
     private readonly Transaction? _frameTx;
+    private readonly Transaction? _creationTx;
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
@@ -76,6 +77,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _sender = tx.SenderAddress;
         _frames = _isFrameTx ? tx.Frames : null;
         _frameTx = _isFrameTx ? tx : null;
+        _creationTx = tx.IsContractCreation ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
@@ -207,10 +209,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
     /// error; a failed creation drops its <c>to</c>.
     /// </summary>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         OnError(gasLeft, error);
     }
 
@@ -268,6 +270,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _blockLogIndex?.Next = (int)_logIndexStart + KeptFrameLogCount();
 
         CollapseFrameRoots();
+        if (_callStack.Count == 0 && _creationTx is not null && error == nameof(EvmExceptionType.TransactionCollision))
+        {
+            // A creation colliding with an existing account fails before its frame starts; Geth still reports the frame.
+            _error = EvmExceptionType.TransactionCollision;
+            _callStack.Add(new NativeCallTracerCallFrame
+            {
+                Type = Instruction.CREATE,
+                From = _sender,
+                Gas = _gasLimit,
+                Value = _creationTx.Value,
+                Input = _creationTx.Data
+            });
+        }
+
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;

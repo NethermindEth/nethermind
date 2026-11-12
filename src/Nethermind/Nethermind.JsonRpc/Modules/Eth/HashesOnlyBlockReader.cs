@@ -257,7 +257,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
         try
         {
-            return Decode(memoryOwner.Memory);
+            return Decode(memoryOwner.Memory, blockHash);
         }
         finally
         {
@@ -268,11 +268,11 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// <returns>The block, or <see langword="null"/> when the stored block does not decode as the layout this reader
     /// knows, so that a body field a later fork adds, or anything else unexpected, leaves the block to the block tree's
     /// decoder instead of failing the request.</returns>
-    private HashesOnlyBlock? Decode(Memory<byte> memory)
+    private HashesOnlyBlock? Decode(Memory<byte> memory, Hash256 blockHash)
     {
         try
         {
-            return DecodeKnownLayout(memory);
+            return DecodeKnownLayout(memory, blockHash);
         }
         catch (Exception)
         {
@@ -283,7 +283,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// <remarks>Mirrors <see cref="BlockDecoder"/> and <see cref="BlockBodyDecoder.DecodeUnwrapped"/>, with its count
     /// limits: header, then transactions, uncles and optional withdrawals. The reader is span-backed so that nothing decoded keeps a slice of
     /// the database buffer, which is released on return.</remarks>
-    private HashesOnlyBlock? DecodeKnownLayout(Memory<byte> memory)
+    private HashesOnlyBlock? DecodeKnownLayout(Memory<byte> memory, Hash256 blockHash)
     {
         RlpReader reader = new(memory.Span);
         if (reader.IsNextItemEmptyList())
@@ -293,7 +293,8 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
         int sequenceLength = reader.ReadSequenceLength();
         int blockEnd = reader.Position + sequenceLength;
-        BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref reader);
+        BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.ExcludeHashes);
+        header.Hash = blockHash;
         ValueHash256[] transactionHashes = ReadTransactionHashes(ref reader, memory, header);
         BlockHeader[] uncles = reader.DecodeNonNullArray(_headerDecoder, limit: BlockBodyDecoder.UnclesCountLimit);
         Withdrawal[]? withdrawals = reader.PeekNumberOfItemsRemaining(blockEnd, 1) > 0

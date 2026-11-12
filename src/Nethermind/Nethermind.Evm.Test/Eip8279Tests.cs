@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -224,7 +223,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     {
         Address authority = new("0x0000000000000000000000000000000000000042");
         TestState.CreateAccount(authority, 0);
-        CodeInfoRepository.SetDelegation(ColdAccount, authority, Spec8279);
+        CodeInfoRepository.SetDelegation(TestState, ColdAccount, authority, Spec8279);
         Prepare code = Prepare.EvmCode;
         if (touchedTarget) code.PushData(ColdAccount).Op(Instruction.BALANCE).Op(Instruction.POP);
         code.Call(authority, 50_000).STOP();
