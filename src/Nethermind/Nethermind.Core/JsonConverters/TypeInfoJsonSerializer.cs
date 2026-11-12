@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
@@ -99,6 +100,17 @@ public static class TypeInfoJsonSerializer
     /// <inheritdoc cref="JsonSerializer.DeserializeAsync{TValue}(Stream, JsonSerializerOptions, CancellationToken)"/>
     public static ValueTask<TValue?> DeserializeAsync<TValue>(Stream utf8Json, JsonSerializerOptions options, CancellationToken cancellationToken = default) =>
         JsonSerializer.DeserializeAsync(utf8Json, GetTypeInfo<TValue>(options), cancellationToken);
+
+    /// <summary>Reads the value at <paramref name="reader"/> with the converter the options resolve for <typeparamref name="TValue"/>.</summary>
+    /// <remarks>
+    /// For converters reading a nested value, which is always fully buffered. <see cref="Deserialize{TValue}(ref Utf8JsonReader, JsonSerializerOptions)"/>
+    /// first skips the whole value to scope a reader to it, so each nesting level would scan the value once more.
+    /// Like the serializer, it reads a JSON null as <see langword="null"/> without calling the converter.
+    /// </remarks>
+    public static TValue? ReadNested<TValue>(ref Utf8JsonReader reader, JsonSerializerOptions options) where TValue : class =>
+        reader.TokenType == JsonTokenType.Null
+            ? null
+            : ((JsonConverter<TValue>)GetTypeInfo<TValue>(options).Converter).Read(ref reader, typeof(TValue), options);
 
     /// <summary>Gets the metadata the options resolve for <typeparamref name="T"/>.</summary>
     public static JsonTypeInfo<T> GetTypeInfo<T>(JsonSerializerOptions options) => TypeInfoCache<T>.Get(options);
