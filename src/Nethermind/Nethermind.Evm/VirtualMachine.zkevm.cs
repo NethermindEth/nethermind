@@ -56,12 +56,17 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static bool UsesGuestStorageHandlerForTests(IReleaseSpec spec, Instruction opcode)
     {
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] guest = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[handlers.Length];
-        if (SpecFlags.Eip8038(spec))
-            SetStorageHandlers<Eip8038On>(guest, spec);
-        else
-            SetStorageHandlers<Eip8038Off>(guest, spec);
-        return (nint)guest[(int)opcode] != 0 && (nint)handlers[(int)opcode] == (nint)guest[(int)opcode];
+        nint expected = (opcode, spec.IsEip8038Enabled, spec.IsEip8360Enabled) switch
+        {
+            (Instruction.SSTORE, true, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038On>),
+            (Instruction.SSTORE, false, _) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore<Eip8038Off>),
+            (Instruction.SLOAD, true, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OnFlag>),
+            (Instruction.SLOAD, true, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038On, OffFlag>),
+            (Instruction.SLOAD, false, true) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OnFlag>),
+            (Instruction.SLOAD, false, false) => (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<Eip8038Off, OffFlag>),
+            _ => 0
+        };
+        return expected != 0 && (nint)handlers[(int)opcode] == expected;
     }
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>

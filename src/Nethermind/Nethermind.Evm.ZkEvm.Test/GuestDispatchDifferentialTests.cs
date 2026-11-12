@@ -666,6 +666,52 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    public enum FrameStorageOperation { Create, RestoreInSameFrame, RestoreInLaterFrame }
+
+    [Test]
+    public void Frame_storage_charge_ownership_matches_the_shared_handlers([Values] FrameStorageOperation operation,
+        [Values(0UL, 5UL, 6UL, 2306UL, 12205UL, 12206UL, 14512UL, 14513UL, 100000UL)] ulong gas)
+    {
+        // Seed the empty nonce-key hash so constructing the context needs no native guest precompile.
+        KeccakCache.WriteMemo(new byte[32], new ValueHash256("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"));
+        byte[] create = [(byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, FirstEmptyKey, (byte)Instruction.SSTORE];
+        byte[] restore = [(byte)Instruction.PUSH1, 0, (byte)Instruction.PUSH1, FirstEmptyKey, (byte)Instruction.SSTORE];
+        byte[] code = [.. create, .. operation == FrameStorageOperation.Create ? [] : restore, (byte)Instruction.STOP];
+        FrameTxContext actualContext = Context();
+        FrameTxContext expectedContext = Context();
+        EthereumGasPolicy initial = EthereumGasPolicy.FromULong(gas) with { StateReservoir = 100_000 };
+        Outcome actual = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, Amsterdam.Instance,
+            loadsStorage: true, initial: initial, frameTxContext: actualContext, advanceFrameAfterWrite: operation == FrameStorageOperation.RestoreInLaterFrame);
+        Outcome expected = Run(gas, [], 0, new CodeInfo(code), Table.Traced, Amsterdam.Instance,
+            loadsStorage: true, initial: initial, frameTxContext: expectedContext, advanceFrameAfterWrite: operation == FrameStorageOperation.RestoreInLaterFrame);
+        StorageCell slot = new(Address.Zero, FirstEmptyKey);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Matches(actual, expected), Is.True, $"{actual}\n{expected}");
+            Assert.That(actual.Policy, Is.EqualTo(expected.Policy));
+            Assert.That(actual.Refund, Is.EqualTo(expected.Refund));
+            Assert.That(actualContext.FrameJournalCheckpoint, Is.EqualTo(expectedContext.FrameJournalCheckpoint));
+            Assert.That(actualContext.StateGasUsedFor(0), Is.EqualTo(expectedContext.StateGasUsedFor(0)));
+            bool owned = actualContext.TryResolveStateChargeOwner(slot, out int owner);
+            Assert.That(owned, Is.EqualTo(expectedContext.TryResolveStateChargeOwner(slot, out int expectedOwner)));
+            Assert.That(owner, Is.EqualTo(expectedOwner));
+            if (gas == 100000)
+            {
+                Assert.That(actual.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(owned, Is.EqualTo(operation == FrameStorageOperation.Create));
+                Assert.That(actualContext.StateGasUsedFor(0), Is.EqualTo(operation == FrameStorageOperation.RestoreInLaterFrame ? 0UL : (ulong)GasCostOf.SSetState));
+                Assert.That(actual.Policy.StateGasUsed, Is.EqualTo(operation == FrameStorageOperation.RestoreInSameFrame ? 0UL : (ulong)GasCostOf.SSetState));
+            }
+        }
+
+        static FrameTxContext Context()
+        {
+            FrameTxContext context = new(Address.Zero, 0, new TxFrame[2], [], new Transaction(), null, UInt256.Zero, UInt256.Zero, UInt256.Zero);
+            context.RecordFrameReceipt(0, 0, GasCostOf.SSetState);
+            return context;
+        }
+    }
+
     /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows which handler runs.</remarks>
     [Test]
     public void Guest_storage_load_handler_is_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
@@ -1067,9 +1113,21 @@ public class GuestDispatchDifferentialTests
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null)
+        ICodeInfoRepository? codeInfoRepository = null, FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        if (frameTxContext is not null)
+        {
+            vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, null!, null, UInt256.Zero, frameTxContext));
+            if (advanceFrameAfterWrite)
+            {
+                // Model the outer frame loop advancing after the first frame creates the slot.
+                vm.WorldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                    .Do(_ => frameTxContext.CurrentFrameIndex = 1);
+                vm.WorldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>(), Arg.Any<UInt256>()))
+                    .Do(_ => frameTxContext.CurrentFrameIndex = 1);
+            }
+        }
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (codeInfoRepository is not null)
         {
