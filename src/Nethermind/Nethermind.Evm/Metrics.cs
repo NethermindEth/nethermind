@@ -55,21 +55,31 @@ public partial class Metrics
 
     internal static void AddCaptured(in ExecutionMetricsCounters counters) => _capture?.Value.Counters.Add(in counters);
 
-    // Fires per code lookup, i.e. per call frame: the single shared "other" word made this a
-    // contended cross-core RMW for every concurrent RPC/prewarm thread — striped instead.
+    // Fires per code lookup, i.e. per CALL and EXTCODE*: an atomic add each time costs more than the
+    // lookup's memo hit, so the hits gather on the thread and reach the shared words once per transaction.
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
-    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Sum;
+    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Sum + _pendingCodeDbCache;
     private static CacheLinePaddedLong _mainCodeDbCache;
     private static readonly StripedLong _otherCodeDbCache = new();
+    [ThreadStatic] private static long _pendingCodeDbCache;
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeDbCache()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        if (IsBlockProcessingThread) Interlocked.Increment(ref _mainCodeDbCache.Value);
-        else _otherCodeDbCache.Increment();
+        _pendingCodeDbCache++;
+    }
+
+    /// <summary>Publishes the code cache hits this thread gathered since it last published them.</summary>
+    internal static void FlushCodeDbCache()
+    {
+        long pending = _pendingCodeDbCache;
+        if (pending == 0) return;
+        _pendingCodeDbCache = 0;
+        if (IsBlockProcessingThread) Interlocked.Add(ref _mainCodeDbCache.Value, pending);
+        else _otherCodeDbCache.Add(pending);
     }
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]

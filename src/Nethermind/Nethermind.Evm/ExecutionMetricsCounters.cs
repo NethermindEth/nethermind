@@ -78,6 +78,7 @@ internal struct ExecutionMetricsCounters
         if (EmptyCalls != 0) Metrics.AddEmptyCalls(EmptyCalls);
         if (Creates != 0) Metrics.AddCreates(Creates);
         if (SelfDestructs != 0) Metrics.AddSelfDestructs(SelfDestructs);
+        Metrics.FlushCodeDbCache();
         Metrics.AddCaptured(in this);
     }
 
