@@ -154,17 +154,17 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The caller's chain chose its handlers before the call. Under EIP-150 the caller keeps only a 64th of its gas,
+    /// so after a nested call it must continue on the handlers that gas allows, as the frame loop would choose them.
+    /// </remarks>
     [Test]
-    public void Calls_only_nest_when_the_caller_retains_gas_for_its_unchecked_tail(
+    public void Caller_continues_a_nested_call_on_the_handlers_its_gas_allows(
         [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
-        [Values(0, 7, 15)] int callDepth,
+        [Values(0, 7, 15, 16)] int callDepth,
         [Values] bool retainsGas)
     {
         Address target = new("0x00000000000000000000000000000000000000bb");
-        CodeInfo childCode = new(new byte[] { (byte)Instruction.INVALID });
-        ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
-        repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
-            .Returns(childCode);
         byte[] call =
         [
             (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
@@ -175,30 +175,43 @@ public class GuestDispatchDifferentialTests
         ];
         byte[] code = [.. call, .. UntestedTail()];
         ulong retainedGas = (ulong)code.Length - (retainsGas ? 0UL : 1UL);
-        ulong callCost = GasCostOf.ColdAccountAccess + 2 * GasCostOf.VeryLow +
-            (op == Instruction.CALL ? 5UL : 4UL) * GasCostOf.Base;
+        // A call to empty code charges what this one does and forwards no gas that is not returned.
+        const ulong ample = 100_000;
+        ulong callCost = ample - RunFrame(call, ample, callDepth, Repository(CodeInfo.Empty)).Gas;
         // EIP-150 retains floor(available / 64): test exactly the code length and one gas below it.
         ulong gas = retainedGas * 64 + callCost;
+        bool nests = callDepth < 16;
 
-        (EvmExceptionType exception, nint pc, ulong remainingGas) = RunFrame(code, gas, callDepth, repository);
+        (EvmExceptionType exception, nint pc, ulong remainingGas) =
+            RunFrame(code, gas, callDepth, Repository(new CodeInfo(new byte[] { (byte)Instruction.INVALID })));
 
-        using (Assert.EnterMultipleScope())
+        if (nests)
         {
-            Assert.That(exception, Is.EqualTo(retainsGas ? EvmExceptionType.OutOfGas : EvmExceptionType.Suspend));
-            Assert.That(pc, Is.EqualTo((nint)(retainsGas ? code.Length : call.Length)));
-            Assert.That(remainingGas, Is.EqualTo(retainsGas ? 0UL : retainedGas));
-        }
-
-        if (!retainsGas)
-        {
-            (EvmExceptionType resumed, nint stoppedAt, _) = RunFrame(code, remainingGas, startPc: call.Length);
-            Outcome shared = Run(remainingGas, [], 0, new CodeInfo(UntestedTail()), Table.Cancelable);
+            Outcome shared = Run(retainedGas, [], 0, new CodeInfo(UntestedTail()), Table.Cancelable);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(resumed, Is.EqualTo(EvmExceptionType.OutOfGas));
-                Assert.That(stoppedAt, Is.EqualTo(call.Length + shared.Pc));
+                Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+                Assert.That(pc, Is.EqualTo(retainsGas ? code.Length : call.Length + shared.Pc));
+                Assert.That(remainingGas, Is.Zero);
             }
         }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception, Is.EqualTo(EvmExceptionType.Suspend));
+                Assert.That(pc, Is.EqualTo((nint)call.Length));
+                Assert.That(remainingGas, Is.EqualTo(retainedGas));
+            }
+        }
+    }
+
+    private static ICodeInfoRepository Repository(CodeInfo code)
+    {
+        ICodeInfoRepository repository = Substitute.For<ICodeInfoRepository>();
+        repository.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(code);
+        return repository;
     }
 
     private static byte[] UntestedTail()
@@ -215,7 +228,7 @@ public class GuestDispatchDifferentialTests
     }
 
     private static unsafe (EvmExceptionType Exception, nint Pc, ulong Gas) RunFrame(
-        byte[] code, ulong gas, int callDepth = 0, ICodeInfoRepository? repository = null, int startPc = 0)
+        byte[] code, ulong gas, int callDepth = 0, ICodeInfoRepository? repository = null)
     {
         DispatchingVirtualMachine vm = new(ReleaseSpec);
         if (repository is not null)
@@ -224,8 +237,8 @@ public class GuestDispatchDifferentialTests
         }
         vm.PrepareFrameHandlersForTests();
         Type type = typeof(VirtualMachine<EthereumGasPolicy>);
-        RunDispatchLoop run = type.GetMethod("RunDispatchLoop", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .MakeGenericMethod(typeof(OffFlag), typeof(OffFlag)).CreateDelegate<RunDispatchLoop>(vm);
+        RunFrameCode run = type.GetMethod("RunFrameCode", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .MakeGenericMethod(typeof(OffFlag), typeof(OffFlag)).CreateDelegate<RunFrameCode>(vm);
 
         CodeInfo codeInfo = new(code);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, callDepth, UInt256.Zero, Array.Empty<byte>());
@@ -236,7 +249,7 @@ public class GuestDispatchDifferentialTests
         byte[] stackBytes = GC.AllocateArray<byte>((EvmStack.MaxStackSize + 2) * EvmStack.WordSize, pinned: true);
         int alignment = (int)((nuint)Unsafe.AsPointer(ref stackBytes[0]) & (EvmStack.WordSize - 1));
         EvmStack stack = new(0, vm.Tracer, ref stackBytes[alignment == 0 ? 0 : EvmStack.WordSize - alignment], codeInfo.ExecutionCodeSpan, codeInfo);
-        nint pc = startPc;
+        nint pc = 0;
         EvmExceptionType exception = run(ref stack, ref frame.Gas, ref pc);
 
         if (vm.ReturnData is VmState<EthereumGasPolicy> child) child.Dispose();
@@ -245,7 +258,7 @@ public class GuestDispatchDifferentialTests
 
     private const int UntestedRunLength = 400;
 
-    private delegate EvmExceptionType RunDispatchLoop(ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter);
+    private delegate EvmExceptionType RunFrameCode(ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter);
 
     /// <remarks>Without the fused entry, the pair tests below would only compare the shared handlers with themselves.</remarks>
     [Test]

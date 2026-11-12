@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -107,53 +106,48 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowGasOutOfRange() => throw new InvalidOperationException("The frame's gas does not fit the 32-bit dispatch chain.");
 
-    /// <summary>The entries each table held before the guest's handlers replaced some, keyed by the table.</summary>
-    private static readonly Dictionary<object, nint[]> _sharedHandlers = new(ReferenceEqualityComparer.Instance);
-
-    /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last, with the table it stands in for.</summary>
+    /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last.</summary>
     private static PairedHandlers? _checkedPairedHandlers;
 
-    /// <summary>Records the entries of <paramref name="handlers"/>, before the guest's handlers replace some of them.</summary>
-    private static void RecordSharedHandlers(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
-    {
-        nint[] shared = new nint[byte.MaxValue + 1];
-        fixed (void* entries = handlers)
-            new ReadOnlySpan<nint>(entries, shared.Length).CopyTo(shared);
-        lock (_sharedHandlers)
-            _sharedHandlers[handlers] = shared;
-    }
+    /// <summary>The paired table of the shared handlers only, which test the gas before every charge.</summary>
+    /// <remarks>
+    /// The guest's handlers replace entries only in the untraced table that cannot be cancelled, so the cancelable one
+    /// holds the shared handlers, and the guest, which is never cancelled, runs it to its end like any other.
+    /// </remarks>
+    private nint[] GetCheckedPairedHandlers() =>
+        PairHandlersOnce<OffFlag>(GetOpcodeHandlers<OffFlag, OnFlag>(), ref _checkedPairedHandlers);
 
-    /// <summary>The paired table for <paramref name="handlers"/> with only the shared handlers, which test the gas before every charge.</summary>
-    /// <remarks>A table that the guest's handlers did not replace entries of already tests every charge, so it is its own.</remarks>
-    private static nint[] GetCheckedPairedHandlers<TTracingInst>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
-        where TTracingInst : struct, IFlag
-    {
-        PairedHandlers? paired = Volatile.Read(ref _checkedPairedHandlers);
-        if (paired is null || paired.Source != handlers)
-        {
-            nint[]? shared;
-            lock (_sharedHandlers)
-                _sharedHandlers.TryGetValue(handlers, out shared);
-            if (shared is null)
-                return GetPairedHandlers<TTracingInst>(handlers);
-
-            paired = new PairedHandlers(handlers, null, PairHandlers(shared));
-            Volatile.Write(ref _checkedPairedHandlers, paired);
-        }
-
-        return paired.Entries;
-    }
+    /// <summary>Whether a frame with <paramref name="executionGas"/> left must run on <see cref="GetCheckedPairedHandlers"/>.</summary>
+    /// <remarks>
+    /// The guest's handlers charge some opcodes untested, so past a shortfall they run on to the next test, at the
+    /// latest the end of the code. Without this test a frame called with no gas would run all of its code, for the
+    /// cost of the call. With it, the frame has at least one unit of gas for each opcode it can run past a shortfall,
+    /// and it consumes all of that gas as it halts: no more than any code buys, as every opcode that does not halt
+    /// costs at least one unit. The bound is the whole code, not the bytes after the program counter: a frame can jump
+    /// back before its shortfall.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TestsEveryCharge(ulong executionGas, nint codeLength) => executionGas < (ulong)codeLength;
 
     /// <summary>Runs the current frame on the dispatch chain.</summary>
-    /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
+    /// <remarks>
+    /// The guest never consults a frame code runner, so a frame always runs on the dispatch chain. A chain that leaves
+    /// with <c>Suspend</c> and no staged child ran that child nested, and the frame continues on the handlers its gas
+    /// now allows (<see cref="TryRunStagedFrameNested"/>).
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private EvmExceptionType RunFrameCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref nint programCounter)
         where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag =>
-        RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        where TCancelable : struct, IFlag
+    {
+        EvmExceptionType exceptionType;
+        do exceptionType = RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        while (exceptionType == EvmExceptionType.Suspend && ReturnData is null);
+        return exceptionType;
+    }
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
@@ -167,12 +161,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// chain to its end like any other.
     /// </para>
     /// <para>
-    /// A frame with less gas than its code has bytes runs on the shared handlers (<see cref="GetCheckedPairedHandlers"/>),
-    /// which test the gas before every charge. The guest's handlers charge some opcodes untested, so past a shortfall
-    /// they run on to the next test, at the latest the end of the code. Without this test a frame called with no gas
-    /// would run all of its code, for the cost of the call. With it, the frame came in with at least one unit of gas
-    /// for each opcode it can run past a shortfall, and it consumes all of that gas as it halts: no more than any code
-    /// buys, as every opcode that does not halt costs at least one unit.
+    /// A frame with less gas than its code has bytes runs on the shared handlers (<see cref="TestsEveryCharge"/>). The
+    /// traced and cancelable tables hold only those already.
     /// </para>
     /// </remarks>
     [SkipLocalsInit]
@@ -188,9 +178,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return EvmExceptionType.None;
 
         ulong executionGas = GetExecutionGas(ref gas);
-        bool testsEveryCharge = executionGas < (ulong)stack.CodeLength;
+        bool testsEveryCharge = !TTracingInst.IsActive && !TCancelable.IsActive && TestsEveryCharge(executionGas, stack.CodeLength);
         nint[] handlers = testsEveryCharge
-            ? GetCheckedPairedHandlers<TTracingInst>(_opcodeHandlers)
+            ? GetCheckedPairedHandlers()
             : GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
         // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that

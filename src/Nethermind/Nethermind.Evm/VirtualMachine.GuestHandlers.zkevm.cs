@@ -53,7 +53,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();
 
-        RecordSharedHandlers(lookup);
         lookup[(int)Instruction.PUSH1] = AsTableEntry(&RawCalliHelper.ExecutePush1);
         lookup[(int)Instruction.DUP1] = AsTableEntry(&RawCalliHelper.ExecuteDup1<RawCalliHelper.TestedShape>);
         lookup[(int)Instruction.POP] = AsTableEntry(&RawCalliHelper.ExecutePop<RawCalliHelper.TestedShape>);
