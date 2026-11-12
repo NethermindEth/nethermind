@@ -2,7 +2,7 @@
 
 use super::error::AggregationError;
 use super::proof::{EthereumClaims, EthereumProof};
-use super::{LeanSphincsClaim, LeanXmssClaim};
+use super::{GenericClaim, LeanSphincsClaim};
 use std::collections::BTreeSet;
 
 /// The coverage slot each write in the guest's coverage walk targets, in walk
@@ -13,8 +13,8 @@ use std::collections::BTreeSet;
 ///
 /// | slots | holds |
 /// | --- | --- |
-/// | `[0, n_lean_xmss)` | the declared leanXMSS claims |
-/// | `[n_lean_xmss, X)` | leanXMSS duplicate slots |
+/// | `[0, n_generic)` | the declared leanSTARK claims |
+/// | `[n_generic, X)` | leanSTARK duplicate slots |
 /// | `[X, X + n_lean_sphincs)` | the declared leanSPHINCS claims |
 /// | `[X + n_lean_sphincs, n_total)` | leanSPHINCS duplicate slots |
 ///
@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 /// every writer as an offset into one region, bounded by that region's size, one
 /// range check per write, so no signature can reach a claim of the other scheme.
 pub(super) struct Coverage {
-    pub(super) xmss: Region<LeanXmssClaim>,
+    pub(super) generic: Region<GenericClaim>,
     pub(super) lean_sphincs: Region<LeanSphincsClaim>,
 }
 
@@ -106,16 +106,16 @@ fn take_slot<K: Ord + Clone>(claims: &[K], claimed: &mut [bool], duplicates: &mu
 }
 
 pub(super) fn plan_coverage(
-    raw_lean_xmss: &[LeanXmssClaim],
+    raw_generic: &[GenericClaim],
     raw_lean_sphincs: &[LeanSphincsClaim],
     children: &[EthereumProof],
     declare: Option<&EthereumClaims>,
 ) -> Result<Coverage, AggregationError> {
     let cover = Coverage {
-        xmss: Region::plan(
-            raw_lean_xmss,
-            children.iter().map(|child| child.claims.xmss.as_slice()),
-            declare.map(|claims| claims.xmss.as_slice()),
+        generic: Region::plan(
+            raw_generic,
+            children.iter().map(|child| child.claims.generic.as_slice()),
+            declare.map(|claims| claims.generic.as_slice()),
         )?,
         lean_sphincs: Region::plan(
             raw_lean_sphincs,

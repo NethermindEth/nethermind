@@ -1,125 +1,165 @@
-//! The one-time signature: `v` hash chains of `2^w - 1` steps, and the
-//! target-sum code that replaces the Winternitz checksum (WOTS+C), hashed as
-//! FIPS 205's WOTS+ is (§5).
+//! WOTS+ and the Merkle trees of the hypertree.
 //!
-//! A codeword is `v` chunks summing to `T`. Two distinct words of equal sum
-//! cannot be ordered componentwise, so revealing chain position `x_i` on every
-//! chain gives a forger nothing: any other codeword needs a position below one
-//! of the revealed ones, a preimage of a chain step. The price is that most
-//! messages do not encode into the code at all, hence the counter the signer
-//! searches for and the signature carries.
+//! A layer's WOTS key signs an `n`-byte node directly: its `len1 = 32` base-16
+//! digits, then the `len2 = 3` base-16 digits of the checksum `sum(w - 1 - digit)`,
+//! all read most significant first. Chain `i` starts at the revealed value, at hash
+//! address `digit_i`, and walks the `w - 1 - digit_i` remaining steps.
 
-use crate::lean_sphincs::*;
+use super::*;
 
-/// A one-time key of the hypertree: its layer, counted from the bottom, its tree
-/// on that layer, and its leaf in that tree.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OtsKey {
-    pub layer: usize,
-    pub tree: u64,
-    pub leaf: u32,
+/// The key pair's base address on a layer: `WOTS_HASH`, chain and hash address 0.
+pub fn wots_adrs(layer: u32, tree: u64, kp: u32) -> Adrs {
+    Adrs::new(layer, tree, WOTS_HASH, kp, 0, 0)
 }
 
-impl OtsKey {
-    /// The key of `layer` on the way from bottom leaf `idx` up: the bits below
-    /// the layer dropped, the rest split into a tree and a leaf.
-    pub fn of_index(layer: usize, idx: u64) -> Self {
-        let height = LAYER_HEIGHTS[layer];
-        let e = idx >> LAYER_HEIGHTS[..layer].iter().sum::<usize>();
-        Self {
-            layer,
-            tree: e >> height,
-            leaf: (e & ((1 << height) - 1)) as u32,
-        }
+/// The `l` digits a key signs `node` with: its nibbles, the high one of each
+/// byte first, then the checksum's, most significant first.
+pub fn digits(node: &Digest) -> [u8; L] {
+    let mut out = [0; L];
+    for (i, digit) in out[..LEN1].iter_mut().enumerate() {
+        *digit = (node[i / 2] >> (LOG_W * (1 - i % 2))) & (W - 1) as u8;
     }
-
-    /// The address of the key's tree, type `WOTS_HASH`.
-    pub fn tree_adrs(&self) -> Adrs {
-        Adrs::new(self.layer as u32, self.tree)
+    let csum = MAX_CSUM - out[..LEN1].iter().map(|&x| usize::from(x)).sum::<usize>();
+    for j in 0..LEN2 {
+        out[LEN1 + j] = ((csum >> (LOG_W * (LEN2 - 1 - j))) & (W - 1)) as u8;
     }
-
-    /// The key's address of type `t`: its tree's, with its leaf as the key pair.
-    pub fn adrs(&self, t: u32) -> Adrs {
-        self.tree_adrs().with_type(t).with_key_pair(self.leaf)
-    }
+    out
 }
 
-/// The starts of the `v` chains of a one-time key, one `PRF` each.
-fn wots_secrets(sk: &ExpandedKey, key: &OtsKey) -> [Digest; V] {
-    let adrs = key.adrs(WOTS_PRF);
-    std::array::from_fn(|i| prf(&sk.pk_seed, &sk.sk_seed, &adrs.with_chain(i as u32)))
-}
-
-/// `chain`: `steps` steps of chain `i` from position `start`; a step's hash
-/// address is the position it leaves.
-fn chain(pk_seed: &PkSeed, key: &OtsKey, i: usize, start: usize, steps: usize, value: Digest) -> Digest {
-    debug_assert!(start + steps < CHAIN_LEN);
-    let adrs = key.adrs(WOTS_HASH).with_chain(i as u32);
-    (start..start + steps).fold(value, |current, from| {
-        th(pk_seed, &adrs.with_hash(from as u32), &current)
+/// Chain `i` of a key pair walked `steps` steps from `value` at position `start`:
+/// step `s` hashes under hash address `start + s`.
+pub fn chain(pp: &PublicParam, base: Adrs, i: usize, value: Digest, start: usize, steps: usize) -> Digest {
+    (start..start + steps).fold(value, |v, pos| {
+        let adrs = Adrs {
+            word2: i as u32,
+            word3: pos as u32,
+            ..base
+        };
+        th(pp, &adrs, &[v])
     })
 }
 
-/// The Merkle leaf of a one-time key, its public key: `T_v` over its chain ends.
-fn wots_leaf_hash(pk_seed: &PkSeed, key: &OtsKey, ends: &[Digest; V]) -> Digest {
-    th_digests(pk_seed, &key.adrs(WOTS_PK), ends)
+/// The WOTS public key from the chain tops: `T_l` under `WOTS_PK`, 1184 bytes.
+pub fn wots_pk_of_tops(pp: &PublicParam, layer: u32, tree: u64, kp: u32, tops: &[Digest; L]) -> Digest {
+    th(pp, &Adrs::new(layer, tree, WOTS_PK, kp, 0, 0), tops)
 }
 
-/// The hash of `Enc(K, M, c)` before its counter: `PK.seed | ADRS_enc(K) | M`.
-fn encoder(pk_seed: &PkSeed, key: &OtsKey, message: &Digest) -> primitives::hash::Hasher {
-    let mut hasher = hasher(pk_seed, &key.adrs(WOTS_ENC));
-    hasher.update(message);
-    hasher
-}
-
-/// `Enc(K, M, c)`: `Trunc_n(H(PK.seed | ADRS_enc(K) | M | BE_32(c)))` as a codeword,
-/// or `None` if this counter's digest is not one.
-fn encode(encoder: &primitives::hash::Hasher, c: u32) -> Option<[u8; V]> {
-    codeword(&crate::truncate(encoder.clone().update(&c.to_be_bytes()).finalize()))
-}
-
-/// `base_2b(D, w, v)` (FIPS 205 Algorithm 4): the digest as `v` chunks of `w` bits,
-/// most significant first; a codeword if they sum to `T`.
-fn codeword(digest: &Digest) -> Option<[u8; V]> {
-    let d = u128::from_be_bytes(*digest);
-    let x: [u8; V] = std::array::from_fn(|i| ((d >> (W * (V - 1 - i))) & (CHAIN_LEN as u128 - 1)) as u8);
-    (x.iter().map(|&chunk| chunk as usize).sum::<usize>() == TARGET_SUM).then_some(x)
-}
-
-/// `Wots.sign`: the LEAST admissible counter, and the chain value each chunk
-/// opens. Deterministic in its inputs, which is what keeps one key to one
-/// codeword per message: a resumed or randomized search would leak two
-/// incomparable codewords.
-pub(crate) fn wots_sign(sk: &ExpandedKey, key: &OtsKey, message: &Digest) -> Option<(u32, [Digest; V])> {
-    let pk_seed = &sk.pk_seed;
-    let encoder = encoder(pk_seed, key, message);
-    let (c, x) = (0..MAX_ENCODING_ATTEMPTS).find_map(|c| encode(&encoder, c as u32).map(|x| (c as u32, x)))?;
-    let secrets = wots_secrets(sk, key);
-    let signature = std::array::from_fn(|i| chain(pk_seed, key, i, 0, x[i] as usize, secrets[i]));
-    Some((c, signature))
-}
-
-/// `Wots.leaf`: the leaf a claimed signature recovers, and the codeword it opens
-/// at, or `None` if its counter is not admissible for the message.
-pub fn wots_leaf(
-    pk_seed: &PkSeed,
-    key: &OtsKey,
-    message: &Digest,
-    c: u32,
-    signature: &[Digest; V],
-) -> Option<([u8; V], Digest)> {
-    let x = encode(&encoder(pk_seed, key, message), c)?;
-    let ends = std::array::from_fn(|i| {
-        let start = x[i] as usize;
-        chain(pk_seed, key, i, start, CHAIN_LEN - 1 - start, signature[i])
+/// The key a signature on `node` recovers.
+pub fn wots_pk_from_sig(
+    pp: &PublicParam,
+    layer: u32,
+    tree: u64,
+    kp: u32,
+    node: &Digest,
+    sigma: &[Digest; L],
+) -> Digest {
+    let digits = digits(node);
+    let base = wots_adrs(layer, tree, kp);
+    let tops = std::array::from_fn(|i| {
+        let d = usize::from(digits[i]);
+        chain(pp, base, i, sigma[i], d, W - 1 - d)
     });
-    Some((x, wots_leaf_hash(pk_seed, key, &ends)))
+    wots_pk_of_tops(pp, layer, tree, kp, &tops)
 }
 
-/// `wots_pkGen`: the leaf of a one-time key, from the secret key, what building a
-/// tree spends its hashes on.
-pub(crate) fn wots_public_leaf(sk: &ExpandedKey, key: &OtsKey) -> Digest {
-    let secrets = wots_secrets(sk, key);
-    let ends = std::array::from_fn(|i| chain(&sk.pk_seed, key, i, 0, CHAIN_LEN - 1, secrets[i]));
-    wots_leaf_hash(&sk.pk_seed, key, &ends)
+/// Chain `i`'s secret, `PRF` under `WOTS_PRF`.
+fn wots_secret(sk_seed: &[u8; N], layer: u32, tree: u64, kp: u32, i: usize) -> Digest {
+    prf(sk_seed, &Adrs::new(layer, tree, WOTS_PRF, kp, i as u32, 0))
+}
+
+/// A key pair's public key.
+pub(crate) fn wots_pk(pp: &PublicParam, sk_seed: &[u8; N], layer: u32, tree: u64, kp: u32) -> Digest {
+    let base = wots_adrs(layer, tree, kp);
+    let tops = std::array::from_fn(|i| chain(pp, base, i, wots_secret(sk_seed, layer, tree, kp, i), 0, W - 1));
+    wots_pk_of_tops(pp, layer, tree, kp, &tops)
+}
+
+/// Sign `node`: each chain walked `digit_i` steps from its secret.
+pub(crate) fn wots_sign(
+    pp: &PublicParam,
+    sk_seed: &[u8; N],
+    layer: u32,
+    tree: u64,
+    kp: u32,
+    node: &Digest,
+) -> [Digest; L] {
+    let digits = digits(node);
+    let base = wots_adrs(layer, tree, kp);
+    std::array::from_fn(|i| {
+        chain(
+            pp,
+            base,
+            i,
+            wots_secret(sk_seed, layer, tree, kp, i),
+            0,
+            usize::from(digits[i]),
+        )
+    })
+}
+
+/// A hypertree Merkle node: `H` under `TREE`, height `height`, index `index`.
+pub fn tree_node(
+    pp: &PublicParam,
+    layer: u32,
+    tree: u64,
+    height: usize,
+    index: u32,
+    left: &Digest,
+    right: &Digest,
+) -> Digest {
+    th(
+        pp,
+        &Adrs::new(layer, tree, TREE, 0, height as u32, index),
+        &[*left, *right],
+    )
+}
+
+/// Fold a leaf up its authentication path to the tree's root.
+pub fn tree_fold(
+    pp: &PublicParam,
+    layer: u32,
+    tree: u64,
+    leaf_idx: u32,
+    leaf: Digest,
+    path: &[Digest; SUBTREE_H],
+) -> Digest {
+    path.iter().enumerate().fold(leaf, |node, (h, sibling)| {
+        let (left, right) = if (leaf_idx >> h) & 1 == 0 {
+            (node, *sibling)
+        } else {
+            (*sibling, node)
+        };
+        tree_node(pp, layer, tree, h + 1, leaf_idx >> (h + 1), &left, &right)
+    })
+}
+
+/// Every level of a complete Merkle tree over `leaves`, bottom first, each
+/// parent `node(height, index, left, right)`.
+pub(crate) fn merkle_levels(
+    leaves: Vec<Digest>,
+    node: impl Fn(usize, u32, &Digest, &Digest) -> Digest,
+) -> Vec<Vec<Digest>> {
+    let mut levels = vec![leaves];
+    while levels.last().unwrap().len() > 1 {
+        let below = levels.last().unwrap();
+        let height = levels.len();
+        let level = (0..below.len() / 2)
+            .map(|j| node(height, j as u32, &below[2 * j], &below[2 * j + 1]))
+            .collect();
+        levels.push(level);
+    }
+    levels
+}
+
+/// The siblings of leaf `leaf` in `levels`.
+pub(crate) fn auth_path<const HEIGHT: usize>(levels: &[Vec<Digest>], leaf: u32) -> [Digest; HEIGHT] {
+    std::array::from_fn(|h| levels[h][((leaf >> h) ^ 1) as usize])
+}
+
+/// One hypertree tree, all levels: `2^h'` WOTS keys and the nodes above them.
+pub(crate) fn subtree_levels(pp: &PublicParam, sk_seed: &[u8; N], layer: u32, tree: u64) -> Vec<Vec<Digest>> {
+    let leaves = parallel::map_collect(1 << SUBTREE_H, |kp| wots_pk(pp, sk_seed, layer, tree, kp as u32));
+    merkle_levels(leaves, |height, index, l, r| {
+        tree_node(pp, layer, tree, height, index, l, r)
+    })
 }

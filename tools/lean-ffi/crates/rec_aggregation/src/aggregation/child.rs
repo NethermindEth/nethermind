@@ -39,7 +39,7 @@ pub(super) fn whir_shape(mu: usize, log_inv_rate: usize) -> WhirShape {
 /// The path bits a query's Merkle walk dispatches on at a time, the guest's `QW` (`walk_path`).
 pub(super) const QUERY_WINDOW_BITS: usize = 6;
 /// The cells `decode_query_windows` holds a squeezed word's windows in, the guest's `QUERY_WINDOWS_CAP`.
-pub(super) const QUERY_WINDOWS_CAP: usize = 56;
+pub(super) const QUERY_WINDOWS_CAP: usize = 64;
 
 /// The depth of the cap a level's paths are walked into, which leaves the walked part whole windows of
 /// [`QUERY_WINDOW_BITS`] bits: at least two levels deep, and from `log2(queries) - 5` to five levels below that.
@@ -59,6 +59,28 @@ pub(super) fn block_groups(sources: &[(usize, usize)], side_starts: &[usize]) ->
     (0..sources.len())
         .filter(|&b| side_starts.contains(&b) || sources[b] != sources[b - 1])
         .collect()
+}
+
+/// The kappa source of the inner program's bytecode log: after `log_mem` (1) and the table
+/// logs (`2 + t`), so one guest verifies proofs of programs of any bytecode size.
+pub(super) const KBC_SOURCE: usize = leanvm_core::tables::N_TABLES + 2;
+
+/// A bytecode log no program has: upstream's `(0, PROBE)` entries are the bytecode-sized ones.
+const KBC_PROBE: usize = 1 << 20;
+
+fn bytecode_source(source: (usize, usize)) -> (usize, usize) {
+    assert!(source.1 < KBC_PROBE || source == (0, KBC_PROBE), "a bytecode-sized kappa off its constant source");
+    if source == (0, KBC_PROBE) { (KBC_SOURCE, 0) } else { source }
+}
+
+/// [`leanvm_core::cpu::block_kappa_sources`] with the bytecode log as the runtime source [`KBC_SOURCE`].
+pub(super) fn block_sources() -> Vec<(usize, usize)> {
+    leanvm_core::cpu::block_kappa_sources(KBC_PROBE).into_iter().map(bytecode_source).collect()
+}
+
+/// [`leanvm_core::cpu::col_kappa_sources`] with the bytecode log as the runtime source [`KBC_SOURCE`].
+pub(super) fn col_sources() -> Vec<Option<(usize, usize)>> {
+    leanvm_core::cpu::col_kappa_sources(KBC_PROBE).into_iter().map(|s| s.map(bytecode_source)).collect()
 }
 
 pub(super) fn col_groups(sources: &[(usize, usize)]) -> Vec<usize> {
@@ -96,7 +118,6 @@ pub(super) fn gen_verify(
             log_committed: layout.shape.mu,
         });
     }
-    let kbc = program.prog().len().trailing_zeros() as usize;
 
     // ---- typed extraction: the proof's stream + the verifier's summary ----
     let scalars = |values: &[verifier::E]| -> Vec<F192> { values.iter().copied().map(from_scalar).collect() };
@@ -121,7 +142,7 @@ pub(super) fn gen_verify(
     // ascending index) before deriving offsets from it.
     let mut sort_order: Vec<F192> = Vec::new();
     let mut gbase = 0usize;
-    let block_sources = leanvm_core::cpu::block_kappa_sources(kbc);
+    let block_sources = block_sources();
     let side_starts: Vec<usize> = sides
         .iter()
         .scan(0, |at, blocks| {
@@ -155,7 +176,7 @@ pub(super) fn gen_verify(
     // sorted by descending kappa, then by their native column index. Transport
     // compact committed-column indices; the guest certifies the permutation,
     // ordering, and accumulated offsets before using them as claim selectors.
-    let col_sources = leanvm_core::cpu::col_kappa_sources(kbc);
+    let col_sources = col_sources();
     let committed_globals: Vec<usize> = col_sources
         .iter()
         .enumerate()

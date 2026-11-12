@@ -3,11 +3,11 @@
 use super::MAX_RECURSIONS;
 use super::cells::{dsl_u128, pack_16_bytes};
 use super::child::{
-    MU_CAP, QUERY_WINDOW_BITS, QUERY_WINDOWS_CAP, STREAM_CAP, block_groups, col_groups, merkle_cap_depth, whir_shape,
+    KBC_SOURCE, MU_CAP, QUERY_WINDOW_BITS, QUERY_WINDOWS_CAP, STREAM_CAP, block_groups, block_sources, col_sources, col_groups, merkle_cap_depth, whir_shape,
 };
 use super::claim_pool::{ClaimSite, coord_difference, coord_kind, coord_scale, push_coord_terms, walk_claims};
 use super::deferred::RECURSION_AGG_LABEL;
-use super::hints::{DIGIT_GROUP, LX_DIGIT_GROUP, LX_WINDOW};
+use super::generic::{LEANSTARK_DEPS_DOMAIN, MAX_GENERIC_BYTECODE_LOG, MAX_GENERIC_DEPENDENCIES};
 use super::statement::{BIG_GROUPS, CLAIM_GROUP, STATEMENT_HEADER};
 use fiat_shamir::merkle::hash_to_scalars;
 use lean_compiler::f192_literal;
@@ -19,7 +19,7 @@ use leanvm_core::tables::N_TABLES;
 use leanvm_core::transcript::{FiatShamirState, RATE_SCALARS};
 use pcs::whir::{MAX_LOG_INV_RATE, MIN_LOG_INV_RATE};
 use primitives::field::{F64, F192, g_pow};
-use signatures::{lean_sphincs, lean_xmss};
+use signatures::lean_sphincs;
 use std::collections::BTreeMap;
 use std::ops::Range;
 
@@ -174,6 +174,7 @@ pub(super) fn placeholder_map(kbc: usize) -> BTreeMap<String, String> {
         rep.insert(format!("{k}_PLACEHOLDER"), v);
     };
     ps("STREAM_CAP", STREAM_CAP.to_string());
+    ps("KBC_SRC", KBC_SOURCE.to_string());
     ps("QW", QUERY_WINDOW_BITS.to_string());
     ps("QUERY_WINDOWS_CAP", QUERY_WINDOWS_CAP.to_string());
     ps("MIN_LOG_MEM", verifier::MIN_LOG_MEMORY.to_string());
@@ -184,11 +185,11 @@ pub(super) fn placeholder_map(kbc: usize) -> BTreeMap<String, String> {
     ps("GKR_ROUNDS_CAP", (MU_CAP * (MU_CAP + 1) / 2 + MU_CAP + 2).to_string());
     ps("GKR_POINTS_CAP", ((MU_CAP + 1) * MU_CAP).to_string());
     let (nclaims, nbcv) = bus_placeholders(&layout, kbc, &mut ps);
-    claim_placeholders(&layout, kbc, nclaims, &mut ps);
+    claim_placeholders(&layout, nclaims, &mut ps);
     table_placeholders(&mut ps);
     keccak_placeholders(&mut ps);
     field_placeholders(&mut ps);
-    opening_placeholders(kbc, &mut ps);
+    opening_placeholders(&mut ps);
     bytecode_placeholders(kbc, nbcv, &mut ps);
     da_placeholders(&mut ps);
     signature_placeholders(&mut ps);
@@ -218,9 +219,9 @@ fn bus_placeholders(
     // it decomposes into pooled claims instead.
     // The table sumcheck settles table claims; only framework blocks stream column values.
     let sch_pm = leanvm_core::cpu::schema();
-    let owner_pm: Vec<Option<usize>> = leanvm_core::cpu::block_kappa_sources(kbc)
+    let owner_pm: Vec<Option<usize>> = block_sources()
         .into_iter()
-        .map(|(src, _)| src.checked_sub(2))
+        .map(|(src, _)| src.checked_sub(2).filter(|&t| t < N_TABLES))
         .collect();
     for blocks in sides.iter() {
         for blk in blocks.iter() {
@@ -262,7 +263,7 @@ fn bus_placeholders(
     }
     ps("SIDE_BLOCK_START", literals(&sblk));
     ps("N_BLOCKS", nblocks.to_string());
-    let bks = leanvm_core::cpu::block_kappa_sources(kbc);
+    let bks = block_sources();
     // Push and pull emit bus blocks in matched pairs, so their baked kappa-source
     // segments are identical; the guest computes only push's side total and
     // aliases pull's mu to push's on this basis.
@@ -295,7 +296,7 @@ fn bus_placeholders(
     ps("BLOCK_KAPPA_ADJ", literals(bks.iter().map(|&(_, a)| a)));
     ps(
         "BLOCK_TABLE",
-        literals(bks.iter().map(|&(s, _)| if s >= 2 { s - 2 } else { N_TABLES })),
+        literals(bks.iter().map(|&(s, _)| if (2..2 + N_TABLES).contains(&s) { s - 2 } else { N_TABLES })),
     );
     let mut block_side = Vec::new();
     for (s, blocks) in sides.iter().enumerate() {
@@ -305,6 +306,14 @@ fn bus_placeholders(
     ps("BLOCK_COORD_OFF", literals(block_coords.iter().map(|r| r.start)));
     ps("BLOCK_COORD_COUNT", literals(block_coords.iter().map(|r| r.len())));
     ps("COORD_TYPE", literals(coordinates.iter().map(|c| c.kind)));
+    // The pull boundary's final pc `g^(2^kbc - 1)` is the one constant that depends on the inner
+    // program: the guest reads it from its runtime bytecode log instead.
+    let final_pc = dsl_u128(F192::from(g_pow((1 << kbc) - 1)));
+    let final_pc_coord: Vec<usize> = (0..coordinates.len())
+        .filter(|&c| coordinates[c].kind == coord_kind(&Coord::Const(F64::ONE)) && coordinates[c].constant == final_pc)
+        .collect();
+    assert_eq!(final_pc_coord.len(), 1, "one final pc coordinate");
+    ps("FINAL_PC_COORD", final_pc_coord[0].to_string());
     ps("COORD_CONST", literals(coordinates.iter().map(|c| c.constant)));
     ps("COORD_PADDING", literals(coordinates.iter().map(|c| c.padding)));
     ps("COORD_FRESH", literals(coordinates.iter().map(|c| c.fresh)));
@@ -364,8 +373,7 @@ fn bus_placeholders(
 /// The claim pool's descriptors.
 fn claim_placeholders(
     layout: &leanvm_core::cpu::Layout,
-    kbc: usize,
-    nclaims: usize,
+        nclaims: usize,
     ps: &mut impl FnMut(&str, String),
 ) {
     let evtot: usize = leanvm_core::tables::tables()
@@ -375,7 +383,7 @@ fn claim_placeholders(
     let ncl = nclaims + evtot + 3; // bus + constraint + the three PI memory-limb claims
 
     // ---- claim descriptor buffer ids (structural) ----
-    let col_sources_pm = leanvm_core::cpu::col_kappa_sources(kbc);
+    let col_sources_pm = col_sources();
     let mut compact_col_pm = vec![usize::MAX; col_sources_pm.len()];
     let mut n_committed = 0usize;
     for (global, source) in col_sources_pm.iter().enumerate() {
@@ -387,7 +395,7 @@ fn claim_placeholders(
     let qkeccak_compact = compact_col_pm[leanvm_core::cpu::QKECCAK];
     assert_ne!(qkeccak_compact, usize::MAX, "QKECCAK must be committed");
     let mut claims = Vec::new();
-    walk_claims(layout, kbc, |site| {
+    walk_claims(layout, |site| {
         let descriptor = match site {
             ClaimSite::Framework { column, source } => {
                 let column = compact_col_pm[column];
@@ -592,8 +600,8 @@ fn field_placeholders(ps: &mut impl FnMut(&str, String)) {
 }
 
 /// The stacked opening's candidate tables, one per committed size and rate: every size the native verifier accepts of
-/// an execution of the guest's bytecode, `min_execution_stacked_log(kbc)..=MAX_STACKED_LOG`.
-fn opening_placeholders(kbc: usize, ps: &mut impl FnMut(&str, String)) {
+/// an execution of any bytecode, `MIN_STACKED_LOG..=MAX_STACKED_LOG`.
+fn opening_placeholders(ps: &mut impl FnMut(&str, String)) {
     let oshape = |m: usize, log_inv_rate: usize| {
         let shape = whir_shape(m, log_inv_rate);
         let (vc, sh) = (&shape.config, &shape.levels);
@@ -642,7 +650,7 @@ fn opening_placeholders(kbc: usize, ps: &mut impl FnMut(&str, String)) {
             ood_samples: shape.config.ood_samples,
         }
     };
-    let (minm, maxm) = (verifier::min_execution_stacked_log(kbc), verifier::MAX_STACKED_LOG);
+    let (minm, maxm) = (verifier::MIN_STACKED_LOG, verifier::MAX_STACKED_LOG);
     let rates = pcs::whir::MIN_LOG_INV_RATE..=pcs::whir::MAX_LOG_INV_RATE;
     let cands: Vec<_> = rates.flat_map(|r| (minm..=maxm).map(move |m| oshape(m, r))).collect();
     let maxlev = cands.iter().map(|c| c.n_levels).max().unwrap();
@@ -650,7 +658,7 @@ fn opening_placeholders(kbc: usize, ps: &mut impl FnMut(&str, String)) {
     ps("LIG_MAX_LEVELS", maxlev.to_string());
     ps("LIG_MAX_OOD_SAMPLES", maxood.to_string());
     ps("LIG_MIN_LOG_SIZE", minm.to_string());
-    let cks: Vec<(usize, usize)> = leanvm_core::cpu::col_kappa_sources(kbc).into_iter().flatten().collect();
+    let cks: Vec<(usize, usize)> = col_sources().into_iter().flatten().collect();
     ps("N_COMMITTED_COLS", cks.len().to_string());
     ps("N_COLUMN_LOGS", (verifier::MAX_STACKED_LOG + 1).to_string());
     ps("COL_KAPPA_SRC", literals(cks.iter().map(|&(s, _)| s)));
@@ -884,92 +892,41 @@ fn da_placeholders(ps: &mut impl FnMut(&str, String)) {
     );
 }
 
-// A leanSPHINCS chain step's address is WOTS_HASH's, the type the guest leaves zero.
-const _: () = assert!(signatures::lean_sphincs::WOTS_HASH == 0);
-
-/// Both signature schemes and the coverage caps.
+/// The signature scheme, the leanSTARK caps and domains, and the coverage caps.
 fn signature_placeholders(ps: &mut impl FnMut(&str, String)) {
-    // Both schemes' WOTS+C: the chain length and the digit sums of a dispatched group.
-    ps("W", lean_xmss::W.to_string());
-    ps("DIGIT_GROUP", DIGIT_GROUP.to_string());
-    let widest = LX_DIGIT_GROUP.max(DIGIT_GROUP);
-    let digit_sums: Vec<String> = (0..lean_xmss::CHAIN_LEN.pow(widest as u32))
-        .map(|k| {
-            let digits = (0..widest).map(|r| k / lean_xmss::CHAIN_LEN.pow(r as u32) % lean_xmss::CHAIN_LEN);
-            digits.sum::<usize>().to_string()
-        })
-        .collect();
-    ps("DIGIT_SUMS", format!("[{}]", digit_sums.join(", ")));
-    // leanXMSS: its hash types as its address lane holds them. Its addresses are
-    // derived per signature from the leaf index the signature carries.
-    let address = |tw| dsl_u128(pack_16_bytes(&lean_xmss::address(&tw))).to_string();
-    for (name, tag) in [
-        ("TW_CHAIN", lean_xmss::TWEAK_CHAIN),
-        ("TW_LEAF", lean_xmss::TWEAK_LEAF),
-        ("TW_NODE", lean_xmss::TWEAK_NODE),
-        ("TW_MSG", lean_xmss::TWEAK_MSG),
-    ] {
-        ps(name, address(lean_xmss::tweak(tag, 0, 0)));
-    }
-    ps("LX_V", lean_xmss::V.to_string());
-    ps("LX_TARGET_SUM", lean_xmss::TARGET_SUM.to_string());
-    ps("LX_HEIGHT", lean_xmss::LAYER_HEIGHT.to_string());
-    ps("LX_TOP", address(lean_xmss::tweak(0, lean_xmss::TOP, 0)));
-    ps("LX_WINDOW", LX_WINDOW.to_string());
-    ps("LX_DIGIT_GROUP", LX_DIGIT_GROUP.to_string());
-    let sizes =
-        (0..lean_xmss::V.div_ceil(LX_DIGIT_GROUP)).map(|p| LX_DIGIT_GROUP.min(lean_xmss::V - LX_DIGIT_GROUP * p));
-    ps("LX_GROUP_SIZES", format!("{:?}", sizes.collect::<Vec<_>>()));
-    // A chain index: zero and the powers of two are cells the guest has, the others a
-    // slot of the tags it carries.
-    let (mut slots, mut logs, mut n_tags) = (Vec::new(), Vec::new(), 0);
-    for i in 0..lean_xmss::V {
-        let carried = i != 0 && !i.is_power_of_two();
-        n_tags += usize::from(carried);
-        slots.push(if carried { n_tags } else { 0 });
-        logs.push(i.checked_ilog2().unwrap_or(0));
-    }
-    ps("LX_TAG_SLOT", format!("{slots:?}"));
-    ps("LX_TAG_LOG", format!("{logs:?}"));
-    ps("LX_N_TAGS", n_tags.to_string());
+    ps("MAX_GENERIC_BYTECODE_LOG", MAX_GENERIC_BYTECODE_LOG.to_string());
+    ps("MAX_GENERIC_DEPENDENCIES", MAX_GENERIC_DEPENDENCIES.to_string());
+    ps("DEPS_DOMAIN_0", dsl_u128(pack_16_bytes(&LEANSTARK_DEPS_DOMAIN[..16])).to_string());
+    ps("DEPS_DOMAIN_1", dsl_u128(pack_16_bytes(&LEANSTARK_DEPS_DOMAIN[16..])).to_string());
+    // The leanVM tag ahead of a program's table in its digest: its first 8 bytes as a lane, its 9th byte.
+    let tag: &[u8; 9] = verifier::TAG.try_into().expect("a 9-byte tag");
+    ps("TAG_LANE0", u64::from_le_bytes(tag[..8].try_into().unwrap()).to_string());
+    ps("TAG_BYTE8", tag[8].to_string());
     ps("CLAIM_GROUP", CLAIM_GROUP.to_string());
     ps("BIG_GROUPS", BIG_GROUPS.to_string());
     ps("MAX_RECURSIONS", MAX_RECURSIONS.to_string());
 
-    // The leanSPHINCS instance: its shape, each address type as A1, the address's
-    // second cell, holds it, and the cell bit each address field's low bytes start at.
-    // The guest derives the rest of every address from the digest.
-    use lean_sphincs::Adrs;
-    let cell = |adrs: Adrs, half: usize| dsl_u128(pack_16_bytes(&adrs.as_bytes()[16 * half..][..16]));
-    let at = Adrs::new(0, 0);
-    for (name, adrs, half) in [
-        ("SP_LAYER_MUL", Adrs::new(1, 0), 0),
-        ("SP_TREE_MUL_0", Adrs::new(0, 1), 0),
-        ("SP_TREE_MUL_1", Adrs::new(0, 1 << 8), 0),
-        ("SP_TREE_MUL_2", Adrs::new(0, 1 << 16), 0),
-        ("SP_KEY_MUL_0", at.with_key_pair(1), 1),
-        ("SP_KEY_MUL_1", at.with_key_pair(1 << 8), 1),
-        ("SP_WORD2_MUL", at.with_chain(1), 1),
-        ("SP_WORD3_MUL_0", at.with_tree_index(1), 1),
-        ("SP_WORD3_MUL_1", at.with_tree_index(1 << 8), 1),
+    // NiceTry SPHINCS- v2 (prototype).
+    for (name, value) in [
+        ("SP_K", lean_sphincs::K),
+        ("SP_A", lean_sphincs::A),
+        ("SP_D", lean_sphincs::D),
+        ("SP_HP", lean_sphincs::SUBTREE_H),
+        ("SP_H", lean_sphincs::H),
+        ("SP_W", lean_sphincs::W),
+        ("SP_LEN1", lean_sphincs::LEN1),
+        ("SP_LEN2", lean_sphincs::LEN2),
+        ("SP_MAX_CSUM", lean_sphincs::MAX_CSUM),
     ] {
-        ps(name, cell(adrs, half).to_string());
+        ps(name, value.to_string());
     }
-    ps("SP_V", lean_sphincs::V.to_string());
-    ps("SP_TARGET_SUM", lean_sphincs::TARGET_SUM.to_string());
-    for (layer, height) in lean_sphincs::LAYER_HEIGHTS.iter().enumerate() {
-        ps(&format!("SP_HEIGHT_{layer}"), height.to_string());
-    }
-    ps("SP_FORS_TREES", lean_sphincs::FORS_TREES.to_string());
-    ps("SP_FORS_HEIGHT", lean_sphincs::FORS_HEIGHT.to_string());
-    ps("SP_DIGEST_BYTES", lean_sphincs::DIGEST_BYTES.to_string());
-    for (name, t) in [
-        ("SP_WOTS_PK", lean_sphincs::WOTS_PK),
-        ("SP_TREE", lean_sphincs::TREE),
-        ("SP_FORS_TREE", lean_sphincs::FORS_TREE),
-        ("SP_FORS_ROOTS", lean_sphincs::FORS_ROOTS),
-        ("SP_WOTS_ENC", lean_sphincs::WOTS_ENC),
-    ] {
-        ps(name, cell(at.with_type(t), 1).to_string());
-    }
+    // Digest bit b (big-endian 256-bit integer) as an index into the bit run of the
+    // digest's last three lanes.
+    let bit_index: Vec<String> = (0..3 * 64)
+        .map(|b| {
+            let byte = 31 - b / 8;
+            (64 * (byte / 8 - 1) + 8 * (byte % 8) + b % 8).to_string()
+        })
+        .collect();
+    ps("SP_BIT_INDEX", format!("[{}]", bit_index.join(", ")));
 }

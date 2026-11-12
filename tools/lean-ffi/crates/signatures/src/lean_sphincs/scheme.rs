@@ -1,50 +1,59 @@
-//! The hypertree, the message digest, and the three algorithms.
+//! The hypertree and the three algorithms: `d = 5` layers of height-4 Merkle
+//! trees over WOTS+ keys, layer 0 signing the FORS key the message digest
+//! picks, the top layer's single root being the public key.
 //!
-//! The message digest picks a bottom leaf `idx`, and so a FORS instance and the
-//! one-time key on every layer above it. Nothing is reserved and nothing is
-//! spent, which is what makes the scheme stateless. The bottom key signs the
-//! FORS public key, the middle key the bottom tree's root, the top key the middle
-//! tree's root, and the top tree's root is `PK.root`.
+//! The digest `H_msg` names a hypertree leaf `htIdx` and the FORS indices, so a
+//! key answers for all `2^h` leaves with nothing reserved or spent: the scheme
+//! is stateless.
 
-use crate::lean_sphincs::*;
 
-/// Ordered lexicographically on [`Self::to_bytes`], which is what an aggregate's
-/// signer list is sorted and deduplicated by.
+use super::*;
+
+/// `(pkRoot, pkSeed)`. Ordered lexicographically on [`Self::flatten`], which is
+/// how an aggregate sorts the claims on one message. The on-chain form is two
+/// `bytes32`, each value top-aligned (`v ‖ 0^16`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LeanSphincsPublicKey {
-    pub(crate) pk_seed: PkSeed,
-    pub(crate) root: Digest,
+    pub root: Digest,
+    pub public_param: PublicParam,
 }
 
 impl LeanSphincsPublicKey {
     pub fn pk_seed(&self) -> &PkSeed {
-        &self.pk_seed
+        &self.public_param
     }
 
     pub fn root(&self) -> &Digest {
         &self.root
     }
 
-    /// `PK.seed | PK.root`.
+    /// `pkSeed | pkRoot`, upstream's claim order.
     pub fn to_bytes(&self) -> [u8; PUB_KEY_SIZE] {
         let mut out = [0; PUB_KEY_SIZE];
-        out[..N].copy_from_slice(&self.pk_seed);
+        out[..N].copy_from_slice(&self.public_param);
         out[N..].copy_from_slice(&self.root);
         out
     }
 
     pub fn from_bytes(bytes: &[u8; PUB_KEY_SIZE]) -> Self {
         Self {
-            pk_seed: bytes[..N].try_into().unwrap(),
+            public_param: bytes[..N].try_into().unwrap(),
             root: bytes[N..].try_into().unwrap(),
         }
     }
+
+    /// The verifier's `(pkSeed, pkRoot)` arguments. Always canonical (low 128
+    /// bits zero), which the EVM verifier requires.
+    pub fn to_bytes32(&self) -> ([u8; 32], [u8; 32]) {
+        (word(&self.public_param), word(&self.root))
+    }
 }
 
-/// `SK.seed`, all of the key: [`expand_key`] derives the rest.
+/// A secret key: its 32-byte master secret and nothing else. FIPS 205's three
+/// seeds and the public key are derived from it (see [`key_gen_from_seed`]).
 #[derive(Clone)]
 pub struct LeanSphincsSecretKey {
-    sk_seed: Seed,
+    master: MasterSecret,
 }
 
 impl std::fmt::Debug for LeanSphincsSecretKey {
@@ -54,79 +63,51 @@ impl std::fmt::Debug for LeanSphincsSecretKey {
 }
 
 impl LeanSphincsSecretKey {
-    /// The public key, rebuilt as key generation builds it: the whole top tree, on
-    /// `parallel`, so never from inside a `parallel` task.
+    /// SECRET KEY MATERIAL: the master secret.
+    pub fn to_bytes(&self) -> [u8; SECRET_KEY_SIZE] {
+        self.master
+    }
+
+    /// Inverse of [`Self::to_bytes`].
+    pub fn from_bytes(bytes: &[u8; SECRET_KEY_SIZE]) -> Self {
+        Self { master: *bytes }
+    }
+
+    /// The public key, derived: the root is the top layer's tree, `2^h'` WOTS
+    /// keys, so this costs about a fifth of a signature.
     pub fn public_key(&self) -> LeanSphincsPublicKey {
-        keygen(&expand_key(&self.sk_seed)).0
-    }
-
-    /// SECRET KEY MATERIAL: `SK.seed`, all of the key.
-    pub fn to_bytes(&self) -> Seed {
-        self.sk_seed
-    }
-
-    pub fn from_bytes(bytes: &Seed) -> Self {
-        Self { sk_seed: *bytes }
+        let (sk_seed, _, public_param) = derive_seeds(&self.master);
+        LeanSphincsPublicKey {
+            root: root_of(&public_param, &sk_seed),
+            public_param,
+        }
     }
 }
 
-/// What a signature carries for one layer: the one-time signature of what the
-/// layer below gives. Its key's path is [`LeanSphincsSignature::path`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LayerSignature {
-    pub(crate) counter: u32,
-    pub(crate) wots: [Digest; V],
-}
-
-impl LayerSignature {
-    pub fn counter(&self) -> u32 {
-        self.counter
-    }
-
-    pub fn wots(&self) -> &[Digest; V] {
-        &self.wots
-    }
+/// One hypertree layer of a signature.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HtLayer {
+    /// `σ`: chain `i` at position `digit_i`.
+    pub chains: [Digest; L],
+    /// The Merkle authentication path, bottom first.
+    pub path: [Digest; SUBTREE_H],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanSphincsSignature {
-    pub(crate) randomizer: Digest,
-    pub(crate) fors: ForsOpening,
-    /// Bottom first.
-    pub(crate) layers: [LayerSignature; LAYERS],
-    /// The layers' paths one after the other, bottom first ([`Self::path`]).
-    pub(crate) paths: [Digest; H],
-}
-
-/// Where layer `layer`'s path sits among a signature's path nodes: after every layer below it.
-fn path_range(layer: usize) -> std::ops::Range<usize> {
-    let start = LAYER_HEIGHTS[..layer].iter().sum();
-    start..start + LAYER_HEIGHTS[layer]
+    /// `R`.
+    pub randomizer: Randomizer,
+    /// One opened leaf secret per FORS tree.
+    pub fors_secrets: [Digest; K],
+    /// Each tree's authentication path, bottom first.
+    pub fors_paths: [[Digest; A]; K],
+    /// Layer 0 first.
+    pub layers: [HtLayer; D],
 }
 
 impl LeanSphincsSignature {
-    /// `R`.
-    pub fn randomizer(&self) -> &Digest {
-        &self.randomizer
-    }
-
-    pub fn fors(&self) -> &ForsOpening {
-        &self.fors
-    }
-
-    /// Bottom first.
-    pub fn layers(&self) -> &[LayerSignature; LAYERS] {
-        &self.layers
-    }
-
-    /// Layer `layer`'s path in its tree, from the leaf up.
-    pub fn path(&self, layer: usize) -> &[Digest] {
-        &self.paths[path_range(layer)]
-    }
-
-    /// The specification's serialization, exactly [`SIG_SIZE`] bytes: the
-    /// randomizer, the FORS openings, then each layer from the bottom up, its
-    /// counter (big endian), chain values and path.
+    /// The verifier's blob, exactly [`SIG_SIZE`] bytes: `R ‖ k × [secret ‖ a path
+    /// nodes] ‖ d × [l chains ‖ h' path nodes]`.
     pub fn to_bytes(&self) -> [u8; SIG_SIZE] {
         let mut out = [0; SIG_SIZE];
         let mut at = 0;
@@ -135,269 +116,259 @@ impl LeanSphincsSignature {
             at += bytes.len();
         };
         put(&self.randomizer);
-        for tree in &self.fors {
-            put(&tree.secret);
-            put(tree.path.as_flattened());
+        for (secret, path) in self.fors_secrets.iter().zip(&self.fors_paths) {
+            put(secret);
+            path.iter().for_each(|s| put(s));
         }
-        for (layer, signed) in self.layers.iter().enumerate() {
-            put(&signed.counter.to_be_bytes());
-            put(signed.wots.as_flattened());
-            put(self.path(layer).as_flattened());
+        for layer in &self.layers {
+            layer.chains.iter().for_each(|s| put(s));
+            layer.path.iter().for_each(|s| put(s));
         }
         debug_assert_eq!(at, SIG_SIZE);
         out
     }
 
     pub fn from_bytes(bytes: &[u8; SIG_SIZE]) -> Self {
-        let mut at = 0;
-        let mut take = |len: usize| {
-            at += len;
-            &bytes[at - len..at]
+        let at = std::cell::Cell::new(0);
+        let take = |len: usize| {
+            let s = &bytes[at.get()..at.get() + len];
+            at.set(at.get() + len);
+            s
         };
-        let randomizer = take(N).try_into().unwrap();
-        let fors = std::array::from_fn(|_| ForsTreeOpening {
-            secret: take(N).try_into().unwrap(),
-            path: std::array::from_fn(|_| take(N).try_into().unwrap()),
+        let digest = || -> Digest { take(N).try_into().unwrap() };
+        let randomizer = digest();
+        let trees: [(Digest, [Digest; A]); K] = std::array::from_fn(|_| (digest(), std::array::from_fn(|_| digest())));
+        let fors_secrets = trees.map(|(secret, _)| secret);
+        let fors_paths = trees.map(|(_, path)| path);
+        let layers = std::array::from_fn(|_| {
+            let chains = std::array::from_fn(|_| digest());
+            let path = std::array::from_fn(|_| digest());
+            HtLayer { chains, path }
         });
-        let mut paths = [[0; N]; H];
-        let layers = std::array::from_fn(|layer| {
-            let signed = LayerSignature {
-                counter: u32::from_be_bytes(take(COUNTER_LEN).try_into().unwrap()),
-                wots: std::array::from_fn(|_| take(N).try_into().unwrap()),
-            };
-            for node in &mut paths[path_range(layer)] {
-                *node = take(N).try_into().unwrap();
-            }
-            signed
-        });
-        debug_assert_eq!(at, SIG_SIZE);
+        debug_assert_eq!(at.get(), SIG_SIZE);
         Self {
             randomizer,
-            fors,
+            fors_secrets,
+            fors_paths,
             layers,
-            paths,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LeanSphincsSignError {
-    /// `C_max` counters in a row failed to encode.
-    NoAdmissibleEncoding,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LeanSphincsVerifyError {
-    /// A counter does not encode what its layer signs.
-    InadmissibleEncoding,
+    /// The hypertree walk does not reach the key's root: the only way a
+    /// well-formed signature fails, there being no grinding predicate to check.
     RootMismatch,
 }
-
-impl std::fmt::Display for LeanSphincsSignError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoAdmissibleEncoding => write!(f, "no admissible encoding within C_max attempts"),
-        }
-    }
-}
-
-impl std::error::Error for LeanSphincsSignError {}
 
 impl std::fmt::Display for LeanSphincsVerifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InadmissibleEncoding => write!(f, "a counter does not encode what its layer signs"),
-            Self::RootMismatch => write!(f, "the walk does not reach the key's root"),
+            Self::RootMismatch => write!(f, "the hypertree walk does not reach the key's root"),
         }
     }
 }
 
 impl std::error::Error for LeanSphincsVerifyError {}
 
-/// The index and the FORS leaves a digest spells (FIPS 205 Algorithm 19): the
-/// first [`MD_BYTES`] give each tree's leaf, `a` bits a tree most significant
-/// first (`base_2b`), the next [`TREE_INDEX_BYTES`] the tree, and the last
-/// [`LEAF_INDEX_BYTES`] its leaf, each a big-endian integer cut to its bits.
-/// The index is the tree then the leaf.
-pub fn digest_fields(digest: &[u8; 32 * DIGEST_CALLS]) -> (u64, [usize; FORS_TREES]) {
-    let bit = |p: usize| usize::from(digest[p / 8] >> (7 - p % 8) & 1);
-    let leaves = std::array::from_fn(|c| (0..FORS_HEIGHT).fold(0, |v, j| v << 1 | bit(FORS_HEIGHT * c + j)));
-    let int = |bytes: &[u8], bits: usize| bytes.iter().fold(0u64, |v, &b| v << 8 | u64::from(b)) & ((1 << bits) - 1);
-    let tree = int(&digest[MD_BYTES..MD_BYTES + TREE_INDEX_BYTES], H - LAYER_HEIGHTS[0]);
-    let leaf = int(&digest[MD_BYTES + TREE_INDEX_BYTES..DIGEST_BYTES], LAYER_HEIGHTS[0]);
-    (tree << LAYER_HEIGHTS[0] | leaf, leaves)
+/// `(tree, leaf)` on layer `layer` of hypertree leaf `ht_idx`.
+pub fn ht_position(ht_idx: u32, layer: usize) -> (u64, u32) {
+    let below = ht_idx >> (layer * SUBTREE_H);
+    (u64::from(below >> SUBTREE_H), below & ((1 << SUBTREE_H) - 1))
 }
 
-/// The message digest read as the index and the FORS leaves.
-fn message_digest(pk: &LeanSphincsPublicKey, r: &Digest, m: &Message) -> (u64, [usize; FORS_TREES]) {
-    digest_fields(&h_msg(r, &pk.pk_seed, &pk.root, m))
-}
-
-/// The levels of a tree `height` levels over `leaves`, the leaves first,
-/// `node(level, j, children)` hashing node `j` on `level`.
-pub(crate) fn merkle_levels(
-    leaves: Vec<Digest>,
-    height: usize,
-    node: impl Fn(usize, usize, &[Digest; 2]) -> Digest,
-) -> Vec<Vec<Digest>> {
-    let mut levels = vec![leaves];
-    for level in 1..=height {
-        let (pairs, _) = levels[level - 1].as_chunks::<2>();
-        let up = pairs.iter().enumerate().map(|(j, pair)| node(level, j, pair)).collect();
-        levels.push(up);
-    }
-    levels
-}
-
-/// Node `j` at height `z` of the tree holding `key`, from its two children.
-fn node(pk_seed: &PkSeed, key: &OtsKey, z: usize, j: usize, children: &[Digest; 2]) -> Digest {
-    let adrs = key
-        .tree_adrs()
-        .with_type(TREE)
-        .with_tree_height(z as u32)
-        .with_tree_index(j as u32);
-    th_digests(pk_seed, &adrs, children)
-}
-
-/// The levels of the tree holding `key`, its leaves first and its root last.
-fn tree_levels(sk: &ExpandedKey, key: &OtsKey) -> Vec<Vec<Digest>> {
-    let height = LAYER_HEIGHTS[key.layer];
-    let leaves = parallel::map_collect(1 << height, |leaf| {
-        wots_public_leaf(
-            sk,
-            &OtsKey {
-                leaf: leaf as u32,
-                ..*key
-            },
-        )
-    });
-    merkle_levels(leaves, height, |z, j, pair| node(&sk.pk_seed, key, z, j, pair))
-}
-
-/// `Gen`, deterministic: the seed is `SK.seed`, and the top tree gives `PK.root`.
-/// It builds the tree on `parallel`, so never call it from inside a `parallel` task.
-pub fn key_gen_from_seed(seed: Seed) -> (LeanSphincsSecretKey, LeanSphincsPublicKey) {
-    (LeanSphincsSecretKey { sk_seed: seed }, keygen(&expand_key(&seed)).0)
-}
-
-/// `slh_keygen_internal`: the public key, `PK.seed` and the top tree's root, with
-/// the top tree's levels, which signing reuses.
-fn keygen(sk: &ExpandedKey) -> (LeanSphincsPublicKey, Vec<Vec<Digest>>) {
-    let top = tree_levels(sk, &OtsKey::of_index(LAYERS - 1, 0));
-    let pk = LeanSphincsPublicKey {
-        pk_seed: sk.pk_seed,
-        root: top[LAYER_HEIGHTS[LAYERS - 1]][0],
-    };
-    (pk, top)
-}
-
-/// `Gen`, on a fresh seed from the operating system's randomness.
+/// `Gen` on a fresh key: the master secret comes from `rng`.
 pub fn key_gen() -> (LeanSphincsSecretKey, LeanSphincsPublicKey) {
     key_gen_from_seed(rand::random())
 }
 
-/// `Sign`. Deterministic and stateless: the digest picks the FORS instance,
-/// which opens the message, and each layer signs what the layer below gives. A
-/// key signs at most `2^30` messages (`doc/lean_sphincs`). It builds its trees on
-/// `parallel`, so never sign from inside a `parallel` task.
+/// `SK.seed`, `SK.prf` and `PK.seed` from a master secret: each
+/// `hash(tag ‖ master)[..16]`, `tag` one of `"SPHINCS-v2 SK.seed"`,
+/// `"SPHINCS-v2 SK.prf"`, `"SPHINCS-v2 PK.seed"`: three hash domains, so the
+/// seeds are independent. (Signer-private: no verifier sees the derivation.)
+fn derive_seeds(master: &MasterSecret) -> ([u8; N], [u8; N], PublicParam) {
+    let seed = |tag: &[u8]| truncate(&primitives::hash::hash(&[tag, master].concat()));
+    (
+        seed(b"SPHINCS-v2 SK.seed"),
+        seed(b"SPHINCS-v2 SK.prf"),
+        seed(b"SPHINCS-v2 PK.seed"),
+    )
+}
+
+/// Deterministic `Gen` on the master secret `master`. The three seeds are each
+/// `hash(tag ‖ master)[..16]`, `tag` one of `"SPHINCS-v2 SK.seed"`,
+/// `"SPHINCS-v2 SK.prf"`, `"SPHINCS-v2 PK.seed"`.
+pub fn key_gen_from_seed(master: MasterSecret) -> (LeanSphincsSecretKey, LeanSphincsPublicKey) {
+    let sk = LeanSphincsSecretKey { master };
+    let pk = sk.public_key();
+    (sk, pk)
+}
+
+/// The public root: the top layer's single tree.
+fn root_of(public_param: &PublicParam, sk_seed: &[u8; N]) -> Digest {
+    subtree_levels(public_param, sk_seed, (D - 1) as u32, 0)[SUBTREE_H][0]
+}
+
+/// Sign. Deterministic and stateless.
+///
+/// The key's root is rebuilt first ([`LeanSphincsSecretKey::public_key`]), since
+/// the message digest depends on it.
 pub fn sign(sk: &LeanSphincsSecretKey, message: &Message) -> Result<LeanSphincsSignature, LeanSphincsSignError> {
-    sign_with(&expand_key(&sk.sk_seed), message)
+    let (sk_seed, sk_prf, public_param) = derive_seeds(&sk.master);
+    Ok(sign_with_seeds(sk_seed, sk_prf, public_param, message).1)
 }
 
-/// `slh_sign_internal`, deterministic (`opt_rand = PK.seed`). It builds the top
-/// tree for `PK.root` and the top path, then the FORS instance and the two trees
-/// below.
-fn sign_with(sk: &ExpandedKey, message: &Message) -> Result<LeanSphincsSignature, LeanSphincsSignError> {
-    let (pk, mut top) = keygen(sk);
-    let r = prf_msg(&sk.sk_prf, &sk.pk_seed, message);
-    let (idx, leaves) = message_digest(&pk, &r, message);
-    let (mut signed, fors) = fors_open(sk, idx, &leaves);
-    let mut layers = [LayerSignature {
-        counter: 0,
-        wots: [[0; N]; V],
-    }; LAYERS];
-    let mut paths = [[0; N]; H];
-    for (layer, signature) in layers.iter_mut().enumerate() {
-        let key = OtsKey::of_index(layer, idx);
-        let (counter, wots) = wots_sign(sk, &key, &signed).ok_or(LeanSphincsSignError::NoAdmissibleEncoding)?;
-        *signature = LayerSignature { counter, wots };
-        let levels = if layer == LAYERS - 1 {
-            std::mem::take(&mut top)
-        } else {
-            tree_levels(sk, &key)
-        };
-        for (z, node) in paths[path_range(layer)].iter_mut().enumerate() {
-            *node = levels[z][(key.leaf as usize >> z) ^ 1];
-        }
-        signed = levels[LAYER_HEIGHTS[layer]][0];
+/// Signing cannot fail (no grinding); kept for upstream's API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LeanSphincsSignError {}
+
+impl std::fmt::Display for LeanSphincsSignError {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
     }
-    Ok(LeanSphincsSignature {
-        randomizer: r,
-        fors,
-        layers,
-        paths,
-    })
 }
 
-/// `Tree.fold`: the root a key's leaf and its path reach, showing `visit` the two
-/// children of every node on the way up.
-pub fn tree_fold(
-    pk_seed: &PkSeed,
-    key: &OtsKey,
-    leaf: Digest,
-    path: &[Digest],
-    visit: impl FnMut(&[Digest; 2]),
-) -> Digest {
-    crate::path_fold(leaf, key.leaf as usize, path, visit, |z, j, pair| {
-        node(pk_seed, key, z, j, pair)
-    })
-}
-
-/// `Ver`.
-pub fn verify(
-    pk: &LeanSphincsPublicKey,
-    message: &Message,
-    signature: &LeanSphincsSignature,
-) -> Result<(), LeanSphincsVerifyError> {
-    let pk_seed = &pk.pk_seed;
-    let (idx, leaves) = message_digest(pk, &signature.randomizer, message);
-    let mut signed = fors_recover(pk_seed, idx, &leaves, &signature.fors, |_| ());
-    for (layer, layer_sig) in signature.layers.iter().enumerate() {
-        let key = OtsKey::of_index(layer, idx);
-        let (_, leaf) = wots_leaf(pk_seed, &key, &signed, layer_sig.counter, &layer_sig.wots)
-            .ok_or(LeanSphincsVerifyError::InadmissibleEncoding)?;
-        signed = tree_fold(pk_seed, &key, leaf, signature.path(layer), |_| ());
-    }
-    if signed == pk.root {
-        Ok(())
-    } else {
-        Err(LeanSphincsVerifyError::RootMismatch)
-    }
-}
+impl std::error::Error for LeanSphincsSignError {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A known answer, byte for byte: the key whose `SK.seed` is `S[i] = 37 i + 11`
-    /// and its signature of `m[i] = 7 i + 3`.
+    fn field(json: &str, key: &str) -> Vec<u8> {
+        let at = json.find(&format!("\"{key}\"")).unwrap();
+        let rest = &json[at + key.len() + 2..];
+        let open = rest.find('"').unwrap() + 1;
+        let close = open + rest[open..].find('"').unwrap();
+        let hex = rest[open..close].trim_start_matches("0x");
+        (0..hex.len() / 2)
+            .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// NiceTry's reference vector verifies, and its seeds reproduce key and signature byte for byte.
     #[test]
-    fn known_answer() {
-        let mut lines = include_str!("known_answer.hex").lines();
-        let mut unhex = || {
-            let s = lines.next().unwrap();
-            (0..s.len())
-                .step_by(2)
-                .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
-                .collect::<Vec<_>>()
+    fn matches_the_reference_vector() {
+        let json = include_str!("sphincs-v2-reference-0.json");
+        let (pk_seed, pk_root) = (field(json, "pkSeed"), field(json, "pkRoot"));
+        let pk = LeanSphincsPublicKey {
+            root: pk_root[..N].try_into().unwrap(),
+            public_param: pk_seed[..N].try_into().unwrap(),
         };
-        let (pk_bytes, sig_bytes) = (unhex(), unhex());
-        let sk = expand_key(&std::array::from_fn(|i| (37 * i + 11) as u8));
-        let pk = keygen(&sk).0;
-        let message: Message = std::array::from_fn(|i| (7 * i + 3) as u8);
-        assert_eq!(pk.to_bytes()[..], pk_bytes[..]);
-        let signature = sign_with(&sk, &message).unwrap();
-        assert_eq!(signature.to_bytes()[..], sig_bytes[..]);
-        assert_eq!(verify(&pk, &message, &signature), Ok(()));
+        let message: Message = field(json, "message").try_into().unwrap();
+        let blob = field(json, "signature");
+        assert_eq!(blob.len(), SIG_SIZE);
+        let reference = LeanSphincsSignature::from_bytes(blob.as_slice().try_into().unwrap());
+        assert_eq!(reference.to_bytes().to_vec(), blob);
+        verify(&pk, &message, &reference).unwrap();
+        let mut other = message;
+        other[31] ^= 1;
+        assert_eq!(verify(&pk, &other, &reference), Err(LeanSphincsVerifyError::RootMismatch));
+        let mut bad = blob.clone();
+        bad[100] ^= 1;
+        let bad = LeanSphincsSignature::from_bytes(bad.as_slice().try_into().unwrap());
+        assert_eq!(verify(&pk, &message, &bad), Err(LeanSphincsVerifyError::RootMismatch));
+        let (derived, signature) = sign_with_seeds([0x11; N], [0x22; N], pk.public_param, &message);
+        assert_eq!(derived, pk);
+        assert_eq!(signature, reference);
+    }
+}
+
+/// Key generation and signing on the three seeds given directly, as FIPS 205
+/// and NiceTry's reference signer (`scripts/sphincs_v2_reference.py`) state them.
+/// For reproducing reference vectors: a key made this way has no master secret,
+/// so use [`key_gen`] / [`key_gen_from_seed`] for real keys.
+pub fn sign_with_seeds(
+    sk_seed: [u8; N],
+    sk_prf: [u8; N],
+    public_param: PublicParam,
+    message: &Message,
+) -> (LeanSphincsPublicKey, LeanSphincsSignature) {
+    let root = root_of(&public_param, &sk_seed);
+    let signature = sign_with(&public_param, &root, &sk_seed, &sk_prf, message);
+    (LeanSphincsPublicKey { root, public_param }, signature)
+}
+
+fn sign_with(
+    pp: &PublicParam,
+    root: &Digest,
+    sk_seed: &[u8; N],
+    sk_prf: &[u8; N],
+    message: &Message,
+) -> LeanSphincsSignature {
+    let randomizer = randomizer(sk_prf, message);
+    let d = h_msg(pp, root, &randomizer, message);
+    let ht_idx = ht_index(&d);
+    let (fors_secrets, fors_paths, fors_pk) = fors_sign(pp, sk_seed, ht_idx, &fors_indices(&d));
+
+    let mut node = fors_pk;
+    let layers = std::array::from_fn(|layer| {
+        let (tree, leaf) = ht_position(ht_idx, layer);
+        let chains = wots_sign(pp, sk_seed, layer as u32, tree, leaf, &node);
+        let levels = subtree_levels(pp, sk_seed, layer as u32, tree);
+        node = levels[SUBTREE_H][0];
+        HtLayer {
+            chains,
+            path: auth_path(&levels, leaf),
+        }
+    });
+    debug_assert_eq!(&node, root);
+
+    LeanSphincsSignature {
+        randomizer,
+        fors_secrets,
+        fors_paths,
+        layers,
+    }
+}
+
+/// Everything a verification computes on the way to the root, for provers that
+/// replay it: the digest, what it selects, and what each layer signs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifyTrace {
+    pub digest: [u8; 32],
+    pub ht_idx: u32,
+    pub fors_indices: [u32; K],
+    /// `signed[layer]`: the node layer `layer`'s WOTS key signs (the FORS key on
+    /// layer 0); `signed[d]` is the root reached.
+    pub signed: [Digest; D + 1],
+    /// Each layer's WOTS digits, the checksum's last.
+    pub digits: [[u8; L]; D],
+}
+
+/// Replay a verification up to the root comparison.
+pub fn verify_trace(pk: &LeanSphincsPublicKey, message: &Message, signature: &LeanSphincsSignature) -> VerifyTrace {
+    let pp = &pk.public_param;
+    let digest = h_msg(pp, &pk.root, &signature.randomizer, message);
+    let indices = fors_indices(&digest);
+    let ht_idx = ht_index(&digest);
+    let mut signed = [[0; N]; D + 1];
+    let mut digits_of = [[0; L]; D];
+    signed[0] = fors_pk_from_sig(pp, ht_idx, &indices, &signature.fors_secrets, &signature.fors_paths);
+    for (layer, sig) in signature.layers.iter().enumerate() {
+        let (tree, leaf) = ht_position(ht_idx, layer);
+        digits_of[layer] = digits(&signed[layer]);
+        let wots_pk = wots_pk_from_sig(pp, layer as u32, tree, leaf, &signed[layer], &sig.chains);
+        signed[layer + 1] = tree_fold(pp, layer as u32, tree, leaf, wots_pk, &sig.path);
+    }
+    VerifyTrace {
+        digest,
+        ht_idx,
+        fors_indices: indices,
+        signed,
+        digits: digits_of,
+    }
+}
+
+/// `Ver`, `SphincsVerifier_v2.verify` on the signature's blob.
+pub fn verify(
+    pk: &LeanSphincsPublicKey,
+    message: &Message,
+    signature: &LeanSphincsSignature,
+) -> Result<(), LeanSphincsVerifyError> {
+    if verify_trace(pk, message, signature).signed[D] == pk.root {
+        Ok(())
+    } else {
+        Err(LeanSphincsVerifyError::RootMismatch)
     }
 }

@@ -1,103 +1,115 @@
-//! The few-time signature: FORS (FIPS 205 §8).
+//! FORS: `k = 19` Merkle trees of `2^a = 512` secret leaves, one leaf opened per
+//! tree at the index the message digest picks.
 //!
-//! The instance of bottom leaf `idx` has `FORS_TREES` trees of height
-//! `FORS_HEIGHT`, whose leaves hash secrets derived from `SK.seed`. The message
-//! digest picks a leaf in every tree, and the signature reveals its secret and
-//! its path. The FORS public key is `T_k` over the trees' roots, which the bottom
-//! one-time key signs.
+//! An instance is keyed by the hypertree leaf the digest picks (FIPS 205's
+//! split): tree address `htIdx >> h'`, key pair `htIdx mod 2^h'`, and the `k`
+//! trees folded into one index space, node `j` at height `z` of tree `i` being
+//! tree index `(i << (a - z)) | j`.
 
-use crate::lean_sphincs::*;
+use super::*;
 
-/// One FORS tree's opening: the picked leaf's secret, and its path from the
-/// leaf up.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ForsTreeOpening {
-    pub(crate) secret: Digest,
-    pub(crate) path: [Digest; FORS_HEIGHT],
+/// `(d >> (i·a)) & (2^a - 1)` for each tree `i`.
+pub fn fors_indices(d: &[u8; 32]) -> [u32; K] {
+    std::array::from_fn(|i| digest_bits(d, i * A, A))
 }
 
-impl ForsTreeOpening {
-    pub fn secret(&self) -> &Digest {
-        &self.secret
-    }
+/// `htIdx = (d >> k·a) & (2^h - 1)`, the hypertree leaf.
+pub fn ht_index(d: &[u8; 32]) -> u32 {
+    digest_bits(d, K * A, H)
 }
 
-pub(crate) type ForsOpening = [ForsTreeOpening; FORS_TREES];
-
-/// Instance `idx`'s address of type `t`: the bottom key's tree, and its leaf as
-/// the key pair.
-fn fors_adrs(idx: u64, t: u32) -> Adrs {
-    OtsKey::of_index(0, idx).adrs(t)
+/// An address of the FORS instance at hypertree leaf `ht_idx`.
+pub fn fors_adrs(ht_idx: u32, typ: u32, height: usize, tree_index: u32) -> Adrs {
+    Adrs::new(
+        0,
+        u64::from(ht_idx >> SUBTREE_H),
+        typ,
+        ht_idx & ((1 << SUBTREE_H) - 1),
+        height as u32,
+        tree_index,
+    )
 }
 
-/// Node `j` at height `z` of tree `c`: its tree index counts across the trees.
-fn fors_node_adrs(idx: u64, c: usize, z: usize, j: usize) -> Adrs {
-    fors_adrs(idx, FORS_TREE)
-        .with_tree_height(z as u32)
-        .with_tree_index(((c << (FORS_HEIGHT - z)) + j) as u32)
+/// Leaf `leaf` of tree `i`: `F` of its secret at height 0.
+pub fn fors_leaf(pp: &PublicParam, ht_idx: u32, i: usize, leaf: u32, secret: &Digest) -> Digest {
+    th(
+        pp,
+        &fors_adrs(ht_idx, FORS_TREE, 0, ((i as u32) << A) | leaf),
+        &[*secret],
+    )
 }
 
-/// `fors_skGen`: the secret of leaf `s` of tree `c`.
-fn fors_secret(sk: &ExpandedKey, idx: u64, c: usize, s: usize) -> Digest {
-    let adrs = fors_adrs(idx, FORS_PRF).with_tree_index(((c << FORS_HEIGHT) + s) as u32);
-    prf(&sk.pk_seed, &sk.sk_seed, &adrs)
-}
-
-/// Leaf `s` of tree `c`: `F` of its secret.
-fn fors_leaf(pk_seed: &PkSeed, idx: u64, c: usize, s: usize, secret: &Digest) -> Digest {
-    th(pk_seed, &fors_node_adrs(idx, c, 0, s), secret)
-}
-
-/// Node `j` at height `z` of tree `c`, from its two children.
-fn fors_node(pk_seed: &PkSeed, idx: u64, c: usize, z: usize, j: usize, children: &[Digest; 2]) -> Digest {
-    th_digests(pk_seed, &fors_node_adrs(idx, c, z, j), children)
-}
-
-/// `T_k` over the roots: the FORS public key.
-fn fors_key(pk_seed: &PkSeed, idx: u64, roots: &[Digest; FORS_TREES]) -> Digest {
-    th_digests(pk_seed, &fors_adrs(idx, FORS_ROOTS), roots)
-}
-
-/// `fors_sign` and the public key it opens, each tree being built once: the key
-/// of instance `idx`, and its opening at `leaves`.
-pub(crate) fn fors_open(sk: &ExpandedKey, idx: u64, leaves: &[usize; FORS_TREES]) -> (Digest, ForsOpening) {
-    let pk_seed = &sk.pk_seed;
-    let trees = parallel::map_collect(FORS_TREES, |c| {
-        let secrets: Vec<Digest> = (0..1 << FORS_HEIGHT).map(|s| fors_secret(sk, idx, c, s)).collect();
-        let leaf_hashes = secrets
-            .iter()
-            .enumerate()
-            .map(|(s, secret)| fors_leaf(pk_seed, idx, c, s, secret))
-            .collect();
-        let levels = merkle_levels(leaf_hashes, FORS_HEIGHT, |z, j, pair| {
-            fors_node(pk_seed, idx, c, z, j, pair)
-        });
-        let s = leaves[c];
-        let opening = ForsTreeOpening {
-            secret: secrets[s],
-            path: std::array::from_fn(|z| levels[z][(s >> z) ^ 1]),
-        };
-        (levels[FORS_HEIGHT][0], opening)
-    });
-    let roots = std::array::from_fn(|c| trees[c].0);
-    (fors_key(pk_seed, idx, &roots), std::array::from_fn(|c| trees[c].1))
-}
-
-/// `fors_pkFromSig`: the FORS public key an opening reaches at `leaves`, showing
-/// `visit` the two children of every node on the way up.
-pub fn fors_recover(
-    pk_seed: &PkSeed,
-    idx: u64,
-    leaves: &[usize; FORS_TREES],
-    opening: &ForsOpening,
-    mut visit: impl FnMut(&[Digest; 2]),
+/// A node of tree `i` at height `height >= 1`.
+pub fn fors_node(
+    pp: &PublicParam,
+    ht_idx: u32,
+    i: usize,
+    height: usize,
+    index: u32,
+    left: &Digest,
+    right: &Digest,
 ) -> Digest {
-    let roots = std::array::from_fn(|c| {
-        let (s, tree) = (leaves[c], &opening[c]);
-        let leaf = fors_leaf(pk_seed, idx, c, s, &tree.secret);
-        crate::path_fold(leaf, s, &tree.path, &mut visit, |z, j, pair| {
-            fors_node(pk_seed, idx, c, z, j, pair)
+    th(
+        pp,
+        &fors_adrs(ht_idx, FORS_TREE, height, ((i as u32) << (A - height)) | index),
+        &[*left, *right],
+    )
+}
+
+/// The FORS public key: `T_k` of the `k` roots under `FORS_ROOTS`, 672 bytes.
+pub fn fors_pk_of_roots(pp: &PublicParam, ht_idx: u32, roots: &[Digest; K]) -> Digest {
+    th(pp, &fors_adrs(ht_idx, FORS_ROOTS, 0, 0), roots)
+}
+
+/// The FORS key a signature recovers.
+pub fn fors_pk_from_sig(
+    pp: &PublicParam,
+    ht_idx: u32,
+    indices: &[u32; K],
+    secrets: &[Digest; K],
+    paths: &[[Digest; A]; K],
+) -> Digest {
+    let roots = std::array::from_fn(|i| {
+        let leaf = fors_leaf(pp, ht_idx, i, indices[i], &secrets[i]);
+        paths[i].iter().enumerate().fold(leaf, |node, (z, sibling)| {
+            let (left, right) = if (indices[i] >> z) & 1 == 0 {
+                (node, *sibling)
+            } else {
+                (*sibling, node)
+            };
+            fors_node(pp, ht_idx, i, z + 1, indices[i] >> (z + 1), &left, &right)
         })
     });
-    fors_key(pk_seed, idx, &roots)
+    fors_pk_of_roots(pp, ht_idx, &roots)
+}
+
+/// Leaf `leaf` of tree `i`'s secret, `PRF` under `FORS_PRF`.
+fn fors_secret(sk_seed: &[u8; N], ht_idx: u32, i: usize, leaf: u32) -> Digest {
+    prf(sk_seed, &fors_adrs(ht_idx, FORS_PRF, 0, ((i as u32) << A) | leaf))
+}
+
+/// Open the instance at `ht_idx` at `indices`: the secrets, the paths, the key.
+pub(crate) fn fors_sign(
+    pp: &PublicParam,
+    sk_seed: &[u8; N],
+    ht_idx: u32,
+    indices: &[u32; K],
+) -> ([Digest; K], [[Digest; A]; K], Digest) {
+    let trees = parallel::map_collect(K, |i| {
+        let leaves = (0..1 << A)
+            .map(|leaf| fors_leaf(pp, ht_idx, i, leaf, &fors_secret(sk_seed, ht_idx, i, leaf)))
+            .collect();
+        let levels = merkle_levels(leaves, |height, index, l, r| {
+            fors_node(pp, ht_idx, i, height, index, l, r)
+        });
+        (
+            fors_secret(sk_seed, ht_idx, i, indices[i]),
+            auth_path::<A>(&levels, indices[i]),
+            levels[A][0],
+        )
+    });
+    let secrets = std::array::from_fn(|i| trees[i].0);
+    let paths = std::array::from_fn(|i| trees[i].1);
+    let roots = std::array::from_fn(|i| trees[i].2);
+    (secrets, paths, fors_pk_of_roots(pp, ht_idx, &roots))
 }

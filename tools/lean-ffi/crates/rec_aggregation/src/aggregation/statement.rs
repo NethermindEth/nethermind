@@ -3,7 +3,8 @@
 use super::cells::{cell_bytes, count, pack_16_bytes};
 use super::deferred::DeferredClaim;
 use super::guest::unified_guest;
-use super::{LeanSphincsClaim, LeanXmssClaim};
+use super::generic::{LEANSTARK_DEPS_DOMAIN, digest_cells};
+use super::{GenericClaim, LeanSphincsClaim};
 use fiat_shamir::merkle::hash_to_scalars;
 use primitives::field::F192;
 
@@ -36,31 +37,40 @@ pub(super) fn claim_list_digest(claims: impl IntoIterator<Item = [F192; 4]>) -> 
     hash_to_scalars(&primitives::hash::hash(&cell_bytes(claims.into_iter().flatten())))
 }
 
-/// A claim as the four cells the guest hashes and its verifier reads: the pubkey's
-/// two halves (`to_bytes`), then the message that pubkey signed.
-fn claim_cells(pk: &[u8; 32], message: &[u8; 32]) -> [F192; 4] {
+/// EIP-8288 entry order: `data_hash ‖ vk`, as the guest's `verify_generic` reads its slot.
+pub(super) fn generic_claim_cells((data_hash, vk): &GenericClaim) -> [F192; 4] {
+    let [d0, d1] = digest_cells(data_hash);
+    let [k0, k1] = digest_cells(vk);
+    [d0, d1, k0, k1]
+}
+
+/// The EIP-8288 dependency digest of the two lists' digests: the leanSPHINCS one alone when there
+/// is no leanSTARK claim, else `keccak256(S ‖ G ‖ LEANSTARK_DEPS_DOMAIN)` (the guest's `deps_digest`).
+pub(super) fn deps_digest_of(lean_sphincs_digest: [F192; 2], generic_digest: [F192; 2], has_generic: bool) -> [F192; 2] {
+    if !has_generic {
+        return lean_sphincs_digest;
+    }
+    let mut preimage = cell_bytes(lean_sphincs_digest.into_iter().chain(generic_digest));
+    preimage.extend(LEANSTARK_DEPS_DOMAIN);
+    hash_to_scalars(&primitives::hash::hash(&preimage))
+}
+
+/// EIP-8288 entry order: `data_hash ‖ pkRoot ‖ pkSeed`, so the list digest is `get_deps_hash`.
+pub(super) fn lean_sphincs_claim_cells((message, pk): &LeanSphincsClaim) -> [F192; 4] {
     [
-        pack_16_bytes(&pk[..16]),
-        pack_16_bytes(&pk[16..]),
         pack_16_bytes(&message[..16]),
         pack_16_bytes(&message[16..]),
+        pack_16_bytes(&pk.root),
+        pack_16_bytes(&pk.public_param),
     ]
 }
 
-pub(super) fn lean_xmss_claim_cells((pk, message): &LeanXmssClaim) -> [F192; 4] {
-    claim_cells(&pk.to_bytes(), message)
-}
-
-pub(super) fn lean_sphincs_claim_cells((pk, message): &LeanSphincsClaim) -> [F192; 4] {
-    claim_cells(&pk.to_bytes(), message)
-}
-
-/// The statement's fixed header, ahead of the deferred cells: the seed, the two
-/// claim-list digests (leanXMSS then leanSPHINCS), and the DA digest ([`verifier::da::digest`]).
+/// The statement's fixed header, ahead of the deferred cells: the seed, the dependency digest of
+/// the two claim lists ([`deps_digest_of`]), and the DA digest ([`verifier::da::digest`]).
 /// Fed to the guest as `STMT_HEADER`, which pins where its deferred cells start;
 /// the header cells themselves are written out again there, and only the
 /// end-to-end statement check holds the two spellings together.
-pub(super) const STATEMENT_HEADER: usize = 8;
+pub(super) const STATEMENT_HEADER: usize = 6;
 
 /// A plain hash over a lane stream, two lanes a 128-bit cell: what the guest gets
 /// from `keccak_cells` over the same cells.
@@ -83,22 +93,36 @@ fn lane_hash(lanes: impl Iterator<Item = u64>) -> [F192; 2] {
 /// list's digest binds its own length through the hash's padding, so the pair binds
 /// both lists whole.
 pub(super) fn statement_digest(
-    xmss_signers: &[LeanXmssClaim],
+    generic: &[GenericClaim],
     lean_sphincs_signers: &[LeanSphincsClaim],
     da_digest: [u8; 32],
     defer: &DeferredClaim,
 ) -> [F192; 2] {
+    statement_digest_of(deps_digest_cells(lean_sphincs_signers, generic), da_digest, defer)
+}
+
+/// The dependency digest of the two lists as two cells.
+pub(super) fn deps_digest_cells(lean_sphincs: &[LeanSphincsClaim], generic: &[GenericClaim]) -> [F192; 2] {
+    deps_digest_of(
+        claim_list_digest(lean_sphincs.iter().map(lean_sphincs_claim_cells)),
+        claim_list_digest(generic.iter().map(generic_claim_cells)),
+        !generic.is_empty(),
+    )
+}
+
+/// [`statement_digest`] from the dependency digest: all a holder of `deps_hash` alone needs.
+pub(super) fn statement_digest_of(
+    deps_digest: [F192; 2],
+    da_digest: [u8; 32],
+    defer: &DeferredClaim,
+) -> [F192; 2] {
     let seed = leanvm_core::cpu::fs_seed(unified_guest());
-    let xmss_digest = claim_list_digest(xmss_signers.iter().map(lean_xmss_claim_cells));
-    let lean_sphincs_digest = claim_list_digest(lean_sphincs_signers.iter().map(lean_sphincs_claim_cells));
     let da_digest = hash_to_scalars(&da_digest);
     let header: [F192; STATEMENT_HEADER] = [
         seed[0],
         seed[1],
-        xmss_digest[0],
-        xmss_digest[1],
-        lean_sphincs_digest[0],
-        lean_sphincs_digest[1],
+        deps_digest[0],
+        deps_digest[1],
         da_digest[0],
         da_digest[1],
     ];

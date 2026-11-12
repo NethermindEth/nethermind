@@ -8,23 +8,32 @@ use super::error::{AggregateVerifyError, AggregationError, SnarkProveError, Snar
 use super::guest::unified_guest;
 #[cfg(test)]
 use super::hints::FORGE;
-use super::hints::{Hints, lean_sphincs_hints, lean_xmss_hints};
+use super::generic::{MAX_GENERIC_DEPENDENCIES, generic_hints};
+use super::hints::{Hints, lean_sphincs_hints};
 use super::proof::{EthereumClaims, EthereumProof, check_signer_set};
-use super::statement::{lean_sphincs_claim_cells, lean_xmss_claim_cells, list_split, statement_digest};
-use super::{LeanSphincsClaim, LeanXmssClaim, MAX_RECURSIONS};
+use super::statement::{generic_claim_cells, lean_sphincs_claim_cells, list_split, statement_digest};
+use super::{GenericClaim, LeanSphincsClaim, MAX_RECURSIONS, RawGeneric};
 use fiat_shamir::merkle::hash_to_scalars;
 use lean_da::{BLOB_SYMBOLS, CELL_SYMBOLS, CELLS_PER_ROW, CODEWORD_SYMBOLS};
 use leanvm_core::cpu::{from_scalar, prove, public_input_bytes, scalar_proof};
 use primitives::field::{F64, F192};
+use signatures::lean_sphincs;
 use signatures::lean_sphincs::{LeanSphincsPublicKey, LeanSphincsSignature};
-use signatures::lean_xmss::{LeanXmssPublicKey, LeanXmssSignature};
-use signatures::{lean_sphincs, lean_xmss};
+
+/// Test builds only: whether this thread lifts the host's leanSTARK cap, so the guest's own is tested.
+fn allow_many_generic() -> bool {
+    #[cfg(test)]
+    return super::hints::ALLOW_MANY_GENERIC.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    false
+}
 
 /// Prove existence of signatures and valid encoding of PQ-blobs, potentially using recursive children.
 ///
 /// - `children`: child proofs; at most [`MAX_RECURSIONS`].
-/// - `raw_lean_xmss`: list of `(public_key, message, signature)`, any order, each signature at
-///   the leaf index it carries.
+/// - `raw_generic`: leanSTARK (`0x11`) dependencies `(data_hash, vk, witness)`
+///   ([`generic_witness`](super::generic_witness)), any order; at most
+///   [`MAX_GENERIC_DEPENDENCIES`] distinct ones.
 /// - `raw_lean_sphincs`: list of `(public_key, message, signature)`, any order.
 /// - `blobs`: concatenated blobs, each containing [`BLOB_SYMBOLS`] little-endian `u64` symbols;
 ///   at most [`lean_da::DA_MAX_ROWS`] blobs. A node with blobs publishes their matrix's root, and none
@@ -40,26 +49,28 @@ use signatures::{lean_sphincs, lean_xmss};
 /// - `aggregate` should not be called more than once at a time in parallel per process.
 /// - Raw signatures are assumed valid: one that does not decode returns
 ///   [`AggregationError::MalformedRawSignature`], and any other invalid one fails the guest's run,
-///   [`AggregationError::ProofError`].
+///   [`AggregationError::ProofError`]. A raw leanSTARK witness is checked natively first
+///   ([`verify_generic`](super::verify_generic)): one that fails returns
+///   [`AggregationError::InvalidGenericWitness`].
 /// - Children are assumed verified by the caller ([`EthereumProof::verify`]): a child the replay
 ///   cannot walk, or one carrying a false deferred value, returns [`AggregationError::InvalidChild`],
 ///   and any other invalid child fails the guest's run, [`AggregationError::ProofError`] (TODO
 ///   return the index of invalid proof).
 pub fn aggregate(
     children: &[EthereumProof],
-    raw_lean_xmss: Vec<(LeanXmssPublicKey, lean_xmss::Message, LeanXmssSignature)>,
+    raw_generic: Vec<RawGeneric>,
     raw_lean_sphincs: Vec<(LeanSphincsPublicKey, lean_sphincs::Message, LeanSphincsSignature)>,
     blobs: &[u64],
     declare: Option<&EthereumClaims>,
     log_inv_rate: usize,
 ) -> Result<EthereumProof, AggregationError> {
-    aggregate_with_stats(children, raw_lean_xmss, raw_lean_sphincs, blobs, declare, log_inv_rate).map(|(sig, _)| sig)
+    aggregate_with_stats(children, raw_generic, raw_lean_sphincs, blobs, declare, log_inv_rate).map(|(sig, _)| sig)
 }
 
 /// [`aggregate`], under the same contract, also returning the prover's statistics (what the CLI's benchmarks report).
 pub fn aggregate_with_stats(
     children: &[EthereumProof],
-    raw_lean_xmss: Vec<(LeanXmssPublicKey, lean_xmss::Message, LeanXmssSignature)>,
+    raw_generic: Vec<RawGeneric>,
     raw_lean_sphincs: Vec<(LeanSphincsPublicKey, lean_sphincs::Message, LeanSphincsSignature)>,
     blobs: &[u64],
     declare: Option<&EthereumClaims>,
@@ -102,14 +113,20 @@ pub fn aggregate_with_stats(
     };
 
     let guest = unified_guest();
-    // On the whole (pubkey, message) pair, so a signer may appear once per message. One
-    // claim needs one signature, whatever leaf index a leanXMSS one carries.
-    let mut raw_lean_xmss = raw_lean_xmss;
-    raw_lean_xmss.sort_by_key(|(pk, message, _)| (*pk, *message));
-    raw_lean_xmss.dedup_by(|(a, am, _), (b, bm, _)| (a, am) == (b, bm));
+    // On the whole claim: one claim needs one proof.
+    let mut raw_generic = raw_generic;
+    raw_generic.sort_by(|(a, ak, _), (b, bk, _)| (a, ak).cmp(&(b, bk)));
+    raw_generic.dedup_by(|(a, ak, _), (b, bk, _)| (a, ak) == (b, bk));
     let mut raw_lean_sphincs = raw_lean_sphincs;
-    raw_lean_sphincs.sort_by_key(|(pk, message, _)| (*pk, *message));
-    raw_lean_sphincs.dedup_by(|(a, am, _), (b, bm, _)| (a, am) == (b, bm));
+    // Test builds only: `EIP8288_FORGE` plays a malicious host, to show what the guest does not enforce.
+    let forge = if cfg!(feature = "forge") { std::env::var("EIP8288_FORGE").unwrap_or_default() } else { String::new() };
+    if raw_generic.len() > MAX_GENERIC_DEPENDENCIES && !allow_many_generic() {
+        return Err(AggregationError::TooManyGeneric);
+    }
+    raw_lean_sphincs.sort_by_key(|(pk, message, _)| (*message, *pk));
+    if forge != "dup" {
+        raw_lean_sphincs.dedup_by(|(a, am, _), (b, bm, _)| (a, am) == (b, bm));
+    }
 
     // The children are assumed checked. Nothing here verifies one: the replay
     // only reads out of its proof the summary `gen_verify` derives the guest's
@@ -146,20 +163,39 @@ pub fn aggregate_with_stats(
     drop(_span);
 
     let _span = tracing::info_span!("Build witness").entered();
-    let raw_xmss_claims: Vec<LeanXmssClaim> = raw_lean_xmss.iter().map(|(pk, message, _)| (*pk, *message)).collect();
+    let raw_generic_claims: Vec<GenericClaim> = raw_generic.iter().map(|(data_hash, vk, _)| (*data_hash, *vk)).collect();
     let raw_lean_sphincs_claims: Vec<LeanSphincsClaim> = raw_lean_sphincs
         .iter()
-        .map(|(pk, message, _)| (*pk, *message))
+        .map(|(pk, message, _)| (*message, *pk))
         .collect();
-    let cover = plan_coverage(&raw_xmss_claims, &raw_lean_sphincs_claims, children, declare)?;
+    let mut cover = plan_coverage(&raw_generic_claims, &raw_lean_sphincs_claims, children, declare)?;
+    if cover.generic.signers.len() > MAX_GENERIC_DEPENDENCIES && !allow_many_generic() {
+        return Err(AggregationError::TooManyGeneric);
+    }
+    match forge.as_str() {
+        // Publish the duplicate slots too: the declared list repeats a claim.
+        "dup" => {
+            let region = &mut cover.lean_sphincs;
+            region.signers.append(&mut region.dups);
+        }
+        // Publish the first two claims out of order.
+        "swap" => {
+            let region = &mut cover.lean_sphincs;
+            region.signers.swap(0, 1);
+            for slot in &mut region.raw {
+                *slot = [1, 0].get(*slot).copied().unwrap_or(*slot);
+            }
+        }
+        _ => {}
+    }
 
     let mut hints = Hints::default();
     hints.push(
         "meta",
         vec![
-            count(cover.xmss.signers.len()),
-            count(cover.xmss.dups.len()),
-            count(raw_lean_xmss.len()),
+            count(cover.generic.signers.len()),
+            count(cover.generic.dups.len()),
+            count(raw_generic.len()),
             count(cover.lean_sphincs.signers.len()),
             count(cover.lean_sphincs.dups.len()),
             count(raw_lean_sphincs.len()),
@@ -169,16 +205,16 @@ pub fn aggregate_with_stats(
     );
     let fs_seed = leanvm_core::cpu::fs_seed(guest);
     hints.push("fs_seed", vec![fs_seed[0], fs_seed[1]]);
-    // Both lists in the guest's order, leanXMSS first: each one's split, its declared
+    // Both lists in the guest's order, leanSTARK first: each one's split, its declared
     // claims, then its duplicates.
-    let lean_xmss_cells: Vec<[F192; 4]> = cover.xmss.signers.iter().map(lean_xmss_claim_cells).collect();
+    let generic_cells: Vec<[F192; 4]> = cover.generic.signers.iter().map(generic_claim_cells).collect();
     let lean_sphincs_cells: Vec<[F192; 4]> = cover
         .lean_sphincs
         .signers
         .iter()
         .map(lean_sphincs_claim_cells)
         .collect();
-    for cells in [&lean_xmss_cells, &lean_sphincs_cells] {
+    for cells in [&generic_cells, &lean_sphincs_cells] {
         if !cells.is_empty() {
             hints.push("signers_split", list_split(cells.len()));
         }
@@ -186,17 +222,17 @@ pub fn aggregate_with_stats(
             hints.push("claims", claim.to_vec());
         }
     }
-    let dups = cover.xmss.dups.iter().map(lean_xmss_claim_cells);
+    let dups = cover.generic.dups.iter().map(generic_claim_cells);
     for claim in dups.chain(cover.lean_sphincs.dups.iter().map(lean_sphincs_claim_cells)) {
         hints.push("dup_claims", claim.to_vec());
     }
     // Each slot is hinted as an offset into its scheme's region, which is how one
     // range check keeps a scheme's writers off the other's claims.
-    let lean_xmss_hints = parallel::map_collect(raw_lean_xmss.len(), |i| {
-        let (pk, message, sig) = &raw_lean_xmss[i];
-        lean_xmss_hints(pk, sig, message)
-    });
-    for (&offset, sub) in cover.xmss.raw.iter().zip(lean_xmss_hints) {
+    // A leanSTARK sub-proof pops the same streams as a child's, ahead of every child's.
+    // Sequential: the native verification inside dispatches on the pool itself.
+    let generic_hints: Vec<_> =
+        raw_generic.iter().map(|(data_hash, vk, witness)| generic_hints(data_hash, vk, witness)).collect();
+    for (&offset, sub) in cover.generic.raw.iter().zip(generic_hints) {
         hints.push("raw_index", vec![count(offset)]);
         for (name, entry) in sub? {
             hints.push(name, entry);
@@ -235,9 +271,9 @@ pub fn aggregate_with_stats(
     for (i, (child, verified)) in children.iter().zip(verified).enumerate() {
         hints.push(
             "child_meta",
-            vec![count(child.claims.xmss.len()), count(child.claims.lean_sphincs.len())],
+            vec![count(child.claims.generic.len()), count(child.claims.lean_sphincs.len())],
         );
-        for offsets in [&cover.xmss.children[i], &cover.lean_sphincs.children[i]] {
+        for offsets in [&cover.generic.children[i], &cover.lean_sphincs.children[i]] {
             if offsets.is_empty() {
                 continue;
             }
@@ -311,11 +347,11 @@ pub fn aggregate_with_stats(
         }
     }
     hints.push("da_pick", vec![count(da_pick)]);
-    if cover.xmss.signers.is_empty() && cover.lean_sphincs.signers.is_empty() && da_root.is_none() {
+    if cover.generic.signers.is_empty() && cover.lean_sphincs.signers.is_empty() && da_root.is_none() {
         return Err(AggregationError::Empty);
     }
 
-    let public_input = statement_digest(&cover.xmss.signers, &cover.lean_sphincs.signers, da, &defer);
+    let public_input = statement_digest(&cover.generic.signers, &cover.lean_sphincs.signers, da, &defer);
     let mut program = guest.clone();
     #[cfg(test)]
     if let Some(forge) = FORGE.with(|forge| forge.borrow_mut().take()) {
@@ -327,7 +363,7 @@ pub fn aggregate_with_stats(
     Ok((
         EthereumProof {
             claims: EthereumClaims {
-                xmss: cover.xmss.signers,
+                generic: cover.generic.signers,
                 lean_sphincs: cover.lean_sphincs.signers,
                 da_commitment: da_root,
             },

@@ -2,14 +2,18 @@
 
 use super::deferred::{DeferredClaim, scalar_bytecode};
 use super::error::{AggregateVerifyError, SnarkVerifyError};
-use super::statement::statement_digest;
-use super::{LeanSphincsClaim, LeanXmssClaim};
+use super::cells::cell_bytes;
+use super::guest::unified_guest;
+use super::generic::MAX_GENERIC_DEPENDENCIES;
+use super::statement::{deps_digest_cells, statement_digest, statement_digest_of};
+use fiat_shamir::merkle::hash_to_scalars;
+use super::{GenericClaim, LeanSphincsClaim};
 use leanvm_core::cpu::{public_input_bytes, scalar_proof};
 use primitives::field::F192;
 
-/// What an aggregate attests: every `(pubkey, message)` in [`Self::xmss`] is backed by a valid
-/// leanXMSS signature, at a leaf index the statement does not record, every one in
-/// [`Self::lean_sphincs`] by a valid leanSPHINCS signature, and the [`Self::da_commitment`], if any,
+/// What an aggregate attests: every `(data_hash, vk)` in [`Self::generic`] is backed by a valid
+/// leanVM execution proof of the program `vk` commits to on public input `data_hash`, every
+/// `(message, pubkey)` in [`Self::lean_sphincs`] by a valid leanSPHINCS signature, and the [`Self::da_commitment`], if any,
 /// commits to blob rows that are valid Reed-Solomon codewords.
 ///
 /// The two lists remain separate because the proof says which scheme verified which claim (the
@@ -22,7 +26,8 @@ use primitives::field::F192;
 /// committee threshold has to count distinct pubkeys itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EthereumClaims {
-    pub xmss: Vec<LeanXmssClaim>,
+    /// The leanSTARK (`0x11`) claims, at most [`MAX_GENERIC_DEPENDENCIES`].
+    pub generic: Vec<GenericClaim>,
     pub lean_sphincs: Vec<LeanSphincsClaim>,
     /// `None` makes no blob claim. The statement carries its [`verifier::da::digest`].
     pub da_commitment: Option<[u8; 32]>,
@@ -78,7 +83,10 @@ pub(super) fn decode(bytes: &[u8]) -> Option<(Vec<F192>, &[u8])> {
 /// empty; both may be empty for a blob proof. Their sizes are the guest's to bound, by its
 /// memory.
 pub(super) fn check_signer_set(claims: &EthereumClaims) -> Result<(), AggregateVerifyError> {
-    if !claims.xmss.windows(2).all(|w| w[0] < w[1]) || !claims.lean_sphincs.windows(2).all(|w| w[0] < w[1]) {
+    if !claims.generic.windows(2).all(|w| w[0] < w[1])
+        || !claims.lean_sphincs.windows(2).all(|w| w[0] < w[1])
+        || claims.generic.len() > MAX_GENERIC_DEPENDENCIES
+    {
         return Err(AggregateVerifyError::MalformedSignerSet);
     }
     Ok(())
@@ -91,15 +99,73 @@ impl EthereumClaims {
     /// claims, one per message it signed. A caller that wants signers has to
     /// deduplicate by pubkey itself.
     pub fn num_signature_claims(&self) -> usize {
-        self.xmss.len() + self.lean_sphincs.len()
+        self.generic.len() + self.lean_sphincs.len()
     }
+}
+
+/// EIP-8288 `get_deps_hash` with `DEPS_HASH` = Keccak-256. `S` hashes `data_hash ‖ pkRoot ‖ pkSeed` for
+/// each leanSPHINCS (`0x10`) dependency and `G` `data_hash ‖ vk` for each leanSTARK (`0x11`) one, each
+/// list in the order given; the digest is `S` without leanSTARK dependencies (the published
+/// `get_deps_hash`), else `keccak256(S ‖ G ‖ LEANSTARK_DEPS_DOMAIN)`. The caller canonicalizes (sorts,
+/// deduplicates) each list.
+pub fn deps_hash(lean_sphincs: &[LeanSphincsClaim], generic: &[GenericClaim]) -> [u8; 32] {
+    cell_bytes(deps_digest_cells(lean_sphincs, generic))
+        .try_into()
+        .expect("two 16-byte cells")
+}
+
+/// What stands for EIP-8288 `AGGREGATED_VK`: the guest's Fiat-Shamir IV,
+/// `keccak256(verifier::TAG ‖ stacked bytecode table)`, which seeds every transcript and leads the statement.
+pub fn aggregated_vk() -> [u8; 32] {
+    cell_bytes(leanvm_core::cpu::fs_seed(unified_guest()))
+        .try_into()
+        .expect("two 16-byte cells")
+}
+
+/// The VM public input of a dependency-only aggregate with dependency digest `deps_hash`:
+/// `keccak256(AGGREGATED_VK ‖ deps_hash ‖ 0^32 ‖ deferred cells)`.
+fn deps_public_input(deps_hash: &[u8; 32], defer: &DeferredClaim) -> [F192; 2] {
+    statement_digest_of(hash_to_scalars(deps_hash), [0; 32], defer)
+}
+
+/// The 32-byte VM public input [`verify_deps_hash`] checks `proof_bytes` against, and the deferred
+/// cells' bytes that end its preimage (three little-endian limbs a cell, zero-padded to an even count).
+pub fn deps_public_input_bytes(
+    deps_hash: &[u8; 32],
+    proof_bytes: &[u8],
+) -> Result<([u8; 32], Vec<u8>), AggregateVerifyError> {
+    let (point, _) = decode(proof_bytes).ok_or(AggregateVerifyError::MalformedEncoding)?;
+    let defer = DeferredClaim::recompute_scalar(point)?;
+    let mut cells = defer.cells();
+    cells.resize(cells.len().next_multiple_of(2), F192::ZERO);
+    let tail = cells.iter().flat_map(|x| x.to_limbs()).flat_map(u64::to_le_bytes).collect();
+    Ok((public_input_bytes(&deps_public_input(deps_hash, &defer)), tail))
+}
+
+/// EIP-8288 verification: `verify_leanSTARK((deps_hash, AGGREGATED_VK), AGGREGATED_VK, proof)`, holding
+/// only the digest and the proof. An empty dependency list has the empty proof.
+pub fn verify_deps_hash(deps_hash: &[u8; 32], proof_bytes: &[u8]) -> Result<(), AggregateVerifyError> {
+    if proof_bytes.is_empty() {
+        return if *deps_hash == primitives::hash::hash(&[]) {
+            Ok(())
+        } else {
+            Err(AggregateVerifyError::MalformedEncoding)
+        };
+    }
+    let (point, proof) = decode(proof_bytes).ok_or(AggregateVerifyError::MalformedEncoding)?;
+    let proof = leanvm_core::cpu::Proof::from_bytes(proof).ok_or(AggregateVerifyError::MalformedEncoding)?;
+    let defer = DeferredClaim::recompute_scalar(point)?;
+    let pi = deps_public_input(deps_hash, &defer);
+    verifier::verify_execution(scalar_bytecode(), &public_input_bytes(&pi), &scalar_proof(&proof))
+        .map(|_| ())
+        .map_err(|e| AggregateVerifyError::Snark(SnarkVerifyError(e)))
 }
 
 impl EthereumProof {
     /// The VM's public input for this aggregate: the digest of its claims and its deferred claim.
     pub(super) fn vm_public_input(&self) -> [F192; 2] {
         let da = verifier::da::digest(self.claims.da_commitment);
-        statement_digest(&self.claims.xmss, &self.claims.lean_sphincs, da, &self.defer)
+        statement_digest(&self.claims.generic, &self.claims.lean_sphincs, da, &self.defer)
     }
 
     /// What this aggregate claims, which [`Self::verify`] checks.
@@ -139,11 +205,10 @@ impl EthereumProof {
     /// transmitted point, and the VM proof satisfies the statement built from
     /// all of it.
     ///
-    /// This says "every `(pubkey, message)` in the claims' `xmss` is a valid leanXMSS signature,
-    /// and every one in their `lean_sphincs` a valid leanSPHINCS signature", and that the
-    /// `da_commitment`, if any, commits to a well-formed blob matrix: exactly the claims held,
-    /// which are the receiver's own after [`Self::from_proof_bytes`]. Which leaf index each
-    /// leanXMSS signature used is not part of the claim.
+    /// This says "the program each `(data_hash, vk)` in the claims' `generic` commits to accepts
+    /// `data_hash`, and every `(message, pubkey)` in their `lean_sphincs` is a valid leanSPHINCS
+    /// signature", and that the `da_commitment`, if any, commits to a well-formed blob matrix:
+    /// exactly the claims held, which are the receiver's own after [`Self::from_proof_bytes`].
     ///
     /// Every field operation, the proof check and its Merkle hashing run in the `verifier` crate: one thread, no explicit SIMD.
     pub fn verify(&self) -> Result<(), AggregateVerifyError> {

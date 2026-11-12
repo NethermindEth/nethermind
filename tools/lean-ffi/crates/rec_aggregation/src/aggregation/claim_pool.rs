@@ -114,18 +114,18 @@ pub(super) fn coord_difference(a: &[Term], b: &[Term]) -> Vec<Term> {
 /// bus claims (deduped by `(column, kappa)`, as `leaf.rs` pools them), then every
 /// table's committed columns, then the PI memory triple. The placeholder map's
 /// claim descriptors follow this order.
-pub(super) fn walk_claims(layout: &leanvm_core::cpu::Layout, kbc: usize, mut visit: impl FnMut(ClaimSite)) {
+pub(super) fn walk_claims(layout: &leanvm_core::cpu::Layout, mut visit: impl FnMut(ClaimSite)) {
     let sides: [&[Block]; 3] = [&layout.push, &layout.pull, &layout.count];
     // Only the framework blocks raise claims: a table's coords are settled inside
     // the table sumcheck.
-    let sources = leanvm_core::cpu::block_kappa_sources(kbc);
+    let sources = super::child::block_sources();
     let mut seen: std::collections::HashSet<(usize, usize)> = Default::default();
     let mut bi = 0usize;
     for blocks in sides.iter() {
         for blk in blocks.iter() {
             let source = sources[bi];
             bi += 1;
-            if source.0 >= 2 {
+            if (2..2 + leanvm_core::tables::N_TABLES).contains(&source.0) {
                 continue;
             }
             for c in &blk.coords {

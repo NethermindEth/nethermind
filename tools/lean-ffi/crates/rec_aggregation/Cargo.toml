@@ -22,6 +22,8 @@ rand = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
+# Malicious-host switches for the rejection tests. Never enable in a prover that ships.
+forge = []
 # `signers_cache`: cached benchmark signers over leanXMSS mock keys, for tests and the CLI.
 signers-cache = ["signatures/mock", "dep:rand"]
 

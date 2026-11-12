@@ -1,11 +1,10 @@
-//! Recursive proofs of leanXMSS and leanSPHINCS signature claims and LeanDA blob well-formedness.
-//! One bytecode (`guests/lean_ethereum.py`) serves every node of an aggregation tree.
+//! Recursive proofs of leanSTARK (`0x11`) and leanSPHINCS (`0x10`) dependency claims and LeanDA blob
+//! well-formedness. One bytecode (`guests/lean_ethereum.py`) serves every node of an aggregation tree.
 //!
-//! A node verifies `n_raw_lean_xmss` leanXMSS signatures, `n_raw_lean_sphincs` leanSPHINCS
-//! signatures and `n_children` sub-proofs **of this same bytecode**, and
-//! by default publishes the sorted deduplicated union of their signer sets. A claim
-//! of either scheme is a `(pubkey, message)` pair; a leanXMSS signature carries its own
-//! leaf index, which the statement does not record. Coverage is what carries the
+//! A node verifies `n_raw_generic` leanVM execution proofs of other programs ([`verify_generic`]),
+//! `n_raw_lean_sphincs` leanSPHINCS signatures and `n_children` sub-proofs **of this same bytecode**,
+//! and by default publishes the sorted deduplicated union of their claim sets. A leanSTARK claim is
+//! a `(data_hash, vk)` pair, a leanSPHINCS one a `(message, pubkey)` pair. Coverage is what carries the
 //! security claim: a write-once slot per declared claim, written once by each raw
 //! signature and each child claim, plus a final count, so every declared claim is
 //! backed by a real signature or a verified child.
@@ -42,6 +41,7 @@ mod claim_pool;
 mod coverage;
 mod deferred;
 mod error;
+mod generic;
 mod guest;
 mod hints;
 mod node;
@@ -49,22 +49,31 @@ mod placeholders;
 mod proof;
 mod statement;
 #[cfg(test)]
+mod generic_tests;
+#[cfg(test)]
 mod tests;
 
 pub use error::{AggregateVerifyError, AggregationError, SnarkProveError, SnarkVerifyError};
+pub use generic::{
+    LEANSTARK_DEPS_DOMAIN, MAX_GENERIC_BYTECODE_LOG, MAX_GENERIC_DEPENDENCIES, generic_verification_key,
+    generic_witness, verify_generic,
+};
 pub use guest::{unified_guest, warm_up};
 pub use node::{aggregate, aggregate_with_stats};
-pub use proof::{EthereumClaims, EthereumProof};
+pub use proof::{EthereumClaims, EthereumProof, aggregated_vk, deps_hash, deps_public_input_bytes, verify_deps_hash};
+use signatures::lean_sphincs;
 use signatures::lean_sphincs::LeanSphincsPublicKey;
-use signatures::lean_xmss::LeanXmssPublicKey;
-use signatures::{lean_sphincs, lean_xmss};
 
-/// One leanXMSS claim: a pubkey, and the message it signed at whatever leaf index its
-/// signature carries.
-pub type LeanXmssClaim = (LeanXmssPublicKey, lean_xmss::Message);
+/// One leanSTARK (`0x11`) claim, an EIP-8288 dependency without its scheme word: `data_hash`,
+/// then the program's verification key ([`generic_verification_key`]), in the EIP's bytewise order.
+pub type GenericClaim = ([u8; 32], [u8; 32]);
 
-/// One leanSPHINCS claim: a pubkey, and the message it signed.
-pub type LeanSphincsClaim = (LeanSphincsPublicKey, lean_sphincs::Message);
+/// One raw leanSTARK dependency: `data_hash`, the key, and the witness ([`generic_witness`]).
+pub type RawGeneric = ([u8; 32], [u8; 32], Vec<u8>);
+
+/// One leanSPHINCS claim, an EIP-8288 dependency without its scheme word: `data_hash`, then
+/// the key (`pkRoot ‖ pkSeed`). The tuple's order is the EIP's bytewise order of the 64-byte entry.
+pub type LeanSphincsClaim = (lean_sphincs::Message, LeanSphincsPublicKey);
 
 /// The most earlier aggregates one [`aggregate`] call can take, so the arity of
 /// an aggregation tree.

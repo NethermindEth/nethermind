@@ -8,13 +8,10 @@ publish = false
 workspace = true
 
 [features]
-# `lean_xmss::mock::key_gen_from_seed`: keys real over a short range of leaf indices, for tests and benchmarks.
-mock = []
+mock = ["upstream_signatures/mock"]
 
 [dependencies]
+upstream_signatures.workspace = true
 primitives.workspace = true
 parallel.workspace = true
 rand.workspace = true
-
-[dev-dependencies]
-signatures = { path = ".", features = ["mock"] }
