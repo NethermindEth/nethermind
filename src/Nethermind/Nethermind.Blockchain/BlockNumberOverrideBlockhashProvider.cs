@@ -16,10 +16,12 @@ namespace Nethermind.Blockchain;
 /// A block override changes only the number of the header it is applied to, which keeps the hash and parent hash of
 /// the base block. Left to the inner provider, the base block's ancestry would be read at depths measured from the
 /// overridden number. This follows Geth's <c>GetHashFn</c>: the window stays the 256 blocks below the overridden
-/// number, hashes come from the base block's ancestry, and numbers at or above the base resolve to none, except the
-/// base itself when the override is its immediate successor (go-ethereum#32175).
+/// number, hashes come from the base block's ancestry, and numbers at or above the base resolve to none. With
+/// <paramref name="servesBaseToSuccessor"/>, the base itself resolves when the override is its immediate successor, as
+/// in Geth's <c>debug_traceCall</c> (go-ethereum#32175) but not its <c>eth_call</c>.
 /// </remarks>
-public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inner, IBlockFinder blockFinder) : IBlockhashProvider
+/// <param name="servesBaseToSuccessor">Whether an override to the base block's successor resolves the base block's hash.</param>
+public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inner, IBlockFinder blockFinder, bool servesBaseToSuccessor = true) : IBlockhashProvider
 {
     private Anchor? _anchor;
 
@@ -29,7 +31,7 @@ public sealed class BlockNumberOverrideBlockhashProvider(IBlockhashProvider inne
         if (anchor.Base is not { } @base) return inner.GetBlockhash(currentBlock, number, spec);
 
         if (number >= currentBlock.Number || currentBlock.Number - number > BlockhashProvider.MaxDepth) return null;
-        if (number >= @base.Number) return number == @base.Number && currentBlock.Number == @base.Number + 1 ? @base.Hash : null;
+        if (number >= @base.Number) return servesBaseToSuccessor && number == @base.Number && currentBlock.Number == @base.Number + 1 ? @base.Hash : null;
         return anchor.Ancestor is null ? null : inner.GetBlockhash(anchor.Ancestor, number, spec);
     }
 

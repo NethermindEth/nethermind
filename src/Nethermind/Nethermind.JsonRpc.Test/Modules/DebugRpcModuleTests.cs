@@ -1111,8 +1111,8 @@ public partial class DebugRpcModuleTests
             : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
                 new { stateOverrides, blockOverrides, txIndex = mode == "debug_traceCall" ? null : "0x0" });
 
-        // As in Geth's debug_traceCall, the base block's own hash is served only to its immediate successor (go-ethereum#32175).
-        byte[] expected = depth == 0 && offset != 1 ? new byte[32] : ctx.Blockchain.BlockTree.FindHeader(queried, BlockTreeLookupOptions.None)!.Hash!.BytesToArray();
+        // As in Geth, only debug_traceCall serves the base block's own hash, and only to its immediate successor (go-ethereum#32175).
+        byte[] expected = depth == 0 && (offset != 1 || mode == "eth_call") ? new byte[32] : ctx.Blockchain.BlockTree.FindHeader(queried, BlockTreeLookupOptions.None)!.Hash!.BytesToArray();
         byte[] actual = mode == "eth_call" ? Bytes.FromHexString(JToken.Parse(response)["result"]!.Value<string>()!) : ParseReturnValue(response);
         Assert.That(actual, Is.EqualTo(expected), response);
     }

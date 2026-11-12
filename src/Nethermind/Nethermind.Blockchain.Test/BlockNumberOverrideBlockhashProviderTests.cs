@@ -19,12 +19,12 @@ public class BlockNumberOverrideBlockhashProviderTests
     private const ulong BaseNumber = 400;
 
     [Test]
-    public async Task Resolves_from_the_base_block_ancestry([Values(-5, 0, 1, 10)] int offset, [Values] bool warmCache, [Values] bool overriddenInPlace)
+    public async Task Resolves_from_the_base_block_ancestry([Values(-5, 0, 1, 10)] int offset, [Values] bool warmCache, [Values] bool overriddenInPlace, [Values] bool servesBaseToSuccessor)
     {
         BlockTreeBuilder builder = Build.A.BlockTree(Build.A.Block.Genesis.TestObject).OfHeadersOnly.OfChainLength(ChainLength);
         BlockTree tree = builder.TestObject;
         BlockhashProvider inner = new(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), LimboLogs.Instance);
-        BlockNumberOverrideBlockhashProvider provider = new(inner, tree);
+        BlockNumberOverrideBlockhashProvider provider = new(inner, tree, servesBaseToSuccessor);
         BlockHeader @base = tree.FindHeader(BaseNumber, BlockTreeLookupOptions.None)!;
         BlockHeader call = @base.Clone();
         // As for debug_traceCall at a transaction index, where the header serves the preceding transactions first.
@@ -36,14 +36,14 @@ public class BlockNumberOverrideBlockhashProviderTests
         {
             for (ulong number = call.Number - BlockhashProvider.MaxDepth - 2; number < call.Number + 2; number++)
             {
-                Assert.That(provider.GetBlockhash(call, number, Frontier.Instance), Is.EqualTo(Expected(tree, call.Number, number)), $"BLOCKHASH({number})");
+                Assert.That(provider.GetBlockhash(call, number, Frontier.Instance), Is.EqualTo(Expected(tree, call.Number, number, servesBaseToSuccessor)), $"BLOCKHASH({number})");
             }
         }
     }
 
-    /// <summary>Geth's <c>GetHashFn</c> anchored on the base block, as <c>debug_traceCall</c> sets it up.</summary>
-    private static Hash256? Expected(BlockTree tree, ulong callNumber, ulong number) =>
+    /// <summary>Geth's <c>GetHashFn</c> anchored on the base block, as <c>debug_traceCall</c> sets it up with <paramref name="servesBaseToSuccessor"/> and <c>eth_call</c> without.</summary>
+    private static Hash256? Expected(BlockTree tree, ulong callNumber, ulong number, bool servesBaseToSuccessor) =>
         number >= callNumber || callNumber - number > BlockhashProvider.MaxDepth ? null
-        : number < BaseNumber || number == BaseNumber && callNumber == BaseNumber + 1 ? tree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash
+        : number < BaseNumber || servesBaseToSuccessor && number == BaseNumber && callNumber == BaseNumber + 1 ? tree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash
         : null;
 }

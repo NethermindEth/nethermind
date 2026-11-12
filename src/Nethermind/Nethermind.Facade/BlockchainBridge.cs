@@ -1022,7 +1022,8 @@ namespace Nethermind.Facade
                     .AddScoped<SingleCallRequestState>()
                     .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                     .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
-                    .AddDecorator<IBlockhashProvider, BlockNumberOverrideBlockhashProvider>()
+                    // Geth's eth_call, unlike its debug_traceCall, does not serve the base block's hash to its successor.
+                    .AddDecorator<IBlockhashProvider>((ctx, inner) => new BlockNumberOverrideBlockhashProvider(inner, ctx.Resolve<IBlockFinder>(), servesBaseToSuccessor: false))
                     // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
                     // processor decorator drops it after any transaction that keeps its changes.
                     .AddScoped<ResolvedCodeMemo>()
