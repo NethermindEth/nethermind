@@ -3461,6 +3461,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CopyWord(ref dividend, ref quotient);
                     ShiftRight(ref quotient, shift);
                 }
+                else if (ZiskFlag.IsActive && IsBelow(ref quotient, LimbsPerWord, 0))
+                {
+                    // A dividend below the divisor leaves a zero quotient, without the frame the division call needs.
+                    SetWord(ref quotient, 0);
+                }
                 else
                 {
                     nint wide = Entry(&ExecuteDivOfWideOperands);
