@@ -76,7 +76,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         try
         {
-            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
+            return rlpBehaviors.IsTrustedInput() ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
         }
         catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
@@ -106,7 +106,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         try
         {
-            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
+            return rlpBehaviors.IsTrustedInput() ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
         }
         catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
         {

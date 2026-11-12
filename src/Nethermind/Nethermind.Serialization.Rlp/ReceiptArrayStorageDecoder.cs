@@ -226,7 +226,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     {
         try
         {
-            return (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            return rlpBehaviors.IsTrustedInput()
                 ? DecodeCompact<OffFlag>(ref reader, rlpBehaviors)
                 : DecodeCompact<OnFlag>(ref reader, rlpBehaviors);
         }

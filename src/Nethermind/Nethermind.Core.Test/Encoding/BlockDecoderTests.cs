@@ -268,6 +268,24 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Exclude_hashes_leaves_only_the_header_hash_unset()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithUncles(Build.A.BlockHeader.TestObject)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        BlockDecoder decoder = new();
+        RlpReader ctx = new(decoder.Encode(block).Bytes);
+
+        Block decoded = decoder.Decode(ref ctx, RlpBehaviors.ExcludeHashes)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Header.Hash, Is.Null);
+            Assert.That(decoded.Uncles[0].Hash, Is.EqualTo(block.Uncles[0].Hash));
+            Assert.That(decoded.Transactions[0].Hash, Is.EqualTo(block.Transactions[0].Hash));
+        }
+    }
+
+    [Test]
     public void Header_behaviors_reach_the_encoded_header()
     {
         // A zero base fee with no later header field is written only under Eip1559Header.

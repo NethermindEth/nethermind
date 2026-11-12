@@ -168,7 +168,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
             return;
         }
 
-        bool trusted = (rlpBehaviors & RlpBehaviors.TrustedInput) != 0;
+        bool trusted = rlpBehaviors.IsTrustedInput();
         byte first = reader.PeekByte();
         bool skipTypedWrapping = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0;
         if (first >= Rlp.EmptyListByte || (skipTypedWrapping && first > Transaction.MaxTxType))

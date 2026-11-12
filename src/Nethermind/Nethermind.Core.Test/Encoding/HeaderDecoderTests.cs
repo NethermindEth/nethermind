@@ -44,6 +44,18 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Exclude_hashes_controls_whether_the_hash_is_set([Values] bool excludeHashes)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        HeaderDecoder decoder = new();
+        RlpReader decoderContext = new(decoder.Encode(header).Bytes);
+
+        BlockHeader decoded = decoder.Decode(ref decoderContext, excludeHashes ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None)!;
+
+        Assert.That(decoded.Hash, Is.EqualTo(excludeHashes ? null : header.Hash));
+    }
+
+    [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();

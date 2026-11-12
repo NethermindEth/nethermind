@@ -33,6 +33,17 @@ public unsafe partial class ModExpPrecompile
         uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
         uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
 
+        // Contracts invert field elements as base^(p - 2) mod p; for well-known primes an inversion gives the same result far faster
+        if (modulusLength == PrimeFieldInverse.Size && expLength == PrimeFieldInverse.Size && baseLength <= PrimeFieldInverse.Size &&
+            PrimeFieldInverse.TryInvert(
+                inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength),
+                inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength),
+                inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength),
+                out byte[]? inverse))
+        {
+            return inverse;
+        }
+
         using mpz_t modulusInt = mpz_t.Create();
 
         ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);

@@ -18,7 +18,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     public static readonly AuthorizationTupleDecoder Instance = new();
 
     protected override AuthorizationTuple DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
     // Not inlined into the list loop of a transaction, so that its reads keep their own inline budget.
     [MethodImpl(MethodImplOptions.NoInlining)]

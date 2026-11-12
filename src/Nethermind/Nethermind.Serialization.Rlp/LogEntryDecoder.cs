@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
         /// <param name="rlpBehaviors">The behaviors of the decode; only <see cref="RlpBehaviors.TrustedInput"/> applies.</param>
         /// <exception cref="RlpLimitException">The declared count exceeds what the bytes or the gas ceiling allow.</exception>
         public static LogEntry[] DecodeLogs(ref RlpReader logs, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeLogs<OffFlag>(ref logs) : DecodeLogs<OnFlag>(ref logs);
+            => rlpBehaviors.IsTrustedInput() ? DecodeLogs<OffFlag>(ref logs) : DecodeLogs<OnFlag>(ref logs);
 
         // Not inlined into the receipt decode, so that its loop does not make the frame of the receipt decode larger.
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -64,7 +64,7 @@ namespace Nethermind.Serialization.Rlp
         private static LogEntry ThrowNullLog() => throw new RlpReaderException($"{nameof(LogEntry)} decoding returned null");
 
         protected override LogEntry? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
 
         internal static LogEntry? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
         {
@@ -156,7 +156,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeStructRef(scoped ref RlpReader reader, RlpBehaviors storage, out LogEntryStructRef item)
         {
-            if ((storage & RlpBehaviors.TrustedInput) != 0)
+            if (storage.IsTrustedInput())
             {
                 DecodeStructRef<OffFlag>(ref reader, out item);
             }

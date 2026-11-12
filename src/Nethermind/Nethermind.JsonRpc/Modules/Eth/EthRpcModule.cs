@@ -968,7 +968,8 @@ public partial class EthRpcModule(
             blockTimestamp: header.Timestamp,
             baseFee: header.BaseFeePerGas,
             receipt: null,
-            spec: _specProvider.GetSpec(header));
+            spec: _specProvider.GetSpec(header),
+            excessBlobGas: header.ExcessBlobGas);
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }

@@ -24,7 +24,7 @@ public sealed class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     internal static RlpLimit ChangesLimit => new(BlockBodyDecoder.TransactionsCountLimit.Limit + 2, "", ReadOnlyMemory<char>.Empty);
 
     protected override ReadOnlySlotChanges DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
     internal static ReadOnlySlotChanges Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {

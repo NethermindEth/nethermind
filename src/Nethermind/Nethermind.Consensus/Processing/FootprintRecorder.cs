@@ -16,7 +16,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 

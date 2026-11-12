@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
         public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.LengthOfNull : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
         protected override BlockInfo? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
         // Not inlined into the decode entry, so that its reads keep the inline budget.
         [MethodImpl(MethodImplOptions.NoInlining)]

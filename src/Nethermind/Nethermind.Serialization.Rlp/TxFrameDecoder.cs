@@ -24,7 +24,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
     private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<TxFrame>((int)30.MiB, nameof(TxFrame.Data));
 
     protected override TxFrame DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+        => rlpBehaviors.IsTrustedInput()
             ? Decode<OffFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors)
             : Decode<OnFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors);
 

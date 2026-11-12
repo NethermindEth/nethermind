@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
         public HeaderDecoder(ISpecProvider? specProvider) => _specProvider = specProvider;
 
         protected override BlockHeader? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
         private BlockHeader? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.ReceiptsRoot = receiptsRoot;
             blockHeader.Bloom = bloom;
             blockHeader.GasUsed = gasUsed;
-            blockHeader.Hash = Keccak.Compute(headerRlp);
+            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0) blockHeader.Hash = Keccak.Compute(headerRlp);
 
             if (fields.HasNext) blockHeader.BaseFeePerGas = fields.DecodeUInt256<TCanonicalChecks>();
             if (fields.HasNext) blockHeader.WithdrawalsRoot = fields.DecodeKeccak();

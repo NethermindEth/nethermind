@@ -549,7 +549,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         protected override Account? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
 
         [SkipLocalsInit]
         private Account? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag

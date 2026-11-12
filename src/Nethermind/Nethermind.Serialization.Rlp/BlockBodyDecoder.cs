@@ -94,7 +94,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     }
 
     protected override BlockBody? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+        => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
     private BlockBody? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
@@ -116,7 +116,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> reads the same layout without this decoder and leaves any block
     /// it does not recognise to it; a body field added here needs adding there to keep that fast path.</remarks>
     public BlockBody DecodeUnwrapped(ref RlpReader reader, bool usePooledTransactions, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+        => rlpBehaviors.IsTrustedInput()
             ? DecodeUnwrapped<OffFlag>(ref reader, rlpBehaviors, usePooledTransactions)
             : DecodeUnwrapped<OnFlag>(ref reader, rlpBehaviors, usePooledTransactions);
 

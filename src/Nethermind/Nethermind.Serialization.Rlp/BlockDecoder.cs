@@ -57,15 +57,15 @@ namespace Nethermind.Serialization.Rlp
         }
 
         protected override Block? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+            => rlpBehaviors.IsTrustedInput() ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
 
         private Block? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
             if (reader.TryReadEmptySequence()) return null;
 
             RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
-            // The nested items get only the input mode, so that the other behaviors apply to this item only.
-            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref fields, rlpBehaviors & RlpBehaviors.TrustedInput);
+            // The header gets only the input mode and the hash skip, so that the other behaviors apply to this item only.
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref fields, rlpBehaviors & (RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes));
             // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped<TCanonicalChecks>(ref fields, rlpBehaviors, usePooledTransactions: false);
             reader.ExitSequence(in fields, itemLength);
@@ -169,7 +169,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
-            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+            => rlpBehaviors.IsTrustedInput()
                 ? DecodeToReceiptRecoveryBlock<OffFlag>(memoryManager, memory, rlpBehaviors)
                 : DecodeToReceiptRecoveryBlock<OnFlag>(memoryManager, memory, rlpBehaviors);
 
@@ -180,7 +180,7 @@ namespace Nethermind.Serialization.Rlp
             if (reader.TryReadEmptySequence()) return null;
 
             RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out _);
-            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref fields, rlpBehaviors & RlpBehaviors.TrustedInput);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref fields, rlpBehaviors & (RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes));
 
             RlpReader transactions = fields.EnterSequence<TCanonicalChecks>(out int transactionsLength);
             int transactionCount = transactions.CountItems<TCanonicalChecks>(int.MaxValue);

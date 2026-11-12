@@ -15,7 +15,7 @@ public sealed class UInt256Decoder : RlpDecoder<UInt256>
         => Rlp.LengthOf(item);
 
     protected override UInt256 DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? reader.DecodeUInt256<OffFlag>() : reader.DecodeUInt256();
+        => rlpBehaviors.IsTrustedInput() ? reader.DecodeUInt256<OffFlag>() : reader.DecodeUInt256();
 
     public override void Encode(ref RlpWriter writer, UInt256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => writer.Encode(item);

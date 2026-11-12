@@ -31,7 +31,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
     };
 
     protected override TxFrameSignature DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+        => rlpBehaviors.IsTrustedInput()
             ? Decode<OffFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors)
             : Decode<OnFlag>(ref reader, Memory<byte>.Empty, rlpBehaviors);
 
