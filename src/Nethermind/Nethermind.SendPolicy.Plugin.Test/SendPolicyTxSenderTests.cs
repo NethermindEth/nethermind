@@ -20,6 +20,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -138,6 +139,9 @@ public class SendPolicyTxSenderTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(SpuriousDragon.Instance) { ValidateChainId = chainIdsValidated }))
             .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = RulesFile(rules) })
             .AddSingleton<IFileSystem>(FileSystem)
+            // The cases run in parallel and DevWallet's constructor mutates a static key seed; a signed raw
+            // transaction needs no wallet.
+            .AddSingleton<IWallet>(NullWallet.Instance)
             .AddModule(new SendPolicyModule()));
         ulong chainId = chain.SpecProvider.ChainId;
         Transaction tx = Build.A.Transaction
