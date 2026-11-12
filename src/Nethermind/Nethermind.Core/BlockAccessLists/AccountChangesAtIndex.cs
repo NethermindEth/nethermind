@@ -45,6 +45,7 @@ public class AccountChangesAtIndex(Address address)
     /// <summary>The slots changed at this index, each with its change.</summary>
     public StorageChangeView StorageChanges => new(this);
     public int StorageChangeCount => _storageChangeCount;
+    internal int StorageSlotIndexCapacity => _storageSlotIndex.Capacity;
 
     /// <summary>Slots read but not changed at this index.</summary>
     /// <remarks>The first access after <see cref="AddStorageReadUnchecked"/> compacts the set, so it is not safe for concurrent readers.</remarks>

@@ -90,6 +90,7 @@ public class AccountChangesAtIndexTests
         }
 
         int changesCapacityBeforeClear = accountChanges.StorageChanges.Capacity;
+        int slotIndexCapacityBeforeClear = accountChanges.StorageSlotIndexCapacity;
         int readsCapacityBeforeClear = accountChanges.StorageReads.Capacity;
 
         blockAccessList.Clear();
@@ -100,6 +101,7 @@ public class AccountChangesAtIndexTests
             Assert.That(accountChanges.StorageChanges, Is.Empty);
             Assert.That(accountChanges.StorageChanges.Capacity, Is.GreaterThan(0));
             Assert.That(accountChanges.StorageChanges.Capacity, Is.LessThan(changesCapacityBeforeClear));
+            Assert.That(accountChanges.StorageSlotIndexCapacity, Is.LessThan(slotIndexCapacityBeforeClear));
             Assert.That(accountChanges.StorageReads, Is.Empty);
             Assert.That(accountChanges.StorageReads.Capacity, Is.GreaterThan(0));
             Assert.That(accountChanges.StorageReads.Capacity, Is.LessThan(readsCapacityBeforeClear));
