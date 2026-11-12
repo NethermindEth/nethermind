@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -114,8 +113,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
         if (parallel)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
@@ -485,8 +483,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (parallel && accountChanges is not null)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
