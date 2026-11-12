@@ -349,7 +349,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.StorageChanges.ContainsKey((UInt256)1), Is.True);
+                Assert.That(ac.HasStorageChange((UInt256)1), Is.True);
                 Assert.That(decorator.Writes, Is.EqualTo(1));
                 Assert.That(decorator.Reads - reads, Is.EqualTo(expectedReads));
             }
@@ -458,7 +458,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             AccountChangesAtIndex ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ac.StorageChanges.Keys, Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
+                Assert.That(ac.StorageChanges.Select(static change => change.Key), Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
                 Assert.That(ac.StorageReads, Is.EquivalentTo(readSlots.Select(static s => (UInt256)s)));
             }
         }

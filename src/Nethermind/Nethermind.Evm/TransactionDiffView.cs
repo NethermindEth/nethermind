@@ -90,7 +90,7 @@ internal sealed class TransactionDiffView
             if (accountSlots > 0)
             {
                 int start = slotAt;
-                foreach (UInt256 key in account.StorageChanges.Keys) slots[slotAt++] = new SlotRef(account.Address, key);
+                foreach (KeyValuePair<UInt256, StorageChange> change in account.StorageChanges) slots[slotAt++] = new SlotRef(account.Address, change.Key);
                 // One address per run, so ordering the run by key alone yields the spec's (address, key) order.
                 slots.AsSpan(start, accountSlots).Sort(default(SlotKeyOrder));
             }

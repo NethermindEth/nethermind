@@ -113,8 +113,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
         if (parallel)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
@@ -484,8 +483,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (parallel && accountChanges is not null)
         {
-            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-            if (!Unsafe.IsNullRef(ref change))
+            if (accountChanges.StorageChanges.TryGetValue(in storageCell.Index, out StorageChange change))
             {
                 value = change.Value;
                 return;
