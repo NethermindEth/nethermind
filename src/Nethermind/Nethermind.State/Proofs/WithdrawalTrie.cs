@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -26,6 +27,7 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public static Hash256 CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
         new IndexedTrieRoot.Calculator<Withdrawal, WithdrawalEncoder>(withdrawals, default).Calculate(canBeParallel: false);
 
+    [SkipLocalsInit]
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)
     {
         ulong key = 0;

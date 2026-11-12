@@ -1308,6 +1308,7 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, lastBlockNumber, writeBatch);
         }
 
+        [SkipLocalsInit]
         private void EnsureCanonical(Block block, ulong? lastBlockNumber, IWriteBatch writeBatch)
         {
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;

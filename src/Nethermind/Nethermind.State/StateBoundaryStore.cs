@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,6 +45,7 @@ public sealed class StateBoundaryStore(
         {
             lock (_lock) return _oldestStateBlock;
         }
+        [SkipLocalsInit]
         set
         {
             lock (_lock)
@@ -77,6 +79,7 @@ public sealed class StateBoundaryStore(
         {
             lock (_lock) return _bestPersistedState;
         }
+        [SkipLocalsInit]
         set
         {
             lock (_lock)

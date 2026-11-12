@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -22,6 +23,7 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedBodyNumber
     {
         get => _lowestInsertedBodyNumber;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedBodyNumber = value;
@@ -34,6 +36,7 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedReceiptBlockNumber
     {
         get => _lowestInsertedReceiptBlock;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedReceiptBlock = value;
@@ -49,6 +52,7 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedBlockAccessListBlockNumber
     {
         get => _lowestInsertedBlockAccessListBlock;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedBlockAccessListBlock = value;

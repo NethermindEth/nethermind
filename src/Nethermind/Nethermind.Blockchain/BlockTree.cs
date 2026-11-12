@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -72,6 +73,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader
         {
             get => _lowestInsertedHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedHeader = value;
@@ -89,6 +91,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _lowestInsertedBeaconHeader;
+            [SkipLocalsInit]
             set
             {
                 _lowestInsertedBeaconHeader = value;
@@ -2186,6 +2189,7 @@ namespace Nethermind.Blockchain
         /// Caller holds <see cref="_forkChoiceLock"/>. The pair is forgotten before each attempt, so a failed or uncertain
         /// commit is retried on the next call.
         /// </remarks>
+        [SkipLocalsInit]
         private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
