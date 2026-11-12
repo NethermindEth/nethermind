@@ -51,7 +51,7 @@ namespace Nethermind.Consensus
 
         public bool TrySign(Transaction tx)
         {
-            ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, _chainId));
+            ValueHash256 hash = TxDecoder.Instance.ComputeValueHash(tx, RlpBehaviors.SkipTypedWrapping, true, true, _chainId);
             if (!TrySign(in hash, out Signature sig)) return false;
             sig.V = tx.Type == TxType.Legacy ? EthereumEcdsaExtensions.CalculateV(_chainId, sig.RecoveryId == 1) : (ulong)(sig.RecoveryId + 27);
             tx.Signature = sig;
