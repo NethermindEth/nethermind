@@ -49,8 +49,8 @@ public class GuestDispatchDifferentialTests
     /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
     private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
-    // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
-    private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
+    // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants, and EIP-8038, which changed its charges.
+    private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
@@ -616,7 +616,7 @@ public class GuestDispatchDifferentialTests
     /// The writes leave a slot as it was, reset one to zero and back, create one and clear it again, and reset and then
     /// clear a third, each slot first cold and then warm, so every charge and refund of EIP-2200 and EIP-3529 is taken.
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge and at the stipend sentry.
-    /// In a static frame the first write faults instead. The guest handler serves forks before EIP-8038 only.
+    /// In a static frame the first write faults instead.
     /// </remarks>
     [Test]
     public void Storage_writes_match_the_shared_handlers([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec, [Values] bool isStatic)
@@ -634,19 +634,21 @@ public class GuestDispatchDifferentialTests
         program.AddRange([(byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
         byte[] code = [.. program];
         const ulong ample = 100_000;
-        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true).GasLeft;
+        // EIP-8037 charges the slot's creation as state gas, which the default policy does not hold.
+        EthereumGasPolicy? Funded(ulong gas) => spec.IsEip8037Enabled ? EthereumGasPolicy.FromULong(gas) with { StateReservoir = (long)ample } : null;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, initial: Funded(ample)).GasLeft;
 
         List<string> mismatches = [];
         for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
-            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic);
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic, initial: Funded(gas));
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic, initial: Funded(gas));
             if (!Matches(untraced, traced) || untraced.Refund != traced.Refund)
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
         }
 
         // The stipend sentry needs more gas at each write than the writes go on to use.
-        Outcome complete = Run(ample, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+        Outcome complete = Run(ample, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic, initial: Funded(ample));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
@@ -664,21 +666,14 @@ public class GuestDispatchDifferentialTests
         }
     }
 
-    /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows that the guest handler stays out.</remarks>
+    /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows which handler runs.</remarks>
     [Test]
-    public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
-        Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
+    public void Guest_storage_load_handler_is_installed([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.True);
 
-    [TestCaseSource(nameof(StorageStoreForks))]
-    public bool Guest_storage_store_handler_is_installed_until_eip8038(IReleaseSpec spec) =>
-        VirtualMachine<EthereumGasPolicy>.StoresStorageThroughGuestHandlerForTests(spec);
-
-    private static IEnumerable<TestCaseData> StorageStoreForks()
-    {
-        yield return new TestCaseData(Berlin.Instance).Returns(true);
-        yield return new TestCaseData(Osaka.Instance).Returns(true);
-        yield return new TestCaseData(Amsterdam.Instance).Returns(false);
-    }
+    [Test]
+    public void Guest_storage_store_handler_is_installed([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.StoresStorageThroughGuestHandlerForTests(spec), Is.True);
 
     /// <remarks>The guest call handler falls back to the shared one, so only the table shows that it is installed.</remarks>
     [Test]

@@ -46,16 +46,23 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
-    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
-    {
-        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
-        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
-            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
-    }
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        UsesGuestStorageHandlerForTests(spec, Instruction.SLOAD);
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
     internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
-        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
+        UsesGuestStorageHandlerForTests(spec, Instruction.SSTORE);
+
+    private static bool UsesGuestStorageHandlerForTests(IReleaseSpec spec, Instruction opcode)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] guest = new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[handlers.Length];
+        if (SpecFlags.Eip8038(spec))
+            SetStorageHandlers<Eip8038On>(guest, spec);
+        else
+            SetStorageHandlers<Eip8038Off>(guest, spec);
+        return (nint)guest[(int)opcode] != 0 && (nint)handlers[(int)opcode] == (nint)guest[(int)opcode];
+    }
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs CALL, STATICCALL and DELEGATECALL on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
