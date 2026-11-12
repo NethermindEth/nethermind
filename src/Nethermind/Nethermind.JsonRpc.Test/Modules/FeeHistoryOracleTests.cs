@@ -65,7 +65,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             if (!canonical && requireCanonical)
             {
-                Assert.That(resultWrapper.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                ResultWrapper<FeeHistoryResults> expected = ResultWrapper<FeeHistoryResults>.Fail($"{block.Hash} block is not canonical", ErrorCodes.InvalidInput);
+                Assert.That(resultWrapper, Is.EqualTo(expected).UsingPropertiesComparer());
             }
             else
             {

@@ -231,8 +231,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (historyInfo is null)
             {
-                return headerFound && _blockTree.FindHeader(newestBlock) is not null
-                    ? ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                if (headerFound && _blockTree.FindHeader(newestBlock) is not null)
+                {
+                    return ResultWrapper<FeeHistoryResults>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+                }
+
+                // EIP-1898: a known block that is not canonical is reported apart from an unknown one.
+                return newestBlock is { Type: BlockParameterType.BlockHash, RequireCanonical: true, BlockHash: { } hash }
+                       && _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null
+                    ? ResultWrapper<FeeHistoryResults>.Fail($"{hash} block is not canonical", ErrorCodes.InvalidInput)
                     : ResultWrapper<FeeHistoryResults>.Fail("request beyond head block", ErrorCodes.ResourceNotFound);
             }
 
