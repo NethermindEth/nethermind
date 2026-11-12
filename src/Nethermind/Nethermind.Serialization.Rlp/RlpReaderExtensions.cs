@@ -308,8 +308,9 @@ public static class RlpReaderExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte DecodeByte<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
+        byte prefix = reader.PeekByte();
+        if (prefix > Rlp.EmptyByteArrayByte + sizeof(byte)) ThrowUnexpectedByteValue(reader.BytesRead, prefix);
         ReadOnlySpan<byte> bytes = reader.ReadBytes<TCanonicalChecks>();
-        if (bytes.Length > sizeof(byte)) ThrowUnexpectedByteValue(reader.BytesRead, bytes);
         if (bytes.IsEmpty) return 0;
         if (TCanonicalChecks.IsActive && bytes[0] == 0) ThrowNonCanonicalInteger(reader.BytesRead, bytes);
         return bytes[0];
@@ -813,11 +814,7 @@ public static class RlpReaderExtensions
         ThrowInvalid($"Unexpected length of integer value {bigEndian.Length} at position {ItemStart(end, bigEndian)}");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowUnexpectedByteValue(int end, ReadOnlySpan<byte> bigEndian)
-    {
-        int start = ItemStart(end, bigEndian);
-        ThrowInvalid($"Unexpected byte value {Rlp.EmptyByteArrayByte + bigEndian.Length} at {start}");
-    }
+    private static void ThrowUnexpectedByteValue(int position, byte value) => ThrowInvalid($"Unexpected byte value {value} at {position}");
 
     /// <summary>The position of the integer item that ends at <paramref name="end"/> and has the payload <paramref name="bigEndian"/>.</summary>
     private static int ItemStart(int end, ReadOnlySpan<byte> bigEndian)

@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullHash();
             GetByteCodesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpReaderException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

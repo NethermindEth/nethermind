@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 

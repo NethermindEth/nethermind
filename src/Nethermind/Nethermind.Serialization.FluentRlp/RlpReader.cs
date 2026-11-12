@@ -273,7 +273,7 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadIntegerBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> bigEndian = ReadBytes<TCanonicalChecks>();
+        ReadOnlySpan<byte> bigEndian = ReadBytes<TCanonicalChecks>(isInteger: true);
         if (TCanonicalChecks.IsActive && bigEndian.Length > 0 && bigEndian[0] == 0) ThrowNonCanonicalInteger(_position, bigEndian);
         return bigEndian;
     }
@@ -287,7 +287,10 @@ public ref struct RlpReader
     /// <inheritdoc cref="ReadBytes()"/>
     /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag
+    public ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag => ReadBytes<TCanonicalChecks>(isInteger: false);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>(bool isInteger) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
@@ -302,7 +305,7 @@ public ref struct RlpReader
 
         if (prefix > RlpPrefix.LongString)
         {
-            int longStart = ReadLongBytesStart(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out int longLength);
+            int longStart = ReadLongBytesStart(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, isInteger, out int longLength);
             _position = longStart + longLength;
             return buffer.Slice(longStart, longLength);
         }
@@ -320,8 +323,10 @@ public ref struct RlpReader
     // The buffer goes in as a reference and a length, and the result comes back as integers: a span argument or
     // result is a stack copy with a GC reference, which every caller that inlines the read must zero in its prolog.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadLongBytesStart(ref byte data, int dataLength, int position, byte prefix, bool canonical, out int length)
+    private static int ReadLongBytesStart(ref byte data, int dataLength, int position, byte prefix, bool canonical, bool isInteger, out int length)
     {
+        // The payload of an integer is at most 32 bytes, so a long or sequence prefix is a wrong length, read from the prefix only.
+        if (isInteger) ThrowUnexpectedIntegerLength(prefix - RlpPrefix.ShortString, position);
         if (prefix >= RlpPrefix.ShortList) ThrowUnexpectedPrefix(prefix);
 
         ReadOnlySpan<byte> buffer = MemoryMarshal.CreateReadOnlySpan(ref data, dataLength);
@@ -573,8 +578,11 @@ public ref struct RlpReader
     private static void ThrowNonCanonicalInteger(int end, ReadOnlySpan<byte> bigEndian) => ThrowNonCanonicalInteger(ItemStart(end, bigEndian));
 
     [DoesNotReturn]
-    private static void ThrowUnexpectedIntegerLength(int end, ReadOnlySpan<byte> bigEndian) =>
-        throw new RlpReaderException($"Unexpected length of integer value {bigEndian.Length} at position {ItemStart(end, bigEndian)}");
+    private static void ThrowUnexpectedIntegerLength(int end, ReadOnlySpan<byte> bigEndian) => ThrowUnexpectedIntegerLength(bigEndian.Length, ItemStart(end, bigEndian));
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedIntegerLength(int length, int position) =>
+        throw new RlpReaderException($"Unexpected length of integer value {length} at position {position}");
 
     [DoesNotReturn]
     private static void ThrowNegativeInteger<T>(int end, ReadOnlySpan<byte> bigEndian, T value) =>

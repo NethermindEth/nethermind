@@ -290,7 +290,7 @@ public class ExecutionPayloadTests
         ExecutionPayload payload = new() { Transactions = [EncodeTx(txType), mutated, EncodeTx(txType)] };
         Result<Transaction[]> result = payload.TryGetTransactions();
 
-        Assert.That(result.Error, Contains.Substring("trailing bytes"));
+        Assert.That(result.Error, Contains.Substring("checkpoint failed"));
     }
 
     // Above the parallel-decoding threshold all txs must decode in payload order
