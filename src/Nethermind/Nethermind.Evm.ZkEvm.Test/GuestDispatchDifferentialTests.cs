@@ -773,28 +773,33 @@ public class GuestDispatchDifferentialTests
     /// <remarks>
     /// Block numbers of no hash below, at and above the last 256, the current block, later blocks and numbers past
     /// 64 bits, at every gas up to the program's need, before EIP-7709 serves the hashes from state.
+    /// BLOCKHASH with no pushed number reads the word below, or underflows on an empty stack.
     /// </remarks>
     [Test]
     public void Block_hashes_match_the_shared_handlers([ValueSource(nameof(BlockHashForks))] IReleaseSpec spec, [Values(0, 1, 2)] int below)
     {
         UInt256[] numbers = [0, BlockHashHeader.Number - 257, BlockHashHeader.Number - 256, BlockHashHeader.Number - 1, BlockHashHeader.Number,
             BlockHashHeader.Number + 1, (UInt256.One << 64) + BlockHashHeader.Number - 1, ulong.MaxValue, UInt256.MaxValue];
+        byte[] fromEmptyStack = [(byte)Instruction.BLOCKHASH, (byte)Instruction.STOP];
+        const ulong ample = 1_000;
         List<string> mismatches = [];
-        foreach (UInt256 number in numbers)
+        foreach (byte[] code in numbers.Select(static number => (byte[])[(byte)Instruction.PUSH32, .. number.ToBigEndian(), (byte)Instruction.BLOCKHASH, (byte)Instruction.STOP]).Append(fromEmptyStack))
         {
-            byte[] code = [(byte)Instruction.PUSH32, .. number.ToBigEndian(), (byte)Instruction.BLOCKHASH, (byte)Instruction.STOP];
-            const ulong ample = 1_000;
             ulong needed = ample - Run(ample, [], below, new CodeInfo(code), Table.Traced, spec, blockHashes: true).GasLeft;
             for (ulong gas = 0; gas <= needed; gas++)
             {
                 Outcome untraced = Run(gas, [], below, new CodeInfo(code), Table.Untraced, spec, blockHashes: true);
                 Outcome traced = Run(gas, [], below, new CodeInfo(code), Table.Traced, spec, blockHashes: true);
                 if (!Matches(untraced, traced) && mismatches.Count < 5)
-                    mismatches.Add($"number {number} gas {gas}\n untraced {untraced}\n traced   {traced}");
+                    mismatches.Add($"code {Convert.ToHexString(code)} gas {gas}\n untraced {untraced}\n traced   {traced}");
             }
         }
 
-        Assert.That(mismatches, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(Run(ample, [], 0, new CodeInfo(fromEmptyStack), Table.Untraced, spec, blockHashes: true).Exception, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
     }
 
     public enum CallTarget { NoCode, Code, Delegation, Precompile }
