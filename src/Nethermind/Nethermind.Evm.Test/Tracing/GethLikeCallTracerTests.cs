@@ -753,6 +753,86 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     public enum TraceDispatch { Untraced, Cancelable, Traced }
 
+    [Test]
+    public void Invalid_opcode_action_detail_does_not_change_struct_step(
+        [Values(Instruction.INVALID, (Instruction)0x0c, (Instruction)0xe0)] Instruction opcode,
+        [Values] bool child, [Values] TraceDispatch dispatch) =>
+        AssertOpcodeActionDetail(opcode, MainnetSpecProvider.ShanghaiActivation, opcode switch
+        {
+            Instruction.INVALID => "invalid opcode: INVALID",
+            (Instruction)0x0c => "invalid opcode: opcode 0xc not defined",
+            _ => "invalid opcode: RJUMP"
+        }, child, dispatch);
+
+    [Test]
+    public void Push0_action_detail_respects_active_fork([Values] bool shanghai, [Values] bool child, [Values] TraceDispatch dispatch)
+    {
+        ForkActivation activation = shanghai
+            ? MainnetSpecProvider.ShanghaiActivation
+            : new ForkActivation(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp - 1);
+        AssertOpcodeActionDetail(Instruction.PUSH0, activation, shanghai ? null : "invalid opcode: PUSH0", child, dispatch);
+    }
+
+    [Test]
+    public void Invalid_opcode_without_execution_gas_preserves_out_of_gas([Values] TraceDispatch dispatch) =>
+        AssertOpcodeActionDetail(Instruction.INVALID, MainnetSpecProvider.ShanghaiActivation, "out of gas", false, dispatch, 21000);
+
+    private void AssertOpcodeActionDetail(Instruction opcode, ForkActivation activation, string? expectedError,
+        bool child, TraceDispatch dispatch, ulong gasLimit = 100000)
+    {
+        byte[] code = [(byte)opcode];
+        if (child)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, (long)ChildGas).Op(Instruction.POP).STOP().Done;
+        }
+
+        (Block block, Transaction tx) = PrepareTx(activation, gasLimit, code);
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(null));
+        GethLikeTxMemoryTracer? memory = dispatch == TraceDispatch.Traced ? new(tx, GethTraceOptions.Default) : null;
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
+            _ => new CompositeTxTracer(native.WithCancellation(CancellationToken.None), memory!).WithCancellation(CancellationToken.None)
+        };
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace callResult = native.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)callResult.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = child ? root.Calls.AssertSingle() : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Error, Is.EqualTo(expectedError), "native frame error");
+            Assert.That(frame.To, Is.EqualTo(child ? TestItem.AddressC : tx.To), "failing frame target");
+            if (child)
+            {
+                Assert.That(root.Error, Is.Null, "the caller survives the child's failure");
+                Assert.That(frame.Gas, Is.EqualTo(ChildGas), "forwarded gas");
+                Assert.That(frame.GasUsed, expectedError is null ? Is.LessThan(ChildGas) : Is.EqualTo(ChildGas), "child gas used");
+            }
+
+            if (memory is not null)
+            {
+                using GethLikeTxTrace opcodeResult = memory.BuildResult();
+                int matchingSteps = 0;
+                foreach (GethTxTraceEntry entry in opcodeResult.Entries)
+                {
+                    Assert.That(entry.Error, Is.Null, $"struct step {entry.ProgramCounter} at depth {entry.Depth}");
+                    if (entry.Opcode == OpcodeJsonNames.GetName(opcode) && entry.Depth == (child ? 2 : 1))
+                    {
+                        matchingSteps++;
+                        if (expectedError is not null)
+                            Assert.That(entry.GasCost, Is.Zero, "invalid opcode step gas cost");
+                    }
+                }
+                Assert.That(matchingSteps, Is.EqualTo(1), "the opcode's struct step is present exactly once");
+            }
+        }
+    }
+
     private const ulong ChildGas = 10000;
     private const ulong RevertGas = 6; // PUSH1 0, PUSH1 0, REVERT
 

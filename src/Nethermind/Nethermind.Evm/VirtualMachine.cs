@@ -26,6 +26,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -2015,6 +2016,18 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceInvalidOpcode(Instruction opcode)
+    {
+        if (IsTracingActions)
+        {
+            // Opcode loggers receive the execution fault separately, not as a pre-execution step error.
+            _txTracer.ForEach<ITxTracer, Instruction>(
+                static tracer => tracer.IsTracingActions && !tracer.IsTracingInstructions, opcode,
+                static (tracer, instruction) => tracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(instruction)}"));
+        }
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)
