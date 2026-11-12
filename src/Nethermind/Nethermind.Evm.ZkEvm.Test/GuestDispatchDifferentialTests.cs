@@ -41,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -770,6 +770,33 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
+    /// <remarks>
+    /// Block numbers of no hash below, at and above the last 256, the current block, later blocks and numbers past
+    /// 64 bits, at every gas up to the program's need, before EIP-7709 serves the hashes from state.
+    /// </remarks>
+    [Test]
+    public void Block_hashes_match_the_shared_handlers([ValueSource(nameof(BlockHashForks))] IReleaseSpec spec, [Values(0, 1, 2)] int below)
+    {
+        UInt256[] numbers = [0, BlockHashHeader.Number - 257, BlockHashHeader.Number - 256, BlockHashHeader.Number - 1, BlockHashHeader.Number,
+            BlockHashHeader.Number + 1, (UInt256.One << 64) + BlockHashHeader.Number - 1, ulong.MaxValue, UInt256.MaxValue];
+        List<string> mismatches = [];
+        foreach (UInt256 number in numbers)
+        {
+            byte[] code = [(byte)Instruction.PUSH32, .. number.ToBigEndian(), (byte)Instruction.BLOCKHASH, (byte)Instruction.STOP];
+            const ulong ample = 1_000;
+            ulong needed = ample - Run(ample, [], below, new CodeInfo(code), Table.Traced, spec, blockHashes: true).GasLeft;
+            for (ulong gas = 0; gas <= needed; gas++)
+            {
+                Outcome untraced = Run(gas, [], below, new CodeInfo(code), Table.Untraced, spec, blockHashes: true);
+                Outcome traced = Run(gas, [], below, new CodeInfo(code), Table.Traced, spec, blockHashes: true);
+                if (!Matches(untraced, traced) && mismatches.Count < 5)
+                    mismatches.Add($"number {number} gas {gas}\n untraced {untraced}\n traced   {traced}");
+            }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
     public enum CallTarget { NoCode, Code, Delegation, Precompile }
 
     /// <remarks>
@@ -1072,9 +1099,10 @@ public class GuestDispatchDifferentialTests
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null)
+        ICodeInfoRepository? codeInfoRepository = null, bool blockHashes = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        if (blockHashes) vm.SetBlockExecutionContext(new BlockExecutionContext(BlockHashHeader, spec ?? ReleaseSpec));
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (codeInfoRepository is not null)
         {
@@ -1113,7 +1141,8 @@ public class GuestDispatchDifferentialTests
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
-                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL) &&
+                !(blockHashes && (Instruction)opcode is Instruction.BLOCKHASH))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -1123,7 +1152,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, blockHashes), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
@@ -1158,6 +1187,11 @@ public class GuestDispatchDifferentialTests
 
     private const int FirstEmptyKey = 0x80;
 
+    private static readonly IReleaseSpec[] BlockHashForks = [Byzantium.Instance, ReleaseSpec, Amsterdam.Instance];
+
+    /// <summary>A block far enough from genesis for every one of the last 256 blocks to have a hash.</summary>
+    private static readonly BlockHeader BlockHashHeader = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1_000, 30_000_000, 1, []);
+
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
         (opcode is >= Instruction.ADDRESS and <= (Instruction)0x4f &&
@@ -1169,7 +1203,7 @@ public class GuestDispatchDifferentialTests
     private sealed class DispatchingVirtualMachine : VirtualMachine<EthereumGasPolicy>
     {
         public DispatchingVirtualMachine(IReleaseSpec spec)
-            : base(new NoBlockhashProvider(), new SingleReleaseSpecProvider(spec, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
+            : base(new RecentBlockhashProvider(), new SingleReleaseSpecProvider(spec, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
         {
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
@@ -1211,9 +1245,18 @@ public class GuestDispatchDifferentialTests
         public UInt256 InstructionMask { get; set; }
     }
 
-    private sealed class NoBlockhashProvider : IBlockhashProvider
+    /// <summary>Hashes the last 256 blocks, each with a distinct byte at each of its 32 positions.</summary>
+    private sealed class RecentBlockhashProvider : IBlockhashProvider
     {
-        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec) => null;
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
+        {
+            ulong depth = currentBlock.Number - number;
+            if (number >= currentBlock.Number || depth > 256) return null;
+
+            byte[] bytes = new byte[Hash256.Size];
+            for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(number + (ulong)i * 7);
+            return new Hash256(bytes);
+        }
 
         public System.Threading.Tasks.Task Prefetch(BlockHeader currentBlock, System.Threading.CancellationToken token) =>
             System.Threading.Tasks.Task.CompletedTask;
