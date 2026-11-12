@@ -7,7 +7,6 @@ ROOT="$(cd "$KIT/../.." && pwd)"
 : "${CHAIN_ID:?set CHAIN_ID}"
 : "${OUT:?set OUT to a fresh output dir}"
 PORT="${PORT:-8545}"
-FX="${FX:-$ROOT/tools/lean-ffi/target/release/examples/fixtures}"
 TO="${TO:-0x000000000000000000000000000000000000dEaD}"
 NONCE="${NONCE:-}"
 NONCE_KEY="${NONCE_KEY:-$(( $(od -An -tu4 -N4 /dev/urandom) % 4000000000 + 1000 ))}"
@@ -18,8 +17,12 @@ die() { echo "FAIL: $*" >&2; exit 1; }
 [ ! -e "$OUT" ] || die "$OUT exists; use a fresh OUT"
 mkdir -p "$OUT"
 
-(cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
-  || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"
+# FX can be the signer the Nethermind.Crypto.Lean package ships in testing/runtimes/<rid>/native; otherwise build it.
+if [ -z "${FX:-}" ]; then
+  FX=$ROOT/tools/lean-ffi/target/release/examples/fixtures
+  (cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
+    || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"
+fi
 dotnet build --disable-build-servers -c release "$KIT/pq-tx.cs" > "$OUT/pq-tx.build.log" 2>&1 \
   || die "pq-tx build failed: $(tail -20 "$OUT/pq-tx.build.log")"
 [ -x "$FX" ] || die "$FX is not an executable fixtures signer"
