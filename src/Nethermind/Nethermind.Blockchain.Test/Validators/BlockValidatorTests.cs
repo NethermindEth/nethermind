@@ -451,7 +451,7 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
     {
         Block block = Build.A.Block.TestObject;
-        block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), Keccak.OfAnEmptyString) : null;
+        block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), TestItem.KeccakA) : null;
         block.StarkProof = proof;
 
         bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);

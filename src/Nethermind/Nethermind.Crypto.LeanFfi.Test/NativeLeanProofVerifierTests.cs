@@ -46,7 +46,7 @@ public class NativeLeanProofVerifierTests
         NativeLeanProofVerifier.Instance.EnsureAvailable();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(10u));
+            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(12u));
             Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
         }
     }
@@ -105,7 +105,7 @@ public class NativeLeanProofVerifierTests
     [Test]
     public void Proofs_from_different_threads_run_on_one_prover_thread()
     {
-        // leanVM's arena keeps a slab resident per thread that ever proved, so every caller must share one thread.
+        // leanVM's worker pool starts on the first native caller, so every caller must share one prover thread.
         FrameDependency dep = Dependency("sphincs");
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dep]);
         AggregationInput input = new() { Deps = [dep], Witnesses = [Witness("sphincs")] };

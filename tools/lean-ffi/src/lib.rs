@@ -3,194 +3,34 @@
 
 //! Pinned LeanVM verification and recursive aggregation of complete dependency sets.
 
-use bincode::Options;
-use lean_vm::cpu::{self, Program};
-use primitives::field::F192;
-use rec_aggregation::eip8288_mixed::{self, GenericInput, MixedProof};
-use sphincs::{SphincsPublicKey, SphincsSignature};
+use rec_aggregation::{
+    EthereumClaims, EthereumProof, MAX_GENERIC_BYTECODE_LOG, MAX_GENERIC_DEPENDENCIES,
+};
+use signatures::lean_sphincs::{self, LeanSphincsPublicKey, LeanSphincsSignature};
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Barrier, Condvar, Mutex, OnceLock};
+use std::sync::{Barrier, Mutex, OnceLock};
 use std::thread::ThreadId;
-use tiny_keccak::{Hasher, Keccak};
 
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_INPUT_BYTES: usize = 18 * 1024 * 1024;
-const MAX_DEPS: usize = eip8288_mixed::MAX_DEPENDENCIES;
-const MAX_MIXED_GUEST_BYTES: usize = MAX_BYTES;
-const MAX_INSTRUCTIONS: usize = 1 << eip8288_mixed::MAX_GENERIC_BYTECODE_LOG;
-const MAX_OPERAND: u32 = 65535;
-const MAX_GENERIC_STARKS: usize = eip8288_mixed::MAX_GENERIC_DEPENDENCIES;
-const MAX_DECODE_BYTES: usize = 32 * 1024 * 1024;
+/// A local bound: one guest node proves this many signatures in about 9 GiB.
+const MAX_DEPS: usize = 256;
+// The upstream prover's timings assume its allocator: jemalloc keeps a proof's freed pages mapped for the next one.
+// It serves this library's allocations only, and holds their peak until the process exits.
+#[global_allocator]
+static ALLOCATOR: bench::Jemalloc = bench::Jemalloc;
+const LOG_INV_RATE: usize = 1;
 static PROVER: Mutex<()> = Mutex::new(());
 
-/// Takes the prover for one proof. The proving arena allows one proof in flight per process; PROVER, behind the managed
-/// proving gate, serializes every proof.
+/// Takes the prover for one proof: `rec_aggregation::aggregate` allows one call at a time per process.
 fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
     let guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    static ARENA: std::sync::Once = std::sync::Once::new();
-    ARENA.call_once(|| {
-        lean_vm::init_prover();
-        restore_system_heap();
-    });
+    parallel::init();
     guard
-}
-
-/// Undoes the process-wide glibc tuning `init_prover` applies, restoring the operator's setting or glibc's default.
-///
-/// The arena is its own mapping and does not rely on that tuning, while the host would otherwise never trim its heap or
-/// mmap large allocations again. glibc's adaptive mmap threshold stays off: `init_prover` already disabled it, and no
-/// mallopt re-enables it.
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn restore_system_heap() {
-    let trim = glibc_setting("trim_threshold", "MALLOC_TRIM_THRESHOLD_", 128 * 1024);
-    let mmap_max = glibc_setting("mmap_max", "MALLOC_MMAP_MAX_", 65536);
-    // SAFETY: mallopt only adjusts allocator tuning parameters.
-    unsafe {
-        libc::mallopt(libc::M_TRIM_THRESHOLD, trim);
-        libc::mallopt(libc::M_MMAP_MAX, mmap_max);
-    }
-}
-
-/// The `glibc.malloc.<tunable>` value from `GLIBC_TUNABLES`, else the legacy environment alias, else `default`.
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn glibc_setting(tunable: &str, alias: &str, default: i32) -> i32 {
-    let key = format!("glibc.malloc.{tunable}=");
-    std::env::var("GLIBC_TUNABLES")
-        .ok()
-        .and_then(|tunables| {
-            tunables
-                .split(':')
-                .find_map(|entry| parse_c_integer(entry.strip_prefix(key.as_str())?))
-        })
-        .or_else(|| parse_c_integer(&std::env::var(alias).ok()?))
-        .unwrap_or(default)
-}
-
-/// Parses an unsigned integer as `strtoul(s, _, 0)` does (decimal, `0x` hex or leading-`0` octal), saturating at `i32::MAX`.
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn parse_c_integer(value: &str) -> Option<i32> {
-    let parsed = if let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    {
-        u64::from_str_radix(hex, 16)
-    } else if value.len() > 1 && value.starts_with('0') {
-        u64::from_str_radix(&value[1..], 8)
-    } else {
-        value.parse()
-    };
-    parsed.ok().map(|v| i32::try_from(v).unwrap_or(i32::MAX))
-}
-#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
-fn restore_system_heap() {}
-
-/// Keeps verifications off arena phase openings. A thread's `ArenaVec`s die when it next allocates after a phase opens,
-/// and an allocation racing the opening can land in the stale phase, so no phase may open while a verification runs.
-/// Verifications may run inside an open phase, on their own slabs, so they wait only for an opening, not for the proof
-/// node: a node takes several seconds on a few cores, which held up block import and wrapper admission.
-struct PhaseGate {
-    state: Mutex<GateState>,
-    changed: Condvar,
-}
-
-struct GateState {
-    verifications: usize,
-    /// The arena generation an opening started from, while one is pending or its node is still proving.
-    opening_from: Option<usize>,
-}
-
-static PHASE_GATE: PhaseGate = PhaseGate {
-    state: Mutex::new(GateState {
-        verifications: 0,
-        opening_from: None,
-    }),
-    changed: Condvar::new(),
-};
-
-/// How often a verification held at an opening checks whether the phase has opened, which nothing signals.
-const OPENING_POLL: std::time::Duration = std::time::Duration::from_millis(1);
-
-impl PhaseGate {
-    fn lock(&self) -> std::sync::MutexGuard<'_, GateState> {
-        self.state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-}
-
-struct OpeningGuard;
-
-impl Drop for OpeningGuard {
-    fn drop(&mut self) {
-        PHASE_GATE.lock().opening_from = None;
-        PHASE_GATE.changed.notify_all();
-    }
-}
-
-/// Runs `prove`, which must open at most one arena phase, once no verification is in flight.
-fn in_arena_phase<T>(prove: impl FnOnce() -> T) -> T {
-    let mut state = PHASE_GATE.lock();
-    let generation = zk_alloc::stats().phases;
-    state.opening_from = Some(generation);
-    while state.verifications > 0 {
-        state = PHASE_GATE
-            .changed
-            .wait(state)
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-    }
-    drop(state);
-    let _opening = OpeningGuard;
-    let result = prove();
-    assert!(
-        zk_alloc::stats().phases - generation <= 1,
-        "a gated prove opened more than one arena phase"
-    );
-    result
-}
-
-/// Runs `verify` outside any arena phase opening: before it, or once the phase it waits for has opened.
-fn verify_between_phases<T>(verify: impl FnOnce() -> T) -> T {
-    let mut state = PHASE_GATE.lock();
-    while let Some(generation) = state.opening_from {
-        if zk_alloc::stats().phases != generation {
-            break;
-        }
-        state = PHASE_GATE
-            .changed
-            .wait_timeout(state, OPENING_POLL)
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .0;
-    }
-    state.verifications += 1;
-    drop(state);
-    let _verification = VerificationGuard;
-    verify()
-}
-
-struct VerificationGuard;
-
-impl Drop for VerificationGuard {
-    fn drop(&mut self) {
-        let mut state = PHASE_GATE.lock();
-        state.verifications -= 1;
-        if state.verifications == 0 {
-            PHASE_GATE.changed.notify_all();
-        }
-    }
-}
-
-fn aggregate_mixed(
-    children: &[MixedProof],
-    signatures: &[(SphincsPublicKey, [u8; 32], SphincsSignature)],
-    generic: &[GenericInput],
-    deps: &[Dep],
-) -> Result<MixedProof, ()> {
-    in_arena_phase(|| eip8288_mixed::aggregate_mixed(children, signatures, generic, deps, 1))
-        .map_err(|_| ())
 }
 
 // leanVM's carry-less-multiply field arithmetic is about 68x slower without these features. An
@@ -209,93 +49,16 @@ static ABI_WORKERS: OnceLock<Vec<ThreadId>> = OnceLock::new();
 thread_local! { static IN_ABI: Cell<bool> = const { Cell::new(false) }; }
 thread_local! { static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) }; }
 type Dep = [u8; 96];
+const LEAN_SPHINCS: u8 = 0x10;
+/// EIP-8288 reserves this scheme; accepting it is an experimental extension of this stack.
+const LEAN_STARK: u8 = 0x11;
 
 pub fn keccak(bytes: &[u8]) -> [u8; 32] {
-    let mut h = Keccak::v256();
-    h.update(bytes);
-    let mut out = [0; 32];
-    h.finalize(&mut out);
-    out
+    primitives::hash::hash(bytes)
 }
 
 pub fn aggregated_vk() -> [u8; 32] {
-    eip8288_mixed::mixed_guest_key()
-}
-
-// F192 is GF(2^64)[y]/(y^3+y+1): new stores three distinct u64 coefficients,
-// without integer modular reduction. Two (c0,c1,0) cells injectively encode all 256 bits.
-fn pi(hash: &[u8; 32]) -> [F192; 2] {
-    let word = |i| u64::from_le_bytes(hash[i..i + 8].try_into().unwrap());
-    [
-        F192::new(word(0), word(8), 0),
-        F192::new(word(16), word(24), 0),
-    ]
-}
-fn wire() -> impl Options {
-    bincode::DefaultOptions::new()
-        .with_fixint_encoding()
-        .with_limit(MAX_BYTES as u64)
-}
-
-// Pinned fixed-int serde layout. Validate every allocation hint without allocating.
-struct Preflight<'a> {
-    reader: Reader<'a>,
-    allocated: usize,
-}
-impl<'a> Preflight<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            reader: Reader { bytes },
-            allocated: 0,
-        }
-    }
-    fn count(&mut self, max: usize, width: usize) -> Result<usize, ()> {
-        let n = usize::try_from(u64::from_le_bytes(
-            self.reader.take(8)?.try_into().map_err(|_| ())?,
-        ))
-        .map_err(|_| ())?;
-        if n > max || n > self.reader.bytes.len() / width {
-            return Err(());
-        }
-        self.allocated = self
-            .allocated
-            .checked_add(n.checked_mul(width).ok_or(())?)
-            .ok_or(())?;
-        if self.allocated > MAX_DECODE_BYTES {
-            return Err(());
-        }
-        Ok(n)
-    }
-    fn vector(&mut self, max: usize, width: usize) -> Result<(), ()> {
-        let n = self.count(max, width)?;
-        self.reader.take(n * width)?;
-        Ok(())
-    }
-    fn cpu(&mut self) -> Result<(), ()> {
-        self.vector(MAX_BYTES / 24, 24)?; // scalar stream
-        let phases = self.count(128, 16)?;
-        for _ in 0..phases {
-            let rows = self.count(4096, 8)?;
-            self.allocated = self.allocated.checked_add(rows * 24).ok_or(())?;
-            if self.allocated > MAX_DECODE_BYTES {
-                return Err(());
-            }
-            for _ in 0..rows {
-                self.vector(MAX_BYTES / 8, 8)?;
-            }
-            self.vector(MAX_BYTES / 32, 32)?;
-        }
-        Ok(())
-    }
-    fn mixed(&mut self) -> Result<(), ()> {
-        self.vector(32, 24)?; // bytecode evaluation point
-        self.vector(32, 24)?; // BLAKE2s matrix evaluation point
-        self.vector(32, 24)?; // Keccak matrix evaluation point
-        self.cpu()
-    }
-    fn end(self) -> Result<(), ()> {
-        self.reader.end()
-    }
+    rec_aggregation::aggregated_vk()
 }
 
 struct Reader<'a> {
@@ -326,7 +89,7 @@ impl<'a> Reader<'a> {
     }
     fn dep(&mut self) -> Result<Dep, ()> {
         let d: Dep = self.take(96)?.try_into().map_err(|_| ())?;
-        if d[..31].iter().any(|b| *b != 0) || ![0x10, 0x11].contains(&d[31]) {
+        if d[..31].iter().any(|b| *b != 0) || !matches!(d[31], LEAN_SPHINCS | LEAN_STARK) {
             return Err(());
         }
         Ok(d)
@@ -342,23 +105,45 @@ impl<'a> Reader<'a> {
         }
     }
 }
-fn put_number(out: &mut Vec<u8>, n: usize) {
-    out.extend_from_slice(&(n as u32).to_le_bytes());
+
+/// A dependency triple's `(data_hash, public key)`; triples and claims sort alike.
+/// EIP-8288 leanSPHINCS `verification_key_hash`: the key itself, root then public parameter.
+pub fn verification_key(pk: &LeanSphincsPublicKey) -> [u8; 32] {
+    let mut out = [0; 32];
+    out[..16].copy_from_slice(&pk.root);
+    out[16..].copy_from_slice(&pk.public_param);
+    out
 }
-fn put_blob(out: &mut Vec<u8>, b: &[u8]) {
-    put_number(out, b.len());
-    out.extend_from_slice(b);
-}
-#[cfg(test)]
-fn put_deps(out: &mut Vec<u8>, ds: &[Dep]) {
-    put_number(out, ds.len());
-    for d in ds {
-        out.extend_from_slice(d);
+fn public_key(vk: &[u8; 32]) -> LeanSphincsPublicKey {
+    LeanSphincsPublicKey {
+        root: vk[..16].try_into().unwrap(),
+        public_param: vk[16..].try_into().unwrap(),
     }
 }
-/// EIP-8288 `get_deps_hash` of a canonical list, as the recursive guest commits to it.
+fn data(dep: &Dep) -> [u8; 32] {
+    dep[32..64].try_into().unwrap()
+}
+fn key(dep: &Dep) -> [u8; 32] {
+    dep[64..].try_into().unwrap()
+}
+fn claims(deps: &[Dep]) -> EthereumClaims {
+    let of = |scheme| deps.iter().filter(move |dep| dep[31] == scheme);
+    EthereumClaims {
+        lean_sphincs: of(LEAN_SPHINCS)
+            .map(|dep| (data(dep), public_key(&key(dep))))
+            .collect(),
+        generic: of(LEAN_STARK).map(|dep| (data(dep), key(dep))).collect(),
+        ..Default::default()
+    }
+}
+/// The dependency digest of a canonical list, as the recursive guest commits to it: EIP-8288 `get_deps_hash` for a
+/// leanSPHINCS-only list, and the split-domain digest of `rec_aggregation::deps_hash` once it holds a leanSTARK entry.
 pub fn commitment(ds: &[Dep]) -> [u8; 32] {
-    eip8288_mixed::deps_hash(ds)
+    let claims = claims(ds);
+    rec_aggregation::deps_hash(&claims.lean_sphincs, &claims.generic)
+}
+fn generic_count(ds: &[Dep]) -> usize {
+    ds.iter().filter(|dep| dep[31] == LEAN_STARK).count()
 }
 fn canonical(ds: Vec<Dep>) -> Vec<Dep> {
     ds.into_iter()
@@ -366,342 +151,67 @@ fn canonical(ds: Vec<Dep>) -> Vec<Dep> {
         .into_iter()
         .collect()
 }
-#[cfg(test)]
-fn sphincs_dependency(pk: &SphincsPublicKey, message: &[u8; 32]) -> Dep {
-    let mut dep = [0; 96];
-    dep[31] = 0x10;
-    dep[32..64].copy_from_slice(message);
-    dep[64..].copy_from_slice(&eip8288_mixed::sphincs_verification_key(pk));
-    dep
-}
 fn parse_sphincs(
-    hash: &[u8; 32],
     vk: &[u8; 32],
     witness: &[u8],
-) -> Result<(SphincsPublicKey, SphincsSignature), ()> {
-    if witness.len() != sphincs::PUB_KEY_SIZE + sphincs::SIG_SIZE {
+) -> Result<(LeanSphincsPublicKey, LeanSphincsSignature), ()> {
+    if witness.len() != lean_sphincs::PUB_KEY_SIZE + lean_sphincs::SIG_SIZE || witness[..32] != *vk
+    {
         return Err(());
     }
-    let pk = SphincsPublicKey::from_bytes(witness[..32].try_into().map_err(|_| ())?);
-    if eip8288_mixed::sphincs_verification_key(&pk) != *vk {
-        return Err(());
-    }
-    let sig = SphincsSignature::from_bytes(witness[32..].try_into().map_err(|_| ())?);
-    sphincs::verify(&pk, hash, &sig).map_err(|_| ())?;
-    Ok((pk, sig))
+    let sig = LeanSphincsSignature::from_bytes(witness[32..].try_into().map_err(|_| ())?);
+    Ok((public_key(vk), sig))
 }
 fn verify_sphincs(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
-    parse_sphincs(hash, vk, witness).is_ok()
+    parse_sphincs(vk, witness).is_ok_and(|(pk, sig)| lean_sphincs::verify(&pk, hash, &sig).is_ok())
+}
+fn verify_witness(dep: &Dep, witness: &[u8]) -> bool {
+    if dep[31] == LEAN_STARK {
+        rec_aggregation::verify_generic(&data(dep), &key(dep), witness)
+    } else {
+        verify_sphincs(&data(dep), &key(dep), witness)
+    }
 }
 
-// A fixed 45-byte record: opcode, four u32 operands, three u64 immediate limbs,
-// then one u32 BLAKE2s metadata operand. Unused fields must be zero.
-fn encode_program(program: &Program) -> Vec<u8> {
-    use cpu::{DerefMode, Op};
-    let mut out = Vec::new();
-    put_number(&mut out, program.prog.len());
-    for op in &program.prog {
-        let (tag, args, limbs, md) = match *op {
-            Op::Xor { a, b, c } => (0, [a, b, c, 0], [0; 3], 0),
-            Op::Mul { a, b, c } => (1, [a, b, c, 0], [0; 3], 0),
-            Op::Set { o, k } => (2, [o, 0, 0, 0], [k.c0, k.c1, k.c2], 0),
-            Op::Deref { o1, o2, o3, mode } => (
-                3,
-                [
-                    o1,
-                    o2,
-                    o3,
-                    match mode {
-                        DerefMode::Cell => 0,
-                        DerefMode::Pc => 1,
-                        DerefMode::Fp => 2,
-                    },
-                ],
-                [0; 3],
-                0,
-            ),
-            Op::Jump { oc, od, of } => (4, [oc, od, of, 0], [0; 3], 0),
-            Op::Blake2s { ins, cv, out, md } => (5, ins, [cv as u64, out as u64, 0], md),
-            Op::Sha3 {
-                m,
-                cap,
-                out,
-                digest,
-            } => (
-                6,
-                m[..4].try_into().unwrap(),
-                [
-                    m[4] as u64 | ((m[5] as u64) << 32),
-                    m[6] as u64 | ((m[7] as u64) << 32),
-                    cap as u64 | ((out as u64) << 32),
-                ],
-                digest as u32,
-            ),
-        };
-        out.push(tag);
-        for x in args {
-            out.extend_from_slice(&x.to_le_bytes());
-        }
-        for x in limbs {
-            out.extend_from_slice(&x.to_le_bytes());
-        }
-        out.extend_from_slice(&md.to_le_bytes());
-    }
-    out
-}
-/// The instruction count of `code` if its length matches it, checked without decoding any instruction.
-fn instruction_count(code: &[u8]) -> Result<usize, ()> {
-    let mut r = Reader { bytes: code };
-    let n = r.number()?;
-    if n == 0 || n > MAX_INSTRUCTIONS || !n.is_power_of_two() || r.bytes.len() != n * 45 {
-        return Err(());
-    }
-    Ok(n)
-}
-fn stark_program(code: &[u8]) -> Result<Program, ()> {
-    use cpu::{DerefMode, Op};
-    let n = instruction_count(code)?;
-    let mut r = Reader { bytes: &code[4..] };
-    let mut ops = Vec::with_capacity(n);
-    for _ in 0..n {
-        let tag = r.take(1)?[0];
-        let mut a = [0u32; 4];
-        let mut k = [0u64; 3];
-        for x in &mut a {
-            *x = r.number()? as u32;
-        }
-        for x in &mut k {
-            *x = u64::from_le_bytes(r.take(8)?.try_into().map_err(|_| ())?);
-        }
-        let md = r.number()? as u32;
-        // Upstream precomputes g-powers up to the largest operand at assembly.
-        if a.iter().any(|v| *v > MAX_OPERAND)
-            || md > MAX_OPERAND
-            || (tag == 5 && (k[0] > MAX_OPERAND as u64 || k[1] > MAX_OPERAND as u64))
-        {
-            return Err(());
-        }
-        let op = match tag {
-            0 => Op::Xor {
-                a: a[0],
-                b: a[1],
-                c: a[2],
-            },
-            1 => Op::Mul {
-                a: a[0],
-                b: a[1],
-                c: a[2],
-            },
-            2 => Op::Set {
-                o: a[0],
-                k: F192::new(k[0], k[1], k[2]),
-            },
-            3 => Op::Deref {
-                o1: a[0],
-                o2: a[1],
-                o3: a[2],
-                mode: match a[3] {
-                    0 => DerefMode::Cell,
-                    1 => DerefMode::Pc,
-                    2 => DerefMode::Fp,
-                    _ => return Err(()),
-                },
-            },
-            4 => Op::Jump {
-                oc: a[0],
-                od: a[1],
-                of: a[2],
-            },
-            5 if k[0] <= u32::MAX as u64 && k[1] <= u32::MAX as u64 => Op::Blake2s {
-                ins: a,
-                cv: k[0] as u32,
-                out: k[1] as u32,
-                md,
-            },
-            6 if md <= 1 => {
-                let halves = |value: u64| [value as u32, (value >> 32) as u32];
-                let m = [
-                    a[0],
-                    a[1],
-                    a[2],
-                    a[3],
-                    halves(k[0])[0],
-                    halves(k[0])[1],
-                    halves(k[1])[0],
-                    halves(k[1])[1],
-                ];
-                let [cap, out] = halves(k[2]);
-                if m.iter().any(|value| *value > MAX_OPERAND)
-                    || cap > MAX_OPERAND - 4
-                    || out > MAX_OPERAND - 12
-                {
-                    return Err(());
-                }
-                Op::Sha3 {
-                    m,
-                    cap,
-                    out,
-                    digest: md != 0,
-                }
-            }
-            _ => return Err(()),
-        };
-        ops.push(op);
-    }
-    let program = Program::assemble(ops, HashMap::new(), 0);
-    if encode_program(&program) != code {
-        return Err(());
-    }
-    Ok(program)
-}
-fn decode_stark(
-    hash: &[u8; 32],
-    vk: &[u8; 32],
-    witness: &[u8],
-) -> Result<(Program, cpu::Proof), ()> {
-    if witness.len() > MAX_BYTES {
-        return Err(());
-    }
-    let mut r = Reader { bytes: witness };
-    let code = r.blob()?;
-    instruction_count(code)?;
-    if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
-        return Err(());
-    }
-    let program = stark_program(code)?;
-    let mut preflight = Preflight::new(r.bytes);
-    preflight.cpu()?;
-    preflight.end()?;
-    let proof: cpu::Proof = wire().deserialize(r.bytes).map_err(|_| ())?;
-    if !eip8288_mixed::generic_recursion_supported(&program, &proof) {
-        return Err(());
-    }
-    cpu::verify(&program, &pi(hash), &proof).map_err(|_| ())?;
-    Ok((program, proof))
-}
+/// A leanVM program that accepts every public input: the leanSTARK dependency anyone can prove. For tests and fixtures.
+pub const ANY_INPUT_PROGRAM: &str = "def main():\n    h = StackBuf(2)\n    hint_witness(h, \"pi\")\n    p = 1\n    p[1] = h[0]\n    p[GEN] = h[1]\n    return\n";
 
-fn verify_stark(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
-    verify_between_phases(|| decode_stark(hash, vk, witness).is_ok())
+/// Compiles `source`, a leanVM program reading its public input from the `pi` hint, and proves it on `hash`: the
+/// leanSTARK witness and verification key of the dependency `(hash, key)`. For tests and fixtures.
+pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), ()> {
+    let _guard = begin_proof();
+    let mut program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
+    let table: Vec<u64> = leanvm_core::cpu::bytecode_table(program.prog())
+        .iter()
+        .map(|word| word.0)
+        .collect();
+    let key = rec_aggregation::generic_verification_key(&table).ok_or(())?;
+    let input = fiat_shamir::merkle::hash_to_scalars(hash);
+    program.set_witness("pi", vec![input.to_vec()]);
+    let (proof, _) = leanvm_core::cpu::prove(&program, input, LOG_INV_RATE).map_err(|_| ())?;
+    Ok((
+        rec_aggregation::generic_witness(&table, &proof).ok_or(())?,
+        key,
+    ))
 }
 
 // EIP-8288 `stark_proof`: the guest proof alone, checked against `deps_hash` and the pinned key.
-fn preflight_proof(proof: &[u8]) -> Result<(), ()> {
-    if proof.is_empty() || proof.len() > MAX_MIXED_GUEST_BYTES {
+// The empty proof of an empty list never reaches the guest: callers decide that case themselves.
+fn verify_aggregate(hash: &[u8; 32], proof: &[u8]) -> Result<(), ()> {
+    if proof.is_empty() || proof.len() > MAX_BYTES {
         return Err(());
     }
-    let mut preflight = Preflight::new(proof);
-    preflight.mixed()?;
-    preflight.end()
+    rec_aggregation::verify_deps_hash(hash, proof).map_err(|_| ())
 }
 
-fn verify_aggregate(hash: &[u8; 32], proof: &[u8]) -> Result<(), ()> {
-    preflight_proof(proof)?;
-    verify_between_phases(|| eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ()))
-}
-
-// A recursive child is proven against its declared dependencies, which the caller supplies;
-// the upstream decoder enforces their canonical order and profile bounds.
-fn decode_child(deps: &[Dep], proof: &[u8]) -> Result<MixedProof, ()> {
-    preflight_proof(proof)?;
-    let proof = MixedProof::from_bytes_without_deps(deps, proof).map_err(|_| ())?;
+// A recursive child is proven against its declared dependencies, which the caller supplies.
+fn decode_child(deps: &[Dep], proof: &[u8]) -> Result<EthereumProof, ()> {
+    if proof.is_empty() || proof.len() > MAX_BYTES {
+        return Err(());
+    }
+    let proof = EthereumProof::from_proof_bytes(proof, claims(deps)).map_err(|_| ())?;
     proof.verify().map_err(|_| ())?;
     Ok(proof)
-}
-
-const RAW_SIGNATURES_PER_LEAF: usize = 4;
-const RAW_GENERICS_PER_LEAF: usize = 1;
-const RECURSIVE_FAN_IN: usize = 2;
-
-fn aggregate_bounded(
-    children: Vec<MixedProof>,
-    raw: Vec<(Dep, SphincsPublicKey, [u8; 32], SphincsSignature)>,
-    generic: Vec<(Dep, Program, cpu::Proof)>,
-    desired: &[Dep],
-) -> Result<MixedProof, ()> {
-    let selected: BTreeSet<_> = desired.iter().copied().collect();
-    let mut nodes: Vec<_> = children
-        .into_iter()
-        .filter(|child| {
-            child
-                .dependencies()
-                .iter()
-                .any(|claim| selected.contains(claim))
-        })
-        .collect();
-    if let Some(index) = nodes.iter().position(|node| node.dependencies() == desired) {
-        return Ok(nodes.swap_remove(index));
-    }
-    let covered: HashSet<_> = nodes
-        .iter()
-        .flat_map(|node| node.dependencies().iter().copied())
-        .collect();
-    let mut seen = HashSet::new();
-    let raw: Vec<_> = raw
-        .into_iter()
-        .filter(|(dep, _, _, _)| {
-            selected.contains(dep) && !covered.contains(dep) && seen.insert(*dep)
-        })
-        .collect();
-    let generic: Vec<_> = generic
-        .into_iter()
-        .filter(|(dep, _, _)| selected.contains(dep) && !covered.contains(dep) && seen.insert(*dep))
-        .collect();
-    for leaf in raw.chunks(RAW_SIGNATURES_PER_LEAF) {
-        let signatures: Vec<_> = leaf
-            .iter()
-            .map(|(_, pk, message, signature)| (*pk, *message, signature.clone()))
-            .collect();
-        let deps: Vec<_> = leaf
-            .iter()
-            .map(|(dep, _, _, _)| *dep)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        nodes.push(aggregate_mixed(&[], &signatures, &[], &deps)?);
-    }
-    for leaf in generic.chunks(RAW_GENERICS_PER_LEAF) {
-        let inputs: Vec<_> = leaf
-            .iter()
-            .map(|(dep, program, proof)| GenericInput {
-                program,
-                proof,
-                data: dep[32..64].try_into().unwrap(),
-            })
-            .collect();
-        let deps: Vec<_> = leaf
-            .iter()
-            .map(|(dep, _, _)| *dep)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        nodes.push(aggregate_mixed(&[], &[], &inputs, &deps)?);
-    }
-    while nodes.len() > 1 {
-        let mut next = Vec::new();
-        let mut input = nodes.into_iter();
-        while let Some(first) = input.next() {
-            let mut batch = vec![first];
-            batch.extend(input.by_ref().take(RECURSIVE_FAN_IN - 1));
-            let deps: Vec<_> = batch
-                .iter()
-                .flat_map(|node| node.dependencies().iter().copied())
-                .filter(|dep| selected.contains(dep))
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect();
-            if batch.len() == 1 && batch[0].dependencies() == deps {
-                next.push(batch.pop().ok_or(())?);
-            } else {
-                next.push(aggregate_mixed(&batch, &[], &[], &deps)?);
-            }
-        }
-        nodes = next;
-    }
-    let node = nodes.pop().ok_or(())?;
-    if node.dependencies() == desired {
-        return Ok(node);
-    }
-    aggregate_mixed(&[node], &[], &[], desired)
 }
 
 pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
@@ -719,19 +229,9 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     let mut r = Reader { bytes: input };
     let mut all = Vec::new();
     let mut raw = Vec::new();
-    let mut generic = Vec::new();
     for _ in 0..r.count()? {
         let dep = r.dep()?;
-        let witness = r.blob()?;
-        let data = dep[32..64].try_into().map_err(|_| ())?;
-        let key = dep[64..96].try_into().map_err(|_| ())?;
-        if dep[31] == 0x10 {
-            let (pk, signature) = parse_sphincs(&data, &key, witness)?;
-            raw.push((dep, pk, data, signature));
-        } else {
-            let (program, proof) = decode_stark(&data, &key, witness)?;
-            generic.push((dep, program, proof));
-        }
+        raw.push((dep, r.blob()?));
         all.push(dep);
     }
     let child_count = r.count()?;
@@ -748,7 +248,10 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
             }
             continue;
         }
-        children.push(decode_child(&declared, proof)?);
+        if generic_count(&declared) > MAX_GENERIC_DEPENDENCIES {
+            return Err(());
+        }
+        children.push((decode_child(&declared, proof)?, proof, declared.clone()));
         all.extend(declared);
     }
     let discards: HashSet<_> = r.deps()?.into_iter().collect();
@@ -764,7 +267,7 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
         .into_iter()
         .collect();
     if deps.len() > MAX_DEPS
-        || deps.iter().filter(|d| d[31] == 0x11).count() > MAX_GENERIC_STARKS
+        || generic_count(&deps) > MAX_GENERIC_DEPENDENCIES
         || commitment(&deps) != *hash
     {
         return Err(());
@@ -772,14 +275,53 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     if deps.is_empty() {
         return Ok(vec![]);
     }
-    let proof = aggregate_bounded(children, raw, generic, &deps)?.to_bytes_without_deps();
-    if proof.len() > MAX_MIXED_GUEST_BYTES {
+    let kept: HashSet<_> = deps.iter().copied().collect();
+    children.retain(|(_, _, declared)| declared.iter().any(|dep| kept.contains(dep)));
+    let covered: HashSet<_> = children
+        .iter()
+        .flat_map(|(_, _, declared)| declared.iter().copied())
+        .collect();
+    // The guest checks only the witnesses it is given; one that a child covers or a discard drops is checked here,
+    // so an invalid witness fails the call whether or not the proof needs it.
+    let (raw, unused): (Vec<_>, Vec<_>) = raw
+        .into_iter()
+        .partition(|(dep, _)| kept.contains(dep) && !covered.contains(dep));
+    if unused
+        .iter()
+        .any(|(dep, witness)| !verify_witness(dep, witness))
+    {
+        return Err(());
+    }
+    if let Some((_, bytes, _)) = children.iter().find(|(_, _, declared)| *declared == deps) {
+        return Ok(bytes.to_vec());
+    }
+    let mut signatures = Vec::new();
+    let mut generic = Vec::new();
+    for (dep, witness) in raw {
+        if dep[31] == LEAN_STARK {
+            generic.push((data(&dep), key(&dep), witness.to_vec()));
+        } else {
+            let (pk, signature) = parse_sphincs(&key(&dep), witness)?;
+            signatures.push((pk, data(&dep), signature));
+        }
+    }
+    let children: Vec<_> = children.into_iter().map(|(child, ..)| child).collect();
+    let proof = rec_aggregation::aggregate(
+        &children,
+        generic,
+        signatures,
+        &[],
+        Some(&claims(&deps)),
+        LOG_INV_RATE,
+    )
+    .map_err(|_| ())?
+    .proof_bytes();
+    if proof.len() > MAX_BYTES {
         return Err(());
     }
     Ok(proof)
 }
 
-// Crypto ABI calls bound buffers and contain upstream panics; free requires its exact owned allocation.
 unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], ()> {
     unsafe { bytes_with_limit(ptr, len, MAX_BYTES) }
 }
@@ -823,6 +365,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         ABI_WORKERS.get_or_init(|| {
             let dispatcher = std::thread::current().id();
+            parallel::init();
             let count = parallel::num_threads();
             let barrier = Barrier::new(count);
             let workers = Mutex::new(Vec::new());
@@ -853,7 +396,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    10
+    12
 }
 /// Copies up to `len` bytes of the calling thread's last contained panic message into `out` and returns its full
 /// length; empty unless that thread's latest `checked` call returned -1.
@@ -873,22 +416,20 @@ pub unsafe extern "C" fn nlean_last_error(out: *mut u8, len: usize) -> usize {
     })
 }
 /// # Safety
-/// Output must hold nine writable u32 values.
+/// Output must hold seven writable u32 values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
-    if out.is_null() || len != 9 {
+    if out.is_null() || len != 7 {
         return 0;
     }
     let limits = [
         MAX_BYTES as u32,
         MAX_DEPS as u32,
         rec_aggregation::MAX_RECURSIONS as u32,
-        (sphincs::PUB_KEY_SIZE + sphincs::SIG_SIZE) as u32,
-        MAX_GENERIC_STARKS as u32,
-        MAX_INSTRUCTIONS as u32,
-        MAX_OPERAND,
+        (lean_sphincs::PUB_KEY_SIZE + lean_sphincs::SIG_SIZE) as u32,
         MAX_INPUT_BYTES as u32,
-        MAX_MIXED_GUEST_BYTES as u32,
+        MAX_GENERIC_DEPENDENCIES as u32,
+        1 << MAX_GENERIC_BYTECODE_LOG,
     ];
     unsafe {
         std::ptr::copy_nonoverlapping(limits.as_ptr(), out, limits.len());
@@ -937,7 +478,7 @@ pub unsafe extern "C" fn nlean_verify_leanstark(
     len: usize,
 ) -> i32 {
     checked(|| {
-        Ok(verify_stark(
+        Ok(rec_aggregation::verify_generic(
             unsafe { bytes(data, 32)? }.try_into().map_err(|_| ())?,
             unsafe { bytes(vk, 32)? }.try_into().map_err(|_| ())?,
             unsafe { bytes(witness, len)? },
@@ -1004,836 +545,193 @@ pub unsafe extern "C" fn nlean_free(ptr: *mut u8, len: usize) {
     }
 }
 
-pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), ()> {
-    let _guard = begin_proof();
-    let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
-    let key = eip8288_mixed::generic_verification_key(&program).map_err(|_| ())?;
-    let code = encode_program(&program);
-    let (proof, _) = in_arena_phase(|| cpu::prove(&program, pi(hash), 1)).map_err(|_| ())?;
-    if !eip8288_mixed::generic_recursion_supported(&program, &proof) {
-        return Err(());
-    }
-    let mut out = Vec::new();
-    put_blob(&mut out, &code);
-    out.extend(wire().serialize(&proof).map_err(|_| ())?);
-    if out.len() > MAX_BYTES {
-        return Err(());
-    }
-    Ok((out, key))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn signed(index: u8) -> (Dep, Vec<u8>) {
+        let (sk, pk) = lean_sphincs::key_gen_from_seed([index; 32]);
+        let message = keccak(&[index]);
+        let mut dep = [0; 96];
+        dep[31] = 0x10;
+        dep[32..64].copy_from_slice(&message);
+        dep[64..].copy_from_slice(&verification_key(&pk));
+        let signature = lean_sphincs::sign(&sk, &message).unwrap();
+        (
+            dep,
+            [&verification_key(&pk)[..], &signature.to_bytes()[..]].concat(),
+        )
+    }
+    fn put_number(out: &mut Vec<u8>, n: usize) {
+        out.extend_from_slice(&(n as u32).to_le_bytes());
+    }
+    fn input(raw: &[(Dep, Vec<u8>)], children: &[(&[Dep], &[u8])], discards: &[Dep]) -> Vec<u8> {
+        let mut out = Vec::new();
+        put_number(&mut out, raw.len());
+        for (dep, witness) in raw {
+            out.extend_from_slice(dep);
+            put_number(&mut out, witness.len());
+            out.extend_from_slice(witness);
+        }
+        put_number(&mut out, children.len());
+        for (deps, proof) in children {
+            put_number(&mut out, deps.len());
+            out.extend(deps.iter().flatten());
+            put_number(&mut out, proof.len());
+            out.extend_from_slice(proof);
+        }
+        put_number(&mut out, discards.len());
+        out.extend(discards.iter().flatten());
+        out
+    }
+    fn hash_of(deps: &[Dep]) -> [u8; 32] {
+        commitment(&canonical(deps.to_vec()))
+    }
+
     #[test]
-    fn exact_empty_proof_bypasses_an_occupied_prover() {
+    fn commitment_is_keccak_of_the_64_byte_entries() {
+        let deps = canonical((0..3).map(|i| signed(i).0).collect());
+        let entries: Vec<u8> = deps.iter().flat_map(|d| d[32..].iter().copied()).collect();
+        assert_eq!(commitment(&deps), keccak(&entries));
+        assert_eq!(commitment(&[]), keccak(&[]));
+    }
+
+    #[test]
+    fn empty_list_has_the_empty_proof_and_never_reaches_the_guest() {
         let hash = commitment(&[]);
-        let guard = PROVER
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (send, receive) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            let valid = prove_aggregate(&hash, &[0; 12]);
-            let mut wrong_hash = hash;
-            wrong_hash[0] ^= 1;
-            let invalid = prove_aggregate(&wrong_hash, &[0; 12]);
-            send.send((valid, invalid)).unwrap();
-        });
-        let result = receive.recv_timeout(std::time::Duration::from_secs(3));
-        // Release before joining even if the fast path regresses to taking the lock.
-        drop(guard);
-        worker.join().unwrap();
-        let (proof, invalid) = result.expect("empty proof must not wait for the prover");
-        let proof = proof.unwrap();
-        // EIP-8288: no dependencies, empty stark_proof; callers check that case without the guest.
-        assert!(proof.is_empty());
-        assert!(verify_aggregate(&hash, &proof).is_err());
-        assert!(invalid.is_err());
-        for malformed in [&[0; 11][..], &[0; 13][..]] {
-            assert!(prove_aggregate(&hash, malformed).is_err());
-        }
+        assert!(prove_aggregate(&hash, &[0; 12]).unwrap().is_empty());
+        assert!(prove_aggregate(&[1; 32], &[0; 12]).is_err());
+        assert!(verify_aggregate(&hash, &[]).is_err());
     }
 
-    /// Expected digests computed in Python: leanSPHINCS-only lists from the EIP-8288 `get_deps_hash`
-    /// pseudocode, lists with leanSTARK entries from the split-domain deviation.
-    #[test]
-    fn dependency_commitment_matches_eip_pseudocode_vectors() {
-        let dep = |scheme: u8, data: [u8; 32], key: [u8; 32]| {
-            let mut dep = [0; 96];
-            dep[31] = scheme;
-            dep[32..64].copy_from_slice(&data);
-            dep[64..].copy_from_slice(&key);
-            dep
-        };
-        let key = |start: u8| std::array::from_fn(|i| start + i as u8);
-        let (a, b, c, d) = (
-            dep(0x10, [7; 32], key(0)),
-            dep(0x10, [7; 32], key(1)),
-            dep(0x10, [1; 32], [0xff; 32]),
-            dep(0x10, [0xa5; 32], [0x5a; 32]),
-        );
-        let (g1, g2) = (
-            dep(0x11, [7; 32], key(0)),
-            dep(0x11, [0xa5; 32], [0x5a; 32]),
-        );
-        for (deps, expected) in [
-            (
-                vec![],
-                "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9",
-            ),
-            (
-                vec![a],
-                "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6",
-            ),
-            (
-                vec![b, a, c, a],
-                "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13",
-            ),
-            (
-                vec![d, a, c, b],
-                "830b7c9edb9a816e25929dbae987d3fcf2e900fa009d930c60eddacb0d479ed8",
-            ),
-            (
-                vec![g1],
-                "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a",
-            ),
-            (
-                vec![g2, a, g1, c],
-                "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f",
-            ),
-            (
-                vec![g2, d],
-                "b5a19f98eacfd5f1ac57b535e3aadbdfaf430698ebe563422ba883aa02f38adf",
-            ),
-        ] {
-            let digest = commitment(&canonical(deps));
-            assert_eq!(
-                digest
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<String>(),
-                expected
-            );
-        }
-        assert_ne!(commitment(&[a]), commitment(&[g1]));
-        assert_ne!(commitment(&[d]), commitment(&[g2]));
-    }
-
-    #[test]
-    fn public_input_packing_preserves_every_bit() {
-        for bit in 0..256 {
-            let mut message = [0; 32];
-            message[bit / 8] = 1 << (bit % 8);
-            let cells = pi(&message);
-            let decoded = [
-                cells[0].c0.to_le_bytes(),
-                cells[0].c1.to_le_bytes(),
-                cells[1].c0.to_le_bytes(),
-                cells[1].c1.to_le_bytes(),
-            ]
-            .concat();
-            assert_eq!(decoded, message);
-            assert_eq!((cells[0].c2, cells[1].c2), (0, 0));
-        }
-        let cells = pi(&[255; 32]);
-        assert_eq!(
-            (cells[0].c0, cells[0].c1, cells[1].c0, cells[1].c1),
-            (u64::MAX, u64::MAX, u64::MAX, u64::MAX)
-        );
-    }
-    #[test]
-    fn real_signature_and_vm_proof_bind_message_and_key() {
-        let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);
-        let message = [7; 32];
-        let signature = [
-            pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).to_bytes().as_slice(),
-        ]
-        .concat();
-        assert!(verify_sphincs(&message, &pk.flatten(), &signature));
-        assert!(!verify_sphincs(&[8; 32], &pk.flatten(), &signature));
-        assert!(!verify_sphincs(&message, &[0; 32], &signature));
-        assert!(!verify_sphincs(
-            &message,
-            &keccak(&pk.flatten()),
-            &signature
-        ));
-        let mut bad = signature;
-        bad[10] ^= 1;
-        assert!(!verify_sphincs(&message, &pk.flatten(), &bad));
-        let mut small = [0; 32];
-        small[0] = 7;
-        small[16] = 9;
-        for input in [small, [255; 32]] {
-            let words: Vec<_> = input
-                .chunks_exact(8)
-                .map(|word| u64::from_le_bytes(word.try_into().unwrap()))
-                .collect();
-            let source = format!(
-                "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = f192({}, {}, 0)\n    p[GEN] = f192({}, {}, 0)\n    return\n",
-                words[0], words[1], words[2], words[3]
-            );
-            let (proof, key) = prove_stark(&source, &input).unwrap();
-            assert!(verify_stark(&input, &key, &proof));
-            let mut encoded = Reader { bytes: &proof };
-            let code = encoded.blob().unwrap();
-            // EIP-8288: vk_hash = keccak256(domain_tag || canonical_vk), domain_tag = "ethereum/8288/leanSTARK/vk/v1" || 0x00.
-            assert_eq!(
-                &eip8288_mixed::GENERIC_VK_DOMAIN[..],
-                b"ethereum/8288/leanSTARK/vk/v1\0"
-            );
-            assert_eq!(
-                key,
-                keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat())
-            );
-            let former_key =
-                keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
-            assert!(!verify_stark(&input, &former_key, &proof));
-            for index in [7, 15, 23, 31] {
-                let mut wrong = input;
-                wrong[index] ^= 1;
-                assert!(!verify_stark(&wrong, &key, &proof));
-            }
-            assert!(!verify_stark(&input, &[0; 32], &proof));
-            let mut bad = proof;
-            *bad.last_mut().unwrap() ^= 1;
-            assert!(!verify_stark(&input, &key, &bad));
-        }
-    }
-    #[test]
-    fn real_recursive_composition_and_discards_bind_full_dependency_set() {
-        let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);
-        let message = [7; 32];
-        let signature = [
-            pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).to_bytes().as_slice(),
-        ]
-        .concat();
-        let dep = sphincs_dependency(&pk, &message);
-        let mut input = Vec::new();
-        put_number(&mut input, 1);
-        input.extend_from_slice(&dep);
-        put_blob(&mut input, &signature);
-        put_number(&mut input, 0);
-        put_deps(&mut input, &[]);
-        let leaf = prove_aggregate(&commitment(&[dep]), &input).unwrap();
-        verify_aggregate(&commitment(&[dep]), &leaf).unwrap();
-        assert!(
-            !leaf.windows(96).any(|bytes| bytes == dep),
-            "stark_proof carries no dependency"
-        );
-        let mut parent = Vec::new();
-        put_number(&mut parent, 0);
-        put_number(&mut parent, 1);
-        put_deps(&mut parent, &[dep]);
-        put_blob(&mut parent, &leaf);
-        put_deps(&mut parent, &[]);
-        let root = prove_aggregate(&commitment(&[dep]), &parent).unwrap();
-        verify_aggregate(&commitment(&[dep]), &root).unwrap();
-        let mut other = dep;
-        other[40] ^= 1;
-        assert!(verify_aggregate(&commitment(&[other]), &root).is_err());
-        let mut forged = root.clone();
-        *forged.last_mut().unwrap() ^= 1;
-        assert!(verify_aggregate(&commitment(&[dep]), &forged).is_err());
-        let mut discard = Vec::new();
-        put_number(&mut discard, 0);
-        put_number(&mut discard, 1);
-        put_deps(&mut discard, &[dep]);
-        put_blob(&mut discard, &leaf);
-        put_deps(&mut discard, &[dep]);
-        let empty = prove_aggregate(&commitment(&[]), &discard).unwrap();
-        assert!(empty.is_empty());
-        assert!(prove_aggregate(&commitment(&[dep]), &discard).is_err());
-        // The scheme is bound: the same data and key under leanSTARK is another dependency.
-        let mut restated = dep;
-        restated[31] = 0x11;
-        for proof in [&leaf, &root] {
-            assert!(verify_aggregate(&commitment(&[restated]), proof).is_err());
-        }
-        let mut other_scheme = Vec::new();
-        put_number(&mut other_scheme, 0);
-        put_number(&mut other_scheme, 1);
-        put_deps(&mut other_scheme, &[dep]);
-        put_blob(&mut other_scheme, &leaf);
-        put_deps(&mut other_scheme, &[restated]);
-        // A discard outside the input union is rejected, even when it differs from an input only in its scheme.
-        assert!(prove_aggregate(&commitment(&[]), &other_scheme).is_err());
-        assert!(prove_aggregate(&commitment(&[dep]), &other_scheme).is_err());
-        // Unknown schemes fail in direct, recursive and discard lists alike.
-        for scheme in [0x00, 0x12] {
-            let mut unknown = dep;
-            unknown[31] = scheme;
-            let mut direct = Vec::new();
-            put_number(&mut direct, 1);
-            direct.extend_from_slice(&unknown);
-            put_blob(&mut direct, &signature);
-            put_number(&mut direct, 0);
-            put_deps(&mut direct, &[]);
-            let mut nested = Vec::new();
-            put_number(&mut nested, 0);
-            put_number(&mut nested, 1);
-            put_deps(&mut nested, &[dep, unknown]);
-            put_blob(&mut nested, &leaf);
-            put_deps(&mut nested, &[unknown]);
-            let mut discarded = Vec::new();
-            put_number(&mut discarded, 0);
-            put_number(&mut discarded, 1);
-            put_deps(&mut discarded, &[dep]);
-            put_blob(&mut discarded, &leaf);
-            put_deps(&mut discarded, &[unknown]);
-            for input in [direct, nested, discarded] {
-                assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
-            }
-        }
-    }
-    #[test]
-    fn binary_recursion_preserves_overlapping_parents_and_partial_discards() {
-        let (sk, pk) = sphincs::key_gen_from_seed([43; 32]);
-        let mut deps = Vec::new();
-        let mut input = Vec::new();
-        put_number(&mut input, 3);
-        for index in 0..3u8 {
-            let message = [index; 32];
-            let dep = sphincs_dependency(&pk, &message);
-            let witness = [
-                pk.flatten().as_slice(),
-                sphincs::sign(&sk, &message).to_bytes().as_slice(),
-            ]
-            .concat();
-            deps.push(dep);
-            input.extend_from_slice(&dep);
-            put_blob(&mut input, &witness);
-        }
-        deps.sort();
-        put_number(&mut input, 0);
-        put_deps(&mut input, &[]);
-        let all = prove_aggregate(&commitment(&deps), &input).unwrap();
-        verify_aggregate(&commitment(&deps), &all).unwrap();
-        let combine = |parents: &[(&[Dep], &[u8])], discards: &[Dep], expected: &[Dep]| {
-            let mut input = Vec::new();
-            put_number(&mut input, 0);
-            put_number(&mut input, parents.len());
-            for (inner, proof) in parents {
-                put_deps(&mut input, inner);
-                put_blob(&mut input, proof);
-            }
-            put_deps(&mut input, discards);
-            prove_aggregate(&commitment(expected), &input).unwrap()
-        };
-        let left = combine(&[(&deps, &all)], &[deps[2]], &deps[..2]);
-        let right = combine(&[(&deps, &all)], &[deps[0]], &deps[1..]);
-        let retained = vec![deps[0], deps[2]];
-        let root = combine(
-            &[(&deps[..2], &left), (&deps[1..], &right)],
-            &[deps[1]],
-            &retained,
-        );
-        verify_aggregate(&commitment(&retained), &root).unwrap();
-        let repeated = combine(&[(&retained, &root)], &[], &retained);
-        verify_aggregate(&commitment(&retained), &repeated).unwrap();
-        assert_eq!(root, repeated);
-        let redundant = combine(
-            &[(&retained, &root), (&deps[..2], &left)],
-            &[deps[1]],
-            &retained,
-        );
-        assert_eq!(root, redundant);
-        assert!(verify_aggregate(&commitment(&deps), &root).is_err());
-    }
-
-    #[test]
-    fn malformed_buffers_fail_closed() {
-        assert_eq!(
-            unsafe {
-                nlean_verify_leansphincs(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0)
-            },
-            0
-        );
-        assert_eq!(
-            unsafe {
-                nlean_verify_leanstark([0; 32].as_ptr(), [0; 32].as_ptr(), [0; 8].as_ptr(), 8)
-            },
-            0
-        );
-        let mut declared = [0; 96];
-        declared[31] = 0x10;
-        let hash = commitment(&[declared]);
-        assert!(verify_aggregate(&hash, &[0xff; 8]).is_err());
-        assert!(verify_aggregate(&hash, &[0]).is_err());
-        // Reject malicious nested vector lengths before upstream claim reconstruction.
-        for preceding_vectors in 0..8 {
-            let mut nested = vec![0; preceding_vectors * 8];
-            nested.extend_from_slice(&u64::MAX.to_le_bytes());
-            assert!(verify_aggregate(&hash, &nested).is_err());
-            assert!(decode_child(&[declared], &nested).is_err());
-        }
-        let core = (
-            vec![F192::ZERO; 33],
-            [Vec::<F192>::new(), Vec::<F192>::new()],
-            cpu::Proof {
-                stream: vec![],
-                merkle: vec![],
-            },
-        );
-        assert!(verify_aggregate(&hash, &wire().serialize(&core).unwrap()).is_err());
-    }
-    #[test]
-    fn preflight_rejects_allocation_hints_and_excess_generic_claims() {
-        let mut stream = u64::MAX.to_le_bytes().to_vec();
-        stream.extend_from_slice(&0u64.to_le_bytes());
-        assert!(Preflight::new(&stream).cpu().is_err());
-        for (phases, rows, words) in [(129, 0, 0), (1, 4097, 0), (1, 1, u64::MAX)] {
-            let mut proof = 0u64.to_le_bytes().to_vec();
-            proof.extend_from_slice(&(phases as u64).to_le_bytes());
-            proof.extend_from_slice(&(rows as u64).to_le_bytes());
-            proof.extend_from_slice(&words.to_le_bytes());
-            assert!(Preflight::new(&proof).cpu().is_err());
-        }
-        let mut deps = vec![[0u8; 96]; MAX_GENERIC_STARKS + 1];
-        for (i, dep) in deps.iter_mut().enumerate() {
-            dep[31] = 0x11;
-            dep[63] = i as u8;
-        }
-        let mut input = Vec::new();
-        put_number(&mut input, 0);
-        put_number(&mut input, 1);
-        put_deps(&mut input, &deps);
-        put_blob(&mut input, &[0]);
-        put_deps(&mut input, &[]);
-        assert!(decode_child(&deps, &[0]).is_err());
-        assert!(prove_aggregate(&commitment(&deps), &input).is_err());
-    }
-    #[test]
-    fn bytecode_offsets_are_bounded_before_upstream_assembly() {
-        let mut code = 1u32.to_le_bytes().to_vec();
-        code.push(2); // SET
-        code.extend_from_slice(&u32::MAX.to_le_bytes());
-        code.extend_from_slice(&[0; 40]);
-        assert!(stark_program(&code).is_err());
-    }
-    #[test]
-    fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 10);
-        let mut key = [0u8; 32];
-        assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
-        assert_eq!(
-            key.iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>(),
-            "417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1"
-        );
-        let mut limits = [0u32; 9];
-        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);
-        assert_eq!(
-            limits,
-            [
-                MAX_BYTES as u32,
-                MAX_DEPS as u32,
-                rec_aggregation::MAX_RECURSIONS as u32,
-                (sphincs::PUB_KEY_SIZE + sphincs::SIG_SIZE) as u32,
-                MAX_GENERIC_STARKS as u32,
-                MAX_INSTRUCTIONS as u32,
-                MAX_OPERAND,
-                MAX_INPUT_BYTES as u32,
-                MAX_MIXED_GUEST_BYTES as u32
-            ]
-        );
-        assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
-        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
-        let last_error = || {
-            let mut message = [0u8; 64];
-            let len = unsafe { nlean_last_error(message.as_mut_ptr(), message.len()) };
-            String::from_utf8(message[..len].to_vec()).unwrap()
-        };
-        assert_eq!(checked(|| panic!("contained upstream failure")), -1);
-        assert_eq!(last_error(), "contained upstream failure");
-        let pool_panic = || {
-            parallel::for_each(parallel::num_threads(), |_| panic!("pool task failed"));
-            Ok(true)
-        };
-        assert_eq!(checked(pool_panic), -1);
-        assert_eq!(last_error(), "pool task failed");
-        assert_eq!(checked(|| Err(())), 0);
-        assert_eq!(last_error(), "");
-    }
-
-    #[test]
-    fn generic_input_order_does_not_change_canonical_dependencies() {
-        let mut entries = Vec::new();
-        for value in [7u8, 8] {
-            let source = format!(
-                "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = {value}\n    p[GEN] = 9\n    return\n"
-            );
-            let mut message = [0; 32];
-            message[0] = value;
-            message[16] = 9;
-            let (witness, key) = prove_stark(&source, &message).unwrap();
-            let mut dep = [0; 96];
-            dep[31] = 0x11;
-            dep[32..64].copy_from_slice(&message);
-            dep[64..].copy_from_slice(&key);
-            entries.push((dep, witness));
-        }
-        entries.sort_by_key(|(dep, _)| *dep);
-        let deps: Vec<_> = entries.iter().map(|(dep, _)| *dep).collect();
-        for reverse in [false, true] {
-            if reverse {
-                entries.reverse();
-            }
-            let mut input = Vec::new();
-            put_number(&mut input, entries.len());
-            for (dep, witness) in &entries {
-                input.extend_from_slice(dep);
-                put_blob(&mut input, witness);
-            }
-            put_number(&mut input, 0);
-            put_deps(&mut input, &[]);
-            let proof = prove_aggregate(&commitment(&deps), &input).unwrap();
-            verify_aggregate(&commitment(&deps), &proof).unwrap();
-            let noncanonical: Vec<_> = deps.iter().rev().copied().collect();
-            assert!(verify_aggregate(&commitment(&noncanonical), &proof).is_err());
-        }
-    }
-
-    #[test]
-    fn recursive_generic_parent_compresses_large_inputs_and_preserves_discards() {
-        let mut entries = Vec::new();
-        for value in 7u8..23 {
-            let source = format!(
-                "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = {value}\n    p[GEN] = 9\n    return\n"
-            );
-            let mut message = [0; 32];
-            message[0] = value;
-            message[16] = 9;
-            let (witness, key) = prove_stark(&source, &message).unwrap();
-            let mut dep = [0; 96];
-            dep[31] = 0x11;
-            dep[32..64].copy_from_slice(&message);
-            dep[64..].copy_from_slice(&key);
-            entries.push((dep, witness));
-        }
-        entries.sort_by_key(|(dep, _)| *dep);
-        let deps: Vec<_> = entries.iter().map(|(dep, _)| *dep).collect();
-        let mut input = Vec::new();
-        put_number(&mut input, entries.len());
-        for (dep, witness) in &entries {
-            input.extend_from_slice(dep);
-            put_blob(&mut input, witness);
-        }
-        put_number(&mut input, 0);
-        put_deps(&mut input, &[]);
-        assert!(input.len() > 4 * 1024 * 1024 && input.len() <= MAX_INPUT_BYTES);
-        let parent = prove_aggregate(&commitment(&deps), &input).unwrap();
-        assert!(parent.len() < 1024 * 1024);
-        verify_aggregate(&commitment(&deps), &parent).unwrap();
-
-        let reaggregate = |retained: &[Dep], discards: &[Dep]| {
-            let mut input = Vec::new();
-            put_number(&mut input, 0);
-            put_number(&mut input, 1);
-            put_deps(&mut input, &deps);
-            put_blob(&mut input, &parent);
-            put_deps(&mut input, discards);
-            assert!(input.len() < 1024 * 1024);
-            let proof = prove_aggregate(&commitment(retained), &input).unwrap();
-            verify_aggregate(&commitment(retained), &proof).unwrap();
-            assert!(prove_aggregate(&[0; 32], &input).is_err());
-            proof
-        };
-        let all = reaggregate(&deps, &[]);
-        assert_eq!(all, parent);
-        let one = reaggregate(&deps[..1], &deps[1..]);
-        assert!(one.len() < 1024 * 1024);
-        let (sk, pk) = sphincs::key_gen_from_seed([44; 32]);
-        let message = [44; 32];
-        let sphincs_dep = sphincs_dependency(&pk, &message);
-        let signature = [
-            pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).to_bytes().as_slice(),
-        ]
-        .concat();
-        let mut mixed_deps = deps.clone();
-        mixed_deps.push(sphincs_dep);
-        mixed_deps.sort();
-        let mut mixed_input = Vec::new();
-        put_number(&mut mixed_input, 1);
-        mixed_input.extend_from_slice(&sphincs_dep);
-        put_blob(&mut mixed_input, &signature);
-        put_number(&mut mixed_input, 1);
-        put_deps(&mut mixed_input, &deps);
-        put_blob(&mut mixed_input, &parent);
-        put_deps(&mut mixed_input, &[]);
-        let mixed = prove_aggregate(&commitment(&mixed_deps), &mixed_input).unwrap();
-        verify_aggregate(&commitment(&mixed_deps), &mixed).unwrap();
-        assert!(mixed.len() <= MAX_MIXED_GUEST_BYTES);
-        let mut discard = Vec::new();
-        put_number(&mut discard, 0);
-        put_number(&mut discard, 1);
-        put_deps(&mut discard, &mixed_deps);
-        put_blob(&mut discard, &mixed);
-        put_deps(&mut discard, &[sphincs_dep]);
-        let generic_only = prove_aggregate(&commitment(&deps), &discard).unwrap();
-        verify_aggregate(&commitment(&deps), &generic_only).unwrap();
-        eprintln!(
-            "generic16 parent={} retained16={} retained1={} mixed={}",
-            parent.len(),
-            all.len(),
-            one.len(),
-            mixed.len()
-        );
-    }
-
-    #[test]
-    fn oversized_root_fails_closed() {
+    fn proven(index: u8) -> (Dep, Vec<u8>) {
+        let message = keccak(&[0x51, index]);
+        let (witness, key) = prove_stark(ANY_INPUT_PROGRAM, &message).unwrap();
         let mut dep = [0; 96];
-        dep[31] = 0x11;
-        let hash = commitment(&[dep]);
-        assert!(verify_aggregate(&hash, &vec![0; MAX_MIXED_GUEST_BYTES + 1]).is_err());
-        assert!(!verify_stark(&[0; 32], &[0; 32], &vec![0; MAX_BYTES + 1]));
-    }
-
-    #[test]
-    fn duplicate_generic_claims_compress_once_and_reject_invalid_origins() {
-        let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";
-        let mut message = [0; 32];
-        message[0] = 7;
-        message[16] = 9;
-        let (first, key) = prove_stark(source, &message).unwrap();
-        let program = lean_compiler::compile(&lean_compiler::parse(source).unwrap());
-        let mut second = Vec::new();
-        put_blob(&mut second, &encode_program(&program));
-        let proof = {
-            let _guard = PROVER.lock().unwrap();
-            cpu::prove(&program, pi(&message), 2).unwrap().0
-        };
-        cpu::verify(&program, &pi(&message), &proof).unwrap();
-        second.extend(wire().serialize(&proof).unwrap());
-        assert!(verify_stark(&message, &key, &first));
-        assert!(!verify_stark(&message, &key, &second));
-        let mut dep = [0; 96];
-        dep[31] = 0x11;
+        dep[31] = LEAN_STARK;
         dep[32..64].copy_from_slice(&message);
         dep[64..].copy_from_slice(&key);
-        let leaf = |witness: &[u8]| {
-            let mut input = Vec::new();
-            put_number(&mut input, 1);
-            input.extend_from_slice(&dep);
-            put_blob(&mut input, witness);
-            put_number(&mut input, 0);
-            put_deps(&mut input, &[]);
-            prove_aggregate(&commitment(&[dep]), &input).unwrap()
-        };
-        let parent = leaf(&first);
-        let mut duplicated = Vec::new();
-        put_number(&mut duplicated, 2);
-        for _ in 0..2 {
-            duplicated.extend_from_slice(&dep);
-            put_blob(&mut duplicated, &first);
-        }
-        put_number(&mut duplicated, 0);
-        put_deps(&mut duplicated, &[]);
-        let result = prove_aggregate(&commitment(&[dep]), &duplicated).unwrap();
-        verify_aggregate(&commitment(&[dep]), &result).unwrap();
-        assert!(result.len() < 1024 * 1024);
-        let mut input = Vec::new();
-        put_number(&mut input, 1);
-        input.extend_from_slice(&dep);
-        put_blob(&mut input, &first);
-        put_number(&mut input, 2);
-        for _ in 0..2 {
-            put_deps(&mut input, &[dep]);
-            put_blob(&mut input, &parent);
-        }
-        put_deps(&mut input, &[]);
-        assert_eq!(
-            prove_aggregate(&commitment(&[dep]), &input).unwrap(),
-            parent
-        );
-        let mut bad = first.clone();
-        *bad.last_mut().unwrap() ^= 1;
-        for rejected in [&bad, &second] {
-            let mut input = Vec::new();
-            put_number(&mut input, 2);
-            for witness in [&first, rejected] {
-                input.extend_from_slice(&dep);
-                put_blob(&mut input, witness);
-            }
-            put_number(&mut input, 1);
-            put_deps(&mut input, &[dep]);
-            put_blob(&mut input, &parent);
-            put_deps(&mut input, &[]);
-            assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
-        }
-    }
-
-    fn single_signature_input(seed: u8) -> ([u8; 32], Vec<u8>) {
-        let (sk, pk) = sphincs::key_gen_from_seed([seed; 32]);
-        let message = [seed; 32];
-        let signature = [
-            pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).to_bytes().as_slice(),
-        ]
-        .concat();
-        let dep = sphincs_dependency(&pk, &message);
-        let mut input = Vec::new();
-        put_number(&mut input, 1);
-        input.extend_from_slice(&dep);
-        put_blob(&mut input, &signature);
-        put_number(&mut input, 0);
-        put_deps(&mut input, &[]);
-        (commitment(&[dep]), input)
+        (dep, witness)
     }
 
     #[test]
-    fn verification_and_proving_do_not_share_arena_phases() {
-        let (hash, input) = single_signature_input(44);
-        let proof = prove_aggregate(&hash, &input).unwrap();
-        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let verified = std::sync::Arc::new(AtomicUsize::new(0));
-        let verifier = {
-            let (stop, verified, proof) = (stop.clone(), verified.clone(), proof.clone());
-            std::thread::spawn(move || {
-                let mut failures = 0;
-                while !stop.load(Ordering::Acquire) {
-                    failures += usize::from(verify_aggregate(&hash, &proof).is_err());
-                    verified.fetch_add(1, Ordering::Release);
-                }
-                failures
-            })
-        };
-        // Phase churn as a prover produces it, then a real proof whose arena buffers the verifier must not touch.
-        while verified.load(Ordering::Acquire) < 20 {
-            let _guard = begin_proof();
-            for _ in 0..1000 {
-                in_arena_phase(|| drop(zk_alloc::enter_phase()));
-            }
-        }
-        let (other_hash, other_input) = single_signature_input(45);
-        let other = prove_aggregate(&other_hash, &other_input);
-        stop.store(true, Ordering::Release);
-        assert_eq!(verifier.join().unwrap(), 0);
-        verify_aggregate(&other_hash, &other.unwrap()).unwrap();
-    }
-
-    #[test]
-    fn verification_does_not_wait_for_an_open_phase() {
-        const PHASE: std::time::Duration = std::time::Duration::from_secs(4);
-        let (hash, input) = single_signature_input(46);
-        let proof = prove_aggregate(&hash, &input).unwrap();
-        let opened = std::sync::Arc::new(Barrier::new(2));
-        let prover = {
-            let opened = opened.clone();
-            std::thread::spawn(move || {
-                let _guard = begin_proof();
-                in_arena_phase(|| {
-                    let _phase = zk_alloc::enter_phase();
-                    opened.wait();
-                    std::thread::sleep(PHASE);
-                });
-            })
-        };
-        opened.wait();
-        let started = std::time::Instant::now();
-        verify_aggregate(&hash, &proof).unwrap();
-        let waited = started.elapsed();
-        prover.join().unwrap();
+    fn rejects_bad_witnesses_and_unknown_schemes() {
+        let (dep, witness) = signed(1);
+        assert!(verify_witness(&dep, &witness));
+        let mut forged = witness.clone();
+        forged[100] ^= 1;
+        assert!(!verify_witness(&dep, &forged));
+        assert!(prove_aggregate(&hash_of(&[dep]), &input(&[(dep, forged)], &[], &[])).is_err());
+        // A signature is no leanSTARK witness, and the scheme is part of the dependency.
+        let mut stark = dep;
+        stark[31] = LEAN_STARK;
+        assert!(!verify_witness(&stark, &witness));
+        assert_ne!(hash_of(&[stark]), hash_of(&[dep]));
         assert!(
-            waited < PHASE / 2,
-            "verification waited {waited:?} for the open phase"
+            prove_aggregate(
+                &hash_of(&[stark]),
+                &input(&[(stark, witness.clone())], &[], &[])
+            )
+            .is_err()
         );
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    #[test]
-    fn glibc_settings_parse_like_strtoul() {
-        assert_eq!(parse_c_integer("131072"), Some(131072));
-        assert_eq!(parse_c_integer("0x40000"), Some(0x40000));
-        assert_eq!(parse_c_integer("0100"), Some(64));
-        assert_eq!(parse_c_integer("0"), Some(0));
-        assert_eq!(parse_c_integer("4294967296"), Some(i32::MAX));
-        assert_eq!(parse_c_integer("lots"), None);
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    #[test]
-    fn proving_leaves_host_heap_on_glibc_defaults() {
-        drop(begin_proof());
-        // Above glibc's 32 MiB dynamic mmap threshold cap, below a thread arena's 64 MiB heap: only M_MMAP_MAX = 0 keeps it off mmap.
-        let before = unsafe { libc::mallinfo2() }.hblks;
-        let buffer = std::hint::black_box(vec![1u8; 40 << 20]);
-        assert!(unsafe { libc::mallinfo2() }.hblks > before);
-        drop(buffer);
-    }
-
-    #[test]
-    fn quiet_hook_preserves_unrelated_threads() {
-        const CHILD: &str = "NLEAN_QUIET_HOOK_TEST";
-        if std::env::var_os(CHILD).is_none() {
-            let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "tests::quiet_hook_preserves_unrelated_threads",
-                    "--test-threads=1",
-                ])
-                .env(CHILD, "1")
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return;
-        }
-        let diagnostics = std::sync::Arc::new(AtomicUsize::new(0));
-        let observer = diagnostics.clone();
-        std::panic::set_hook(Box::new(move |_| {
-            observer.fetch_add(1, Ordering::Relaxed);
-        }));
-        assert_eq!(
-            checked(|| {
-                assert!(
-                    std::thread::spawn(|| panic!("unrelated caller"))
-                        .join()
-                        .is_err()
-                );
-                let count = parallel::num_threads();
-                let barrier = Barrier::new(count);
-                let dispatcher = std::thread::current().id();
-                parallel::for_each(count, |_| {
-                    barrier.wait();
-                    if std::thread::current().id() != dispatcher {
-                        panic!("contained upstream worker");
-                    }
-                });
-                panic!("contained calling thread");
-            }),
-            -1
-        );
-        assert_eq!(diagnostics.load(Ordering::Relaxed), 1);
-        assert!(std::panic::catch_unwind(|| panic!("caller outside ABI")).is_err());
-        assert_eq!(diagnostics.load(Ordering::Relaxed), 2);
-    }
-
-    #[test]
-    fn aggregation_input_allows_maximum_child_framing() {
-        let mut input = Vec::new();
-        put_number(&mut input, 0);
-        put_number(&mut input, 2);
-        for _ in 0..2 {
-            put_deps(&mut input, &[]);
-            put_blob(&mut input, &vec![0; MAX_BYTES]);
-        }
-        put_deps(&mut input, &[]);
-        assert!(input.len() > MAX_BYTES && input.len() <= MAX_INPUT_BYTES);
-        // Buffer admission differs from proof validity; the fabricated child is still rejected.
-        assert!(unsafe { bytes_with_limit(input.as_ptr(), input.len(), MAX_INPUT_BYTES) }.is_ok());
-        assert!(unsafe { bytes(input.as_ptr(), input.len()) }.is_err());
-        assert!(prove_aggregate(&commitment(&[]), &input).is_err());
+        let mut unknown = dep;
+        unknown[31] = 0x12;
         assert!(
-            unsafe { bytes_with_limit(std::ptr::null(), MAX_INPUT_BYTES + 1, MAX_INPUT_BYTES) }
-                .is_err()
+            prove_aggregate(&hash_of(&[dep]), &input(&[(unknown, witness)], &[], &[])).is_err()
+        );
+    }
+
+    #[test]
+    fn mixed_commitment_joins_both_lists_under_a_domain() {
+        let sphincs = canonical((0..2).map(|i| signed(i).0).collect());
+        let mut stark = sphincs[0];
+        stark[31] = LEAN_STARK;
+        let list = |deps: &[Dep]| {
+            keccak(
+                &deps
+                    .iter()
+                    .flat_map(|d| d[32..].iter().copied())
+                    .collect::<Vec<u8>>(),
+            )
+        };
+        let mut domain = [0u8; 32];
+        domain[..22].copy_from_slice(b"eip8288/leanstark-deps");
+        let joined =
+            |s: &[Dep], g: &[Dep]| keccak(&[&list(s)[..], &list(g)[..], &domain[..]].concat());
+        assert_eq!(
+            commitment(&canonical([&sphincs[..], &[stark]].concat())),
+            joined(&sphincs, &[stark])
+        );
+        assert_eq!(commitment(&[stark]), joined(&[], &[stark]));
+        assert_ne!(commitment(&[stark]), commitment(&sphincs[..1]));
+    }
+
+    #[test]
+    fn proves_and_merges_leanstark_with_leansphincs() {
+        let (stark, stark_witness) = proven(1);
+        let (other, other_witness) = proven(2);
+        let (sig, sig_witness) = signed(3);
+        assert!(verify_witness(&stark, &stark_witness));
+        assert!(!verify_witness(&other, &stark_witness));
+        let mut forged = stark_witness.clone();
+        *forged.last_mut().unwrap() ^= 1;
+        assert!(!verify_witness(&stark, &forged));
+        assert!(prove_aggregate(&hash_of(&[stark]), &input(&[(stark, forged)], &[], &[])).is_err());
+
+        let mixed = [stark, sig];
+        let leaf = prove_aggregate(
+            &hash_of(&mixed),
+            &input(&[(stark, stark_witness), (sig, sig_witness)], &[], &[]),
+        )
+        .unwrap();
+        assert!(verify_aggregate(&hash_of(&mixed), &leaf).is_ok());
+        assert!(verify_aggregate(&hash_of(&[sig]), &leaf).is_err());
+        assert!(verify_aggregate(&hash_of(&[stark]), &leaf).is_err());
+
+        // A mixed child plus a raw leanSTARK witness, with the child's signature discarded.
+        let declared = canonical(mixed.to_vec());
+        let children = [(&declared[..], &leaf[..])];
+        let kept = [stark, other];
+        let merged = prove_aggregate(
+            &hash_of(&kept),
+            &input(&[(other, other_witness)], &children, &[sig]),
+        )
+        .unwrap();
+        assert!(verify_aggregate(&hash_of(&kept), &merged).is_ok());
+        assert!(verify_aggregate(&hash_of(&[stark, other, sig]), &merged).is_err());
+    }
+
+    #[test]
+    fn proves_merges_and_discards() {
+        let raw: Vec<_> = (0..5).map(signed).collect();
+        let deps: Vec<Dep> = raw.iter().map(|(dep, _)| *dep).collect();
+
+        let left = canonical(deps[..2].to_vec());
+        let left_proof = prove_aggregate(&hash_of(&left), &input(&raw[..2], &[], &[])).unwrap();
+        assert!(verify_aggregate(&hash_of(&left), &left_proof).is_ok());
+        assert!(verify_aggregate(&hash_of(&deps[..3]), &left_proof).is_err());
+        let mut tampered = left_proof.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        assert!(verify_aggregate(&hash_of(&left), &tampered).is_err());
+
+        let right = canonical(deps[2..4].to_vec());
+        let right_proof = prove_aggregate(&hash_of(&right), &input(&raw[2..4], &[], &[])).unwrap();
+
+        // Two children and one raw signature, with one child dependency discarded.
+        let children = [(&left[..], &left_proof[..]), (&right[..], &right_proof[..])];
+        let kept = [deps[1], deps[2], deps[3], deps[4]];
+        let merged =
+            prove_aggregate(&hash_of(&kept), &input(&raw[4..], &children, &deps[..1])).unwrap();
+        assert!(verify_aggregate(&hash_of(&kept), &merged).is_ok());
+        assert!(verify_aggregate(&hash_of(&deps), &merged).is_err());
+
+        // A child declared with dependencies it does not prove is refused.
+        let lying = [(&right[..], &left_proof[..])];
+        assert!(prove_aggregate(&hash_of(&right), &input(&[], &lying, &[])).is_err());
+        // A child that already covers the request is returned as is.
+        assert_eq!(
+            prove_aggregate(&hash_of(&left), &input(&[], &children[..1], &[])).unwrap(),
+            left_proof
         );
     }
 }

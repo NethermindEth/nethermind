@@ -1,11 +1,12 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/e2bc4212013087c0823188e975b224ade286d878),
-based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
-The fork adds one recursive guest for Keccak SPHINCS claims, generic leanVM programs and its own child proofs;
-`Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
-existing `ILeanProofVerifier` interface and thin C ABI. Proofs, guest key and native bounds
-must change together when the guest changes. No hash-based proof substitute is accepted.
+This adapter proves on unmodified [leanEthereum/leanVM](https://github.com/leanEthereum/leanVM), pinned to
+`dd759d2cc5f59d38fb5e118346791e837733065c` in `Cargo.toml`; `Cargo.lock` pins every other dependency. The EIP-8288
+recursive guest and NiceTry v2 signatures live in `crates/`, vendored from the same revision with EIP-8288 changes on
+top (see `crates/README.md`). The guest verifies leanSPHINCS (NiceTry v2) signatures, generic leanVM execution proofs
+and its own child proofs. Upstream replacement belongs behind the existing `ILeanProofVerifier` interface and thin C
+ABI. Proofs, guest key and native bounds must change together when the guest changes. No hash-based proof substitute
+is accepted.
 
 ## Build and test
 
@@ -13,7 +14,7 @@ Rust 1.99+ is required for the pinned upstream APIs.
 
 ```sh
 export LEANVM_NUM_THREADS=1
-(cd tools/lean-ffi && cargo test --release --locked -- --test-threads=1)
+(cd tools/lean-ffi && cargo test --release --locked --workspace -- --test-threads=1)
 dotnet run --project src/Nethermind/Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj -c release -p:BuildLeanFfi=true
 dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -p:BuildLeanFfi=true
 ```
@@ -25,14 +26,10 @@ to them, so it must keep `target-cpu=native` (or the features); the crate refuse
 otherwise. Because the library targets the build host's CPU, a `BuildLeanFfi` publish can crash
 with an illegal instruction (SIGILL) on an older CPU: build on the oldest CPU that will run it, or
 set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
-`-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
-across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
-No arena phase opens while a verification runs; a verification waits only for an opening in progress (including the prover's input preparation, which verifies any leanSTARK inputs), then runs
-alongside the proof node on its own slab rather than for the node (1–3 s on a 12-core arm64 host, about 7 s on 2 cores).
-The arena keeps its touched slabs resident between proofs. leanVM also switches glibc's heap trimming and
-large-allocation mmap off process-wide when it enables the arena; at the first proof the backend restores the
-operator's `GLIBC_TUNABLES`/`MALLOC_*_` values or glibc's defaults, so the host's own freed memory still returns to
-the kernel. glibc's adaptive mmap threshold stays off.
+`-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). The library allocates through jemalloc, the
+allocator upstream's prover timings assume (built with `disable_initial_exec_tls`, so `dlopen` from the .NET host can
+load it); it serves only this library's allocations and keeps a proof's peak mapped for the next one. One proof runs
+per process at a time, which the backend's prover lock ensures.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation
@@ -48,10 +45,9 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 10, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
-`nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
-SPHINCS witness bytes, leanSTARK claims per list, instructions, operand offset, aggregation
-input bytes, mixed guest proof bytes); startup checks these against the managed protocol
+The C ABI is version 12, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+`nlean_limits` writes seven u32 values (proof bytes, dependencies, recursive children,
+SPHINCS witness bytes, aggregation input bytes, leanSTARK claims per list, leanSTARK instructions); startup checks these against the managed protocol
 bounds before accepting work.
 Verification/proving return 1 on success, 0 on failure and -1 for a contained panic. After -1, `nlean_last_error(out, len)` on the same
 thread copies up to `len` bytes of the panic message and returns its full length. Callers initialize proof output
@@ -74,7 +70,7 @@ pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 The serialized mixed guest proof is the whole `stark_proof`; an empty dependency list has an
 empty `stark_proof`. Blocks, wrappers and inclusion-list proofs reject a `stark_proof` above
 that local bound before decoding or verification; measured proofs of this guest are
-265–326 KB. These bounds are not process memory guarantees.
+246–360 KB. These bounds are not process memory guarantees.
 
 The current EIP-8288 companion places `stark_proof` in the block body and commits to
 `keccak256(stark_proof)` and `block_deps_hash` as two flat 32-byte header fields. Header synchronization therefore
@@ -97,14 +93,11 @@ resolved dependency.
 * **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
   dependency key is the public key itself, root then public parameter. Both the key and the
   signature over `data_hash` are checked.
-* **leanSTARK witness (`0x11`, a deviation, see below):** bytecode blob length, canonical
-  bytecode, then fixed-integer bincode serialization of the upstream CPU proof (no trailing
-  bytes). The dependency key is Keccak-256 of the 30-byte tag `ethereum/8288/leanSTARK/vk/v1`
-  plus one zero byte, followed by the canonical program encoding. `data_hash` is the VM's 32-byte
-  public commitment, packed into two 128-bit field cells. At most 2048 instructions and operand
-  offsets through 65535 are accepted. Each instruction is a 45-byte record: opcode byte, four
-  u32 operands, three u64 immediate limbs, then a u32 BLAKE2s metadata operand; opcodes 0–6 are
-  XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3, and unused fields are zero.
+* **leanSTARK witness (`0x11`, a deviation, see below):** `kgen` (one byte, at most 11), the program's stacked
+  bytecode table (`16 · 2^kgen` little-endian u64 words, zero padding included, as upstream's `bytecode_table`), then
+  the upstream execution proof (`Proof::to_bytes`). The dependency key is upstream's program digest and Fiat-Shamir
+  IV, `keccak256("leanvm-v1" || table)`, so the key binds the program before the proof's first challenge.
+  `data_hash` is the program's 32-byte public input, packed into two 128-bit field cells. At most 2048 instructions.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
 * **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies
@@ -126,11 +119,11 @@ EIP-8288 (EIPs#12475/#12590) reserves `LEANSTARK_SCHEME` (`0x11`) until `get_dep
 defined for it. This implementation enables it anyway, as its one deliberate deviation from the
 EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
 
-* A list of only leanSPHINCS (`0x10`) dependencies hashes exactly as the EIP specifies:
-  BLAKE2s-256 over the canonical dependencies' 64-byte `data_hash || verification_key` entries.
+* `DEPS_HASH` is Keccak-256 (the EIP leaves it TBD). A list of only leanSPHINCS (`0x10`) dependencies hashes exactly
+  as the EIP specifies: Keccak-256 over the canonical dependencies' 64-byte `data_hash || verification_key` entries.
   Blocks, wrappers and inclusion lists without leanSTARK dependencies are unaffected.
 * A list with any leanSTARK dependency commits to
-  `BLAKE2s(get_deps_hash(leanSPHINCS subset) || get_deps_hash(leanSTARK subset) || domain)`,
+  `keccak256(get_deps_hash(leanSPHINCS subset) || get_deps_hash(leanSTARK subset) || domain)`,
   where each inner digest is the spec form over that scheme's entries and `domain` is
   `eip8288/leanstark-deps` zero-padded to 32 bytes. The 96-byte preimage is never a list of
   64-byte entries, so no leanSPHINCS-only list shares a digest with it, and the same data and
@@ -143,38 +136,34 @@ EIP, with the pinned guest's generic leanVM CPU proof as its leanSTARK profile:
   statement over it to the prover, a received mode-1 wrapper over it is invalid and an
   inclusion-list proof over it imposes no obligation, both without penalty or verification.
 
-Startup checks ABI 10, the pinned key and the nine bounds together. New devnets require fresh
+Startup checks ABI 12, the pinned key and the seven bounds together. New devnets require fresh
 chain and database namespaces.
 
 The latest companion specification has no block dependency quota: blocks are bounded by gas, mode-0 wrappers by `MAX_LEANSIG_DEPS_PER_WRAPPER`, `MAX_LEANSTARK_DEPS_PER_WRAPPER` and `MAX_WRAPPER_BYTES`, and mode-1 wrappers by `MAX_WRAPPER_BYTES` and the dependency-list limit of the circuit behind `AGGREGATED_VK`, which EIP-8288 fixes from benchmarks before activation. This prototype guest's limit is 256 dependencies, at most 16 of them leanSTARK; a received mode-1 wrapper over it is invalid and discarded before verification, without penalizing its sender. Blocks have no such limit in the draft, so this key cannot prove every block the draft permits and this prototype is not full-capacity conformance. Raising the bound changes the guest and so `AGGREGATED_VK`. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
 
 ## Proving resources
 
-This Keccak profile has a much larger raw proving witness than the former BLAKE2s
-profile. The adapter verifies every input, proves at most four unique selected signatures
-per leaf, and combines at most two children at each recursive node. Discards are applied
-to declared claims at every level. Larger signature sets use genuine recursive proofs
-rather than one large raw witness. Small steps bound witness growth without guaranteeing
-process memory usage; proving calls are serialized within the native backend. The pinned
-Rust toolchain is selected from this directory, including MSBuild's Cargo invocations.
-CI compiles for its host CPU and restores compiled artifacts only when CPU features,
-architecture, toolchain and locked dependencies match.
+One `nlean_prove_recursive` call proves its whole selected list as one guest node over its direct witnesses and child
+proofs; the managed builder decides how statements are split, merged and reused. Every input is verified, including
+witnesses a child already covers or a discard drops. Proving calls are serialized within the native backend. Measured
+on a 32-core x86_64 host: a 40-signature leaf proves in about 0.43 s, a two-child merge in 0.28 s, sixteen small
+leanSTARK dependencies in 1.4 s, and every proof verifies in 5-7 ms (`crates/rec_aggregation/examples/agg_bench.rs`).
+Peak resident memory reached 4.2 GiB in those runs; nothing here bounds it. The pinned Rust toolchain is selected from
+this directory, including MSBuild's Cargo invocations. CI compiles for its host CPU and restores compiled artifacts
+only when CPU features, architecture, toolchain and locked dependencies match.
 
 ## Proof verification limits
 
-Before decoding, a zero-allocation pass checks proof vector lengths and transcript geometry
-against available bytes and the selected guest profile. Decoding bounds
-are prototype acceptance choices beyond the unrestricted EIP; interoperating nodes must
+Before decoding, upstream's wire decoder checks every length against the available bytes and its own phase, query and
+height caps. Decoding bounds are prototype acceptance choices beyond the unrestricted EIP; interoperating nodes must
 share the pinned guest, format and bounds.
 
-The mixed profile uses PCS inverse-rate log 1. Mixed child proofs permit committed-polynomial
-log size at most 27 and bus log size at most 26. The host and guest enforce these geometry
-bounds, in addition to dependency and serialized-byte limits. A valid unrestricted upstream proof outside this profile is not admitted.
+The guest proves at PCS inverse-rate log 1 and compiles in fixed capacities for the child and leanSTARK proofs it
+verifies (`MU_CAP`, `STREAM_CAP` in `crates/rec_aggregation/src/aggregation/child.rs`). The native leanSTARK check
+applies the same capacities, so a valid unrestricted upstream proof outside them is not admitted.
 
-The upstream project and temporary guest remain experimental and unaudited. The output
-cap and bounded native inputs do not bound native workspace or RSS. The adapter's
-four-direct/two-child fold policy reduces individual work without guaranteeing that every
-256-claim workload fits available RAM or a slot deadline.
+The upstream project and this guest remain experimental and unaudited. The output cap and bounded native inputs do
+not bound native workspace or RSS.
 
 ## Running an EIP-8288 node
 

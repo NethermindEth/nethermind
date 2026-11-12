@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
@@ -180,37 +181,39 @@ public static class Eip8288Dependencies
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
     /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
     /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
-    /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses BLAKE2s-256, the hash the pinned aggregation circuit uses for its
-    /// dependency digest. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
+    /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses Keccak-256, the hash the pinned recursive guest commits its
+    /// dependency digest with. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
     /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any leanSTARK dependency commits to
     /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
-    /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries.</remarks>
+    /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries,
+    /// and the position of an entry's list binds its scheme.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
         dependencies = Canonicalize(dependencies);
-        int split = 0;
-        while (split < dependencies.Count && dependencies[split].Scheme == Eip8288Constants.LeanSphincsScheme) split++;
-        ValueHash256 sphincs = ListDepsHash(dependencies, 0, split);
-        if (split == dependencies.Count) return sphincs;
+        ValueHash256 sphincs = ListDepsHash(dependencies, sphincs: true);
+        // Canonical order sorts by scheme first, so the ends tell whether every entry is leanSPHINCS.
+        if (dependencies.Count == 0 || (dependencies[0].Scheme == Eip8288Constants.LeanSphincsScheme
+            && dependencies[^1].Scheme == Eip8288Constants.LeanSphincsScheme)) return sphincs;
 
-        ValueHash256 stark = ListDepsHash(dependencies, split, dependencies.Count);
-        Blake2s hash = Blake2s.Create();
-        hash.Update(sphincs.Bytes);
-        hash.Update(stark.Bytes);
-        hash.Update(LeanStarkDepsDomain);
-        return hash.Finish();
+        // Every other scheme joins the leanSTARK list, so no entry escapes the digest; validation rejects unknown schemes.
+        Span<byte> joined = stackalloc byte[96];
+        sphincs.Bytes.CopyTo(joined);
+        ListDepsHash(dependencies, sphincs: false).Bytes.CopyTo(joined[32..]);
+        LeanStarkDepsDomain.CopyTo(joined[64..]);
+        return ValueKeccak.Compute(joined);
     }
 
-    private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, int start, int end)
+    private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, bool sphincs)
     {
-        Blake2s hash = Blake2s.Create();
-        for (int i = start; i < end; i++)
+        List<byte> entries = new(dependencies.Count * 64);
+        foreach (FrameDependency dependency in dependencies)
         {
-            hash.Update(dependencies[i].DataHash.Bytes);
-            hash.Update(dependencies[i].VerificationKey.Bytes);
+            if ((dependency.Scheme == Eip8288Constants.LeanSphincsScheme) != sphincs) continue;
+            entries.AddRange(dependency.DataHash.Bytes);
+            entries.AddRange(dependency.VerificationKey.Bytes);
         }
 
-        return hash.Finish();
+        return ValueKeccak.Compute(CollectionsMarshal.AsSpan(entries));
     }
 
     /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from

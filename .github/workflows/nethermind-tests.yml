@@ -141,22 +141,21 @@ jobs:
         uses: actions/cache@v5
         with:
           path: tools/lean-ffi/target
-          key: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-${{ hashFiles('tools/lean-ffi/src/**', 'tools/lean-ffi/examples/**', 'tools/lean-ffi/Cargo.toml') }}
+          key: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-${{ hashFiles('tools/lean-ffi/src/**', 'tools/lean-ffi/examples/**', 'tools/lean-ffi/crates/**', 'tools/lean-ffi/Cargo.toml') }}
           # Never restore host-native code across CPU features or Rust/lockfile versions.
           restore-keys: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-
 
       - name: Test native proof backend
         if: steps.lean-paths.outputs.run == 'true'
         working-directory: tools/lean-ffi
-        # zk_alloc gives every allocating thread its own slab and never releases it, and libtest runs each
-        # test on a new thread, so one process keeps every proving test's peak resident (~19 GB, past the
-        # runner's 16 GB). One process per test bounds it to the largest single test (~6 GB).
+        # jemalloc keeps a proof's peak mapped for the next one, so one process per test bounds the resident set to the
+        # largest single test. --workspace also runs the vendored guest crates' own tests.
         run: |
-          cargo test --release --locked --no-run
-          tests=$(cargo test --release --locked -q -- --list --format terse | sed -n 's/: test$//p')
+          cargo test --release --locked --workspace --no-run
+          tests=$(cargo test --release --locked --workspace -q -- --list --format terse | sed -n 's/: test$//p')
           test -n "$tests"
           for name in $tests; do
-            cargo test --release --locked -q -- --exact "$name" || exit 1
+            cargo test --release --locked --workspace -q -- --exact "$name" || exit 1
           done
 
       - name: Test live Lean integration

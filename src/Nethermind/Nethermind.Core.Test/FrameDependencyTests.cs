@@ -94,52 +94,42 @@ public class FrameDependencyTests
     private static readonly FrameDependency VectorB = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 1);
     private static readonly FrameDependency VectorC = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x01, 0, 0xFF);
     private static readonly FrameDependency VectorD = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0xA5, 0, 0x5A);
-    private static readonly FrameDependency VectorG1 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0);
-    private static readonly FrameDependency VectorG2 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0xA5, 0, 0x5A);
 
-    // Expected digests computed in Python with hashlib.blake2s: leanSPHINCS-only lists from the EIP-8288 get_deps_hash
-    // pseudocode, lists with leanSTARK entries from this node's split-domain deviation. The pinned recursive guest and
-    // tools/lean-ffi assert the same vectors.
+    // Expected digests computed with OpenSSL's Keccak-256 from the EIP-8288 get_deps_hash pseudocode.
     private static IEnumerable<TestCaseData> DepsHashVectors()
     {
-        yield return new TestCaseData(Array.Empty<FrameDependency>(), "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9").SetName("empty");
-        yield return new TestCaseData(new[] { VectorA }, "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6").SetName("one");
-        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13").SetName("three_with_duplicate");
-        yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "830b7c9edb9a816e25929dbae987d3fcf2e900fa009d930c60eddacb0d479ed8").SetName("four");
-        yield return new TestCaseData(new[] { VectorG1 }, "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a").SetName("stark_only");
-        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f").SetName("mixed");
-        yield return new TestCaseData(new[] { VectorG2, VectorD }, "b5a19f98eacfd5f1ac57b535e3aadbdfaf430698ebe563422ba883aa02f38adf").SetName("same_data_and_key_under_both_schemes");
+        yield return new TestCaseData(Array.Empty<FrameDependency>(), "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").SetName("empty");
+        yield return new TestCaseData(new[] { VectorA }, "535b1be06804ff1c42441f5b486c07a4f0b788bb24cbd7a3a21c405a869730b5").SetName("one");
+        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "a9cb9f718bf29878fea69d892f229c0a49932e21555106f3bf37044f142262ba").SetName("three_with_duplicate");
+        yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "43c9b8d263f3c5128d4b200350327b8ff8423c4d2235654c497b281c0efc7a2e").SetName("four");
     }
 
     [TestCaseSource(nameof(DepsHashVectors))]
     public void ComputeDepsHash_matches_eip_pseudocode_vectors(FrameDependency[] dependencies, string expected) =>
         Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies).ToString(withZeroX: false), Is.EqualTo(expected));
 
-    // A leanSPHINCS-only list is the spec digest: BLAKE2s over its canonical 64-byte data_hash || key entries.
+    // A leanSPHINCS-only list is the spec digest: Keccak-256 over its canonical 64-byte data_hash || key entries.
     [Test]
     public void LeanSphincs_only_list_hashes_to_the_spec_digest()
     {
         FrameDependency[] dependencies = [VectorD, VectorA, VectorC, VectorB];
         byte[] entries = [.. Eip8288Dependencies.Canonicalize(dependencies)
             .SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
-        Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies), Is.EqualTo(Blake2s.Compute(entries)));
+        Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies), Is.EqualTo(ValueKeccak.Compute(entries)));
     }
 
-    // Deviation: a list with leanSTARK entries hashes get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || domain, a 96-byte
-    // preimage no list of 64-byte entries shares, so the same data and key under the other scheme is another digest.
-    [Test]
-    public void LeanStark_entries_commit_to_the_split_domain_digest()
+    // Scheme 0x0F sorts before leanSPHINCS: the leanSPHINCS list must still hold exactly the 0x10 entries.
+    [TestCase(Eip8288Constants.LeanStarkScheme)]
+    [TestCase((byte)0x0F)]
+    public void Mixed_list_hashes_each_scheme_list_under_the_domain(byte other)
     {
-        byte[] domain = [.. "eip8288/leanstark-deps"u8, .. new byte[10]];
-        // VectorG1 has VectorA's data and key, so its per-scheme digest is VectorA's.
-        ValueHash256 sphincs = Eip8288Dependencies.ComputeDepsHash([VectorC]), stark = Eip8288Dependencies.ComputeDepsHash([VectorA]);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG1, VectorC]),
-                Is.EqualTo(Blake2s.Compute([.. sphincs.ToByteArray(), .. stark.ToByteArray(), .. domain])));
-            Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG1]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorA])));
-            Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG2]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorD])));
-        }
+        FrameDependency second = VectorDependency(other, 0x02, 3);
+        static byte[] List(params FrameDependency[] deps) =>
+            ValueKeccak.Compute([.. deps.SelectMany(static d => d.DataHash.ToByteArray().Concat(d.VerificationKey.ToByteArray()))]).ToByteArray();
+        byte[] domain = new byte[32];
+        "eip8288/leanstark-deps"u8.CopyTo(domain);
+        byte[] expected = [.. List(VectorA, VectorB), .. List(second), .. domain];
+        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorB, second, VectorA]), Is.EqualTo(ValueKeccak.Compute(expected)));
     }
 
     [TestCase(Eip8288Constants.LeanSphincsScheme, true)]
@@ -154,37 +144,6 @@ public class FrameDependencyTests
         {
             Assert.That(Eip8288Dependencies.IsAcceptedScheme(scheme), Is.EqualTo(accepted));
             Assert.That(Eip8288Dependencies.AreSchemesEnabled([sphincs, new FrameDependency(scheme, default, default)]), Is.EqualTo(accepted));
-        }
-    }
-
-    // RFC 7693 BLAKE2s-256 at the block boundaries: the empty input is the deps hash of every block without dependencies, and
-    // exactly one 64-byte block must be finalized as the last block rather than compressed early.
-    [TestCase(0, "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9")]
-    [TestCase(64, "56f34e8b96557e90c1f24b52d0c89d51086acf1b00f634cf1dde9233b8eaaa3e")]
-    [TestCase(65, "1b53ee94aaf34e4b159d48de352c7f0661d0a40edff95a0b1639b4090e974472")]
-    public void Blake2s_matches_reference_digests_at_block_boundaries(int length, string expected)
-    {
-        byte[] input = [.. Enumerable.Range(0, length).Select(static i => (byte)i)];
-        Blake2s pieces = Blake2s.Create();
-        for (int offset = 0; offset < input.Length; offset += 7) pieces.Update(input.AsSpan(offset, Math.Min(7, input.Length - offset)));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Blake2s.Compute(input).ToString(withZeroX: false), Is.EqualTo(expected));
-            Assert.That(pieces.Finish().ToString(withZeroX: false), Is.EqualTo(expected));
-        }
-    }
-
-    [TestCase(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")]
-    [TestCase(null, "6d244e1a06ce4ef578dd0f63aff0936706735119ca9c8d22d86c801414ab9741")]
-    public void Blake2s_matches_reference_digests(byte[]? input, string expected)
-    {
-        input ??= Enumerable.Range(0, 200).Select(static i => (byte)i).ToArray();
-        Blake2s pieces = Blake2s.Create();
-        for (int offset = 0; offset < input.Length; offset += 7) pieces.Update(input.AsSpan(offset, Math.Min(7, input.Length - offset)));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Blake2s.Compute(input).ToString(withZeroX: false), Is.EqualTo(expected));
-            Assert.That(pieces.Finish().ToString(withZeroX: false), Is.EqualTo(expected));
         }
     }
 
@@ -278,7 +237,7 @@ public class FrameDependencyTests
         List<FrameDependency> reversed = [.. expected.Reverse(), .. expected];
         Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
         byte[] entries = [.. expected.SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
-        Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(Blake2s.Compute(entries)));
+        Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(entries)));
     }
 
     [Test]

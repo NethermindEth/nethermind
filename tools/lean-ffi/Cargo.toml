@@ -12,21 +12,52 @@ name = "nethermind_lean"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-sphincs = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-rec_aggregation = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878", features = ["eip8288-mixed"] }
-lean_vm = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-lean_compiler = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-primitives = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-parallel = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-zk_alloc = { git = "https://github.com/Marchhill/leanVM", rev = "e2bc4212013087c0823188e975b224ade286d878" }
-bincode = "1.3"
-tiny-keccak = { version = "2.0", features = ["keccak"] }
+# dlopen cannot place jemalloc's default initial-exec TLS in a host process such as dotnet.
+tikv-jemallocator = { version = "0.7", features = ["disable_initial_exec_tls"] }
+rec_aggregation.workspace = true
+signatures.workspace = true
+primitives.workspace = true
+parallel.workspace = true
+bench.workspace = true
+lean_compiler.workspace = true
+leanvm_core.workspace = true
+fiat_shamir.workspace = true
 
-[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-libc = "0.2"
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.lints.clippy]
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+
+# Unmodified leanEthereum/leanVM, pinned. crates/rec_aggregation is vendored from the same revision and carries the
+# EIP-8288 guest; crates/signatures supplies NiceTry v2 as lean_sphincs.
+[workspace.dependencies]
+primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+fiat_shamir = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+pcs = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+keccak_gkr = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+leanvm_core = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+lean_compiler = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+bench = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+lean_da = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+parallel = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+verifier = { git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+upstream_signatures = { package = "signatures", git = "https://github.com/leanEthereum/leanVM", rev = "dd759d2cc5f59d38fb5e118346791e837733065c" }
+rec_aggregation = { path = "crates/rec_aggregation" }
+signatures = { path = "crates/signatures" }
+rand = "0.9"
+tracing = "0.1.26"
 
 [profile.release]
 opt-level = 3
+lto = "thin"
+codegen-units = 1
 
 [[example]]
 name = "lean_startup_stub"

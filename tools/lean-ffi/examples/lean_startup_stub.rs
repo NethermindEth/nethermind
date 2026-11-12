@@ -5,9 +5,9 @@
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
     if std::env::var("NETHERMIND_LEAN_STARTUP_PROBE").as_deref() == Ok("abi") {
-        9
-    } else {
         10
+    } else {
+        12
     }
 }
 
@@ -28,7 +28,7 @@ pub unsafe extern "C" fn nlean_aggregated_vk(out: *mut u8) -> i32 {
             0x4a, 0x98, 0x11, 0x66,
         ]
     } else {
-        rec_aggregation::eip8288_mixed::mixed_guest_key()
+        rec_aggregation::aggregated_vk()
     };
     unsafe {
         std::ptr::copy_nonoverlapping(key.as_ptr(), out, key.len());
@@ -37,10 +37,10 @@ pub unsafe extern "C" fn nlean_aggregated_vk(out: *mut u8) -> i32 {
 }
 
 /// # Safety
-/// The non-null output must hold nine u32 values.
+/// The non-null output must hold seven u32 values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
-    if out.is_null() || len != 9 {
+    if out.is_null() || len != 7 {
         return 0;
     }
     unsafe {
