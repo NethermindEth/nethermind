@@ -60,15 +60,15 @@ public class EraWriter : IDisposable
         if (_entryIndexes.Count >= MaxEra1Size)
             throw new ArgumentException($"Era file should not contain more than {MaxEra1Size} blocks");
 
+        if (block.TotalDifficulty < block.Difficulty)
+            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
+
         if (_firstBlock)
         {
             _startNumber = block.Number;
             _totalWritten += await WriteVersion();
             _firstBlock = false;
         }
-
-        if (block.TotalDifficulty < block.Difficulty)
-            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
 
         _entryIndexes.Add(_totalWritten);
         _accumulatorCalculator.Add(block.Hash, block.TotalDifficulty!.Value);

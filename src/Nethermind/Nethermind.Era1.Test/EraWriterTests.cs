@@ -17,7 +17,7 @@ internal class EraWriterTests
     public void Add_TotalDifficultyIsLowerThanBlock_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -26,6 +26,44 @@ internal class EraWriterTests
         Assert.That(async () => await sut.Add(
             block,
             Array.Empty<TxReceipt>()), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+        Assert.That(stream.Length, Is.Zero);
+        Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
+    }
+
+    [Test]
+    public async Task Add_InvalidBlock_DoesNotChangeFirstBlockOrIndex()
+    {
+        using TempPath tmpFile = TempPath.GetTempFile();
+        Block invalidBlock = Build.A.Block.WithNumber(10)
+            .WithTotalDifficulty(0L).TestObject;
+        Block validBlock = Build.A.Block.WithNumber(11)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+
+        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        {
+            Assert.That(async () => await sut.Add(invalidBlock, Array.Empty<TxReceipt>()),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+
+            await sut.Add(validBlock, Array.Empty<TxReceipt>());
+            await sut.Finalize();
+        }
+
+        using (E2StoreReader fileReader = new(tmpFile.Path))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileReader.First, Is.EqualTo(validBlock.Number));
+            Assert.That(fileReader.LastBlock, Is.EqualTo(validBlock.Number));
+            Assert.That(fileReader.BlockCount, Is.EqualTo(1));
+        }
+
+        using EraReader reader = new(tmpFile.Path);
+        (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(validBlock.Number);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Number, Is.EqualTo(validBlock.Number));
+            Assert.That(receipts, Is.Empty);
+        }
     }
 
     [Test]
