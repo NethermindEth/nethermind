@@ -1872,8 +1872,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>BLOBHASH: the transaction's versioned blob hash at the index the top word holds, or zero past the last.</summary>
         /// <remarks>
-        /// The hash replaces the index in its slot. An empty stack, a short gas or a missing hash in the list runs the shared
-        /// handler instead, which faults on it.
+        /// The hash replaces the index in its slot. An empty stack, a short gas or a missing or odd-length hash runs the shared
+        /// handler instead, which faults on it or pads it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
