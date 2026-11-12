@@ -250,13 +250,13 @@ public class OptimismEthRpcModule(
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         Block block = foundBlock.Object;
