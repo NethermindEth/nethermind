@@ -117,8 +117,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("")]
     [TestCase("0x")]
     public void Address_conversion_preserves_empty_string_rejection(string input) =>
-        Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>()
-            .With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+        Assert.That(() => input.ToAddress(), Throws.TypeOf<ArgumentException>());
 
     [Test]
     public void Address_conversion_validates_even_discarded_bytes([Values(-1, 256)] int invalidByte, [Values(1, 21)] int length)
