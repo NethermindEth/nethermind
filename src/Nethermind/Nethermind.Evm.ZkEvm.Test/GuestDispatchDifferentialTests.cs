@@ -41,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -54,6 +54,75 @@ public class GuestDispatchDifferentialTests
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
+
+    private static readonly Instruction[] ContextOpcodes =
+    [
+        Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO,
+        Instruction.GASLIMIT, Instruction.CHAINID, Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SLOTNUM,
+        Instruction.ADDRESS, Instruction.ORIGIN, Instruction.CALLER, Instruction.CALLVALUE, Instruction.GASPRICE
+    ];
+
+    [Test]
+    public void Context_words_match_the_shared_handlers(
+        [ValueSource(nameof(ContextOpcodes))] Instruction opcode,
+        [ValueSource(nameof(Forks))] IReleaseSpec spec,
+        [Values] bool optionalFields)
+    {
+        UInt256 word = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
+        Address coinbase = new("0x0102030405060708090a0b0c0d0e0f1011121314");
+        BlockHeader header = new(Hash256.Zero, Hash256.Zero, coinbase, word, 0x123456789, 0x23456789a, 0x3456789ab, [])
+        {
+            IsPostMerge = optionalFields,
+            MixHash = new Hash256((word + 1).ToBigEndian()),
+            BaseFeePerGas = word + 2,
+            ExcessBlobGas = optionalFields ? 0UL : null,
+            SlotNumber = optionalFields ? 0x456789abcUL : null
+        };
+        BlockExecutionContext context = new(header, spec, word + 3);
+        byte[] code = [(byte)opcode, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP];
+        foreach (byte[] program in (byte[][])[[(byte)opcode, (byte)Instruction.STOP], code])
+            foreach (int head in (int[])[0, 1022, 1023, 1024])
+                for (ulong gas = 0; gas <= 11; gas++)
+                {
+                    Outcome actual = Run(gas, [], head, new CodeInfo(program), Table.Untraced, spec, context: context);
+                    Outcome expected = Run(gas, [], head, new CodeInfo(program), Table.Traced, spec, context: context);
+                    Assert.That(Matches(actual, expected), Is.True, $"{opcode} head {head} gas {gas}\n{actual}\n{expected}");
+                }
+
+        Outcome complete = Run(11, [], 0, new CodeInfo(code), Table.Untraced, spec, context: context);
+        bool installed = opcode switch
+        {
+            Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
+            Instruction.BASEFEE => spec.BaseFeeEnabled,
+            Instruction.BLOBBASEFEE => spec.BlobBaseFeeEnabled,
+            Instruction.SLOTNUM => spec.IsEip7843Enabled,
+            _ => true
+        };
+        bool enabled = installed && (opcode is not Instruction.BLOBBASEFEE || optionalFields);
+        UInt256 value = opcode switch
+        {
+            Instruction.COINBASE => new UInt256(coinbase.Bytes, isBigEndian: true),
+            Instruction.TIMESTAMP => header.Timestamp,
+            Instruction.NUMBER => header.Number,
+            Instruction.PREVRANDAO => optionalFields ? word + 1 : word,
+            Instruction.GASLIMIT => header.GasLimit,
+            Instruction.CHAINID => BlockchainIds.Mainnet,
+            Instruction.BASEFEE => word + 2,
+            Instruction.BLOBBASEFEE => word + 3,
+            Instruction.SLOTNUM => header.SlotNumber.GetValueOrDefault(),
+            Instruction.ADDRESS => new UInt256(ContextAccount.Bytes, isBigEndian: true),
+            Instruction.ORIGIN => new UInt256(ContextOrigin.Bytes, isBigEndian: true),
+            Instruction.CALLER => new UInt256(ContextCaller.Bytes, isBigEndian: true),
+            Instruction.CALLVALUE => ContextCallValue,
+            _ => ContextGasPrice
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(complete.Exception, Is.EqualTo(enabled ? EvmExceptionType.Stop : EvmExceptionType.BadInstruction));
+            if (enabled) Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(value.ToBigEndian())));
+            Assert.That(VirtualMachine<EthereumGasPolicy>.PushesContextWordThroughGuestHandlerForTests(spec, opcode), Is.EqualTo(installed));
+        }
+    }
 
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
@@ -770,38 +839,6 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
-    /// <remarks>
-    /// Every word the fork has of those the block, the transaction and the frame hold, each with its bytes spread over all
-    /// four limbs, pushed at stack heads that leave room for all, some or none of them, at every gas up to the program's need.
-    /// </remarks>
-    [Test]
-    public void Context_words_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Values(0, 1009, 1023, 1024)] int head)
-    {
-        Instruction[] words =
-        [
-            Instruction.ADDRESS, Instruction.ORIGIN, Instruction.CALLER, Instruction.CALLVALUE, Instruction.GASPRICE,
-            Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
-            .. spec.ChainIdOpcodeEnabled ? [Instruction.CHAINID] : (Instruction[])[],
-            .. spec.BaseFeeEnabled ? [Instruction.BASEFEE] : (Instruction[])[],
-            .. spec.BlobBaseFeeEnabled ? [Instruction.BLOBBASEFEE] : (Instruction[])[],
-            .. spec.IsEip7843Enabled ? [Instruction.SLOTNUM] : (Instruction[])[],
-        ];
-        byte[] code = [.. words.Select(static word => (byte)word), (byte)Instruction.STOP];
-        const ulong ample = 1_000;
-        ulong needed = ample - Run(ample, [], head, new CodeInfo(code), Table.Traced, spec, context: true).GasLeft;
-
-        List<string> mismatches = [];
-        for (ulong gas = 0; gas <= needed; gas++)
-        {
-            Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec, context: true);
-            Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec, context: true);
-            if (!Matches(untraced, traced) && mismatches.Count < 5)
-                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
-        }
-
-        Assert.That(mismatches, Is.Empty);
-    }
-
     public enum CallTarget { NoCode, Code, Delegation, Precompile }
 
     /// <remarks>
@@ -923,7 +960,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(110);
+            int pick = random.Next(124);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -1008,6 +1045,7 @@ public class GuestDispatchDifferentialTests
                         code.Add((byte)pair[random.Next(4) == 0 ? 0 : 1]);
                         break;
                     }
+                case < 123: code.Add((byte)ContextOpcodes[pick - 109]); break;
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -1104,13 +1142,13 @@ public class GuestDispatchDifferentialTests
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null, bool context = false)
+        ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
-        if (context)
+        if (context is { } blockContext)
         {
-            vm.SetBlockExecutionContext(new BlockExecutionContext(ContextHeader, spec ?? ReleaseSpec));
-            vm.SetTxExecutionContext(new TxExecutionContext(ContextOrigin, Substitute.For<ICodeInfoRepository>(), null, ContextWord(0x50)));
+            vm.SetBlockExecutionContext(blockContext);
+            vm.SetTxExecutionContext(new TxExecutionContext(ContextOrigin, Substitute.For<ICodeInfoRepository>(), null, ContextGasPrice));
         }
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (codeInfoRepository is not null)
@@ -1119,8 +1157,8 @@ public class GuestDispatchDifferentialTests
             // A precompile the calls reach runs inline, through the frame handlers.
             vm.PrepareFrameHandlersForTests();
         }
-        using ExecutionEnvironment env = context
-            ? ExecutionEnvironment.Rent(codeInfo, ContextAccount, ContextCaller, null, 0, ContextWord(0x70), inputData)
+        using ExecutionEnvironment env = context is not null
+            ? ExecutionEnvironment.Rent(codeInfo, ContextAccount, ContextCaller, null, 0, ContextCallValue, inputData)
             : ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
@@ -1152,8 +1190,7 @@ public class GuestDispatchDifferentialTests
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
-                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL) &&
-                !(context && IsContextWord((Instruction)opcode)))
+                !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -1163,7 +1200,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, context), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
@@ -1198,11 +1235,6 @@ public class GuestDispatchDifferentialTests
 
     private const int FirstEmptyKey = 0x80;
 
-    private static bool IsContextWord(Instruction opcode) =>
-        opcode is Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE or Instruction.GASPRICE or
-            Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or Instruction.PREVRANDAO or Instruction.GASLIMIT or
-            Instruction.CHAINID or Instruction.BASEFEE or Instruction.BLOBBASEFEE or Instruction.SLOTNUM;
-
     /// <summary>A word with a distinct byte at each of its 32 positions, from <paramref name="first"/> up.</summary>
     private static UInt256 ContextWord(byte first)
     {
@@ -1216,19 +1248,14 @@ public class GuestDispatchDifferentialTests
     private static readonly Address ContextAccount = ContextAddress(0x10);
     private static readonly Address ContextCaller = ContextAddress(0x30);
     private static readonly Address ContextOrigin = ContextAddress(0x90);
-
-    /// <summary>A header whose every word the context opcodes read is set, with its bytes in every limb.</summary>
-    private static readonly BlockHeader ContextHeader = new(Hash256.Zero, Hash256.Zero, ContextAddress(0xb0), UInt256.Zero,
-        0x0102030405060708, 0x1112131415161718, 0x2122232425262728, [], excessBlobGas: 400_000_000, slotNumber: 0x4142434445464748)
-    {
-        MixHash = new Hash256(ContextWord(0xc0).ToBigEndian()),
-        BaseFeePerGas = ContextWord(0xe0),
-    };
+    private static readonly UInt256 ContextCallValue = ContextWord(0x50);
+    private static readonly UInt256 ContextGasPrice = ContextWord(0x70);
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
         (opcode is >= Instruction.ADDRESS and <= (Instruction)0x4f &&
-            opcode is not (Instruction.CALLDATALOAD or Instruction.CALLDATASIZE or Instruction.CALLDATACOPY or Instruction.CODESIZE or Instruction.CODECOPY)) ||
+            opcode is not (Instruction.CALLDATALOAD or Instruction.CALLDATASIZE or Instruction.CALLDATACOPY or Instruction.CODESIZE or Instruction.CODECOPY) &&
+            !ContextOpcodes.Contains(opcode)) ||
         opcode is >= Instruction.LOG0 and <= Instruction.LOG4 ||
         (opcode >= Instruction.CREATE && opcode != Instruction.INVALID);
 
