@@ -124,6 +124,49 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// Every word the fork has of those the block, the transaction and the frame hold, each with its bytes spread over all
+    /// four limbs, pushed in one program at stack heads that leave room for all, some or none of them, at every gas up to the program's need.
+    /// </remarks>
+    [Test]
+    public void Context_word_sequences_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Values(0, 1009, 1023, 1024)] int head)
+    {
+        UInt256 word = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
+        BlockHeader header = new(Hash256.Zero, Hash256.Zero, new Address("0x0102030405060708090a0b0c0d0e0f1011121314"), word,
+            0x123456789, 0x23456789a, 0x3456789ab, [])
+        {
+            IsPostMerge = true,
+            MixHash = new Hash256((word + 1).ToBigEndian()),
+            BaseFeePerGas = word + 2,
+            ExcessBlobGas = 0,
+            SlotNumber = 0x456789abc
+        };
+        BlockExecutionContext context = new(header, spec, word + 3);
+        Instruction[] words =
+        [
+            Instruction.ADDRESS, Instruction.ORIGIN, Instruction.CALLER, Instruction.CALLVALUE, Instruction.GASPRICE,
+            Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
+            .. spec.ChainIdOpcodeEnabled ? [Instruction.CHAINID] : (Instruction[])[],
+            .. spec.BaseFeeEnabled ? [Instruction.BASEFEE] : (Instruction[])[],
+            .. spec.BlobBaseFeeEnabled ? [Instruction.BLOBBASEFEE] : (Instruction[])[],
+            .. spec.IsEip7843Enabled ? [Instruction.SLOTNUM] : (Instruction[])[],
+        ];
+        byte[] code = [.. words.Select(static opcode => (byte)opcode), (byte)Instruction.STOP];
+        const ulong ample = 1_000;
+        ulong needed = ample - Run(ample, [], head, new CodeInfo(code), Table.Traced, spec, context: context).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed; gas++)
+        {
+            Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec, context: context);
+            Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec, context: context);
+            if (!Matches(untraced, traced) && mismatches.Count < 5)
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
         EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy, long Refund,
