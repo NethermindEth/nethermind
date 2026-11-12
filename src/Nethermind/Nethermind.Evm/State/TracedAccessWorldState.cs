@@ -20,7 +20,7 @@ namespace Nethermind.Evm.State;
 /// guarded <see cref="GeneratingBlockAccessList"/>, so a missed setup in block processing fails fast with
 /// an <see cref="InvalidOperationException"/> naming it instead of emitting an empty BAL.
 /// </remarks>
-public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
+public sealed class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
