@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -111,6 +112,29 @@ namespace Nethermind.Evm.Test
 
             // Malformed Error(string) payload — GetErrorMessage rejects it, falls back to Revert sentinel.
             yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, TransactionSubstate.Revert);
+
+            yield return (ErrorStringPayload("réverted ✓", offset: 32), "réverted ✓");
+            yield return (ErrorStringPayload("padded", offset: 64), "padded");
+            yield return (ErrorStringPayload("a\nb\tc\u0001", offset: 32), "a\nb\tc\u0001");
+            // Like Geth's JSON encoding, each invalid byte (here a truncated 3-byte sequence) becomes U+FFFD.
+            yield return (ErrorStringPayload([0x61, 0xE2, 0x82, 0x62], offset: 32), "a\uFFFD\uFFFDb");
+
+            byte[] offsetPastEnd = ErrorStringPayload("padded", offset: 32);
+            offsetPastEnd[4 + 31] = 64;
+            yield return (offsetPastEnd, TransactionSubstate.Revert);
+        }
+
+        /// <summary>Encodes <c>Error(string)</c> with the string's length word at <paramref name="offset"/>, zero-padding any gap.</summary>
+        internal static byte[] ErrorStringPayload(string reason, int offset) => ErrorStringPayload(Encoding.UTF8.GetBytes(reason), offset);
+
+        private static byte[] ErrorStringPayload(byte[] reasonBytes, int offset)
+        {
+            byte[] payload = new byte[4 + 64 + (offset - 32) + reasonBytes.Length];
+            TransactionSubstate.ErrorFunctionSelector.CopyTo(payload, 0);
+            payload[4 + 31] = (byte)offset;
+            payload[4 + offset + 31] = (byte)reasonBytes.Length;
+            reasonBytes.CopyTo(payload, 4 + offset + 32);
+            return payload;
         }
 
         [TestCase(0)]
@@ -123,11 +147,19 @@ namespace Nethermind.Evm.Test
             output[4 + byteIndex] = 1;
             output[35] = 0x22;
 
-            Assert.That(TransactionSubstate.GetErrorMessage(output), Does.StartWith("unknown panic code"));
+            Assert.That(TransactionSubstate.GetErrorMessage(output), Is.EqualTo($"unknown panic code: 0x1{new string('0', (30 - byteIndex) * 2)}22"));
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
         {
+            foreach ((string code, string expected) in new[]
+            {
+                ("99", "unknown panic code: 0x99"),
+                ("10000000000000000", "unknown panic code: 0x10000000000000000"),
+                ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "unknown panic code: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            })
+                yield return (Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0')), expected);
+
             yield return (
                 new byte[]
                 {
@@ -150,7 +182,7 @@ namespace Nethermind.Evm.Test
                     0x4e, 0x48, 0x7b, 0x71,
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF // Unknown panic code
                 },
-                "unknown panic code (0xff)");
+                "unknown panic code: 0xff");
 
             // Unknown selector — custom error; falls back to Revert sentinel.
             yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, TransactionSubstate.Revert);
