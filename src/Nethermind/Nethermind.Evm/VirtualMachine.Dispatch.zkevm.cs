@@ -109,13 +109,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last.</summary>
     private static PairedHandlers? _checkedPairedHandlers;
 
+    /// <summary>Each table that the guest's handlers replaced entries of, mapped to its entries from before.</summary>
+    private static readonly ConditionalWeakTable<object, SharedHandlerTable> _sharedHandlerTables = [];
+
+    /// <summary>A copy of a table's entries as the shared handlers filled it.</summary>
+    private sealed class SharedHandlerTable(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+    {
+        public readonly delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] Handlers =
+            (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
+    }
+
     /// <summary>The paired table of the shared handlers only, which test the gas before every charge.</summary>
     /// <remarks>
-    /// The guest's handlers replace entries only in the untraced table that cannot be cancelled, so the cancelable one
-    /// holds the shared handlers, and the guest, which is never cancelled, runs it to its end like any other.
+    /// The entries are those the current table had before the guest's handlers replaced them, so the shared handlers are
+    /// the instantiations the guest table falls back to: a table of other instantiations would add a copy of every
+    /// handler to the guest image.
     /// </remarks>
     private nint[] GetCheckedPairedHandlers() =>
-        PairHandlersOnce<OffFlag>(GetOpcodeHandlers<OffFlag, OnFlag>(), ref _checkedPairedHandlers);
+        PairHandlersOnce<OffFlag>(
+            _sharedHandlerTables.TryGetValue(_opcodeHandlers, out SharedHandlerTable? shared) ? shared.Handlers : _opcodeHandlers,
+            ref _checkedPairedHandlers);
 
     /// <summary>Whether a frame with <paramref name="executionGas"/> left must run on <see cref="GetCheckedPairedHandlers"/>.</summary>
     /// <remarks>
@@ -349,12 +362,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
                 if (exceptionType == EvmExceptionType.Suspend && typeof(TTracingInst) == typeof(OffFlag))
-                {
-                    if (TCancelable.IsActive)
-                        state.Vm.TryRunStagedFrameNestedOnSharedHandlers(ref stack, out exceptionType);
-                    else
-                        state.Vm.TryRunStagedFrameNestedTestingGas(ref stack, out exceptionType);
-                }
+                    state.Vm.TryRunStagedFrameNested(ref stack, out exceptionType);
                 head = stack.Head;
                 gas = ChainGas(GetExecutionGas(ref state.Gas));
             }

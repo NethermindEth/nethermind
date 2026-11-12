@@ -210,20 +210,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return push;
     }
 
-    /// <summary><see cref="TryRunStagedFrameNested"/> for a caller whose chain may hold handlers that skip gas tests.</summary>
-    /// <remarks>
-    /// Every handler that can stage a frame calls this or <see cref="TryRunStagedFrameNestedOnSharedHandlers"/>, so the
-    /// call sites pass no gas-test argument and the guest image stays inside its ROM.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal bool TryRunStagedFrameNestedTestingGas(ref EvmStack stack, out EvmExceptionType resumeResult) =>
-        TryRunStagedFrameNested(ref stack, out resumeResult, testsGas: true);
-
-    /// <summary><see cref="TryRunStagedFrameNested"/> for a caller on the shared handlers, which test every charge already.</summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal bool TryRunStagedFrameNestedOnSharedHandlers(ref EvmStack stack, out EvmExceptionType resumeResult) =>
-        TryRunStagedFrameNested(ref stack, out resumeResult, testsGas: false);
-
     /// <summary>The deepest frame <see cref="TryRunStagedFrameNested"/> runs; a deeper one goes through the frame loop.</summary>
     /// <remarks>Each nested frame holds a few native frames of its caller, so the depth bounds the native stack.</remarks>
     private const int MaxNestedCallDepth = 16;
@@ -234,10 +220,6 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// </summary>
     /// <param name="stack">The caller's stack, its head current.</param>
     /// <param name="resumeResult">What resuming the caller came to; anything but <c>None</c> halts it.</param>
-    /// <param name="testsGas">
-    /// Whether the caller's chain may hold handlers that skip gas tests. A chain on the shared handlers tests every
-    /// charge already, so it continues on them whatever gas the call leaves.
-    /// </param>
     /// <returns>Whether the child ran here; if not, the caller's chain leaves with the child staged, as without nesting.</returns>
     /// <remarks>
     /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
@@ -246,7 +228,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// (<see cref="TestsEveryCharge"/>), the chain leaves with <c>Suspend</c> and nothing staged, and
     /// <see cref="RunFrameCode{TTracingInst, TCancelable}"/> enters it again on the handlers that gas allows.
     /// </remarks>
-    private bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult, bool testsGas)
+    internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
     {
         VmState<TGasPolicy> child = Unsafe.As<VmState<TGasPolicy>>(ReturnData!);
         if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth)
@@ -280,7 +262,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         if (previousCallOutputLength > 0)
             _currentState.Memory.SaveAfterGas(in _previousCallOutputDestination, ReturnDataBuffer.Span[..(int)previousCallOutputLength]);
 
-        if (testsGas && TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
+        if (TestsEveryCharge(GetExecutionGas(ref _currentState.Gas), stack.CodeLength))
             resumeResult = EvmExceptionType.Suspend;
 
         return true;

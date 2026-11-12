@@ -50,6 +50,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
+        _sharedHandlerTables.AddOrUpdate(lookup, new SharedHandlerTable(lookup));
+
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();
 
@@ -2491,7 +2493,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     vm, ref stack, ref policy, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller,
                     codeSource, env, in callValue, childGas, newAccountCharged: false);
                 if (result == EvmExceptionType.Suspend)
-                    vm.TryRunStagedFrameNestedTestingGas(ref stack, out result);
+                    vm.TryRunStagedFrameNested(ref stack, out result);
                 head = stack.Head;
                 if (result != EvmExceptionType.None)
                     return ExitChain(ref state, GetExecutionGas(ref policy), (nint)Unsafe.ByteOffset(ref stack.Code, ref ip) + 1, head, result);
