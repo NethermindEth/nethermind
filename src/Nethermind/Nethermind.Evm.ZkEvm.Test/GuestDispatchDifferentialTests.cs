@@ -41,7 +41,7 @@ public class GuestDispatchDifferentialTests
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
-    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool), nint[]> PairedTables = new();
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -54,6 +54,35 @@ public class GuestDispatchDifferentialTests
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
+
+    [Test]
+    public void Self_balance_matches_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec,
+        [Values(0, 1022, 1023, 1024)] int head)
+    {
+        UInt256 balance = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
+        byte[][] programs =
+        [
+            [(byte)Instruction.SELFBALANCE, (byte)Instruction.STOP],
+            [(byte)Instruction.SELFBALANCE, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]
+        ];
+        foreach (byte[] code in programs)
+            for (ulong gas = 0; gas <= 14; gas++)
+            {
+                Outcome actual = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec, balance: balance);
+                Outcome expected = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec, balance: balance);
+                Assert.That(Matches(actual, expected), Is.True, $"head {head} gas {gas}\n{actual}\n{expected}");
+            }
+
+        if (head == 0 && spec.SelfBalanceOpcodeEnabled)
+        {
+            Outcome complete = Run(14, [], head, new CodeInfo(programs[1]), Table.Untraced, spec, balance: balance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(balance.ToBigEndian())));
+            }
+        }
+    }
 
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
@@ -1072,9 +1101,11 @@ public class GuestDispatchDifferentialTests
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null)
+        ICodeInfoRepository? codeInfoRepository = null, UInt256? balance = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        IWorldState stateSubstitute = vm.WorldState;
+        BalanceWorldState? balanceState = balance is { } value ? vm.UseBalance(value) : null;
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (codeInfoRepository is not null)
         {
@@ -1111,6 +1142,7 @@ public class GuestDispatchDifferentialTests
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
+                !(balance is not null && (Instruction)opcode == Instruction.SELFBALANCE) &&
                 !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY) &&
                 !(codeInfoRepository is not null && (Instruction)opcode is Instruction.CALL or Instruction.STATICCALL or Instruction.DELEGATECALL))
@@ -1123,7 +1155,7 @@ public class GuestDispatchDifferentialTests
         nint pc;
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
-        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null, codeInfoRepository is not null, balance is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
         fixed (nint* pairedStart = paired)
         {
             nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
@@ -1147,8 +1179,9 @@ public class GuestDispatchDifferentialTests
         }
 
         // An out argument holds whatever the caller's stack held, so only the inputs are compared.
-        string worldStateCalls = string.Join("; ", vm.WorldState.ReceivedCalls().Select(static call =>
+        string worldStateCalls = string.Join("; ", stateSubstitute.ReceivedCalls().Select(static call =>
             $"{call.GetMethodInfo().Name}({string.Join(", ", call.GetArguments().Where((_, i) => !call.GetParameterInfos()[i].IsOut))})"));
+        if (balanceState is not null) worldStateCalls += $"; balance reads: {balanceState.Reads}";
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], frame.Refund, worldStateCalls);
     }
 
@@ -1195,11 +1228,31 @@ public class GuestDispatchDifferentialTests
 
         public void Enter(VmState<EthereumGasPolicy> frame) => VmState = frame;
 
+        public BalanceWorldState UseBalance(UInt256 balance)
+        {
+            BalanceWorldState state = new(_worldState, balance);
+            _worldState = state;
+            return state;
+        }
+
         /// <summary>Sets the code repository that a transaction brings, which the calls read.</summary>
         public void UseCodeInfoRepository(ICodeInfoRepository repository) =>
             typeof(VirtualMachine<EthereumGasPolicy>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(this, repository);
 
         public void Trace(ITxTracer tracer) => _txTracer = tracer;
+    }
+
+    private sealed class BalanceWorldState(IWorldState state, UInt256 balance) : WorldStateDecorator(state)
+    {
+        private readonly UInt256 _balance = balance;
+        public int Reads { get; private set; }
+
+        public override ref readonly UInt256 GetBalance(Address address)
+        {
+            Assert.That(address, Is.EqualTo(Address.Zero));
+            Reads++;
+            return ref _balance;
+        }
     }
 
     private sealed class SilentTracer : TxTracer;
