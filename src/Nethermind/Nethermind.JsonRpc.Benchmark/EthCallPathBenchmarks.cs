@@ -49,10 +49,14 @@ namespace Nethermind.JsonRpc.Benchmark;
 /// <c>eth_call</c> on a view call that reads storage and calls a second contract: the whole request through
 /// <see cref="JsonRpcProcessor"/>, the module call alone, and the call object's deserialization alone.
 /// </summary>
-/// <remarks><c>eth_chainId</c> through the processor is a control that touches neither the call parameters nor state.</remarks>
+/// <remarks>
+/// <c>eth_chainId</c> and <c>eth_getBalance</c> through the processor are controls: the first touches neither the call parameters
+/// nor state, the second reads state without a world state scope. The batched case runs <see cref="Batch"/> requests per invocation.
+/// </remarks>
 [MemoryDiagnoser]
 public class EthCallPathBenchmarks
 {
+    private const int Batch = 16;
     private static readonly JsonRpcProcessingOptions SingleDocument = new(JsonRpcInputMode.SingleDocument);
 
     private TestBlockchain _chain = null!;
@@ -64,6 +68,7 @@ public class EthCallPathBenchmarks
     private BlockParameter _block = null!;
     private byte[] _callRequest = null!;
     private byte[] _chainIdRequest = null!;
+    private byte[] _balanceRequest = null!;
     private byte[] _callObject = null!;
 
     [GlobalSetup]
@@ -80,6 +85,7 @@ public class EthCallPathBenchmarks
         _callObject = Encoding.UTF8.GetBytes(callObject);
         _callRequest = Encoding.UTF8.GetBytes($$"""{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{{callObject}},"{{blockNumber}}"]}""");
         _chainIdRequest = Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}""");
+        _balanceRequest = Encoding.UTF8.GetBytes($$"""{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["{{TestItem.AddressC}}","{{blockNumber}}"]}""");
         _call = TypeInfoJsonSerializer.Deserialize<SignableTransactionForRpc>(_callObject, EthereumJsonSerializer.JsonOptions)!;
         _block = new BlockParameter(head);
 
@@ -95,7 +101,7 @@ public class EthCallPathBenchmarks
 
         ResultWrapper<HexBytes> result = _ethModule.eth_call(_call, _block);
         if (result.Result.ResultType != ResultType.Success || result.Data.Bytes.Length != 32 || result.Data.Bytes.Span[31] != 7)
-            throw new InvalidOperationException($"Unexpected eth_call result: {result.Result.Error} {result.Data.Bytes.ToArray().ToHexString()} code {_chain.StateReader.GetCode(_chain.BlockTree.Head!.Header, target)?.Length} head {head}");
+            throw new InvalidOperationException($"Unexpected eth_call result: {result.Result.Error}");
 
         await EthCallRequest();
         string response = Encoding.UTF8.GetString(_sink.Written.Span);
@@ -117,6 +123,16 @@ public class EthCallPathBenchmarks
         return _processor.ProcessAsync(_callRequest, new JsonRpcContext(RpcEndpoint.Http), _sink, SingleDocument);
     }
 
+    [Benchmark(OperationsPerInvoke = Batch)]
+    public async Task EthCallRequestBatched()
+    {
+        for (int i = 0; i < Batch; i++)
+        {
+            _sink.Reset();
+            await _processor.ProcessAsync(_callRequest, new JsonRpcContext(RpcEndpoint.Http), _sink, SingleDocument);
+        }
+    }
+
     [Benchmark]
     public ResultWrapper<HexBytes> EthCallModule() => _ethModule.eth_call(_call, _block);
 
@@ -129,6 +145,13 @@ public class EthCallPathBenchmarks
     {
         _sink.Reset();
         return _processor.ProcessAsync(_chainIdRequest, new JsonRpcContext(RpcEndpoint.Http), _sink, SingleDocument);
+    }
+
+    [Benchmark]
+    public ValueTask GetBalanceRequest()
+    {
+        _sink.Reset();
+        return _processor.ProcessAsync(_balanceRequest, new JsonRpcContext(RpcEndpoint.Http), _sink, SingleDocument);
     }
 
     /// <summary>Deploys a contract that reads two of its slots and static-calls a second contract that reads one of its own.</summary>
