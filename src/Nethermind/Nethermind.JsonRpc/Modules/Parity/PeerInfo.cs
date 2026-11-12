@@ -27,8 +27,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         {
             ISession session = peer.InSession ?? peer.OutSession;
             PeerNetworkInfo peerNetworkInfo = new();
-            EthProtocolInfo ethProtocolInfo = new();
             Caps = [];
+            Protocols = [];
 
             if (peer.Node is not null)
             {
@@ -43,12 +43,14 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
                 if (session.TryGetProtocolHandler(Protocol.Eth, out IProtocolHandler handler))
                 {
-                    ethProtocolInfo.Version = handler.ProtocolVersion;
+                    EthProtocolInfo ethProtocolInfo = new() { Version = handler.ProtocolVersion };
                     if (handler is ISyncPeer syncPeer)
                     {
                         ethProtocolInfo.Difficulty = syncPeer.TotalDifficulty;
                         ethProtocolInfo.HeadHash = syncPeer.HeadHash;
                     }
+
+                    Protocols["eth"] = ethProtocolInfo;
                 }
 
                 if (session.TryGetProtocolHandler(Protocol.P2P, out IProtocolHandler p2PHandler))
@@ -64,11 +66,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
             }
 
             Network = peerNetworkInfo;
-
-            Protocols = new Dictionary<string, EthProtocolInfo>
-            {
-                { "eth", ethProtocolInfo }
-            };
         }
     }
 }
