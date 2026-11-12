@@ -315,5 +315,21 @@ namespace Nethermind.Trie
         {
             if (tree is IEmbeddedNodeObserver observer) observer.OnEmbeddedNodeResolving(path, rlp.AsSpan());
         }
+
+        private partial class TrieNodeDecoder
+        {
+            /// <summary>Patches the hashes of the children from <paramref name="group"/> to <paramref name="end"/> into <paramref name="destination"/>, a full branch encoding.</summary>
+            /// <returns>Whether every slot is empty or patched; <see langword="false"/> if the branch is no longer a full one.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool TryPatchFullBranchChildren(ITrieNodeResolver tree, ref TreePath path, ref object? group, ref object? end,
+                ushort taken, Span<byte> destination, ref int unchanged, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0); group = ref Unsafe.Add(ref group, 1), taken >>= 1)
+                {
+                    if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)) return false;
+                }
+                return true;
+            }
+        }
     }
 }
