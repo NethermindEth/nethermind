@@ -11,6 +11,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Xdc.P2P;
@@ -100,7 +101,7 @@ public class XdcPooledTransactionMessagesTests
         serializer.Serialize(buffer, message);
 
         Assert.That(() => serializer.Deserialize(buffer),
-            Throws.InstanceOf<RlpException>().With.Message.Contains(nameof(XdcGetPooledTransactionsMessage)));
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains(nameof(XdcGetPooledTransactionsMessage)));
     }
 
     private static ArrayPoolList<Transaction> Transactions() =>

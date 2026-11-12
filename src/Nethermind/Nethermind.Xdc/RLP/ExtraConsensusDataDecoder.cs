@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -11,35 +12,21 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     protected override ExtraFieldsV2 DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        ulong round = decoderContext.DecodeULong();
-        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(ref decoderContext, rlpBehaviors);
+        ulong round = fields.DecodeULong();
+        QuorumCertificate? quorumCert = _quorumCertificateDecoder.Decode(ref fields, rlpBehaviors);
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            decoderContext.Check(endPosition);
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
         return new ExtraFieldsV2(round, quorumCert);
     }
 
-    public override Rlp Encode(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -47,9 +34,10 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
             return;
         }
 
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.BlockRound);
         _quorumCertificateDecoder.Encode(ref writer, item.QuorumCert, rlpBehaviors);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

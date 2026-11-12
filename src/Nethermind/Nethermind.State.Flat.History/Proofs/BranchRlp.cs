@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -14,15 +16,13 @@ internal static class BranchRlp
 
     public static bool IsBranch(ReadOnlySpan<byte> nodeRlp)
     {
-        RlpReader reader = new(nodeRlp);
-        int length = reader.ReadSequenceLength();
-        return reader.PeekNumberOfItemsRemaining(reader.Position + length) == BranchItems;
+        RlpReader reader = new RlpReader(nodeRlp).EnterSequence<OffFlag>(out _);
+        return reader.CountItems<OffFlag>(int.MaxValue) == BranchItems;
     }
 
     public static void ReadChildren(ReadOnlySpan<byte> branchRlp, ChildVector children)
     {
-        RlpReader reader = new(branchRlp);
-        reader.ReadSequenceLength();
+        RlpReader reader = new RlpReader(branchRlp).EnterSequence<OffFlag>(out _);
         for (int index = 0; index < ChildCount; index++)
         {
             ReadOnlySpan<byte> reference = ReadChild(ref reader);
@@ -35,12 +35,10 @@ internal static class BranchRlp
 
     public static bool TryReadChildren(ReadOnlySpan<byte> nodeRlp, ChildVector children)
     {
-        RlpReader reader = new(nodeRlp);
-        int length = reader.ReadSequenceLength();
-        int end = reader.Position + length;
+        RlpReader reader = new RlpReader(nodeRlp).EnterSequence<OffFlag>(out _);
         for (int index = 0; index < ChildCount; index++)
         {
-            if (reader.Position >= end) return false;
+            if (!reader.HasNext) return false;
 
             ReadOnlySpan<byte> reference = ReadChild(ref reader);
             if (reference.Length > Hash256.Size) return false;
@@ -49,26 +47,27 @@ internal static class BranchRlp
             else children.Set(index, reference);
         }
 
-        if (reader.Position >= end) return false;
+        if (!reader.HasNext) return false;
 
-        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-        if (reader.Position + prefixLength + contentLength != end) return false;
-
-        return contentLength == 0;
+        ReadOnlySpan<byte> value = reader.ReadEncodedItem<OffFlag>();
+        return !reader.HasNext && IsEmptyItem(value);
     }
 
     public static bool TryReadChild(ReadOnlySpan<byte> nodeRlp, int index, out int referenceLength, out ValueHash256 hash)
     {
         hash = default;
-        RlpReader reader = new(nodeRlp);
-        int length = reader.ReadSequenceLength();
-        if (reader.PeekNumberOfItemsRemaining(reader.Position + length) != BranchItems)
+        RlpReader reader = new RlpReader(nodeRlp).EnterSequence<OffFlag>(out _);
+        if (reader.CountItems<OffFlag>(int.MaxValue) != BranchItems)
         {
             referenceLength = 0;
             return false;
         }
 
-        reader.SkipItems(index);
+        for (int i = 0; i < index; i++)
+        {
+            reader.SkipItem<OffFlag>();
+        }
+
         ReadOnlySpan<byte> reference = ReadChild(ref reader);
         referenceLength = reference.Length;
         if (referenceLength == Hash256.Size) hash = new ValueHash256(reference);
@@ -112,27 +111,23 @@ internal static class BranchRlp
         return contentLength;
     }
 
+    /// <summary>Whether <paramref name="item"/> is an empty string or an empty list.</summary>
+    public static bool IsEmptyItem(ReadOnlySpan<byte> item) => item.Length == 1 && item[0] >= EmptyItem;
+
+    /// <summary>Whether <paramref name="item"/> is a 32-byte string, the reference of a hashed node.</summary>
+    public static bool IsHashItem(ReadOnlySpan<byte> item) => item.Length == 1 + Hash256.Size && item[0] == EmptyItem + Hash256.Size;
+
     private static ReadOnlySpan<byte> ReadChild(ref RlpReader reader)
     {
-        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-        if (contentLength == 0)
-        {
-            reader.SkipItem();
-            return ReadOnlySpan<byte>.Empty;
-        }
-
-        if (!reader.IsSequenceNext() && contentLength == Hash256.Size)
-        {
-            reader.SkipBytes(prefixLength);
-            return reader.Read(Hash256.Size);
-        }
-
-        return reader.Read(prefixLength + contentLength);
+        ReadOnlySpan<byte> item = reader.ReadEncodedItem<OffFlag>();
+        if (IsEmptyItem(item)) return ReadOnlySpan<byte>.Empty;
+        return IsHashItem(item) ? item[1..] : item;
     }
 
     private static void RequireNoValue(ref RlpReader reader)
     {
-        if (reader.PeekPrefixAndContentLength().ContentLength != 0)
+        RlpReader value = reader;
+        if (!IsEmptyItem(value.ReadEncodedItem<OffFlag>()))
         {
             throw new InvalidDataException("A branch of a fixed-width-key trie carries no value; this node is not a state or storage trie branch.");
         }

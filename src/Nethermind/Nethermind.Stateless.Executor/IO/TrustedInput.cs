@@ -17,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -236,9 +237,11 @@ public static partial class TrustedInput
 
             foreach (AuthorizationTuple tuple in transaction.AuthorizationList)
             {
-                KeccakRlpWriter writer = new();
+                Span<byte> payload = input[..AuthorizationTupleDecoder.GetSignaturePayloadLength(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)];
+                RlpWriter writer = RlpWriter.ContentWriter(payload);
                 AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-                recoveries.Add((writer.GetValueHash(), tuple.AuthoritySignature));
+                Rlp.CheckLength(in writer, payload.Length);
+                recoveries.Add((ValueKeccak.Compute(payload), tuple.AuthoritySignature));
             }
         }
 

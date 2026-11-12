@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -15,9 +16,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
     {
         public int Serialize(Span<byte> destination, GetTrieNodesMessage message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
             writer.Encode(message.RequestId);
             writer.Encode(message.RootHash);
@@ -36,7 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
 
             writer.Encode(message.Bytes);
-            return writer.Position;
+
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public int GetLength(GetTrieNodesMessage message) => Rlp.LengthOfSequence(GetContentLength(message));
@@ -81,8 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths<TWriter>(ref TWriter writer, IOwnedReadOnlyList<PathGroup> paths)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        private static void EncodePaths(ref RlpWriter writer, IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
             ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
@@ -97,7 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 contentLength += Rlp.LengthOfSequence(groupContentLength);
             }
 
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             for (int i = 0; i < pathsSpan.Length; i++)
             {
                 byte[][] group = pathsSpan[i].Group;
@@ -106,12 +108,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     groupContentLength += Rlp.LengthOf(group[j]);
                 }
-                writer.StartSequence(groupContentLength);
+                RlpSequence groupSequence = writer.StartSequence(groupContentLength);
                 for (int j = 0; j < group.Length; j++)
                 {
                     writer.Encode(group[j]);
                 }
+
+                writer.EndSequence(groupSequence);
             }
+
+            writer.EndSequence(sequence);
         }
 
         /// <remarks>Copies <paramref name="data"/>, which the message would otherwise keep referencing.</remarks>
@@ -125,8 +131,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             try
             {
-                RlpReader ctx = new(data.Span);
-                ctx.ReadSequenceLength();
+                RlpReader outer = new(data.Span);
+                RlpReader ctx = outer.EnterSequence(out int itemLength);
                 message.RequestId = ctx.DecodeLong();
                 message.RootHash = ctx.DecodeKeccak();
 
@@ -137,7 +143,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 rawPaths = null;
 
                 message.Bytes = ctx.DecodeLong();
-                ctx.CheckEnd();
+                outer.ExitSequence(ctx, itemLength);
+                outer.CheckEnd();
 
                 return message;
             }
