@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -42,26 +42,10 @@ namespace Nethermind.Stats
 
             try
             {
-                int deleteCount = _nodeStats.Count - _maxCount;
-
-                if (deleteCount > 0)
+                int count = _nodeStats.Count;
+                if (count > _maxCount)
                 {
-                    DateTime utcNow = DateTime.UtcNow;
-                    // LINQ over the live dictionary throws when a node is added during its Count/CopyTo.
-                    KeyValuePair<Node, INodeStats>[] snapshot = _nodeStats.ToArray();
-                    IEnumerable<Node> toDelete = snapshot
-                        .OrderBy(n => n.Value.CurrentNodeReputation(utcNow))
-                        .Select(n => n.Key)
-                        .Take(snapshot.Length - _maxCount);
-
-                    int i = 0;
-                    foreach (Node node in toDelete)
-                    {
-                        _nodeStats.TryRemove(node, out _);
-                        i++;
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
+                    RemoveLowestReputation(count);
                 }
             }
             catch (Exception ex)
@@ -73,6 +57,31 @@ namespace Nethermind.Stats
             {
                 _cleanupTimer.Start();
             }
+        }
+
+        private void RemoveLowestReputation(int capacity)
+        {
+            DateTime utcNow = DateTime.UtcNow;
+            using ArrayPoolListRef<long> reputations = new(capacity);
+            using ArrayPoolListRef<Node> nodes = new(capacity);
+
+            // Enumeration is safe under concurrent inserts, unlike the Count + CopyTo that LINQ does on an ICollection.
+            foreach (KeyValuePair<Node, INodeStats> entry in _nodeStats)
+            {
+                reputations.Add(entry.Value.CurrentNodeReputation(utcNow));
+                nodes.Add(entry.Key);
+            }
+
+            int deleteCount = nodes.Count - _maxCount;
+            if (deleteCount <= 0) return;
+
+            reputations.AsSpan().Sort(nodes.AsSpan());
+            foreach (Node node in nodes.AsSpan()[..deleteCount])
+            {
+                _nodeStats.TryRemove(node, out _);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Removed {deleteCount} node stats.");
         }
 
         public INodeStats GetOrAdd(Node node)

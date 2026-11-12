@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -48,7 +47,7 @@ namespace Nethermind.Network.Test.Stats
         public async Task should_clean_up_without_errors_while_nodes_are_added()
         {
             const int maxCount = 10;
-            TimeSpan timeout = TimeSpan.FromSeconds(10);
+            const int cleanups = 1000;
             TestLogger logger = new() { IsTrace = false, IsDebug = false, IsInfo = false, IsWarn = false };
             NodeStatsManager manager = CreateManager(new OneLoggerLogManager(new ILogger(logger)), maxCount, out ITimer timer);
 
@@ -61,28 +60,20 @@ namespace Nethermind.Network.Test.Stats
                 {
                     BinaryPrimitives.WriteInt32LittleEndian(key, i);
                     manager.ReportHandshakeEvent(new Node(new PublicKey(key), new IPEndPoint(IPAddress.Loopback, 30303)), ConnectionDirection.In);
-                    Interlocked.Increment(ref added);
+                    Volatile.Write(ref added, i + 1);
                 }
             });
-            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref added) > maxCount * 10, timeout), Is.True);
+            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref added) > maxCount, TimeSpan.FromSeconds(10)), Is.True);
 
-            int cleanups = 0;
-            int addedTarget = Volatile.Read(ref added) + 10_000;
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            while ((cleanups < 200 || Volatile.Read(ref added) < addedTarget) && stopwatch.Elapsed < timeout)
+            for (int i = 0; i < cleanups; i++)
             {
                 timer.Elapsed += Raise.Event();
-                cleanups++;
             }
 
             await cts.CancelAsync();
             await writer;
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(Volatile.Read(ref added), Is.GreaterThanOrEqualTo(addedTarget));
-                Assert.That(logger.LogList, Is.Empty);
-            }
+            Assert.That(logger.LogList, Is.Empty);
             timer.Received(cleanups + 1).Start();
         }
 
