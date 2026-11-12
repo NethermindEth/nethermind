@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -42,6 +43,30 @@ namespace Nethermind.JsonRpc.Modules
             // The served floor, not the published boundary: during a backfill the two differ, and this check
             // must agree with what the node advertises as earliest over eth/69.
             return requestedBlock < blockFinder.LowestServedBlock;
+        }
+
+        /// <summary>
+        /// Whether a lookup by transaction hash that found no receipt misses pruned history: the transaction index names
+        /// a canonical block below <see cref="IBlockFinder.LowestServedBlock"/>, and that block's body, when it is still
+        /// stored, holds the transaction.
+        /// </summary>
+        /// <remarks>
+        /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
+        /// history pruning, so a block below it may still be stored. A compact index entry names a height, so for a
+        /// transaction reorganised out of that height it resolves to the block now canonical there; a stored body tells
+        /// the two apart, and is read only once the other conditions hold. Without a body the entry is taken as it is.
+        /// </remarks>
+        public static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
+        {
+            if (receiptFinder.FindBlockHash(txHash) is not { } blockHash
+                || blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is not { } header
+                || !blockFinder.IsBlockPruned(new BlockParameter(header.Number)))
+            {
+                return false;
+            }
+
+            Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+            return block is null || block.GetTransactionIndex(txHash.ValueHash256) >= 0;
         }
 
         /// <param name="unknownBlockErrorCode">The code for a block that is not known, instead of <see cref="ErrorCodes.ResourceNotFound"/>.</param>

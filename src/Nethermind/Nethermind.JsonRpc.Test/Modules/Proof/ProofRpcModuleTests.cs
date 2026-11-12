@@ -47,6 +47,7 @@ public class ProofRpcModuleTests
     private IContainer _container;
 
     private const string NullResultResponse = """{"jsonrpc":"2.0","result":null,"id":67}""";
+    private const string PrunedHistoryResponse = """{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}""";
 
     /// <summary>Position in block 1 the stale-index arrangements request; not 0, so serving the block's first
     /// transaction instead of the requested one is a visible failure.</summary>
@@ -186,6 +187,53 @@ public class ProofRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.PrunedHistoryUnavailable}"));
+    }
+
+    /// <remarks>The answer <c>eth_getTransactionReceipt</c> gives for the same miss.</remarks>
+    [Test]
+    public async Task When_the_receipt_is_missing_below_the_served_floor_transaction_receipt_fails_with_pruned_history(
+        [Values(NotServableScenario.ReceiptsPruned, NotServableScenario.MismatchedReceiptSet)] NotServableScenario scenario)
+    {
+        Hash256 txHash = ArrangeNotServable(scenario);
+
+        _blockTree.UpdateLowestServedBlock(1);
+        string atTheFloor = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
+        _blockTree.UpdateLowestServedBlock(2);
+        string belowTheFloor = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atTheFloor, Is.EqualTo(NullResultResponse), "a receipt missing at the served floor is not pruned history");
+            Assert.That(belowTheFloor, Is.EqualTo(PrunedHistoryResponse));
+        }
+    }
+
+    /// <remarks>The proof method finds a block by hash whether it is canonical or not; only a canonical one is pruned history.</remarks>
+    [Test]
+    public async Task When_no_canonical_block_below_the_served_floor_holds_the_transaction_transaction_receipt_returns_null()
+    {
+        Block sideChain = Build.A.Block.WithParent(_blockTree.FindBlock(0)!)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject).WithExtraData([1]).TestObject;
+        _blockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Hash256 sideChainTx = sideChain.Transactions[0].Hash!;
+        // A hash-valued entry still naming a reorganised-out block, and a compact one now resolving to a block without
+        // the transaction; no receipts for either.
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(sideChainTx).Returns(sideChain.Hash);
+        receiptFinder.FindBlockHash(TestItem.KeccakA).Returns(_blockTree.FindBlock(1)!.Hash);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
+        RebuildContainerWith(receiptFinder);
+        _blockTree.UpdateLowestServedBlock(2);
+        Assert.That(_blockTree.IsMainChain(sideChain.Header), Is.False, "precondition: a side-chain block below the served floor");
+
+        string sideChainReceipt = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", sideChainTx, false);
+        string reorganisedOutReceipt = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", TestItem.KeccakA, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sideChainReceipt, Is.EqualTo(NullResultResponse), "an entry naming a side-chain block");
+            Assert.That(reorganisedOutReceipt, Is.EqualTo(NullResultResponse), "an entry naming a canonical block without the transaction");
+        }
     }
 
     /// <remarks>

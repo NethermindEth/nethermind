@@ -88,7 +88,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
             if (receipt is null)
             {
-                return ResultWrapper<ReceiptWithProof>.Success(null);
+                // The same answer as eth_getTransactionReceipt for the same miss.
+                return blockFinder.IsTransactionPruned(receiptFinder, txHash)
+                    ? ResultWrapper<ReceiptWithProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+                    : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
             Transaction[] txs = block.Transactions;

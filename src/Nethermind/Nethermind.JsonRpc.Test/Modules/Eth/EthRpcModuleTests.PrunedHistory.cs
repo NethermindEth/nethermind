@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -275,6 +276,37 @@ public partial class EthRpcModuleTests
         {
             Assert.That((string?)JObject.Parse(served).SelectToken("result.transactionHash"), Is.EqualTo(txHash.ToString()), "precondition: the receipt is served");
             Assert.That(keptBelowTheFloor, Is.EqualTo(served), "a receipt kept below the served floor");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_missing_for_a_body_kept_below_the_served_floor_returns_4444_only_if_the_body_holds_the_transaction([Values] bool inTheBody)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        ulong number = await AddBlockWithTwoTransactionsFromB(test);
+        Block block = test.BlockTree.FindBlock(number)!;
+        Hash256 txHash = inTheBody ? block.Transactions[1].Hash! : TestItem.KeccakD;
+        // History pruning deletes the receipts before the body. A compact entry of a transaction reorganised out of this
+        // height resolves to the block now canonical there.
+        if (inTheBody) test.ReceiptStorage.RemoveReceipts(number, block.Hash!);
+        else TransactionIndex(test).Set(txHash, Rlp.Encode(number).Bytes);
+        test.BlockTree.UpdateLowestServedBlock(number + 1);
+        EvictBlocks(test);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.BlockTree.FindBlock(block.Hash!), Is.Not.Null, "precondition: the body is kept");
+            Assert.That(test.ReceiptFinder.FindBlockHash(txHash), Is.EqualTo(block.Hash), "precondition: the index names the block");
+        }
+
+        string belowTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        test.BlockTree.UpdateLowestServedBlock(number);
+        string atTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(belowTheFloor, Is.EqualTo(inTheBody ? PrunedTransactionReceipt : NullResult), "a receipt missing below the served floor");
+            Assert.That(atTheFloor, Is.EqualTo(NullResult), "a receipt missing at the served floor is not pruned history");
         }
     }
 
