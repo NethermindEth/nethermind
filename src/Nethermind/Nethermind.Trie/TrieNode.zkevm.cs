@@ -471,6 +471,24 @@ namespace Nethermind.Trie
             return true;
         }
 
+        /// <summary>Loads and decodes this node, a witness node of a secured trie, and checks it <paramref name="depth"/> nibbles
+        /// below the root; see <see cref="SecuredTrieNodeValidator"/>.</summary>
+        /// <remarks>The check reads the node's shape, so the decode takes it from there rather than counting items again.</remarks>
+        internal void ResolveSecuredNode(ITrieNodeResolver tree, in TreePath path, int depth)
+        {
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.IsNull)
+            {
+                WriteLoadedRlp(rlp = new CappedArray<byte>(tree.LoadRlp(path, Keccak ?? ThrowMissingKeccak()) ?? ThrowNullRlp()));
+                IsPersisted = true;
+            }
+
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            int itemsStart = SecuredTrieNodeValidator.Validate(span, depth, isHashed: Keccak is not null);
+            if (itemsStart == 0) _nodeData = new BranchData();
+            else DecodeLeafOrExtension(span, itemsStart, null);
+        }
+
         /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
         /// <remarks>
         /// Skips the slots before the child knowing only the two item shapes such a branch holds, an empty slot and a hash,
