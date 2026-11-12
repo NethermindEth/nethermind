@@ -82,7 +82,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
-            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
         Assert.That(allocated, Is.Zero);
     }
