@@ -63,18 +63,26 @@ namespace Nethermind.Network.Test.Stats
                     Volatile.Write(ref added, i + 1);
                 }
             });
-            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref added) > maxCount, TimeSpan.FromSeconds(10)), Is.True);
-
-            for (int i = 0; i < cleanups; i++)
+            try
             {
-                timer.Elapsed += Raise.Event();
+                Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref added) > maxCount, TimeSpan.FromSeconds(10)), Is.True);
+
+                for (int i = 0; i < cleanups; i++)
+                {
+                    timer.Elapsed += Raise.Event();
+                }
+            }
+            finally
+            {
+                await cts.CancelAsync();
+                await writer;
             }
 
-            await cts.CancelAsync();
-            await writer;
-
-            Assert.That(logger.LogList, Is.Empty);
-            timer.Received(cleanups + 1).Start();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(logger.LogList, Is.Empty);
+                timer.Received(cleanups + 1).Start();
+            }
         }
 
         private static NodeStatsManager CreateManager(ILogManager logManager, int maxCount, out ITimer timer)
