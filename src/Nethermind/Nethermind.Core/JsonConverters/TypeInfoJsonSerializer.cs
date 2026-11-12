@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
@@ -99,6 +100,11 @@ public static class TypeInfoJsonSerializer
     /// <inheritdoc cref="JsonSerializer.DeserializeAsync{TValue}(Stream, JsonSerializerOptions, CancellationToken)"/>
     public static ValueTask<TValue?> DeserializeAsync<TValue>(Stream utf8Json, JsonSerializerOptions options, CancellationToken cancellationToken = default) =>
         JsonSerializer.DeserializeAsync(utf8Json, GetTypeInfo<TValue>(options), cancellationToken);
+
+    public static TValue? ReadNested<TValue>(ref Utf8JsonReader reader, JsonSerializerOptions options) where TValue : class =>
+        reader.TokenType == JsonTokenType.Null
+            ? null
+            : ((JsonConverter<TValue>)GetTypeInfo<TValue>(options).Converter).Read(ref reader, typeof(TValue), options);
 
     /// <summary>Gets the metadata the options resolve for <typeparamref name="T"/>.</summary>
     public static JsonTypeInfo<T> GetTypeInfo<T>(JsonSerializerOptions options) => TypeInfoCache<T>.Get(options);
