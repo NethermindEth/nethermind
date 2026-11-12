@@ -538,7 +538,7 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Arithmetic_matches_the_shared_handlers(
         [Values(Instruction.MUL, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD,
-            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
+            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.CLZ, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
         [Range(0, 3)] int seed)
     {
         List<string> mismatches = [];
