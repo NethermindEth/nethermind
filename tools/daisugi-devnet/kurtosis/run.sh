@@ -36,7 +36,7 @@ for v in EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER; do
   [[ ${!v} =~ ^[^[:space:]]+$ ]] || { echo "FAIL: $v='${!v}' in enclave $ENCLAVE"; exit 1; }
   echo "$v=${!v}"
 done
-export EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER
+export ENCLAVE EL_RPC_PORT CL_HTTP_PORT EL_CONTAINER BN_CONTAINER VC_CONTAINER
 for _ in $(seq 60); do
   curl -sf "http://127.0.0.1:$CL_HTTP_PORT/eth/v1/beacon/genesis" >/dev/null && break
   sleep 2
