@@ -283,7 +283,7 @@ public abstract class BlockchainTestBase
 
                 test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
-                RlpReader genesisReader = new(test.GenesisRlp.Bytes);
+                RlpReader genesisReader = new(test.GenesisRlp);
                 Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 

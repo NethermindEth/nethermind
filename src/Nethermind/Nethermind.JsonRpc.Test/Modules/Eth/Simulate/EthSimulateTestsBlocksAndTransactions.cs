@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -507,7 +508,7 @@ public class EthSimulateTestsBlocksAndTransactions
         JsonElement child = document.RootElement.GetProperty("result")[1];
         JsonElement grandchild = document.RootElement.GetProperty("result")[2];
 
-        List<Rlp> fields =
+        List<byte[]> fields =
         [
             Rlp.Encode(new Hash256(block.GetProperty("parentHash").GetString()!)),
             Rlp.Encode(new Hash256(block.GetProperty("sha3Uncles").GetString()!)),
@@ -526,13 +527,13 @@ public class EthSimulateTestsBlocksAndTransactions
             Rlp.Encode(Bytes.FromHexString(block.GetProperty("nonce").GetString()!)),
         ];
         if (spec.IsEip1559Enabled) fields.Add(Rlp.Encode(Quantity("baseFeePerGas")));
-        Rlp header = Rlp.Encode([.. fields]);
+        byte[] header = RlpTestHelper.EncodeSequence([.. fields]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.TryGetProperty("baseFeePerGas", out JsonElement baseFee) ? baseFee.GetString() : null,
                 Is.EqualTo(spec.IsEip1559Enabled ? "0x0" : null));
-            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header.Bytes).ToString()));
+            Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(Keccak.Compute(header).ToString()));
             // The block is [header, transactions, uncles], both lists empty.
             Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
             Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));

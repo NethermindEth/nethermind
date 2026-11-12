@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class CompactionScheduleTests
 {
-    private static byte[] EncodedOffset(long value) => Rlp.Encode(value).Bytes;
+    private static byte[] EncodedOffset(long value) => Rlp.Encode(value);
 
     [Test]
     public void Constructor_NoStoredValue_GeneratesPersistsAndReturnsValueInRange()

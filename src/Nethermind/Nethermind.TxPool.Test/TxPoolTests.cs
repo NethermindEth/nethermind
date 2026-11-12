@@ -367,8 +367,8 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.WithGasLimit(1).SignedAndResolved().TestObject;
-            Rlp encoded = TxDecoder.Instance.Encode(tx);
-            RlpReader reader = new(encoded.Bytes);
+            byte[] encoded = TxDecoder.Instance.Encode(tx);
+            RlpReader reader = new(encoded);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
             AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycleInvalid);
@@ -392,7 +392,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(1).TestObject;
             source.Signature = new Signature(1, 2, 27);
             source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
-            RlpReader reader = new(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm).Bytes);
+            RlpReader reader = new(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm));
             return TxDecoder.Instance.Decode(ref reader, RlpBehaviors.InMempoolForm
                 | (pooled ? RlpBehaviors.PoolBlobBuffers : RlpBehaviors.None));
         }

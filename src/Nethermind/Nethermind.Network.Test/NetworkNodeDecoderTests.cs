@@ -31,8 +31,8 @@ namespace Nethermind.Network.Test
         public void Can_read_regression()
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = new(Bytes.FromHexString("f8a7b84013a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152953a3a666666663a38352e3131322e3131332e3138368294c680ce0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
-            RlpReader context = new(encoded.Bytes);
+            byte[] encoded = Bytes.FromHexString("f8a7b84013a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152953a3a666666663a38352e3131322e3131332e3138368294c680ce0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+            RlpReader context = new(encoded);
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
             {
@@ -47,8 +47,8 @@ namespace Nethermind.Network.Test
         public void Can_read_unbracketed_ipv4_mapped_ipv6_enode_regression()
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = new(Bytes.FromHexString("f8b2b8af656e6f64653a2f2f3661353034306166366634643434383035643830373936623237383466656630393136366430623565643862396565643437376639373030346664313138636330623564303734643535613933393763396466653239373137653934356139336336376134623030336634353363306664313237326439663466326531376130403a3a666666663a3134342e37362e3134392e3131393a303f64697363706f72743d333033303380"));
-            RlpReader context = new(encoded.Bytes);
+            byte[] encoded = Bytes.FromHexString("f8b2b8af656e6f64653a2f2f3661353034306166366634643434383035643830373936623237383466656630393136366430623565643862396565643437376639373030346664313138636330623564303734643535613933393763396466653239373137653934356139336336376134623030336634353363306664313237326439663466326531376130403a3a666666663a3134342e37362e3134392e3131393a303f64697363706f72743d333033303380");
+            RlpReader context = new(encoded);
 
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
 
@@ -64,8 +64,8 @@ namespace Nethermind.Network.Test
         private static void AssertRoundtripPreservesFields(NetworkNode node)
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = networkNodeDecoder.Encode(node);
-            RlpReader context = new(encoded.Bytes);
+            byte[] encoded = networkNodeDecoder.Encode(node);
+            RlpReader context = new(encoded);
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
             {
@@ -98,8 +98,8 @@ namespace Nethermind.Network.Test
                 Reputation = 100L
             };
 
-            Rlp encoded = networkNodeDecoder.Encode(node);
-            RlpReader context = new(encoded.Bytes);
+            byte[] encoded = networkNodeDecoder.Encode(node);
+            RlpReader context = new(encoded);
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
 
             using (Assert.EnterMultipleScope())

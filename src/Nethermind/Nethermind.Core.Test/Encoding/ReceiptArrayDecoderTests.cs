@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt first = Build.A.Receipt.WithLogs().TestObject;
             TxReceipt afterGap = Build.A.Receipt.WithLogs().TestObject;
             ReceiptArrayStorageDecoder decoder = new(compactEncoding);
-            byte[] encoded = decoder.EncodeAsBytes([first, null!, afterGap], RlpBehaviors.Storage);
+            byte[] encoded = decoder.Encode([first, null!, afterGap], RlpBehaviors.Storage);
             Span<byte> encodedSpan = encoded;
 
             TxReceipt[] decoded = decoder.Decode(in encodedSpan);
@@ -90,7 +90,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt[] receipts = new TxReceipt[boundaryContentLength - finalReceiptLength + 1];
             receipts[^1] = finalReceipt;
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            byte[] encoded = decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            byte[] encoded = decoder.Encode(receipts, RlpBehaviors.Storage);
             Array.Resize(ref encoded, encoded.Length + 1);
             encoded[^1] = Rlp.EmptyListByte;
             Span<byte> encodedSpan = encoded;
@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt[] receipts = BuildReceipts(count);
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
 
-            byte[] encoded = decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            byte[] encoded = decoder.Encode(receipts, RlpBehaviors.Storage);
 
             using (Assert.EnterMultipleScope())
             {
@@ -149,7 +149,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt[] receipts = BuildReceipts(2);
             receipts[1].TxHash = null;
 
-            byte[] encoded = new ReceiptArrayStorageDecoder(compactEncoding: true).EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            byte[] encoded = new ReceiptArrayStorageDecoder(compactEncoding: true).Encode(receipts, RlpBehaviors.Storage);
 
             Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
         }
@@ -159,13 +159,13 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt[] receipts = BuildReceipts(2);
 
-            byte[] encoded = ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            byte[] encoded = ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(receipts, RlpBehaviors.Storage);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
                 Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
-                Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
+                Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
             }
         }
 
@@ -174,8 +174,8 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt[] receipts = BuildReceipts(3);
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            byte[] withHashes = decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
-            byte[] withoutHashes = decoder.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage);
+            byte[] withHashes = decoder.Encode(receipts, RlpBehaviors.Storage);
+            byte[] withoutHashes = decoder.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage);
 
             decoder.Decode(withHashes).AssertEquivalentTo(decoder.Decode(withoutHashes));
             using (Assert.EnterMultipleScope())
@@ -192,12 +192,12 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt[] receipts = BuildReceipts(count);
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            byte[] withoutHashes = decoder.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage);
+            byte[] withoutHashes = decoder.Encode(WithoutTxHashes(receipts), RlpBehaviors.Storage);
             byte[] txHashes = receipts.SelectMany(static r => r.TxHash!.BytesToArray()).ToArray();
 
             byte[] migrated = ReceiptArrayStorageDecoder.AddTxHashes(withoutHashes, txHashes);
 
-            Assert.That(migrated, Is.EqualTo(decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage)));
+            Assert.That(migrated, Is.EqualTo(decoder.Encode(receipts, RlpBehaviors.Storage)));
         }
 
         private static TxReceipt[] BuildReceipts(int count) =>

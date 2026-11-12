@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -213,16 +214,16 @@ public static class FlatTestHelpers
     }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
-    public static byte[] LeafRlp(params byte[] value) => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([], isLeaf: true)), Rlp.Encode(value)).Bytes;
+    public static byte[] LeafRlp(params byte[] value) => RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes([], isLeaf: true)), Rlp.Encode(value));
 
     /// <summary>The RLP of an extension over the <paramref name="key"/> nibbles referencing <paramref name="childRlp"/> by hash.</summary>
     public static byte[] ExtensionRlp(byte[] key, byte[] childRlp) =>
-        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(key, isLeaf: false)), Rlp.Encode(Keccak.Compute(childRlp))).Bytes;
+        RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(key, isLeaf: false)), Rlp.Encode(Keccak.Compute(childRlp)));
 
     /// <summary>The RLP of a valueless branch referencing <paramref name="children"/> by nibble and hash, null for none.</summary>
     /// <remarks>Short children are referenced by hash too, so each stays a record of its own.</remarks>
     public static byte[] BranchRlp(byte[]?[] children) =>
-        Rlp.Encode([.. Enumerable.Range(0, 16).Select(i => children.ElementAtOrDefault(i) is { } child ? Rlp.Encode(Keccak.Compute(child)) : Rlp.OfEmptyByteArray), Rlp.OfEmptyByteArray]).Bytes;
+        RlpTestHelper.EncodeSequence([.. Enumerable.Range(0, 16).Select(i => children.ElementAtOrDefault(i) is { } child ? Rlp.Encode(Keccak.Compute(child)) : RlpTestHelper.OfEmptyByteArray), RlpTestHelper.OfEmptyByteArray]);
 
     private static ulong AppendNode(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
         buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp, []);

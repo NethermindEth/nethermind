@@ -24,6 +24,6 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup() => Console.WriteLine($"Length current: {Current().Length}");
 
         [Benchmark]
-        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]);
     }
 }

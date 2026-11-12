@@ -85,7 +85,7 @@ public class ParityStyleTracerTests
             .TestObject;
 
         ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(
-            TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" });
+            TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping), new[] { "trace" });
         Assert.That(result.Data, Is.Not.Null);
     }
 

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -49,7 +50,7 @@ internal class LoadedRecordBufferTests
     {
         byte[] value = new byte[valueLength];
         BitConverter.TryWriteBytes(value, seed);
-        return Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value)).Bytes;
+        return RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value));
     }
 
     /// <summary>Hands over each node's RLP, or its record when <paramref name="asRecord"/> is set, as a store holding records does.</summary>

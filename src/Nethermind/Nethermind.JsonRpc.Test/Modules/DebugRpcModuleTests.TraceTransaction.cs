@@ -28,6 +28,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -178,7 +179,7 @@ public partial class DebugRpcModuleTests
         Hash256 hash = scenario == "unknown" ? TestItem.KeccakD : transaction.Hash!;
         string method = scenario == "extension" ? "debug_traceTransactionInBlockByHash" : "debug_traceTransaction";
         object[] parameters = scenario == "extension"
-            ? [Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString(), hash, options]
+            ? [Rlp.Encode(context.Blockchain.BlockTree.Head!).ToHexString(true), hash, options]
             : [hash, options];
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
@@ -317,7 +318,7 @@ public partial class DebugRpcModuleTests
         object options = mux
             ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
             : new { tracer };
-        string blockRlp = Rlp.Encode(block).ToString();
+        string blockRlp = Rlp.Encode(block).ToHexString(true);
         object[] parameters = method switch
         {
             "debug_traceTransaction" => [transaction.Hash!, options],
@@ -811,7 +812,7 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
+        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToHexString(true);
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
@@ -826,7 +827,7 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
+        string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToHexString(true);
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));

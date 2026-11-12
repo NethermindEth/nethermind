@@ -16,11 +16,11 @@ namespace Nethermind.Benchmarks.Rlp
 
         private readonly byte[][] _scenarios =
         [
-            Serialization.Rlp.Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes,
+            Serialization.Rlp.Rlp.Encode(Build.A.BlockHeader.TestObject),
             Serialization.Rlp.Rlp.Encode(
                 Build.A.BlockHeader.WithBaseFee(42).WithWithdrawalsRoot(TestItem.KeccakA)
                     .WithBlobGasUsed(1024).WithExcessBlobGas(2048)
-                    .WithParentBeaconBlockRoot(TestItem.KeccakB).TestObject).Bytes,
+                    .WithParentBeaconBlockRoot(TestItem.KeccakB).TestObject),
         ];
 
         [Params(0, 1)]

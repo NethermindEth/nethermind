@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -30,7 +31,7 @@ public class BlockAccessListAccountJson
     /// merged or checked, so that only the client's decoder and validation judge a malformed list.
     /// </summary>
     public static byte[] Encode(BlockAccessListAccountJson[] accounts) =>
-        Rlp.Encode(accounts.Select(static a => a.Encode()).ToArray()).Bytes;
+        RlpTestHelper.EncodeSequence(accounts.Select(static a => a.Encode()).ToArray());
 
     /// <summary>
     /// Gives the block the delivered list only when the list's hash, as delivered, is the header's
@@ -66,18 +67,16 @@ public class BlockAccessListAccountJson
         return true;
     }
 
-    private Rlp Encode() => Rlp.Encode(
-        Rlp.Encode(Bytes.FromHexString(Address!)),
-        Sequence(StorageChanges, static s => Rlp.Encode(
-            Rlp.Encode(ToUInt256(s.Slot)),
+    private byte[] Encode() => RlpTestHelper.EncodeSequence(Rlp.Encode(Bytes.FromHexString(Address!)),
+        Sequence(StorageChanges, static s => RlpTestHelper.EncodeSequence(Rlp.Encode(ToUInt256(s.Slot)),
             Sequence(s.SlotChanges, static c => Change(c.BlockAccessIndex, Rlp.Encode(ToUInt256(c.PostValue)))))),
         Sequence(StorageReads, static r => Rlp.Encode(ToUInt256(r))),
         Sequence(BalanceChanges, static c => Change(c.BlockAccessIndex, Rlp.Encode(ToUInt256(c.PostBalance)))),
         Sequence(NonceChanges, static c => Change(c.BlockAccessIndex, Rlp.Encode(ToULong(c.PostNonce)))),
         Sequence(CodeChanges, static c => Change(c.BlockAccessIndex, Rlp.Encode(Bytes.FromHexString(c.NewCode!)))));
 
-    private static Rlp Sequence<T>(T[]? items, Func<T, Rlp> encode) => Rlp.Encode((items ?? []).Select(encode).ToArray());
-    private static Rlp Change(string? blockAccessIndex, Rlp value) => Rlp.Encode(Rlp.Encode(ToULong(blockAccessIndex)), value);
+    private static byte[] Sequence<T>(T[]? items, Func<T, byte[]> encode) => RlpTestHelper.EncodeSequence((items ?? []).Select(encode).ToArray());
+    private static byte[] Change(string? blockAccessIndex, byte[] value) => RlpTestHelper.EncodeSequence(Rlp.Encode(ToULong(blockAccessIndex)), value);
     private static UInt256 ToUInt256(string? hex) => Bytes.FromHexString(hex!).ToUInt256();
     private static ulong ToULong(string? hex) => Bytes.FromHexString(hex!).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
 }

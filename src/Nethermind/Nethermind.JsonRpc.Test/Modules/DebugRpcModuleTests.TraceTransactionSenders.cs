@@ -126,7 +126,7 @@ public partial class DebugRpcModuleTests
         JToken expected = await TraceByIndex(chain, block, target, callTracer);
         IndexThroughTheCapture(chain, index, block, parent);
         Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
-        stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping).Bytes);
+        stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping));
         Assert.That(stored[0].Hash, Is.EqualTo(stored[target].Hash), "precondition: the first transaction hashes like the target");
         JToken seeded = await TraceByIndex(chain, block, target, callTracer);
 

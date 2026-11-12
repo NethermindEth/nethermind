@@ -230,7 +230,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             byte[] input = new byte[size];
             Random.Shared.NextBytes(input);
 
-            byte[] encByte = Rlp.Encode(input).Bytes;
+            byte[] encByte = Rlp.Encode(input);
             using DisposableByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1).AsDisposable();
             buffer.WriteByte(0);
             buffer.WriteBytes(encByte);

@@ -68,7 +68,7 @@ public class WithdrawalTrieTests
             {
                 string hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
 
-                if (!new Rlp(proof[i - 1]).ToString(false).Contains(hex, StringComparison.Ordinal))
+                if (!proof[i - 1].ToHexString().Contains(hex, StringComparison.Ordinal))
                 {
                     return false;
                 }

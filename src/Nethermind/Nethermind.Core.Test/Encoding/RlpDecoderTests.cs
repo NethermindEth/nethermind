@@ -31,7 +31,7 @@ public class RlpDecoderTests
             Assert.Throws<NotSupportedException>(static () => Rlp.GetDecoderOrThrow<NonNullableItem>());
             Assert.Throws<NotSupportedException>(static () =>
             {
-                RlpReader reader = new(Rlp.OfEmptyByteArray.Bytes);
+                RlpReader reader = new(RlpTestHelper.OfEmptyByteArray);
                 Rlp.Decode<NonNullableItem>(ref reader);
             });
             Assert.Throws<NotSupportedException>(static () => Rlp.Encode(new NonNullableItem()));
@@ -42,9 +42,9 @@ public class RlpDecoderTests
     public void Decode_complete_not_null_decodes_item()
     {
         WithdrawalDecoder decoder = new();
-        Rlp rlp = decoder.Encode(TestItem.WithdrawalA_1Eth);
+        byte[] rlp = decoder.Encode(TestItem.WithdrawalA_1Eth);
 
-        Assert.That(decoder.DecodeCompleteNotNull(rlp.Bytes), Is.Not.Null);
+        Assert.That(decoder.DecodeCompleteNotNull(rlp), Is.Not.Null);
     }
 
     [Test]
@@ -56,7 +56,7 @@ public class RlpDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoder.GetContentLength(null), Is.Zero);
-            Assert.That(decoder.GetLength(null), Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(decoder.GetLength(null), Is.EqualTo(RlpTestHelper.OfEmptyList.Length));
         }
 
         int contentLength = decoder.GetContentLength(withdrawals);
@@ -65,7 +65,7 @@ public class RlpDecoderTests
         {
             Assert.That(contentLength, Is.EqualTo(
                 decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
-                Rlp.OfEmptyList.Length +
+                RlpTestHelper.OfEmptyList.Length +
                 decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
             Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
         }
@@ -88,8 +88,8 @@ public class RlpDecoderTests
     {
         WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
-        Rlp encoded = decoder.Encode(withdrawals);
-        RlpReader context = new(encoded.Bytes);
+        byte[] encoded = decoder.Encode(withdrawals);
+        RlpReader context = new(encoded);
 
         Withdrawal?[] decoded = decoder.DecodeArray(ref context);
 
@@ -106,11 +106,11 @@ public class RlpDecoderTests
     public void Decoder_non_null_array_rejects_null_elements()
     {
         WithdrawalDecoder decoder = new();
-        Rlp encoded = decoder.Encode(new Withdrawal?[] { null });
+        byte[] encoded = decoder.Encode(new Withdrawal?[] { null });
 
         void Decode()
         {
-            RlpReader context = new(encoded.Bytes);
+            RlpReader context = new(encoded);
             decoder.DecodeNonNullArray(ref context);
         }
 
@@ -255,9 +255,9 @@ public class RlpDecoderTests
     {
         NonNullableItemDecoder decoder = new();
 
-        Rlp rlp = decoder.Encode((NonNullableItem?)null);
+        byte[] rlp = decoder.Encode((NonNullableItem?)null);
 
-        Assert.That(rlp.Bytes, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        Assert.That(rlp, Is.EqualTo(RlpTestHelper.OfEmptyList));
     }
 
     [Test]
@@ -408,7 +408,7 @@ public class RlpDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => decoder.EncodeAsBytes(new NonNullableItem()), Throws.InvalidOperationException);
+            Assert.That(() => decoder.Encode(new NonNullableItem()), Throws.InvalidOperationException);
             Assert.That(() => decoder.ComputeValueHash(new NonNullableItem()), Throws.InvalidOperationException);
         }
     }
@@ -480,17 +480,17 @@ public class RlpDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoder.Encode(default(T)).Bytes, Is.EqualTo(Rlp.OfEmptyList.Bytes), "scalar Encode");
-            Assert.That(decoder.Encode(present).Bytes, Is.EqualTo(presentBytes), "scalar Encode");
-            Assert.That(decoder.EncodeToCappedArray(default).ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes), "EncodeToCappedArray");
+            Assert.That(decoder.Encode(default(T)), Is.EqualTo(RlpTestHelper.OfEmptyList), "scalar Encode");
+            Assert.That(decoder.Encode(present), Is.EqualTo(presentBytes), "scalar Encode");
+            Assert.That(decoder.EncodeToCappedArray(default).ToArray(), Is.EqualTo(RlpTestHelper.OfEmptyList), "EncodeToCappedArray");
             Assert.That(decoder.EncodeToCappedArray(present).ToArray(), Is.EqualTo(presentBytes), "EncodeToCappedArray");
             Assert.That(decoder.GetContentLength(items), Is.EqualTo(expected.Length - 1), "GetContentLength");
             Assert.That(decoder.GetLength(items), Is.EqualTo(expected.Length), "GetLength");
-            Assert.That(decoder.Encode(items).Bytes, Is.EqualTo(expected), "array Encode");
+            Assert.That(decoder.Encode(items), Is.EqualTo(expected), "array Encode");
             Assert.That(writer.Length, Is.EqualTo(expected.Length), "array Encode to a writer");
             Assert.That(written, Is.EqualTo((byte[])[.. expected, 0]), "array Encode to a writer");
             using ArrayPoolSpan<byte> scalarSpan = decoder.EncodeToArrayPoolSpan(default(T));
-            Assert.That(((ReadOnlySpan<byte>)scalarSpan).ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes), "EncodeToArrayPoolSpan");
+            Assert.That(((ReadOnlySpan<byte>)scalarSpan).ToArray(), Is.EqualTo(RlpTestHelper.OfEmptyList), "EncodeToArrayPoolSpan");
             using ArrayPoolSpan<byte> span = decoder.EncodeToArrayPoolSpan(new ReadOnlySpan<T?>(items));
             Assert.That(((ReadOnlySpan<byte>)span).ToArray(), Is.EqualTo(expected), "EncodeToArrayPoolSpan of items");
         }
@@ -505,7 +505,7 @@ public class RlpDecoderTests
         UInt256Decoder decoder = UInt256Decoder.Instance;
         UInt256[] values = new UInt256[count];
         for (int i = 0; i < count; i++) values[i] = new UInt256((ulong)i * 0x9E3779B97F4A7C15UL + 1, (ulong)i);
-        byte[] encoded = decoder.Encode(values).Bytes;
+        byte[] encoded = decoder.Encode(values);
         int contentStart = encoded.Length - decoder.GetContentLength(values);
         byte[] output = new byte[encoded.Length];
         ReusedBufferPool pool = new(new byte[encoded.Length]);
@@ -664,13 +664,13 @@ public class RlpDecoderTests
         public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return Rlp.OfEmptyByteArray.Length;
+            return RlpTestHelper.OfEmptyByteArray.Length;
         }
 
         public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            writer.Encode(Rlp.OfEmptyByteArray);
+            writer.EncodeEmptyByteArray();
         }
 
         protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
@@ -683,7 +683,7 @@ public class RlpDecoderTests
         public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => length;
 
         public override void Encode(ref RlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-            writer.Encode(Rlp.OfEmptyByteArray);
+            writer.EncodeEmptyByteArray();
 
         protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();

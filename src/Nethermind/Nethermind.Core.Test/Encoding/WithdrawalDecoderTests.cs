@@ -23,7 +23,7 @@ public class WithdrawalDecoderTests
             Address = Address.SystemUser,
             AmountInGwei = 3
         };
-        byte[] rlp = Rlp.Encode(withdrawal).Bytes;
+        byte[] rlp = Rlp.Encode(withdrawal);
 
         Assert.That(rlp.ToHexString(), Is.EqualTo("d8010294fffffffffffffffffffffffffffffffffffffffe03"));
     }
@@ -38,7 +38,7 @@ public class WithdrawalDecoderTests
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             AmountInGwei = 3
         };
-        byte[] rlp = Rlp.Encode(withdrawal).Bytes;
+        byte[] rlp = Rlp.Encode(withdrawal);
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp)!;
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
@@ -76,8 +76,8 @@ public class WithdrawalDecoderTests
             Address = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
             AmountInGwei = ulong.MaxValue
         };
-        byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
-        byte[] rlp2 = Rlp.Encode(withdrawal).Bytes;
+        byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal);
+        byte[] rlp2 = Rlp.Encode(withdrawal);
 
         Assert.That(rlp1, Is.EqualTo(rlp2));
     }
@@ -99,8 +99,8 @@ public class WithdrawalDecoderTests
         Withdrawal withdrawal1 = new() { Index = 1, ValidatorIndex = 2, Address = TestItem.AddressA, AmountInGwei = 100 };
         Withdrawal withdrawal2 = new() { Index = 3, ValidatorIndex = 4, Address = TestItem.AddressB, AmountInGwei = 200 };
 
-        byte[] w1 = decoder.Encode(withdrawal1).Bytes;
-        byte[] w2 = decoder.Encode(withdrawal2).Bytes;
+        byte[] w1 = decoder.Encode(withdrawal1);
+        byte[] w2 = decoder.Encode(withdrawal2);
 
         int amountLen = Rlp.LengthOf(withdrawal2.AmountInGwei);
         byte[] w2NoAmount = w2[..^amountLen];

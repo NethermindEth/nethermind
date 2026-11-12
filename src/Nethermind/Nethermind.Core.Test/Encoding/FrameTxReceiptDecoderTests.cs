@@ -114,7 +114,7 @@ public class FrameTxReceiptDecoderTests
             .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
 
         ReceiptStorageDecoder decoder = new();
-        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
         RlpReader reader = new(encoded);
         TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors)!;
@@ -162,7 +162,7 @@ public class FrameTxReceiptDecoderTests
             ? new CompactReceiptStorageDecoder()
             : new ReceiptStorageDecoder();
         IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
-        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
         // Iterate while items remain. TxReceiptStructRef is a ref
         // struct, so capture the asserted fields into a tuple.
@@ -222,7 +222,7 @@ public class FrameTxReceiptDecoderTests
 
         RlpDecoder<TxReceipt> decoder = compact ? new CompactReceiptStorageDecoder() : new ReceiptStorageDecoder();
         RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts;
-        byte[] encoded = decoder.EncodeAsBytes(receipt, behaviors);
+        byte[] encoded = decoder.Encode(receipt, behaviors);
 
         int expectedLength = compact ? 435 : 701;
         Assert.That(encoded.Length, Is.EqualTo(expectedLength),
@@ -489,7 +489,7 @@ public class FrameTxReceiptDecoderTests
 
     private static byte[] EncodeStored(TxReceipt receipt, Format format) => format == Format.Message
         ? new ReceiptMessageDecoder().EncodeNew(receipt, RlpBehaviors.None)
-        : DecoderFor(format).EncodeAsBytes(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+        : DecoderFor(format).Encode(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
     private static TxReceipt DecodeStored(byte[] encoded, Format format)
     {

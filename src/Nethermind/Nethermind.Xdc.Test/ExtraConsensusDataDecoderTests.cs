@@ -22,9 +22,9 @@ internal class ExtraConsensusDataDecoderTests
         RlpReader context = new(Bytes.FromHexString(extraDataRlp));
         ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
-        Rlp encodedExtraData = decoder.Encode(decodedExtraData);
+        byte[] encodedExtraData = decoder.Encode(decodedExtraData);
 
-        RlpReader encodedContext = new(encodedExtraData.Bytes);
+        RlpReader encodedContext = new(encodedExtraData);
         ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref encodedContext);
 
         Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
@@ -51,9 +51,9 @@ internal class ExtraConsensusDataDecoderTests
         ExtraFieldsV2 extraFieldsV2 = new(1, null!);
         ExtraConsensusDataDecoder decoder = new();
 
-        Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
+        byte[] encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        RlpReader context = new(encodedExtraData.Bytes);
+        RlpReader context = new(encodedExtraData);
         ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref context);
 
         Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());

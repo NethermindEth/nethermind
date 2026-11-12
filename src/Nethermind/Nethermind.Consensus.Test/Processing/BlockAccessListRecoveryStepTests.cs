@@ -28,7 +28,7 @@ public class BlockAccessListRecoveryStepTests
         .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 5)).TestObject)
         .TestObject;
 
-    private static readonly byte[] StoredRlp = Rlp.Encode(StoredBal).Bytes;
+    private static readonly byte[] StoredRlp = Rlp.Encode(StoredBal);
     private static readonly Hash256 StoredHash = Keccak.Compute(StoredRlp);
 
     public enum Stored { Matching, Mismatching, Undecodable, Missing }
@@ -44,7 +44,7 @@ public class BlockAccessListRecoveryStepTests
         byte[] payload = stored switch
         {
             Stored.Matching => StoredRlp,
-            Stored.Mismatching => Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes,
+            Stored.Mismatching => Rlp.Encode(new ReadOnlyBlockAccessList()),
             Stored.Undecodable => [0xc5, 0x01],
             _ => null
         };

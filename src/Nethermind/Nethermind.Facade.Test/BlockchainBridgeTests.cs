@@ -226,7 +226,7 @@ public class BlockchainBridgeTests
             Assert.That(storedTx.Hash, Is.EqualTo(tx.Hash));
             Assert.That(storedTx.Type, Is.EqualTo(tx.Type));
             Assert.That(storedTx.SenderAddress, Is.EqualTo(TestItem.AddressB));
-            Assert.That(TxDecoder.Instance.Encode(storedTx).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(fullTx).Bytes));
+            Assert.That(TxDecoder.Instance.Encode(storedTx), Is.EqualTo(TxDecoder.Instance.Encode(fullTx)));
             Assert.That(storedContext.BlockHash, Is.EqualTo(fullContext.BlockHash));
             Assert.That(storedContext.BlockNumber, Is.EqualTo(fullContext.BlockNumber));
             Assert.That(storedContext.TxIndex, Is.EqualTo(1));

@@ -40,11 +40,11 @@ public class CliqueTests
     {
         // Import blocks
         _blockTree = Build.A.BlockTree().TestObject;
-        Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
-        Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
-        Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
-        Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
-        Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+        Block block1 = Rlp.Decode<Block>(Bytes.FromHexString(Block1Rlp));
+        Block block2 = Rlp.Decode<Block>(Bytes.FromHexString(Block2Rlp));
+        Block block3 = Rlp.Decode<Block>(Bytes.FromHexString(Block3Rlp));
+        Block block4 = Rlp.Decode<Block>(Bytes.FromHexString(Block4Rlp));
+        Block block5 = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp));
         Block genesisBlock = GetGenesis();
         // Add blocks
         MineBlock(_blockTree, genesisBlock);
@@ -68,7 +68,7 @@ public class CliqueTests
     [Test]
     public void Test_real_block([Values(Block1Rlp, Block2Rlp, Block3Rlp, Block4Rlp, Block5Rlp)] string blockRlp)
     {
-        Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+        Block block = Rlp.Decode<Block>(Bytes.FromHexString(blockRlp));
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
         bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
         using (Assert.EnterMultipleScope())
@@ -84,7 +84,7 @@ public class CliqueTests
         CliqueConfig config = new() { Epoch = 4 };
         _clique = new CliqueSealer(NullSigner.Instance, config, _snapshotManager, LimboLogs.Instance);
         _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-        Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+        Block block = Rlp.Decode<Block>(Bytes.FromHexString(blockRlp));
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);
         bool validSeal = _sealValidator.ValidateSeal(block.Header, true);
         using (Assert.EnterMultipleScope())
@@ -104,7 +104,7 @@ public class CliqueTests
         signer.TrySign(Arg.Any<BlockHeader>(), out Arg.Any<Signature>())
             .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
-        Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+        Block block = Rlp.Decode<Block>(Bytes.FromHexString(blockRlp));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 
@@ -120,7 +120,7 @@ public class CliqueTests
         signer.TrySign(in Arg.Any<ValueHash256>(), out Arg.Any<Signature>())
             .Returns(call => { call[1] = new Signature(new byte[65]); return true; });
         CliqueSealer sut = new(signer, new CliqueConfig(), _snapshotManager, LimboLogs.Instance);
-        Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
+        Block block = Rlp.Decode<Block>(Bytes.FromHexString(blockRlp));
 
         await sut.SealBlock(block, System.Threading.CancellationToken.None);
 

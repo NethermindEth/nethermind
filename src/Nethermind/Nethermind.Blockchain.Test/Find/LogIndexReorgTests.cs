@@ -135,7 +135,7 @@ public class LogIndexReorgTests
         Transaction tx = Build.A.Transaction
             .WithValue(1)
             .WithNonce(parent.Number)
-            .WithData(Rlp.Encode((long)(parent.Number * 1000 + variant)).Bytes)
+            .WithData(Rlp.Encode((long)(parent.Number * 1000 + variant)))
             .Signed(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), TestItem.PrivateKeyA)
             .TestObject;
 

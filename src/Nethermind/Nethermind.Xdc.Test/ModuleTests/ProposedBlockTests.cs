@@ -264,7 +264,7 @@ internal class ProposedBlockTests
 
         // Round-trip through RLP to simulate receiving the block from a peer and remove IsSelfMined
         BlockDecoder blockDecoder = mainChain.Container.Resolve<BlockDecoder>();
-        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock).Bytes)
+        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock))
             ?? throw new InvalidOperationException("Expected a decoded fork block.");
         AddBlockResult result = mainChain.BlockTree.SuggestBlock(externalForkBlock);
 

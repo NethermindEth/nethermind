@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.FluentRlp;
@@ -320,13 +321,13 @@ public class Eth72MessageSerializerTests
         [Values("announcement", "request", "response")] string messageType,
         [Values(0, 31, 32, 33)] int hashLength)
     {
-        Rlp hashes = Rlp.Encode([Rlp.Encode(new byte[hashLength])]);
-        Rlp mask = Rlp.Encode(BlobCellMask.FromIndices([1]).ToBytes());
+        byte[] hashes = RlpTestHelper.EncodeSequence([Rlp.Encode(new byte[hashLength])]);
+        byte[] mask = Rlp.Encode(BlobCellMask.FromIndices([1]).ToBytes());
         byte[] wire = messageType switch
         {
-            "announcement" => Rlp.Encode(Rlp.Encode([(byte)TxType.Blob]), Rlp.Encode([Rlp.Encode(1)]), hashes, mask).Bytes,
-            "request" => Rlp.Encode(Rlp.Encode(1), hashes, mask).Bytes,
-            _ => Rlp.Encode(Rlp.Encode(1), hashes, Rlp.Encode([Rlp.Encode([Rlp.Encode(CreateCell(1))])]), mask).Bytes,
+            "announcement" => RlpTestHelper.EncodeSequence(Rlp.Encode([(byte)TxType.Blob]), RlpTestHelper.EncodeSequence([Rlp.Encode(1)]), hashes, mask),
+            "request" => RlpTestHelper.EncodeSequence(Rlp.Encode(1), hashes, mask),
+            _ => RlpTestHelper.EncodeSequence(Rlp.Encode(1), hashes, RlpTestHelper.EncodeSequence([RlpTestHelper.EncodeSequence([Rlp.Encode(CreateCell(1))])]), mask),
         };
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(wire).AsDisposable();
         Action deserialize = messageType switch
@@ -349,13 +350,12 @@ public class Eth72MessageSerializerTests
     [Test]
     public void NewPooledTransactionHashesMessageSerializer_should_reject_empty_list_element([Values("size", "hash")] string field)
     {
-        Rlp sizes = Rlp.Encode(field == "size" ? [Rlp.OfEmptyList] : [Rlp.Encode(1)]);
-        Rlp hashes = Rlp.Encode(field == "hash" ? [Rlp.OfEmptyList] : [Rlp.Encode(Hash256.Zero)]);
-        byte[] encoded = Rlp.Encode(
-            Rlp.Encode([(byte)TxType.Blob]),
+        byte[] sizes = RlpTestHelper.EncodeSequence(field == "size" ? [RlpTestHelper.OfEmptyList] : [Rlp.Encode(1)]);
+        byte[] hashes = RlpTestHelper.EncodeSequence(field == "hash" ? [RlpTestHelper.OfEmptyList] : [Rlp.Encode(Hash256.Zero)]);
+        byte[] encoded = RlpTestHelper.EncodeSequence(Rlp.Encode([(byte)TxType.Blob]),
             sizes,
             hashes,
-            Rlp.Encode(BlobCellMask.Full.ToBytes())).Bytes;
+            Rlp.Encode(BlobCellMask.Full.ToBytes()));
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         buffer.WriteBytes(encoded);
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
@@ -418,11 +418,10 @@ public class Eth72MessageSerializerTests
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         byte[] types = [1];
-        buffer.WriteBytes(Rlp.Encode(
-            Rlp.Encode(types),
-            Rlp.Encode(new[] { Rlp.Encode(size) }),
-            Rlp.Encode(new[] { Rlp.Encode(Hash256.Zero) }),
-            Rlp.Encode(BlobCellMask.Full.ToBytes())).Bytes);
+        buffer.WriteBytes(RlpTestHelper.EncodeSequence(Rlp.Encode(types),
+            RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(size) }),
+            RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(Hash256.Zero) }),
+            Rlp.Encode(BlobCellMask.Full.ToBytes())));
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }
@@ -434,10 +433,9 @@ public class Eth72MessageSerializerTests
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         byte[] types = [1];
-        buffer.WriteBytes(Rlp.Encode(
-            Rlp.Encode(types),
-            Rlp.Encode(new[] { Rlp.Encode(1) }),
-            Rlp.Encode(new[] { Rlp.Encode(Hash256.Zero) })).Bytes);
+        buffer.WriteBytes(RlpTestHelper.EncodeSequence(Rlp.Encode(types),
+            RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(1) }),
+            RlpTestHelper.EncodeSequence(new[] { Rlp.Encode(Hash256.Zero) })));
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
     }

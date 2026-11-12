@@ -2368,7 +2368,7 @@ public class MempoolFootprintsTests
 
         // Decoded as a payload is: a transaction's hash is computed under its own lock on the first read.
         Transaction[] txs = TxsDecoder.DecodeTxs(
-            [.. signed.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+            [.. signed.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping))], skipErrors: false).Transactions;
         Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
             .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
         BlockFootprints footprints = new(block);

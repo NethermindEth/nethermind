@@ -2200,7 +2200,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction(
-            TxDecoder.Instance.Encode(transaction).Bytes, traceTypes
+            TxDecoder.Instance.Encode(transaction), traceTypes
         );
 
         AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
@@ -2366,7 +2366,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
     private static ResultWrapper<ParityTxTraceFromReplay> TraceRaw(Context context, Transaction transaction) =>
-        context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, ["trace"]);
+        context.TraceRpcModule.trace_rawTransaction(TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping), ["trace"]);
 
     private static void AssertTracedFromAddressA(ResultWrapper<ParityTxTraceFromReplay> traces)
     {
@@ -2379,7 +2379,7 @@ public class TraceRpcModuleTests
 
     private static async Task<JToken> TraceRawSerialized(Context context, Transaction transaction) =>
         JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" }));
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping), new[] { "trace" }));
 
     private static void AssertRejected(JToken response, string error)
     {
@@ -3483,7 +3483,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { traceType });
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction), new[] { traceType });
         using JsonDocument document = JsonDocument.Parse(serialized);
         using (Assert.EnterMultipleScope())
         {
@@ -3517,7 +3517,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { "trace" });
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction), new[] { "trace" });
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement response = document.RootElement;
         if (gasCap is > 0 and < 100_000)
