@@ -11,6 +11,7 @@ using DotNetty.Common.Utilities;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network;
@@ -80,7 +81,7 @@ public class MessageSerializationService : IMessageSerializationService
             Span<byte> packet = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + byteBuffer.WriterIndex, length);
             if (p2PMessage is not null)
             {
-                RlpWriter writer = new(packet);
+                RlpWriter writer = RlpWriter.ContentWriter(packet);
                 writer.Encode(p2PMessage.AdaptivePacketType);
             }
 

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -393,9 +392,7 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = UniqueTypedTx(ecdsa, fromEncoding ? 0xA110C7UL : 0xA110C1UL);
             byte[] warmUpEncoded = Encode(warmUp);
             byte[] encoded = Encode(tx);
-            KeccakRlpWriter writer = new();
-            TxDecoder.Instance.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, forSigning: true, isEip155Enabled: true, BlockchainIds.Sepolia);
-            ValueHash256 signingHash = writer.GetValueHash();
+            ValueHash256 signingHash = TxDecoder.Instance.ComputeValueHash(tx, RlpBehaviors.SkipTypedWrapping, forSigning: true, isEip155Enabled: true, BlockchainIds.Sepolia);
             Recover(warmUp, warmUpEncoded);
             Recover(warmUp, warmUpEncoded);
             ecdsa.RecoverAddress(warmUp.Signature!, in signingHash);
@@ -425,19 +422,6 @@ namespace Nethermind.Core.Test.Crypto
 
             Address? Recover(Transaction transaction, byte[] transactionEncoding) =>
                 fromEncoding ? ecdsa.RecoverAddress(transaction, transactionEncoding) : ecdsa.RecoverAddress(transaction);
-        }
-
-        /// <summary>A signing hash left unfinished on this thread, as an exception while encoding would leave it, does not reach the next recovery.</summary>
-        [Test]
-        public void RecoverAddress_after_an_unfinished_signing_hash_recovers_the_signer()
-        {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
-            ecdsa.RecoverAddress(UniqueTypedTx(ecdsa, 0xA110C2UL));
-            KeccakHash hasher = (KeccakHash)typeof(EthereumEcdsaExtensions)
-                .GetField("_signingHasher", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-            hasher.Update(new byte[300]);
-
-            Assert.That(ecdsa.RecoverAddress(UniqueTypedTx(ecdsa, 0xA110C3UL)), Is.EqualTo(TestItem.PrivateKeyA.Address));
         }
 
         // Unique content, which nothing else recovers, so the first recovery of each is a miss.
