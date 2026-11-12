@@ -109,6 +109,7 @@ public partial class BlockProcessor(
         }
         finally
         {
+            OpCoverageProbe.Flush((long)suggestedBlock.Number);
             _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }

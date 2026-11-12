@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -1785,8 +1786,13 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
+        bool probe = OpCoverageProbe.Active;
+        CodeInfo probeCode = VmState.Env.CodeInfo;
+        int probeOps = OpCodeCount;
+        long probeStart = probe ? Stopwatch.GetTimestamp() : 0;
         EvmExceptionType exceptionType =
             RunFrameCode<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        if (probe) OpCoverageProbe.Add(probeCode, OpCodeCount - probeOps, Stopwatch.GetTimestamp() - probeStart);
 
         if (TTracingInst.IsActive
             && exceptionType == EvmExceptionType.None
