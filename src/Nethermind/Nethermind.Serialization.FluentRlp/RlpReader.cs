@@ -108,7 +108,7 @@ public ref struct RlpReader
         int count = 0;
         while (reader.HasNext)
         {
-            if (count == maxCount) ThrowLimit(maxCount);
+            if (count == maxCount) ThrowLimit();
             reader.ReadEncodedItem<TCanonicalChecks>();
             count++;
         }
@@ -122,7 +122,7 @@ public ref struct RlpReader
     {
         get
         {
-            if (!HasNext) ThrowInvalid("RLP is truncated");
+            if (!HasNext) ThrowTruncated();
             return _buffer[_position] >= RlpPrefix.ShortList;
         }
     }
@@ -163,7 +163,7 @@ public ref struct RlpReader
     {
         ReadOnlySpan<byte> buffer = _buffer;
         int start = _position;
-        if ((uint)start >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((uint)start >= (uint)buffer.Length) ThrowTruncated();
 
         // A short-form item is the common case, and one table lookup gives its whole length.
         byte prefix = buffer[start];
@@ -175,10 +175,10 @@ public ref struct RlpReader
         }
         else
         {
-            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowTruncated();
             if (TCanonicalChecks.IsActive && prefix == RlpPrefix.ShortString + 1 && buffer[start + 1] < RlpPrefix.ShortString)
             {
-                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+                ThrowNonCanonicalInteger(start);
             }
         }
 
@@ -220,7 +220,7 @@ public ref struct RlpReader
     /// <exception cref="RlpReaderException">Fewer than <paramref name="count"/> bytes are left.</exception>
     public ReadOnlySpan<byte> ReadRaw(int count)
     {
-        if ((uint)count > (uint)Remaining) ThrowInvalid("RLP is truncated");
+        if ((uint)count > (uint)Remaining) ThrowTruncated();
         ReadOnlySpan<byte> raw = _buffer.Slice(_position, count);
         _position += count;
         return raw;
@@ -235,7 +235,7 @@ public ref struct RlpReader
     public T ReadInteger<T, TCanonicalChecks>() where T : unmanaged, IBinaryInteger<T> where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bigEndian = ReadIntegerBytes<TCanonicalChecks>();
-        if (bigEndian.Length > Unsafe.SizeOf<T>()) ThrowInvalid("RLP integer is too large");
+        if (bigEndian.Length > Unsafe.SizeOf<T>()) ThrowUnexpectedIntegerLength(_position, bigEndian);
 
         if (Unsafe.SizeOf<T>() <= sizeof(ulong))
         {
@@ -247,7 +247,7 @@ public ref struct RlpReader
 
             // A full-width value of a signed type would come out negative.
             int valueBits = Unsafe.SizeOf<T>() * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
-            if (value >> (valueBits - 1) > 1) ThrowInvalid("RLP integer is too large");
+            if (value >> (valueBits - 1) > 1) ThrowNegativeInteger(_position, bigEndian, T.CreateTruncating(value));
             return T.CreateTruncating(value);
         }
 
@@ -256,7 +256,7 @@ public ref struct RlpReader
         bigEndian.CopyTo(buffer[^bigEndian.Length..]);
         if (!T.TryReadBigEndian(buffer, isUnsigned: true, out T result) || T.IsNegative(result))
         {
-            ThrowInvalid("RLP integer is too large");
+            ThrowNegativeInteger(_position, bigEndian, result);
         }
 
         return result;
@@ -273,8 +273,8 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> ReadIntegerBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> bigEndian = ReadBytes<TCanonicalChecks>();
-        if (TCanonicalChecks.IsActive && bigEndian.Length > 0 && bigEndian[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
+        ReadOnlySpan<byte> bigEndian = ReadBytes<TCanonicalChecks>(isInteger: true);
+        if (TCanonicalChecks.IsActive && bigEndian.Length > 0 && bigEndian[0] == 0) ThrowNonCanonicalInteger(_position, bigEndian);
         return bigEndian;
     }
 
@@ -287,11 +287,14 @@ public ref struct RlpReader
     /// <inheritdoc cref="ReadBytes()"/>
     /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag
+    public ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>() where TCanonicalChecks : struct, IFlag => ReadBytes<TCanonicalChecks>(isInteger: false);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ReadOnlySpan<byte> ReadBytes<TCanonicalChecks>(bool isInteger) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
-        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((uint)position >= (uint)buffer.Length) ThrowTruncated();
 
         byte prefix = buffer[position];
         if (prefix < RlpPrefix.ShortString)
@@ -302,15 +305,15 @@ public ref struct RlpReader
 
         if (prefix > RlpPrefix.LongString)
         {
-            int longStart = ReadLongBytesStart(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, out int longLength);
+            int longStart = ReadLongBytesStart(ref MemoryMarshal.GetReference(buffer), buffer.Length, position, prefix, TCanonicalChecks.IsActive, isInteger, out int longLength);
             _position = longStart + longLength;
             return buffer.Slice(longStart, longLength);
         }
 
         int start = position + 1;
         int length = prefix - RlpPrefix.ShortString;
-        if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
-        if (TCanonicalChecks.IsActive && length == 1 && buffer[start] < RlpPrefix.ShortString) ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+        if ((uint)(start + length) > (uint)buffer.Length) ThrowTruncated();
+        if (TCanonicalChecks.IsActive && length == 1 && buffer[start] < RlpPrefix.ShortString) ThrowNonCanonicalInteger(position);
 
         _position = start + length;
         return buffer.Slice(start, length);
@@ -320,14 +323,16 @@ public ref struct RlpReader
     // The buffer goes in as a reference and a length, and the result comes back as integers: a span argument or
     // result is a stack copy with a GC reference, which every caller that inlines the read must zero in its prolog.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ReadLongBytesStart(ref byte data, int dataLength, int position, byte prefix, bool canonical, out int length)
+    private static int ReadLongBytesStart(ref byte data, int dataLength, int position, byte prefix, bool canonical, bool isInteger, out int length)
     {
-        if (prefix >= RlpPrefix.ShortList) ThrowInvalid("RLP does not correspond to a byte string");
+        // The payload of an integer is at most 32 bytes, so a long or sequence prefix is a wrong length, read from the prefix only.
+        if (isInteger) ThrowUnexpectedIntegerLength(prefix - RlpPrefix.ShortString, position);
+        if (prefix >= RlpPrefix.ShortList) ThrowUnexpectedPrefix(prefix);
 
         ReadOnlySpan<byte> buffer = MemoryMarshal.CreateReadOnlySpan(ref data, dataLength);
         length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString, canonical);
         int start = position + 1 + prefix - RlpPrefix.LongString;
-        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((long)start + length > buffer.Length) ThrowTruncated();
         return start;
     }
 
@@ -345,7 +350,7 @@ public ref struct RlpReader
         if (length is < 2 or > RlpPrefix.MaxShortLength)
         {
             ReadOnlySpan<byte> bytes = ReadBytes<TCanonicalChecks>();
-            if (bytes.Length != length) ThrowInvalid("RLP byte string has another length than expected");
+            if (bytes.Length != length) ThrowUnexpectedCount(bytes.Length, length);
             return bytes;
         }
 
@@ -353,7 +358,7 @@ public ref struct RlpReader
         int position = _position;
         if ((long)position + 1 + length > buffer.Length || buffer[position] != RlpPrefix.ShortString + length)
         {
-            ThrowInvalid("RLP byte string has another length than expected");
+            ThrowUnexpectedLength<TCanonicalChecks>(this, length);
         }
 
         _position = position + 1 + length;
@@ -397,10 +402,10 @@ public ref struct RlpReader
 
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
-        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((uint)position >= (uint)buffer.Length) ThrowTruncated();
 
         byte prefix = buffer[position];
-        if (prefix < RlpPrefix.ShortList) ThrowInvalid("RLP does not correspond to a sequence");
+        if (prefix < RlpPrefix.ShortList) ThrowUnexpectedPrefix(prefix);
 
         int start = position + 1;
         int length;
@@ -408,9 +413,9 @@ public ref struct RlpReader
         {
             // A one-byte length (56 to 255 bytes) is common, for example a log or a receipt, so it is read inline.
             length = buffer[start];
-            if (TCanonicalChecks.IsActive && length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
+            if (TCanonicalChecks.IsActive && length <= RlpPrefix.MaxShortLength) ThrowShortLengthInLongForm(length);
             start++;
-            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowTruncated();
         }
         else if (prefix > RlpPrefix.LongList)
         {
@@ -420,7 +425,7 @@ public ref struct RlpReader
         else
         {
             length = prefix - RlpPrefix.ShortList;
-            if ((uint)(start + length) > (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+            if ((uint)(start + length) > (uint)buffer.Length) ThrowTruncated();
         }
 
         itemLength = start + length - position;
@@ -439,7 +444,7 @@ public ref struct RlpReader
         ReadOnlySpan<byte> buffer = MemoryMarshal.CreateReadOnlySpan(ref data, dataLength);
         int length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongList, canonical);
         start = position + 1 + prefix - RlpPrefix.LongList;
-        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((long)start + length > buffer.Length) ThrowTruncated();
         return length;
     }
 
@@ -450,7 +455,7 @@ public ref struct RlpReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ExitSequence(scoped in RlpReader reader, int itemLength)
     {
-        if (reader.HasNext) ThrowInvalid("RLP has trailing bytes");
+        if (reader.HasNext) ThrowCheckpointFailed(reader._buffer.Length, reader._position);
         _position += itemLength;
     }
 
@@ -507,7 +512,7 @@ public ref struct RlpReader
     {
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
-        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((uint)position >= (uint)buffer.Length) ThrowTruncated();
 
         byte prefix = buffer[position];
         int headerLength;
@@ -525,7 +530,7 @@ public ref struct RlpReader
             headerLength = 1;
             if (TCanonicalChecks.IsActive && length == 1 && (uint)(position + 1) < (uint)buffer.Length && buffer[position + 1] < RlpPrefix.ShortString)
             {
-                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+                ThrowNonCanonicalInteger(position);
             }
         }
         else if (prefix < RlpPrefix.ShortList)
@@ -547,16 +552,68 @@ public ref struct RlpReader
             headerLength = 1 + prefix - RlpPrefix.LongList;
         }
 
-        if ((long)position + headerLength + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        if ((long)position + headerLength + length > buffer.Length) ThrowTruncated();
         return headerLength;
     }
+
+    internal const string TruncatedMessage = "RLP data is truncated: not enough bytes for the declared length prefix";
 
     // Throws from a separate method keep the hot read paths small after inlining.
     [DoesNotReturn]
     private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
 
     [DoesNotReturn]
-    private static void ThrowLimit(int maxCount) => throw new RlpLimitException($"RLP has more than {maxCount} items");
+    private static void ThrowLimit() => throw new RlpLimitException("An RLP limit exceeded");
+
+    [DoesNotReturn]
+    private static void ThrowShortLengthInLongForm(int length) => throw new RlpReaderException($"Expected length greater than or equal to 56 and was {length}");
+
+    [DoesNotReturn]
+    private static void ThrowTruncated() => throw new RlpReaderException(TruncatedMessage);
+
+    [DoesNotReturn]
+    private static void ThrowNonCanonicalInteger(int position) => throw new RlpReaderException($"Non-canonical integer at position {position}");
+
+    [DoesNotReturn]
+    private static void ThrowNonCanonicalInteger(int end, ReadOnlySpan<byte> bigEndian) => ThrowNonCanonicalInteger(ItemStart(end, bigEndian));
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedIntegerLength(int end, ReadOnlySpan<byte> bigEndian) => ThrowUnexpectedIntegerLength(bigEndian.Length, ItemStart(end, bigEndian));
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedIntegerLength(int length, int position) =>
+        throw new RlpReaderException($"Unexpected length of integer value {length} at position {position}");
+
+    [DoesNotReturn]
+    private static void ThrowNegativeInteger<T>(int end, ReadOnlySpan<byte> bigEndian, T value) =>
+        throw new RlpReaderException($"Expected non-negative integer and was {value} at position {ItemStart(end, bigEndian)}");
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedPrefix(byte prefix) =>
+        throw new RlpReaderException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedCount(int count, int expected) =>
+        throw new RlpReaderException($"Expected collection count of {expected}, got {count}");
+
+    // The fast path of a fixed-length read checks only the prefix, so the actual length is found again here.
+    [DoesNotReturn, MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowUnexpectedLength<TCanonicalChecks>(RlpReader reader, int expected) where TCanonicalChecks : struct, IFlag =>
+        ThrowUnexpectedCount(reader.ReadBytes<TCanonicalChecks>().Length, expected);
+
+    [DoesNotReturn]
+    private static void ThrowCheckpointFailed(int expected, int position) =>
+        throw new RlpReaderException($"Data checkpoint failed. Expected {expected} and is {position}");
+
+    /// <summary>The position of the integer item that ends at <paramref name="end"/> and has the payload <paramref name="bigEndian"/>.</summary>
+    private static int ItemStart(int end, ReadOnlySpan<byte> bigEndian)
+    {
+        int length = bigEndian.Length;
+        int headerLength = length == 1 && bigEndian[0] < RlpPrefix.ShortString ? 0
+            : length <= RlpPrefix.MaxShortLength ? 1
+            : 1 + (BitOperations.Log2((uint)length) / 8 + 1);
+        return end - length - headerLength;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ReadLongLength(ReadOnlySpan<byte> buffer, int position, int lengthOfLength, bool canonical)
@@ -565,7 +622,7 @@ public ref struct RlpReader
         if (lengthOfLength == 1 && (uint)(position + 1) < (uint)buffer.Length)
         {
             int length = buffer[position + 1];
-            if (canonical && length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
+            if (canonical && length <= RlpPrefix.MaxShortLength) ThrowShortLengthInLongForm(length);
             return length;
         }
 
@@ -574,11 +631,11 @@ public ref struct RlpReader
 
     private static int ReadMultiByteLength(ReadOnlySpan<byte> buffer, int position, int lengthOfLength, bool canonical)
     {
-        if (lengthOfLength > sizeof(int)) ThrowInvalid("RLP length is too large");
-        if ((long)position + 1 + lengthOfLength > buffer.Length) ThrowInvalid("RLP is truncated");
+        if (lengthOfLength > sizeof(int)) ThrowInvalid("Expected length of length less than or equal to 4");
+        if ((long)position + 1 + lengthOfLength > buffer.Length) ThrowTruncated();
 
         ReadOnlySpan<byte> binaryLength = buffer.Slice(position + 1, lengthOfLength);
-        if (canonical && binaryLength[0] == 0) ThrowInvalid("RLP length has leading zero bytes");
+        if (canonical && binaryLength[0] == 0) ThrowInvalid("Length starts with 0");
 
         uint length = 0;
         foreach (byte b in binaryLength)
@@ -586,8 +643,8 @@ public ref struct RlpReader
             length = (length << 8) | b;
         }
 
-        if (length > int.MaxValue) ThrowInvalid("RLP length is too large");
-        if (canonical && length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
+        if (length > int.MaxValue) ThrowShortLengthInLongForm((int)length);
+        if (canonical && length <= RlpPrefix.MaxShortLength) ThrowShortLengthInLongForm((int)length);
         return (int)length;
     }
 }

@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
@@ -43,12 +42,9 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     private static ReadOnlySpan<byte> DecodeScalar<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
-        if (bytes.Length > Hash256.Size) ThrowScalarTooLarge();
+        if (bytes.Length > Hash256.Size) RlpReaderExtensions.ThrowOverL32(bytes.Length, reader.Remaining);
         return bytes;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowScalarTooLarge() => throw new RlpReaderException("RLP integer is too large");
 
     public override void Encode(ref RlpWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
@@ -425,6 +427,16 @@ internal static class PayloadBodiesDirectResponseWriter
             return;
         }
 
+        byte prefix = ctx.PeekByte();
+        if (prefix != Rlp.EmptyByteArrayByte + Address.Size)
+        {
+            ThrowInvalidWithdrawalAddressPrefix(prefix);
+        }
+
         HexWriter.WriteHexString(writer, ctx.ReadBytes(Address.Size), chunked: false);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidWithdrawalAddressPrefix(int prefix) =>
+        throw new RlpReaderException($"Invalid withdrawal address prefix {prefix}");
 }

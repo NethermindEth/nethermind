@@ -60,6 +60,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref logs, rlpBehaviors);
         ctx.ExitSequence(in logs, logsLength);
 
+        if (ctx.HasNext && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0) ThrowUnexpectedReceiptField();
         reader.ExitSequence(in ctx, receiptLength, rlpBehaviors);
 
         return txReceipt;
@@ -67,6 +68,10 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPostStateLength(int length)
             => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedReceiptField()
+            => throw new RlpReaderException("Unexpected receipt field");
     }
 
     /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:

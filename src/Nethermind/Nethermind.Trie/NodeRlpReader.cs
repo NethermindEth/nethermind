@@ -169,7 +169,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         int prefix = data[position++];
         if (prefix < ListOffset)
         {
-            ThrowInvalid("RLP does not correspond to a sequence");
+            ThrowUnexpectedPrefix(prefix);
         }
 
         if (prefix <= ShortListMaxPrefix)
@@ -181,13 +181,13 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         int lengthOfLength = prefix - ShortListMaxPrefix;
         if (lengthOfLength > sizeof(int))
         {
-            ThrowInvalid("RLP length is too large");
+            ThrowInvalidLengthOfLength(lengthOfLength);
         }
 
         contentLength = DeserializeLengthRef(ref MemoryMarshal.GetReference(data.Slice(position, lengthOfLength)), lengthOfLength);
         if (contentLength < SmallPrefixBarrier)
         {
-            ThrowInvalid("RLP length below 56 must use the short form");
+            ThrowUnexpectedLength(contentLength);
         }
 
         return position + lengthOfLength;
@@ -211,7 +211,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
 
         if (prefix >= ListOffset)
         {
-            ThrowInvalid("RLP does not correspond to a byte string");
+            ThrowUnexpectedPrefix(prefix);
         }
 
         (int prefixLength, int contentLength) = PeekLongPrefixAndContentLength(data, position, prefix - ShortStringMaxPrefix);
@@ -224,7 +224,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         int prefix = data[position++];
         if (prefix != KeccakRlpPrefix)
         {
-            ThrowInvalid("RLP byte string has another length than expected");
+            ThrowKeccakDecode(prefix, position, data.Length);
         }
 
         keccak = RlpReaderExtensions.InternKeccak(data.Slice(position, Hash256.Size));
@@ -236,7 +236,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         int prefix = data[position++];
         if (prefix != KeccakRlpPrefix)
         {
-            ThrowInvalid("RLP byte string has another length than expected");
+            ThrowKeccakDecode(prefix, position, data.Length);
         }
 
         keccak = new ValueHash256(data.Slice(position, Hash256.Size));
@@ -248,23 +248,23 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
     {
         if ((uint)lengthOfLength > sizeof(int))
         {
-            ThrowInvalid("RLP length is too large");
+            ThrowInvalid("Expected length of length less than or equal to 4");
         }
 
         if (lengthOfLength > data.Length - position - 1)
         {
-            ThrowInvalid("RLP is truncated");
+            ThrowTruncated();
         }
 
         int contentLength = DeserializeLengthRef(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position + 1), lengthOfLength);
         if (contentLength < SmallPrefixBarrier)
         {
-            ThrowInvalid("RLP length below 56 must use the short form");
+            ThrowUnexpectedLength(contentLength);
         }
 
         if (contentLength > data.Length - position - (1 + lengthOfLength))
         {
-            ThrowInvalid("RLP is truncated");
+            ThrowTruncated();
         }
 
         return (1 + lengthOfLength, contentLength);
@@ -284,7 +284,7 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
         int result = firstElement;
         if (result == 0)
         {
-            ThrowInvalid("RLP length starts with 0");
+            ThrowInvalid("Length starts with 0");
         }
 
         if (lengthOfLength == 1)
@@ -310,4 +310,20 @@ internal readonly ref struct NodeRlpReader(ReadOnlySpan<byte> data)
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTruncated() => ThrowInvalid("RLP data is truncated: not enough bytes for the declared length prefix");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedPrefix(int prefix) => ThrowInvalid($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidLengthOfLength(int lengthOfLength) => ThrowInvalid($"Invalid length of length = {lengthOfLength}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedLength(int length) => ThrowInvalid($"Expected length greater than or equal to 56 and was {length}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowKeccakDecode(int prefix, int position, int dataLength) =>
+        ThrowInvalid($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {position} in the message of length {dataLength}.");
 }

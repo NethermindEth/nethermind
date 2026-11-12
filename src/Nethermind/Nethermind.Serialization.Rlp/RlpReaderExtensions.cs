@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -57,7 +58,7 @@ public static class RlpReaderExtensions
     /// <exception cref="RlpReaderException">Bytes are left.</exception>
     public static void CheckEnd(this scoped in RlpReader reader)
     {
-        if (reader.HasNext) ThrowInvalid("RLP has trailing bytes");
+        if (reader.HasNext) ThrowCheckEndFailed(reader.BytesRead);
     }
 
     /// <summary>Ends a sequence that <see cref="RlpReader.EnterSequence"/> started, and moves past it.</summary>
@@ -238,9 +239,9 @@ public static class RlpReaderExtensions
     /// <summary>Reads a boolean, which is <c>0x01</c> or <c>0x80</c>.</summary>
     public static bool DecodeBool(this scoped ref RlpReader reader)
     {
-        ReadOnlySpan<byte> value = reader.ReadBytes();
-        if (value.IsEmpty) return false;
-        if (value.Length != 1 || value[0] != 1) ThrowInvalid("Unexpected value for a boolean");
+        byte value = reader.ReadRaw(1)[0];
+        if (value == Rlp.EmptyByteArrayByte) return false;
+        if (value != 1) ThrowUnexpectedBoolValue(value);
         return true;
     }
 
@@ -291,8 +292,10 @@ public static class RlpReaderExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int DecodePositiveInt<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
-        ulong value = reader.ReadWord<TCanonicalChecks>(sizeof(int));
-        if (value > int.MaxValue) ThrowInvalid("RLP integer is too large");
+        ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
+        if (bytes.Length > sizeof(int)) ThrowUnexpectedIntegerLength(reader.BytesRead, bytes);
+        ulong value = Word(bytes, 0, bytes.Length);
+        if (value > int.MaxValue) ThrowNegativeInteger(reader.BytesRead, bytes, (int)value);
         return (int)value;
     }
 
@@ -303,14 +306,22 @@ public static class RlpReaderExtensions
     /// <inheritdoc cref="DecodeByte(ref RlpReader)"/>
     /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte DecodeByte<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (byte)reader.ReadWord<TCanonicalChecks>(sizeof(byte));
+    public static byte DecodeByte<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
+    {
+        byte prefix = reader.PeekByte();
+        if (prefix > Rlp.EmptyByteArrayByte + sizeof(byte)) ThrowUnexpectedByteValue(reader.BytesRead, prefix);
+        ReadOnlySpan<byte> bytes = reader.ReadBytes<TCanonicalChecks>();
+        if (bytes.IsEmpty) return 0;
+        if (TCanonicalChecks.IsActive && bytes[0] == 0) ThrowNonCanonicalInteger(reader.BytesRead, bytes);
+        return bytes[0];
+    }
 
     /// <summary>Reads a canonical integer of at most <paramref name="maxLength"/> bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReadWord<TCanonicalChecks>(this scoped ref RlpReader reader, int maxLength) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
-        if (bytes.Length > maxLength) ThrowInvalid("RLP integer is too large");
+        if (bytes.Length > maxLength) ThrowUnexpectedIntegerLength(reader.BytesRead, bytes);
         return Word(bytes, 0, bytes.Length);
     }
 
@@ -330,14 +341,16 @@ public static class RlpReaderExtensions
         ReadOnlySpan<byte> bytes;
         if (length == -1)
         {
-            bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
-            if (bytes.Length > UInt256Bytes) ThrowInvalid("RLP integer is too large");
+            bytes = reader.ReadBytes<TCanonicalChecks>();
+            if (bytes.Length > UInt256Bytes) ThrowOverL32(bytes.Length, reader.Remaining);
+            if (TCanonicalChecks.IsActive && bytes.Length > 0 && bytes[0] == 0) ThrowNonCanonicalInteger(reader.BytesRead, bytes);
         }
         else
         {
-            if ((uint)length > UInt256Bytes) ThrowInvalid("RLP integer is too large");
-            bytes = reader.ReadBytes<TCanonicalChecks>(length);
-            if (TCanonicalChecks.IsActive && length == 1 && bytes[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
+            bytes = reader.ReadBytes<TCanonicalChecks>();
+            if (bytes.Length > UInt256Bytes) ThrowOverL32(bytes.Length, reader.Remaining);
+            if (bytes.Length != length) ThrowInvalidLength(bytes.Length, length);
+            if (TCanonicalChecks.IsActive && length == 1 && bytes[0] == 0) ThrowNonCanonicalInteger(reader.BytesRead, bytes);
         }
 
         return ToUInt256(bytes);
@@ -346,7 +359,7 @@ public static class RlpReaderExtensions
     /// <summary>Reads a 32-byte hash.</summary>
     /// <remarks>Returns the shared instances for <see cref="Keccak.OfAnEmptyString"/> and <see cref="Keccak.EmptyTreeHash"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Hash256 DecodeKeccak(this scoped ref RlpReader reader) => InternKeccak(reader.ReadBytes(Hash256.Size));
+    public static Hash256 DecodeKeccak(this scoped ref RlpReader reader) => InternKeccak(reader.ReadKeccakBytes());
 
     /// <inheritdoc cref="DecodeKeccak"/>
     public static Hash256? DecodeKeccakOrNull(this scoped ref RlpReader reader)
@@ -354,11 +367,11 @@ public static class RlpReaderExtensions
 
     /// <summary>Reads a 32-byte hash, or <see langword="null"/> for <c>0x80</c>.</summary>
     public static ValueHash256? DecodeValueKeccak(this scoped ref RlpReader reader)
-        => reader.TryReadEmptyBytes() ? (ValueHash256?)null : new ValueHash256(reader.ReadBytes(Hash256.Size));
+        => reader.TryReadEmptyBytes() ? (ValueHash256?)null : new ValueHash256(reader.ReadKeccakBytes());
 
     /// <summary>Reads a 32-byte hash.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ValueHash256 DecodeValueKeccakNonNull(this scoped ref RlpReader reader) => new(reader.ReadBytes(Hash256.Size));
+    public static ValueHash256 DecodeValueKeccakNonNull(this scoped ref RlpReader reader) => new(reader.ReadKeccakBytes());
 
     /// <summary>Reads a hash that is stored without its leading zero bytes, or <see langword="null"/> for <c>0x80</c>.</summary>
     public static Hash256? DecodeZeroPrefixKeccak(this scoped ref RlpReader reader)
@@ -397,7 +410,7 @@ public static class RlpReaderExtensions
     }
 
     /// <summary>Reads the topic 0 of a log and shares the instance with <see cref="LogTopicCache"/>.</summary>
-    public static Hash256 DecodeLogTopic0(this scoped ref RlpReader reader) => LogTopicCache.Get(reader.ReadBytes(Hash256.Size));
+    public static Hash256 DecodeLogTopic0(this scoped ref RlpReader reader) => LogTopicCache.Get(reader.ReadKeccakBytes());
 
     private static void DecodeZeroPrefixKeccakBytes(this scoped ref RlpReader reader, scoped Span<byte> bytes)
     {
@@ -410,7 +423,7 @@ public static class RlpReaderExtensions
     public static void DecodeKeccakStructRef(this scoped ref RlpReader reader, out Hash256StructRef keccak)
         => keccak = reader.TryReadEmptyBytes()
             ? new Hash256StructRef(Keccak.Zero.Bytes)
-            : new Hash256StructRef(InternKeccakBytes(reader.ReadBytes(Hash256.Size)));
+            : new Hash256StructRef(InternKeccakBytes(reader.ReadKeccakBytes()));
 
     /// <summary>Reads a hash that can be stored without its leading zero bytes, or <c>0x80</c> as <see cref="Keccak.Zero"/>.</summary>
     /// <param name="buffer">A 32-byte buffer for a hash that has fewer bytes; the result can refer to it.</param>
@@ -436,22 +449,22 @@ public static class RlpReaderExtensions
 
     /// <summary>Reads a 20-byte address.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Address DecodeAddress(this scoped ref RlpReader reader) => new(reader.ReadBytes(Address.Size));
+    public static Address DecodeAddress(this scoped ref RlpReader reader) => new(reader.ReadAddressBytes());
 
     /// <summary>Reads a 20-byte address, or <see langword="null"/> for <c>0x80</c>.</summary>
     public static Address? DecodeAddressOrNull(this scoped ref RlpReader reader)
-        => reader.TryReadEmptyBytes() ? null : new Address(reader.ReadBytes(Address.Size));
+        => reader.TryReadEmptyBytes() ? null : new Address(reader.ReadAddressBytes());
 
     /// <summary>Reads a 20-byte address, or <c>0x80</c> as <see cref="Address.Zero"/>, without a copy.</summary>
     public static void DecodeAddressStructRef(this scoped ref RlpReader reader, out AddressStructRef address)
-        => address = new AddressStructRef(reader.TryReadEmptyBytes() ? Address.Zero.Bytes : reader.ReadBytes(Address.Size));
+        => address = new AddressStructRef(reader.TryReadEmptyBytes() ? Address.Zero.Bytes : reader.ReadAddressBytes());
 
     /// <summary>Reads a 20-byte address without a copy.</summary>
     /// <exception cref="RlpReaderException">The item is <c>0x80</c>.</exception>
     public static void DecodeAddressStructRefNonNull(this scoped ref RlpReader reader, out AddressStructRef address)
     {
         if (reader.TryReadEmptyBytes()) ThrowNullDecodedValue<Address>();
-        address = new AddressStructRef(reader.ReadBytes(Address.Size));
+        address = new AddressStructRef(reader.ReadAddressBytes());
     }
 
     /// <summary>Reads a bloom that is a 256-byte string.</summary>
@@ -486,7 +499,9 @@ public static class RlpReaderExtensions
     public static Bloom DecodeBloomOrZeroLength(this scoped ref RlpReader reader)
     {
         ReadOnlySpan<byte> bloomBytes = reader.DecodeByteArraySpan(RlpLimit.Bloom);
-        return bloomBytes.IsEmpty ? Bloom.ZeroLength : CreateBloom(bloomBytes);
+        if (bloomBytes.IsEmpty) return Bloom.ZeroLength;
+        Rlp.GuardSize(bloomBytes.Length, Bloom.ByteLength);
+        return CreateBloom(bloomBytes);
     }
 
     /// <summary>Reads a bloom without a copy; <c>0x80</c> reads as <see cref="Bloom.Empty"/>.</summary>
@@ -731,4 +746,83 @@ public static class RlpReaderExtensions
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> ReadKeccakBytes(this scoped ref RlpReader reader)
+    {
+        if (reader.Remaining < Rlp.LengthOfKeccakRlp || reader.PeekByte() != Rlp.EmptyByteArrayByte + Hash256.Size) ThrowKeccakDecode(reader);
+        return reader.ReadRaw(Rlp.LengthOfKeccakRlp)[1..];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> ReadAddressBytes(this scoped ref RlpReader reader)
+    {
+        if (reader.Remaining < Rlp.LengthOfAddressRlp || reader.PeekByte() != Rlp.EmptyByteArrayByte + Address.Size) ThrowAddressDecode(reader);
+        return reader.ReadRaw(Rlp.LengthOfAddressRlp)[1..];
+    }
+
+    // A copy of the reader keeps the caller's reader in registers; only the prefix is read, so a truncated item with
+    // the right prefix throws as truncated.
+    [DoesNotReturn, StackTraceHidden, MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowKeccakDecode(RlpReader reader)
+    {
+        byte prefix = reader.PeekByte();
+        if (prefix == Rlp.EmptyByteArrayByte + Hash256.Size) reader.ReadBytes(Hash256.Size);
+        throw new DecodeKeccakRlpException(prefix, reader.BytesRead + 1, reader.BytesRead + reader.Remaining);
+    }
+
+    [DoesNotReturn, StackTraceHidden, MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowAddressDecode(RlpReader reader)
+    {
+        byte prefix = reader.PeekByte();
+        if (prefix == Rlp.EmptyByteArrayByte + Address.Size) reader.ReadBytes(Address.Size);
+        ThrowInvalid($"Unexpected RLP prefix of {prefix} when decoding {nameof(Address)} at position {reader.BytesRead + 1} in the message of length {reader.BytesRead + reader.Remaining}.");
+    }
+
+    // Builds the message only when it is read, so that decode paths that catch the exception and try another form do
+    // not allocate it.
+    private sealed class DecodeKeccakRlpException(int prefix, int position, int dataLength) : RlpReaderException(string.Empty)
+    {
+        public override string Message => field ??= $"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {position} in the message of length {dataLength}.";
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowCheckEndFailed(int position) =>
+        ThrowInvalid($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedBoolValue(byte value) => ThrowInvalid($"Unexpected value for a boolean: {value}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidLength(int actualLength, int decodedLength) =>
+        ThrowInvalid($"Invalid actual length {actualLength} decoded {decodedLength}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNonCanonicalInteger(int end, ReadOnlySpan<byte> bigEndian) =>
+        ThrowInvalid($"Non-canonical integer at position {ItemStart(end, bigEndian)}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNegativeInteger(int end, ReadOnlySpan<byte> bigEndian, int value) =>
+        ThrowInvalid($"Expected non-negative integer and was {value} at position {ItemStart(end, bigEndian)}");
+
+    // As the 32-byte limit of a byte string reports it.
+    [DoesNotReturn, StackTraceHidden, MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowOverL32(int length, int remaining) => Rlp.ThrowCountOverLimit((uint)length, remaining + length, RlpLimit.L32);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedIntegerLength(int end, ReadOnlySpan<byte> bigEndian) =>
+        ThrowInvalid($"Unexpected length of integer value {bigEndian.Length} at position {ItemStart(end, bigEndian)}");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnexpectedByteValue(int position, byte value) => ThrowInvalid($"Unexpected byte value {value} at {position}");
+
+    /// <summary>The position of the integer item that ends at <paramref name="end"/> and has the payload <paramref name="bigEndian"/>.</summary>
+    private static int ItemStart(int end, ReadOnlySpan<byte> bigEndian)
+    {
+        int length = bigEndian.Length;
+        int headerLength = length == 1 && bigEndian[0] < Rlp.EmptyByteArrayByte ? 0
+            : length <= RlpPrefix.MaxShortLength ? 1
+            : 1 + (BitOperations.Log2((uint)length) / 8 + 1);
+        return end - length - headerLength;
+    }
 }

@@ -116,7 +116,7 @@ public class WithdrawalDecoderTests
             RlpReader reader = new(rlp);
             reader.DecodeNonNullArray(decoder!);
         }
-        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>().And.Message.Contain("trailing bytes"));
+        Assert.That(Decode, Throws.InstanceOf<RlpReaderException>().And.Message.Contain("checkpoint failed"));
     }
 
     private static byte[] CombineRlpList(params byte[][] encodedItems)

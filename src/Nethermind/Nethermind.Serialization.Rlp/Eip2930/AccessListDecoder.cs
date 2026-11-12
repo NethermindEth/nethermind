@@ -56,10 +56,10 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 // Every key is a 32-byte string, which has one form only, so the keys are 33-byte slices of the
                 // payload and need no reader.
                 ReadOnlySpan<byte> keys = storages.ReadRaw(storages.Remaining);
-                if (keys.Length % IndexRlpLength != 0) ThrowInvalidStorageKey();
+                if (keys.Length % IndexRlpLength != 0) ThrowInvalidStorageKey(keys);
                 for (int i = 0; i < keys.Length; i += IndexRlpLength)
                 {
-                    if (keys[i] != IndexPrefix) ThrowInvalidStorageKey();
+                    if (keys[i] != IndexPrefix) ThrowInvalidStorageKey(keys);
                     accessListBuilder.AddStorage(RlpReaderExtensions.ToUInt256(keys.Slice(i + 1, IndexLength)));
                 }
 
@@ -71,8 +71,13 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
+        // Decodes the keys one by one, so that the key that is not a 32-byte string throws as it would in a reader.
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidStorageKey() => throw new RlpReaderException("Invalid tx access list format - storage key must be a 32-byte string");
+        private static void ThrowInvalidStorageKey(ReadOnlySpan<byte> keys)
+        {
+            RlpReader reader = new(keys);
+            while (true) reader.DecodeUInt256(IndexLength);
+        }
 
         public override void Encode(ref RlpWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

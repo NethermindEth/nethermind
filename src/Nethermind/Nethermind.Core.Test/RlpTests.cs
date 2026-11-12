@@ -347,7 +347,7 @@ namespace Nethermind.Core.Test
 
             if (value is null)
             {
-                Assert.Throws<RlpReaderException>(() =>
+                Assert.Catch<RlpReaderException>(() =>
                 {
                     RlpReader nonNullReader = new(buffer);
                     nonNullReader.DecodeValueKeccakNonNull();
@@ -458,6 +458,20 @@ namespace Nethermind.Core.Test
             Assert.That(
                 () => decoder.Invoke(new RlpReader(bytes)),
                 Throws.InstanceOf<RlpReaderException>()
+            );
+        }
+
+        [TestCaseSource(nameof(FixedWidthIntegerDecoders))]
+        public void Decode_integer_rejects_sequence_with_the_integer_length_error(DecoderCase decoder)
+        {
+            byte[] bytes = [0xC3, 0x01, 0x02, 0x03];
+            string error = decoder.Name == nameof(RlpReaderExtensions.DecodeByte)
+                ? "Unexpected byte value 195 at 0"
+                : "Unexpected length of integer value 67 at position 0";
+
+            Assert.That(
+                () => decoder.Invoke(new RlpReader(bytes)),
+                Throws.InstanceOf<RlpReaderException>().With.Message.EqualTo(error)
             );
         }
 
@@ -868,6 +882,9 @@ namespace Nethermind.Core.Test
             yield return new(nameof(RlpReaderExtensions.DecodeLong), static ctx => ctx.DecodeLong(), sizeof(long));
             yield return new(nameof(RlpReaderExtensions.DecodeUInt256), static ctx => ctx.DecodeUInt256(), 256 / 8);
         }
+
+        private static IEnumerable<DecoderCase> FixedWidthIntegerDecoders() =>
+            IntegerDecoders().Where(static d => d.Name != nameof(RlpReaderExtensions.DecodeUInt256));
 
         private static (byte[] rlp, string expectedHex)[] IntegerTestCases() =>
         [

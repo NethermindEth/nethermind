@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             if (bloom.IsZeroLength && !_specProvider!.GetSpec(new ForkActivation(number, timestamp)).IsEip7668Enabled)
             {
                 // The same exception DecodeBloom throws for a zero-length bloom.
-                throw new RlpReaderException("RLP byte string has another length than expected");
+                throw new RlpReaderException($"Expected collection count of {Bloom.ByteLength}, got 0");
             }
 
             byte[] extraData = fields.DecodeByteArray<TCanonicalChecks>();

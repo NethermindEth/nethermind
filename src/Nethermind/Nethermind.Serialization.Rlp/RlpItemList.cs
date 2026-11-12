@@ -111,7 +111,7 @@ public sealed class RlpItemList : IRlpItemList
     /// <param name="memoryOwner">The owner of <paramref name="memory"/>, which the list takes.</param>
     public static IRlpItemList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, Memory<byte> memory)
     {
-        if (!ctx.IsNextSequence) throw new RlpReaderException("RLP does not correspond to a sequence");
+        if (!ctx.IsNextSequence) throw new RlpReaderException($"Expected a sequence prefix to be in the range of <192, 255> and got {ctx.PeekByte()}");
         ReadOnlySpan<byte> encoded = ctx.ReadEncodedItem();
         return new RlpItemList(memoryOwner, memory.SliceOf(encoded));
     }

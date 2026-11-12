@@ -92,12 +92,17 @@ namespace Nethermind.Serialization.Rlp
             txReceipt.Logs = LogEntryDecoder.DecodeLogs<TCanonicalChecks>(ref logs);
             fields.ExitSequence(in logs, logsLength);
 
+            if (fields.HasNext && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0) ThrowUnexpectedReceiptField();
             reader.ExitSequence(in fields, receiptLength, rlpBehaviors);
         }
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowUnexpectedPostStateLength(int length)
             => throw new RlpReaderException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowUnexpectedReceiptField()
+            => throw new RlpReaderException("Unexpected receipt field");
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowEmptyEnvelope()

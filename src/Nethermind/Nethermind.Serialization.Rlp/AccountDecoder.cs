@@ -205,7 +205,7 @@ namespace Nethermind.Serialization.Rlp
             int start = item.Length - fields.Remaining;
             nonce = fields.DecodeULong();
             ReadOnlySpan<byte> balanceBytes = fields.ReadIntegerBytes();
-            if (balanceBytes.Length > UInt256Bytes) throw new RlpReaderException("RLP integer is too large");
+            if (balanceBytes.Length > UInt256Bytes) RlpReaderExtensions.ThrowOverL32(balanceBytes.Length, fields.Remaining);
             balance = start + fields.BytesRead - balanceBytes.Length;
             balanceLength = balanceBytes.Length;
             storageRoot = ReadHashOffset(ref fields, start);

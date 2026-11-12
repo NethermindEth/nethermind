@@ -382,7 +382,7 @@ namespace Nethermind.Core.Test.Encoding
                 _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
             }
 
-            Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("leading zero bytes"));
+            Assert.That(Decode, Throws.TypeOf<RlpReaderException>().With.Message.Contains("Non-canonical integer"));
         }
 
         /// <summary>The signature's r and s decode as byte strings of at most 32 bytes: shorter ones pad, the rest fail.</summary>
@@ -672,13 +672,13 @@ namespace Nethermind.Core.Test.Encoding
             yield return TestCase(
                 "Legacy transaction with incomplete signature",
                 Convert.FromHexString("C88080808080801B01"),
-                error: "RLP is truncated"
+                error: "RLP data is truncated"
             );
 
             yield return TestCase(
                 "Legacy transaction with truncated signature length",
                 Convert.FromHexString("C98080808080801B01B8"),
-                error: "RLP is truncated"
+                error: "RLP data is truncated"
             );
         }
 

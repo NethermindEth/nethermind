@@ -128,13 +128,13 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
     private protected static ulong DecodeNonce<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
-        if (bytes.Length > sizeof(ulong)) ThrowNonceTooWide();
+        if (bytes.Length > sizeof(ulong)) ThrowNonceTooWide(reader.BytesRead - Rlp.LengthOf(bytes));
         return RlpReaderExtensions.Word(bytes, 0, bytes.Length);
     }
 
     // Ethereum tests match the NonceTooWide prefix for NONCE_OVERFLOW.
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowNonceTooWide() => throw new RlpReaderException("NonceTooWide: Transaction nonce exceeds uint64");
+    private static void ThrowNonceTooWide(int position) => throw new RlpReaderException($"NonceTooWide: Transaction nonce exceeds uint64 at position {position}");
 
     /// <summary>Reads a sequence of 32-byte versioned hashes.</summary>
     /// <remarks>
@@ -170,10 +170,17 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
     protected static ulong DecodeSignatureItems<TCanonicalChecks>(ref RlpReader reader, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes)
         where TCanonicalChecks : struct, IFlag
     {
-        ulong v = reader.DecodeULong<TCanonicalChecks>();
-        rBytes = DecodeSignatureScalar<TCanonicalChecks>(ref reader);
-        sBytes = DecodeSignatureScalar<TCanonicalChecks>(ref reader);
-        return v;
+        try
+        {
+            ulong v = reader.DecodeULong<TCanonicalChecks>();
+            rBytes = DecodeSignatureScalar<TCanonicalChecks>(ref reader);
+            sBytes = DecodeSignatureScalar<TCanonicalChecks>(ref reader);
+            return v;
+        }
+        catch (RlpReaderException e) when (e.Message == RlpReader.TruncatedMessage)
+        {
+            throw new RlpReaderException("RLP data is truncated: transaction signature is incomplete.", e);
+        }
     }
 
     /// <summary>Reads a byte string of at most 32 bytes, as <see cref="RlpReaderExtensions.DecodeByteArraySpan(ref RlpReader, RlpLimit?, int)"/> does under <see cref="RlpLimit.L32"/>.</summary>
