@@ -1990,7 +1990,8 @@ mod tests {
         let over: Vec<[u8; 32]> = (1..=MAX_CLAIMS_PER_BATCH_LEAF as u8 + 1)
             .map(|i| [i; 32])
             .collect();
-        // The aggregation enforces claim order even when the leaf verifier accepts the list's digest.
+        // Aggregation rejects an unsorted or repeated list whose digest the leaf program proves; the host check rejects it
+        // here, and the guest's own check is covered in rec_aggregation.
         for claims in [&[b, a][..], &[a, a]] {
             let (proof, _) = witness(claims);
             assert!(

@@ -118,8 +118,10 @@ resolved dependency.
   leanSTARK witness blob)` entries.
 * **batch leaf:** a leanSTARK witness whose public statement is
   `get_batch_hash(claims) = Keccak-256(b'EIP8288:batch:v1' || claims)` over 1 to
-  `MAX_CLAIMS_PER_BATCH_LEAF` (16, a guest constant bound to the key) claims. The aggregation
-  guest, not the leaf verifier, enforces strictly increasing byte-lexicographic order. Each claim yields `(0x11, claim, key)`. Leaves appear only as private aggregation
+  `MAX_CLAIMS_PER_BATCH_LEAF` (16, a guest constant bound to the key) claims. Claims must be
+  strictly increasing in byte-lexicographic order: `verify_batch_leaf` and `prove_aggregate`
+  check it on the host and the aggregation guest enforces it again, while the leaf program's
+  statement need not. Each claim yields `(0x11, claim, key)`. Leaves appear only as private aggregation
   inputs; mode-0 wrappers carry singleton proofs. A user builds a mode-1 wrapper from a leaf by
   aggregating it alone (`AggregationInput.BatchLeaves`) and attaching the result.
 * **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies
