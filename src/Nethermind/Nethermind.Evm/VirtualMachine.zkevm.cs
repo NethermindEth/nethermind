@@ -69,6 +69,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return expected != 0 && (nint)handlers[(int)opcode] == expected;
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SELFBALANCE on the guest handler.</summary>
+    internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a block-context word, on the guest handler.</summary>
     /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
     internal static bool PushesContextWordThroughGuestHandlerForTests(IReleaseSpec spec, Instruction opcode) =>
@@ -159,6 +163,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         VmState<TGasPolicy> parent = _currentState;
         VmState<TGasPolicy> child = VmState<TGasPolicy>.RentFrame(
+            FrameCache,
             gas: childGas,
             outputDestination: outputDestination,
             outputLength: outputLength,
