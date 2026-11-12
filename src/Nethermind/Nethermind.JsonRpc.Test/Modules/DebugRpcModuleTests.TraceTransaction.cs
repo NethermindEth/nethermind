@@ -573,7 +573,9 @@ public partial class DebugRpcModuleTests
         foreach (string method in new[] { "debug_traceTransaction", "debug_traceBlockByHash", "debug_intermediateRoots", "debug_standardTraceBlockToFile" })
         {
             yield return new TestCaseData(method, none).SetArgDisplayNames(method, "none");
-            yield return new TestCaseData(method, nonceOverride).SetArgDisplayNames(method, "state");
+            // debug_intermediateRoots keeps the signed nonces, so a nonce override ends its replay at that transaction.
+            if (method != "debug_intermediateRoots")
+                yield return new TestCaseData(method, nonceOverride).SetArgDisplayNames(method, "state");
         }
 
         yield return new TestCaseData("debug_traceTransaction", timeOverride).SetArgDisplayNames("debug_traceTransaction", "block");

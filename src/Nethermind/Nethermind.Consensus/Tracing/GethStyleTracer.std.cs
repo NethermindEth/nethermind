@@ -323,7 +323,9 @@ public class GethStyleTracer(
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
+            // The replay keeps the signed nonces, so the processor facade does not copy the transactions for it. It
+            // still writes the senders it recovers and the gas it spends, so it runs on copies of its own.
+            scope.Component.BlockchainProcessor.Process(block.WithOwnTransactions(), TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
         }
         catch (InvalidTransactionException e)
         {
