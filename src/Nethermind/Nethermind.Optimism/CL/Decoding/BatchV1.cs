@@ -64,7 +64,7 @@ public sealed class BatchV1
                 EpochNumber = currentL1OriginNum,
                 Timestamp = currentTimestamp,
                 Transactions = userTransactions
-                    .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+                    .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping))
                     .ToArray()
             };
             txIdx += BlockTxCounts[i];

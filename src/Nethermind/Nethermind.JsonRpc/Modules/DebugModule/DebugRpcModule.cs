@@ -513,7 +513,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -547,7 +547,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
     {
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<GethLikeTxTrace>? blockError);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<GethLikeTxTrace>? blockError);
         if (blockError is not null)
         {
             return blockError;
@@ -626,7 +626,7 @@ public class DebugRpcModule(
         if (options?.ParsedTimeout.Error is not null && string.IsNullOrEmpty(options.Tracer))
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
 
-        Block? block = TryGetBlockAndCheckState(new Rlp(blockRlp), out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
+        Block? block = TryGetBlockAndCheckState(blockRlp, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? blockError, requireCompleteInput: true);
         if (blockError is not null)
         {
             return blockError;
@@ -1449,8 +1449,8 @@ public class DebugRpcModule(
     private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
-    private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
-        ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
+    private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(byte[] blockRlp) =>
+        ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
 
     /// <summary>
     /// Resolves the header for <paramref name="blockParameter"/>, without checking state availability.
@@ -1581,13 +1581,13 @@ public class DebugRpcModule(
         return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
-    private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error, bool requireCompleteInput = false)
+    private Block? TryGetBlockAndCheckState<TResult>(byte[] blockRlp, out ResultWrapper<TResult>? error, bool requireCompleteInput = false)
     {
         Block? block;
 
         try
         {
-            RlpReader context = new(blockRlp.Bytes);
+            RlpReader context = new(blockRlp);
             block = requireCompleteInput ? _blockDecoder.DecodeComplete(ref context) : _blockDecoder.Decode(ref context);
             if (block is null)
             {

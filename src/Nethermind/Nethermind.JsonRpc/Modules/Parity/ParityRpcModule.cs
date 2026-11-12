@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
                  ? _txPool.GetPendingTransactions()
                  : _txPool.GetPendingTransactionsBySender(address);
             return ResultWrapper<ParityTransaction[]>.Success(enumerable
-                .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
+                .Select(t => new ParityTransaction(t, Rlp.Encode(t),
                 t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
         }
 

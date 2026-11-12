@@ -1315,7 +1315,7 @@ namespace Nethermind.Blockchain.Receipts
             if (!ShouldIndexTxs(block.Number, lastBlockNumber.Value)) return;
             if (_receiptConfig.CompactTxIndex)
             {
-                byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
+                byte[] blockNumber = Rlp.Encode(block.Number);
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();

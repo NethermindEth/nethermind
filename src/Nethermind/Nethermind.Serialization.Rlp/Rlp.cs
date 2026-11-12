@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
     ///
     ///     Note: Prefer RlpWriter to encode into caller-owned buffers.
     /// </summary>
-    public partial class Rlp
+    public static partial class Rlp
     {
         internal const int SmallPrefixBarrier = 56;
 
@@ -38,23 +38,7 @@ namespace Nethermind.Serialization.Rlp
 
         public const byte EmptyListByte = 0xc0; // use bytes to avoid stack overflow
 
-        internal const int LengthOfNull = 1;
-
-        /// <summary>
-        /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
-        /// </summary>
-        private Rlp(byte singleByte) => Bytes = [singleByte];
-
-        public Rlp(byte[] bytes) => Bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
-
-        public long MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
-                                            MemorySizes.Align(MemorySizes.ArrayOverhead + Bytes.Length);
-
-        public byte[] Bytes { get; }
-
-        public byte this[int index] => Bytes[index];
-
-        public int Length => Bytes.Length;
+        public const int LengthOfNull = 1;
 
         public static void ResetDecoders()
         {
@@ -72,10 +56,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
-
-        [return: MaybeNull]
-        public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => Decode<T>(oldRlp.Bytes.AsSpan(), rlpBehaviors);
 
         [return: MaybeNull]
         public static T Decode<T>(byte[]? bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -208,30 +188,17 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static Rlp Encode<T>(T? item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => item is Rlp rlp
-                ? rlp
-                : GetDecoder<T>() is { } rlpDecoder
-                    ? rlpDecoder.Encode(item, behaviors)
-                    : throw new NotSupportedException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        public static byte[] Encode<T>(T? item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => GetDecoder<T>() is { } rlpDecoder
+                ? rlpDecoder.Encode(item, behaviors)
+                : throw new NotSupportedException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
-        public static Rlp Encode<T>(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static byte[] Encode<T>(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
             => items is []
-                ? OfEmptyList
+                ? [EmptyListByte]
                 : GetDecoder<T>() is { } rlpDecoder
                     ? rlpDecoder.Encode(items, behaviors)
                     : throw new NotSupportedException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-
-        public static Rlp Encode(int[] integers)
-        {
-            Rlp[] rlpSequence = new Rlp[integers.Length];
-            for (int i = 0; i < integers.Length; i++)
-            {
-                rlpSequence[i] = Encode(integers[i]);
-            }
-
-            return Encode(rlpSequence);
-        }
 
         public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
         {
@@ -246,65 +213,33 @@ namespace Nethermind.Serialization.Rlp
             return buffer;
         }
 
-        public static Rlp Encode(Transaction? transaction) => Encode(transaction, false);
+        public static byte[] Encode(Transaction? transaction) => Encode(transaction, false);
 
-        public static Rlp Encode(Transaction? transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+        public static byte[] Encode(Transaction? transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
             TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
-        public static Rlp Encode(int value)
+        // A negative value is its two's complement, which is what the BigInteger path produced after padding with 0xff.
+        public static byte[] Encode(int value) => value < 0 ? EncodeInteger(unchecked((uint)value)) : EncodeInteger((ulong)value);
+
+        public static byte[] Encode(long value) => EncodeInteger(unchecked((ulong)value));
+
+        public static byte[] Encode(ulong value) => EncodeInteger(value);
+
+        private static byte[] EncodeInteger<T>(T value) where T : unmanaged, IBinaryInteger<T>
         {
-            if (value == 0)
-            {
-                return OfZero;
-            }
-
-            // A negative value is its four-byte two's complement, which is what the BigInteger path
-            // produced after padding with 0xff.
-            if (value >= 0) return Encode((long)value);
-
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(int));
-            bytes[0] = EmptyByteArrayByte + sizeof(int);
-            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(1), value);
-            return new Rlp(bytes);
+            byte[] bytes = new byte[RlpCodec.LengthOf(value)];
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            writer.Write(value);
+            return bytes;
         }
 
-        // The eight-byte two's complement, which is what the BigInteger path produced after padding.
-        private static Rlp EncodeNegative(long value)
+        private static byte[] Write<TContext>(int length, TContext context, RefRlpWriterAction<TContext> write)
         {
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(long));
-            bytes[0] = EmptyByteArrayByte + sizeof(long);
-            BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(1), value);
-            return new Rlp(bytes);
+            byte[] bytes = new byte[length];
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            write(ref writer, context);
+            return bytes;
         }
-
-        public static Rlp Encode(long value) => value switch
-        {
-            < 0 => EncodeNegative(value),
-            0L => OfZero,
-            < 0x80 => new((byte)value),
-            < 0x100 => new([129, (byte)value]),
-            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
-            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-        };
-
-        public static Rlp Encode(ulong value) => value switch
-        {
-            0UL => OfZero,
-            < 0x80 => new((byte)value),
-            < 0x100 => new([129, (byte)value]),
-            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
-            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
-        };
 
         // caller is responsible for allocating buffer large enough (max 9 bytes)
         [SuppressMessage("ReSharper", "IntVariableOverflowInUncheckedContext")]
@@ -354,21 +289,9 @@ namespace Nethermind.Serialization.Rlp
         // caller is responsible for allocating buffer large enough (max 9 bytes)
         public static Span<byte> Encode(long value, Span<byte> buffer) => Encode(unchecked((ulong)value), buffer);
 
-        public static Rlp Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger == 0 ? OfZero : Encode(bigInteger.ToBigEndianByteArray(outputLength));
+        public static byte[] Encode(BigInteger bigInteger, int outputLength = -1) => bigInteger.IsZero ? [EmptyByteArrayByte] : Encode(bigInteger.ToBigEndianByteArray(outputLength));
 
-        public static Rlp Encode(in UInt256 value, int length = -1)
-        {
-            if (value.IsZero && length == -1)
-            {
-                return OfZero;
-            }
-            else
-            {
-                Span<byte> bytes = stackalloc byte[32];
-                value.ToBigEndian(bytes);
-                return Encode(length != -1 ? bytes.Slice(bytes.Length - length, length) : bytes.WithoutLeadingZeros());
-            }
-        }
+        public static byte[] Encode(in UInt256 value) => Write(LengthOf(value), value, static (ref RlpWriter writer, UInt256 value) => writer.Encode(in value));
 
         public static int Encode(Span<byte> buffer, int position, ReadOnlySpan<byte> input)
         {
@@ -414,29 +337,15 @@ namespace Nethermind.Serialization.Rlp
             static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException(nameof(buffer));
         }
 
-        [SkipLocalsInit]
-        public static Rlp Encode(ReadOnlySpan<byte> input)
+        public static byte[] Encode(ReadOnlySpan<byte> input)
         {
-            // Special cases return compact/shared instances rather than a freshly allocated array.
-            int length = input.Length;
-            if (length == 0)
-            {
-                return OfEmptyByteArray;
-            }
-
-            // If it's a single byte less than 128, it encodes to itself.
-            if (length == 1 && input[0] < 128)
-            {
-                return new Rlp(input[0]);
-            }
-
-            // Everything else shares the single serialization code path in Encode(input, output).
-            byte[] rlpResult = GC.AllocateUninitializedArray<byte>(LengthOf(input));
-            Encode(input, rlpResult);
-            return new Rlp(rlpResult);
+            byte[] bytes = new byte[LengthOf(input)];
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            writer.Write(input);
+            return bytes;
         }
 
-        public static Rlp Encode(byte[]? input) => input is null or [] ? OfEmptyByteArray : Encode(input.AsSpan());
+        public static byte[] Encode(byte[]? input) => Encode(input.AsSpan());
 
         /// <summary>
         /// Allocation-free byte-string RLP encoding: writes the encoding of <paramref name="input"/> into
@@ -510,28 +419,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOfLength(int value)
             => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
-        public static Rlp Encode(Hash256? keccak)
-        {
-            if (keccak is null)
-            {
-                return OfEmptyByteArray;
-            }
-
-            if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
-            {
-                return OfEmptyTreeHash;
-            }
-
-            if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
-            {
-                return OfEmptyStringHash;
-            }
-
-            byte[] result = new byte[LengthOfKeccakRlp];
-            result[0] = 160;
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(result), 1), keccak.ValueHash256);
-            return new Rlp(result);
-        }
+        public static byte[] Encode(Hash256? keccak) => Write(LengthOf(keccak), keccak, static (ref RlpWriter writer, Hash256? keccak) => writer.Encode(keccak));
 
         public static int StartSequence(Span<byte> buffer, int position, int sequenceLength)
         {
@@ -551,64 +439,6 @@ namespace Nethermind.Serialization.Rlp
             buffer[position] = prefix;
             return afterLength;
         }
-
-        [SkipLocalsInit]
-        public static Rlp Encode(params Rlp[] sequence)
-        {
-            int contentLength = 0;
-            for (int i = 0; i < sequence.Length; i++)
-            {
-                contentLength += sequence[i].Length;
-            }
-
-            int lengthOfLength = 0;
-            byte prefix;
-
-            if (contentLength < SmallPrefixBarrier)
-            {
-                // Single-byte prefix: 0xc0 + length
-                prefix = (byte)(0xc0 + contentLength);
-            }
-            else
-            {
-                lengthOfLength = LengthOfLength(contentLength);
-                // Multi-byte prefix: 0xf7 + lengthOfLength
-                prefix = (byte)(0xf7 + lengthOfLength);
-            }
-
-            // Allocate the final buffer exactly once (prefix + optional length + content).
-            int totalSize = 1 + lengthOfLength + contentLength;
-            byte[] allBytes = GC.AllocateUninitializedArray<byte>(totalSize);
-
-            // Write prefix and length.
-            allBytes[0] = prefix;
-            int offset = 1;
-            if (lengthOfLength > 0)
-            {
-                SerializeLength(contentLength, allBytes.AsSpan(offset, lengthOfLength));
-                offset += lengthOfLength;
-            }
-
-            // Copy the content from all Rlp items.
-            for (int i = 0; i < sequence.Length; i++)
-            {
-                Buffer.BlockCopy(sequence[i].Bytes, 0, allBytes, offset, sequence[i].Length);
-                offset += sequence[i].Length;
-            }
-
-            // Wrap in Rlp and return.
-            return new Rlp(allBytes);
-        }
-
-        public override bool Equals(object? other) => Equals(other as Rlp);
-
-        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
-
-        public bool Equals(Rlp? other) => other is not null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
-
-        public override string ToString() => ToString(true);
-
-        public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
         public static int LengthOf(UInt256? item) => item is null ? LengthOfNull : LengthOf(item.Value);
 

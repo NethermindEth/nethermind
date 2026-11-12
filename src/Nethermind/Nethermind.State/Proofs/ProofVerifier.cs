@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -29,7 +29,7 @@ namespace Nethermind.State.Proofs
                 Hash256 proofHash = Keccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
-                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                    if (!proof[i - 2].ToHexString().Contains(proofHash.ToString(false)))
                     {
                         throw new InvalidDataException();
                     }

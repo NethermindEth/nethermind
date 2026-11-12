@@ -207,8 +207,8 @@ namespace Nethermind.Merge.Plugin
 
                 using (IWriteBatch batch = _metadataDb.StartWriteBatch())
                 {
-                    batch.Set((long)MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number).Bytes);
-                    batch.Set((long)MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash).Bytes);
+                    batch.Set((long)MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number));
+                    batch.Set((long)MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash));
                 }
 
                 _terminalBlockNumber = header.Number;

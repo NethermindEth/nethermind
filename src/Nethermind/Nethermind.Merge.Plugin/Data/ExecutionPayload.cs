@@ -283,7 +283,7 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping))
             .ToArray();
         _transactions = transactions;
     }

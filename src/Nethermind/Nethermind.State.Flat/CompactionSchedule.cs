@@ -120,7 +120,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         // Generate in [0, int.MaxValue) so the value encodes cleanly as a non-negative long
         // in the on-disk RLP format (kept as long for database backward compatibility).
         long offset = Random.Shared.NextInt64(0, int.MaxValue);
-        metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
+        metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset));
         return (ulong)offset;
     }
 }

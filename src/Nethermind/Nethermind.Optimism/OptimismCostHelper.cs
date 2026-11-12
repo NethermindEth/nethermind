@@ -141,7 +141,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
     {
-        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         ulong zeroCount = (ulong)encoded.Count(static b => b == 0);
         ulong nonZeroCount = (ulong)encoded.Length - zeroCount;
@@ -185,7 +185,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     // Do not use SkipLocalsInit, `ht` should be zeros initially
     public static uint ComputeFlzCompressLen(Transaction tx)
     {
-        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         static uint FlzCompressLen(byte[] data)
         {

@@ -162,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                return Rlp.LengthOfNull;
             }
 
             int length = -1;
@@ -185,7 +185,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Bytes;
+                return [Rlp.EmptyListByte];
             }
 
             int length = GetLength(item, rlpBehaviors);

@@ -11,10 +11,10 @@ namespace Nethermind.Blockchain
     {
         public static Hash256 Calculate(Block block) => block.Uncles.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Uncles).Bytes);
+                : Keccak.Compute(Rlp.Encode(block.Uncles));
 
         public static Hash256 Calculate(BlockHeader[] uncles) => uncles.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(uncles).Bytes);
+                : Keccak.Compute(Rlp.Encode(uncles));
     }
 }

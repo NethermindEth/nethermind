@@ -544,20 +544,6 @@ namespace Nethermind.Trie
             }
         }
 
-        [DebuggerStepThrough]
-        public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
-        {
-            if (value is null)
-            {
-                Set(rawKey, CappedArray<byte>.Empty);
-            }
-            else
-            {
-                CappedArray<byte> valueBytes = new(value.Bytes);
-                Set(rawKey, valueBytes);
-            }
-        }
-
         private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;

@@ -29,20 +29,20 @@ public static class BlockTraceDumper
     {
         if (toFile || toLog)
         {
-            Rlp rlp = Rlp.Encode(block, RlpBehaviors.AllowExtraBytes);
+            byte[] rlp = Rlp.Encode(block, RlpBehaviors.AllowExtraBytes);
             Hash256 blockHash = block.Hash;
             if (toFile)
             {
                 string fileName = $"block_{blockHash}.rlp";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                diagnosticFile.Write(rlp.Bytes);
+                diagnosticFile.Write(rlp);
                 if (logger.IsInfo)
                     logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name:hide}");
             }
 
             if (toLog)
             {
-                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.Bytes.ToHexString()}");
+                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.ToHexString()}");
             }
         }
     }

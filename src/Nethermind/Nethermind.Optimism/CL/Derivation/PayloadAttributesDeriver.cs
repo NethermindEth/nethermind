@@ -68,7 +68,7 @@ public class PayloadAttributesDeriver(
     {
         byte[][] transactions =
         [
-            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
+            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping),
             .. batch.Transactions
         ];
         return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);
@@ -83,9 +83,9 @@ public class PayloadAttributesDeriver(
     {
         byte[][] transactions =
         [
-            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
+            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping),
             .. _depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts)
-                    .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping).Bytes),
+                    .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping)),
             .. batch.Transactions,
         ];
         return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);

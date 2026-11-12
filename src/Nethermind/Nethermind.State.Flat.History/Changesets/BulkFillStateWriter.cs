@@ -33,7 +33,7 @@ internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteB
             accounts.Remove(path.Bytes);
             new StorageWriter(batch, path, block, rlpWrappedSlots, clears).Clear();
         }
-        else accounts.Set(path.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
+        else accounts.Set(path.Bytes, AccountDecoder.Slim.Encode(account));
     }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>

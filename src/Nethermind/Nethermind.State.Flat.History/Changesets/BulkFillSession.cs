@@ -142,7 +142,7 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
                 token.ThrowIfCancellationRequested();
                 if (account.StorageRoot != Keccak.EmptyTreeHash || account.CodeHash != Keccak.OfAnEmptyString)
                     throw new NotSupportedException("Genesis bootstrap requires plain account allocations.");
-                accounts.PutSpan(address.ToAccountPath.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
+                accounts.PutSpan(address.ToAccountPath.Bytes, AccountDecoder.Slim.Encode(account));
             }
             IWriteBatch metadata = batch.GetColumnBatch(Columns.Metadata);
             foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears })

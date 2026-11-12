@@ -242,7 +242,7 @@ public sealed class SnapCheckpoint
     private static void WriteAccount(ArrayBufferWriter<byte> writer, PathWithAccount account)
     {
         writer.Write(account.Path.Bytes);
-        byte[] rlp = account.Account is null ? [] : AccountDecoder.Instance.EncodeAsBytes(account.Account);
+        byte[] rlp = account.Account is null ? [] : AccountDecoder.Instance.Encode(account.Account);
         WriteCount(writer, rlp.Length);
         writer.Write(rlp);
     }

@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             txWithProof.TxProof = BuildTxProofs(txs, spec, txIndex);
             if (includeHeader)
             {
-                txWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
+                txWithProof.BlockHeader = _headerDecoder.Encode(block.Header);
             }
 
             return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             if (includeHeader)
             {
-                receiptWithProof.BlockHeader = _headerDecoder.EncodeAsBytes(block.Header);
+                receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header);
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);

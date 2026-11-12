@@ -229,19 +229,6 @@ public static class RlpWriterExtensions
         }
     }
 
-    /// <summary>Copies an item that is already RLP; <see langword="null"/> writes <c>0x80</c>.</summary>
-    public static void Encode(this ref RlpWriter writer, Rlp? rlp)
-    {
-        if (rlp is null)
-        {
-            writer.EncodeEmptyByteArray();
-        }
-        else
-        {
-            writer.WriteEncoded(rlp.Bytes);
-        }
-    }
-
     /// <summary>Writes a bloom as a 256-byte string; a zero-length bloom (EIP-7668) writes <c>0x80</c>.</summary>
     public static void Encode(this ref RlpWriter writer, Bloom? bloom)
     {

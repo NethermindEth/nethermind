@@ -66,7 +66,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
     }
 
     public override int GetLength(BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
+        => item is null ? Rlp.LengthOfNull : Rlp.LengthOfSequence(GetContentLength(item));
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0

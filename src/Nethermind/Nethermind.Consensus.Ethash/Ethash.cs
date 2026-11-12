@@ -264,8 +264,8 @@ namespace Nethermind.Consensus.Ethash
 
         private static Hash256 GetTruncatedHash(BlockHeader header)
         {
-            Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Hash256 headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
+            byte[] encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
+            Hash256 headerHashed = Keccak.Compute(encoded); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 

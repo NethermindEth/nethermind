@@ -219,7 +219,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => item is null
-                ? Rlp.OfEmptyList.Length
+                ? Rlp.LengthOfNull
                 : Rlp.LengthOfSequence(GetContentLength(item, (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing, GetOptionalFieldCount(item, rlpBehaviors)));
     }
 }

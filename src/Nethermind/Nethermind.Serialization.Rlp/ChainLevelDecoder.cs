@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                return Rlp.LengthOfNull;
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item, GetBlockInfoLength(item.BlockInfos)));

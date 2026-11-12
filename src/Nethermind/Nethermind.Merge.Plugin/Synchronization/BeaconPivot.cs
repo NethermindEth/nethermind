@@ -35,9 +35,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (value is not null)
                 {
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
-                        Rlp.Encode(value.GetOrCalculateHash()).Bytes);
+                        Rlp.Encode(value.GetOrCalculateHash()));
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
-                        Rlp.Encode(value.Number).Bytes);
+                        Rlp.Encode(value.Number));
                 }
                 else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
             }

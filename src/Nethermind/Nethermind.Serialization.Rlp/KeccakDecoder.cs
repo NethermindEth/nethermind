@@ -19,7 +19,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode(ref RlpWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
 
-        public override Rlp Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
+        public override byte[] Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 
         public override CappedArray<byte> EncodeToCappedArray(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
         {

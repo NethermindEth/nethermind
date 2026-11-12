@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain
             set
             {
                 _lowestInsertedHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()));
             }
         }
 
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
             set
             {
                 _lowestInsertedBeaconHeader = value;
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()));
             }
         }
 
@@ -2189,8 +2189,8 @@ namespace Nethermind.Blockchain
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
             if (_persistedForkChoice == requested) return;
 
-            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
-            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash);
+            byte[] safeRlp = Rlp.Encode(safeBlockHash);
             _persistedForkChoice = null;
             using (IWriteBatch batch = _metadataDb.StartWriteBatch())
             {

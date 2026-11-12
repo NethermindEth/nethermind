@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.LengthOfNull : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
         protected override BlockInfo? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
