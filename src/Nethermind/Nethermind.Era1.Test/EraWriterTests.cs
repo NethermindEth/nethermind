@@ -32,6 +32,22 @@ internal class EraWriterTests
     }
 
     [Test]
+    public void Add_TotalDifficultyIsNull_ThrowsWithoutWriting()
+    {
+        using MemoryStream stream = new();
+        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+
+        Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(null).TestObject;
+
+        Assert.That(async () => await sut.Add(
+            block,
+            Array.Empty<TxReceipt>()), Throws.ArgumentException);
+
+        Assert.That(stream.Length, Is.Zero);
+        Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
+    }
+
+    [Test]
     public async Task Add_InvalidBlock_DoesNotChangeFirstBlockOrIndex()
     {
         using TempPath tmpFile = TempPath.GetTempFile();

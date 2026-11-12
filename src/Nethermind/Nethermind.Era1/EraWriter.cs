@@ -60,7 +60,9 @@ public class EraWriter : IDisposable
         if (_entryIndexes.Count >= MaxEra1Size)
             throw new ArgumentException($"Era file should not contain more than {MaxEra1Size} blocks");
 
-        if (block.TotalDifficulty < block.Difficulty)
+        if (block.TotalDifficulty is not { } totalDifficulty)
+            throw new ArgumentException("The block must have a total difficulty.", nameof(block));
+        if (totalDifficulty < block.Difficulty)
             throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
 
         if (_firstBlock)
@@ -71,7 +73,7 @@ public class EraWriter : IDisposable
         }
 
         _entryIndexes.Add(_totalWritten);
-        _accumulatorCalculator.Add(block.Hash, block.TotalDifficulty!.Value);
+        _accumulatorCalculator.Add(block.Hash, totalDifficulty);
 
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
@@ -84,7 +86,7 @@ public class EraWriter : IDisposable
         using ArrayPoolSpan<byte> receiptBytes = _receiptDecoder.EncodeToArrayPoolSpan(receipts.AsSpan(), behaviors);
         _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
 
-        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
     }
 
     public async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)
