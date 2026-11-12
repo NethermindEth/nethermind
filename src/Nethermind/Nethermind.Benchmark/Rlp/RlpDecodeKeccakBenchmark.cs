@@ -3,6 +3,8 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -25,7 +27,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public Hash256 Current()
         {
-            Serialization.Rlp.RlpReader ctx = new(_scenarios[ScenarioIndex]);
+            RlpReader ctx = new(_scenarios[ScenarioIndex]);
             return ctx.DecodeKeccak();
         }
     }

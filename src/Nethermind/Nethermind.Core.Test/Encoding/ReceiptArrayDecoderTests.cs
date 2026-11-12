@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 #pragma warning disable 618
@@ -110,11 +111,11 @@ namespace Nethermind.Core.Test.Encoding
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
             int encodedLength = decoder.GetLength(receipts, RlpBehaviors.Storage);
             byte[] encoded = new byte[encodedLength];
-            RlpWriter writer = new(encoded);
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
 
             decoder.Encode(ref writer, receipts, RlpBehaviors.Storage);
 
-            Assert.That(writer.Position, Is.EqualTo(encodedLength));
+            Assert.That(writer.Length, Is.EqualTo(encodedLength));
         }
 
         [Test]
