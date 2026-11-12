@@ -103,10 +103,10 @@ public partial class DebugRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
     }
 
-    [TestCase("0x01", false, "blob versioned hash must be 32 bytes")]
-    [TestCase("0x02", false, "blob versioned hash version must be 0x01")]
-    [TestCase("0x01", true, "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
-    public async Task Debug_traceCall_zero_blob_cap_preserves_other_validation(string hashPrefix, bool conflictingFees, string expectedError)
+    [TestCase("0x01", false, "invalid argument 0", ErrorCodes.InvalidParams)]
+    [TestCase("0x02", false, "blob versioned hash version must be 0x01", ErrorCodes.InvalidInput)]
+    [TestCase("0x01", true, "maxFeePerGas (1) < maxPriorityFeePerGas (2)", ErrorCodes.InvalidInput)]
+    public async Task Debug_traceCall_zero_blob_cap_preserves_other_validation(string hashPrefix, bool conflictingFees, string expectedError, int expectedCode)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
         string hash = hashPrefix == "0x02" || conflictingFees ? hashPrefix + new string('0', 62) : hashPrefix;
@@ -122,7 +122,13 @@ public partial class DebugRpcModuleTests
             transaction["maxFeePerGas"] = "0x1";
         }
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, "latest");
-        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedError));
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
     }
 
     [Test]
