@@ -135,6 +135,59 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The guest's handlers charge these opcodes untested, so with too little gas they would run on to the end of the
+    /// code. A frame with less gas than its code has bytes must stop where the shared handlers stop; with at least that
+    /// much it may run on, and pays for every opcode it runs past the shortfall.
+    /// </remarks>
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(100UL)]
+    [TestCase(UntestedRunLength - 1UL)]
+    [TestCase((ulong)UntestedRunLength)]
+    public unsafe void Frame_with_less_gas_than_code_stops_where_the_shared_handlers_stop(ulong gas)
+    {
+        byte[] code = new byte[UntestedRunLength];
+        code[0] = (byte)Instruction.PUSH1;
+        code[1] = 1;
+        for (int i = 2; i < code.Length; i += 2)
+        {
+            code[i] = (byte)Instruction.DUP1;
+            code[i + 1] = (byte)Instruction.POP;
+        }
+
+        DispatchingVirtualMachine vm = new(ReleaseSpec);
+        Type type = typeof(VirtualMachine<EthereumGasPolicy>);
+        type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+            .Single(static method => method.Name == "PrepareOpcodes" && method.GetGenericArguments().Length == 1)
+            .MakeGenericMethod(typeof(OffFlag)).Invoke(vm, null);
+        RunDispatchLoop run = type.GetMethod("RunDispatchLoop", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .MakeGenericMethod(typeof(OffFlag), typeof(OffFlag)).CreateDelegate<RunDispatchLoop>(vm);
+
+        CodeInfo codeInfo = new(code);
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, Array.Empty<byte>());
+        using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, false);
+        vm.Enter(frame);
+        byte[] stackBytes = GC.AllocateArray<byte>((EvmStack.MaxStackSize + 2) * EvmStack.WordSize, pinned: true);
+        int alignment = (int)((nuint)Unsafe.AsPointer(ref stackBytes[0]) & (EvmStack.WordSize - 1));
+        EvmStack stack = new(0, vm.Tracer, ref stackBytes[alignment == 0 ? 0 : EvmStack.WordSize - alignment], codeInfo.ExecutionCodeSpan, codeInfo);
+        EthereumGasPolicy policy = EthereumGasPolicy.FromULong(gas);
+        nint pc = 0;
+        EvmExceptionType exception = run(ref stack, ref policy, ref pc);
+
+        Outcome shared = Run(gas, [], 0, new CodeInfo(code), Table.Cancelable);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(pc, gas < UntestedRunLength ? Is.EqualTo(shared.Pc) : Is.EqualTo((nint)UntestedRunLength));
+        }
+    }
+
+    private const int UntestedRunLength = 400;
+
+    private delegate EvmExceptionType RunDispatchLoop(ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter);
+
     /// <remarks>Without the fused entry, the pair tests below would only compare the shared handlers with themselves.</remarks>
     [Test]
     public void Pairing_installs_fused_handlers_only_for_guest_handlers([Values] Table table)

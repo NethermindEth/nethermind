@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using InlineIL;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
@@ -104,6 +107,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowGasOutOfRange() => throw new InvalidOperationException("The frame's gas does not fit the 32-bit dispatch chain.");
 
+    /// <summary>The entries each table held before the guest's handlers replaced some, keyed by the table.</summary>
+    private static readonly Dictionary<object, nint[]> _sharedHandlers = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The table <see cref="GetCheckedPairedHandlers"/> paired last, with the table it stands in for.</summary>
+    private static PairedHandlers? _checkedPairedHandlers;
+
+    /// <summary>Records the entries of <paramref name="handlers"/>, before the guest's handlers replace some of them.</summary>
+    private static void RecordSharedHandlers(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+    {
+        nint[] shared = new nint[byte.MaxValue + 1];
+        fixed (void* entries = handlers)
+            new ReadOnlySpan<nint>(entries, shared.Length).CopyTo(shared);
+        lock (_sharedHandlers)
+            _sharedHandlers[handlers] = shared;
+    }
+
+    /// <summary>The paired table for <paramref name="handlers"/> with only the shared handlers, which test the gas before every charge.</summary>
+    /// <remarks>A table that the guest's handlers did not replace entries of already tests every charge, so it is its own.</remarks>
+    private static nint[] GetCheckedPairedHandlers<TTracingInst>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+        where TTracingInst : struct, IFlag
+    {
+        PairedHandlers? paired = Volatile.Read(ref _checkedPairedHandlers);
+        if (paired is null || paired.Source != handlers)
+        {
+            nint[]? shared;
+            lock (_sharedHandlers)
+                _sharedHandlers.TryGetValue(handlers, out shared);
+            if (shared is null)
+                return GetPairedHandlers<TTracingInst>(handlers);
+
+            paired = new PairedHandlers(handlers, null, PairHandlers(shared));
+            Volatile.Write(ref _checkedPairedHandlers, paired);
+        }
+
+        return paired.Entries;
+    }
+
     /// <summary>Runs the current frame on the dispatch chain.</summary>
     /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -122,8 +162,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// indicates a yielded child frame.
     /// </returns>
     /// <remarks>
+    /// <para>
     /// The guest cannot be cancelled (<see cref="DispatchFlags.ConstCancelable"/>), so a cancelable table runs the
     /// chain to its end like any other.
+    /// </para>
+    /// <para>
+    /// A frame with less gas than its code has bytes runs on the shared handlers (<see cref="GetCheckedPairedHandlers"/>),
+    /// which test the gas before every charge. The guest's handlers charge some opcodes untested, so past a shortfall
+    /// they run on to the next test, at the latest the end of the code. Without this test a frame called with no gas
+    /// would run all of its code, for the cost of the call. With it, the frame came in with at least one unit of gas
+    /// for each opcode it can run past a shortfall, and it consumes all of that gas as it halts: no more than any code
+    /// buys, as every opcode that does not halt costs at least one unit.
+    /// </para>
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -137,7 +187,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
+        ulong executionGas = GetExecutionGas(ref gas);
+        bool testsEveryCharge = executionGas < (ulong)stack.CodeLength;
+        nint[] handlers = testsEveryCharge
+            ? GetCheckedPairedHandlers<TTracingInst>(_opcodeHandlers)
+            : GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
         // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that
         // follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
@@ -151,7 +205,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             bool readOnly = true;
             if (RawCalliHelper.CachesHandlers)
             {
-                nint[] cache = stack.GetHandlerCache(handlers, out readOnly);
+                // The code's own cache serves one table; a frame on the shared handlers reads the empty shared cache instead.
+                nint[] cache = testsEveryCharge
+                    ? CodeInfo.ReadOnlyHandlerCache((int)stack.CodeLength)
+                    : stack.GetHandlerCache(handlers, out readOnly);
                 outerUncached = RawCalliHelper.ResolveEmptySlots(readOnly, out uncached);
                 carried = RawCalliHelper.HandlerCacheBias(cache, ref stack.Code);
             }
@@ -174,7 +231,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     : table[Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter))];
             EvmExceptionType exceptionType =
                 ((delegate*<ref EvmStack, nuint, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)first)(
-                    ref stack, ChainGas(GetExecutionGas(ref gas)), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, carried, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
+                    ref stack, ChainGas(executionGas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, carried, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             // The guest fails fast on any exception, so the chain always returns here.
             if (RawCalliHelper.CachesHandlers)
                 RawCalliHelper.RestoreEmptySlots(outerUncached);
