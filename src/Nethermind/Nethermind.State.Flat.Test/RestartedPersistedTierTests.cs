@@ -261,6 +261,10 @@ public class RestartedPersistedTierTests
             Assert.That(bundle.SnapshotCount, Is.EqualTo(4), "four CompactSize-wide snapshots above the persisted block");
             Assert.That(bundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)(TailLength + 1)));
         }
+
+        // The pass clamps the windows over the persisted block to it, so the persist drains that chunk through them.
+        Assert.That(next.Repository.TryLeasePersistedState(Block(36), SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? window), Is.True);
+        using (window) Assert.That(window!.From, Is.EqualTo(Block(persistedAtNextStart)), "the window ending at block 36 starts at the persisted block");
     }
 
     [Test]

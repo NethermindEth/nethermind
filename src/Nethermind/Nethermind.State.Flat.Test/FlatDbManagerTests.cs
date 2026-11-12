@@ -83,7 +83,7 @@ public class FlatDbManagerTests
         _buffer.Dispose();
     }
 
-    private FlatDbManager CreateManager() => new(
+    private FlatDbManager CreateManager(ILogManager? logManager = null) => new(
         _resourcePool,
         _processExitSource,
         _buffer,
@@ -93,7 +93,7 @@ public class FlatDbManagerTests
         _persistedSnapshotLoader,
         _config,
         _blocksConfig,
-        LimboLogs.Instance,
+        logManager ?? LimboLogs.Instance,
         enableDetailedMetrics: false);
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
@@ -170,14 +170,18 @@ public class FlatDbManagerTests
     public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(Type failure)
     {
         _persistenceManager.CompactReloadedSnapshots(Arg.Any<CancellationToken>()).Returns(_ => throw (Exception)Activator.CreateInstance(failure)!);
+        TestLogger logger = new();
 
-        await using FlatDbManager manager = CreateManager();
+        await using FlatDbManager manager = CreateManager(new OneLoggerLogManager(new ILogger(logger)));
 
         Received.InOrder(() =>
         {
             _persistedSnapshotLoader.Load();
             _persistenceManager.CompactReloadedSnapshots(_cts.Token);
         });
+        // A stop during the pass is quiet; any other failure is an Error.
+        Assert.That(logger.LogList.Exists(static line => line.StartsWith("Could not compact", StringComparison.Ordinal)),
+            Is.EqualTo(failure != typeof(OperationCanceledException)));
     }
 
     // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a

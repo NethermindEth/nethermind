@@ -35,7 +35,8 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// <remarks>
     /// For the start only, before any worker or reader uses the persisted tier. Writes the same sub-<c>CompactSize</c>
     /// and <c>CompactSize</c>-wide snapshots as <see cref="EnqueueAsync"/>, and no wider merge. The sub-<c>CompactSize</c>
-    /// ones the head reads through get a full-size filter. A window that already has its snapshot is left alone.
+    /// ones above the last boundary, where the head reads, get a full-size filter. A window that already has its
+    /// snapshot is left alone.
     /// </remarks>
     /// <param name="persistedBlockNumber">The RocksDB persisted state block; windows are clamped to it as in
     /// <see cref="EnqueueAsync"/>.</param>

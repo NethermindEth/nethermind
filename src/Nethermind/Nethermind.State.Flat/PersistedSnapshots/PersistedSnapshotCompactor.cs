@@ -175,7 +175,7 @@ public class PersistedSnapshotCompactor(
     /// snapshot of each boundary in it, on the calling thread.
     /// </summary>
     /// <param name="readHot">The outputs are read at once (a start), so the sub-<c>CompactSize</c> ones above the last
-    /// boundary of the batch, which the head reads through, keep a sized filter and their pages.</param>
+    /// boundary of the batch, where the head reads, keep a sized filter and their pages.</param>
     /// <param name="largeBoundaries">Receives the large boundaries, whose wider merge is left to the caller; <c>null</c>
     /// skips them.</param>
     /// <returns>The number of compacted snapshots written.</returns>
@@ -349,7 +349,7 @@ public class PersistedSnapshotCompactor(
     }
 
     /// <param name="readHot">Read by a sub-<c>CompactSize</c> output only: it gets a sized filter and keeps its pages,
-    /// as the head reads through it right after a start.</param>
+    /// as it lies above the last boundary, where the head reads right after a start.</param>
     private bool CompactRange(StateId snapshotTo, ulong startingBlockNumber, int compactSize, bool isCompactSized, bool readHot)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
@@ -478,7 +478,7 @@ public class PersistedSnapshotCompactor(
                     // Sub-CompactSize intermediate. The bundle priority means this is never queried
                     // unless there's a deep reorg, so drop its freshly-written pages from the cache +
                     // tracker; they would otherwise sit hot until the snapshot is pruned. After a restart
-                    // the head sits above the last boundary and reads through it, so it keeps them.
+                    // the head reads above the last boundary, so a window there keeps them.
                     if (!readHot) compacted.Demote();
                 }
                 else
