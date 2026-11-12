@@ -353,7 +353,7 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void Processed_row_reads_do_not_wait_for_a_block_being_saved([Values] bool batched)
+    public async Task Processed_row_reads_do_not_wait_for_a_block_being_saved([Values] bool batched)
     {
         using TrackingColumnsDb db = new();
         BlobTxStorage storage = new(db);
@@ -361,29 +361,44 @@ public class BlobTxStorageTests
         SaveProcessed(storage, 358, stored);
         using ManualResetEventSlim writeStarted = new();
         using ManualResetEventSlim releaseWrite = new();
+        using ManualResetEventSlim lockedReadStarted = new();
         db.ProcessedWriteGate = (writeStarted, releaseWrite);
-        Task writer = Task.Run(() => SaveProcessed(storage, 359, CreateV1BlobTransactions(1)));
+        Task writer = Task.Factory.StartNew(() => SaveProcessed(storage, 359, stored),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task<bool> lockedRead = Task.FromResult(false);
+        Task<bool> read = Task.FromResult(false);
         try
         {
             Assert.That(writeStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "writer reached the processed column write");
             // Control: the locked whole-block read is held back by the same write, so the gate really holds the lock.
-            Task<bool> lockedRead = Task.Run(() => storage.TryGetBlobTransactionsFromBlock(358, out _));
-            Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False);
+            lockedRead = Task.Factory.StartNew(() =>
+            {
+                lockedReadStarted.Set();
+                return storage.TryGetBlobTransactionsFromBlock(358, out _);
+            },
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+#pragma warning disable NUnit2045 // The control wait is meaningful only once the locked read has started.
+            Assert.That(lockedReadStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the whole-block read waits for the lock");
+#pragma warning restore NUnit2045
 
             Transaction[] results = new Transaction[1];
-            Task<bool> read = Task.Run(() => batched
+            read = Task.Factory.StartNew(() => batched
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
-                : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
+                : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _),
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
-            Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
-#pragma warning restore NUnit2045
-            Assert.That(read.Result, Is.True);
+            bool found = await read.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True, "read completed while the save held the lock");
+                Assert.That(lockedRead.IsCompleted, Is.False);
+            }
         }
         finally
         {
             releaseWrite.Set();
-            writer.Wait(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(writer, lockedRead, read).WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
@@ -1157,7 +1172,7 @@ public class BlobTxStorageTests
         public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
             started.Set();
-            release.Wait(TimeSpan.FromSeconds(30));
+            release.Wait();
             inner.Set(key, value, flags);
         }
 
