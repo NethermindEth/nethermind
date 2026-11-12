@@ -288,23 +288,25 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
-    public async Task GetLogs_replays_copies_that_keep_the_transaction_type()
+    public async Task GetLogs_replays_copies_that_keep_the_transaction_type([Values] bool stateOverride)
     {
         List<Transaction> replayed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
 
-        Transaction cached = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyA, replayed);
+        ReplayCopies.Stored stored = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyA, replayed);
         Block head = chain.BlockTree.Head!;
 
-        using JsonDocument response = await Request(chain, "overlay_getLogs",
-            new { fromBlock = head.Number.ToHexString(true), toBlock = head.Number.ToHexString(true) },
-            new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } });
+        object filter = new { fromBlock = head.Number.ToHexString(true), toBlock = head.Number.ToHexString(true) };
+        using JsonDocument response = stateOverride
+            ? await Request(chain, "overlay_getLogs", filter,
+                new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } })
+            : await Request(chain, "overlay_getLogs", filter);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.RootElement.TryGetProperty("error", out _), Is.False, response.RootElement.ToString());
-            ReplayCopies.AssertReplayedCopies(replayed, cached);
+            ReplayCopies.AssertReplayedCopies(replayed, 1, stored);
         }
     }
 

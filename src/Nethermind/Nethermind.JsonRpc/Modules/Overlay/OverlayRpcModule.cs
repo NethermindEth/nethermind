@@ -193,9 +193,8 @@ public class OverlayRpcModule(
         }
     }
 
-    /// <summary>Re-executes a copy of <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
-    /// <remarks>The replay loads each transaction nonce from the overridden state,
-    /// so it runs on copies to keep the cached canonical block unchanged.</remarks>
+    /// <summary>Re-executes <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
+    /// <remarks>The tracer replays the block on copies of its transactions, so the block tree's transactions keep their values.</remarks>
     private bool TryTrace<T>(Block block, Dictionary<Address, AccountOverride>? stateOverride, IBlockTracer tracer, CancellationToken token, [NotNullWhen(false)] out ResultWrapper<T>? failure)
     {
         if (!tracerEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride, null, out Scope<ITracer>? scope))
@@ -206,7 +205,7 @@ public class OverlayRpcModule(
 
         using (scope)
         {
-            scope.Component.Trace(new Block(block.Header.Clone(), block.Body.WithOwnTransactions()), tracer.WithCancellation(token));
+            scope.Component.Trace(new Block(block.Header.Clone(), block.Body), tracer.WithCancellation(token));
         }
 
         failure = null;

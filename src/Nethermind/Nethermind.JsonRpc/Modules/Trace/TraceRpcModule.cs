@@ -821,8 +821,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (specOverride is not null)
             {
                 BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, specOverride);
-                // Under another fork's rules the nonces and gas a replay writes can differ, so replay copies.
-                blockToExecute = block.WithReplacedHeader(adjustedHeader).WithOwnTransactions();
+                blockToExecute = block.WithReplacedHeader(adjustedHeader);
             }
 
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
@@ -967,8 +966,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block blockToExecute = block;
             if (specOverride is not null)
             {
-                // Under another fork's rules the nonces and gas a replay writes can differ, so replay copies.
-                blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride)).WithOwnTransactions();
+                blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
             env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, specOverride is null ? prefixSeeds : null));

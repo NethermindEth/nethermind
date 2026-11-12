@@ -4227,31 +4227,54 @@ public class TraceRpcModuleTests
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
     }
 
+    private static IEnumerable<TestCaseData> ReplayCopiesCases()
+    {
+        foreach (bool streaming in new[] { false, true })
+        {
+            string mode = streaming ? "streamed" : "buffered";
+            yield return new TestCaseData("trace_block", false, streaming).SetArgDisplayNames("trace_block", "no fork override", mode);
+            yield return new TestCaseData("trace_block", true, streaming).SetArgDisplayNames("trace_block", "fork override", mode);
+            yield return new TestCaseData("trace_replayBlockTransactions", false, streaming).SetArgDisplayNames("trace_replayBlockTransactions", "no fork override", mode);
+            yield return new TestCaseData("trace_transaction", false, streaming).SetArgDisplayNames("trace_transaction", "no fork override", mode);
+        }
+    }
+
     /// <summary>
-    /// Under another fork's rules the nonce the replay loads from state into each transaction can differ, so a
-    /// <c>trace_block</c> with a fork override runs on copies that keep the transaction's type and state.
+    /// A replay writes into each transaction it runs the nonce it loads from state, the sender it recovers and the gas it
+    /// spends, under the block's own fork or another, so it runs on copies that keep the transaction's type and state.
     /// </summary>
-    [Test]
-    public async Task trace_block_with_fork_override_replays_copies_of_the_block_transactions([Values] bool streaming)
+    [TestCaseSource(nameof(ReplayCopiesCases))]
+    public async Task Trace_replays_copies_of_the_block_transactions(string method, bool forkOverride, bool streaming)
     {
         List<Transaction> replayed = [];
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance),
             configurer: builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
-        TestRpcBlockchain chain = context.Blockchain;
+        using TestRpcBlockchain chain = context.Blockchain;
         chain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
 
-        Transaction cached = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyB, replayed);
+        ReplayCopies.Stored stored = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyB, replayed);
         Block head = chain.BlockTree.Head!;
-        ulong nonce = cached.Nonce;
+        string number = "0x" + head.Number.ToString("x");
 
-        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", "0x" + head.Number.ToString("x"), nameof(Istanbul));
+        // The serialized response is the whole stream, read to its end.
+        string response = method switch
+        {
+            "trace_block" when forkOverride => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number, nameof(Istanbul)),
+            "trace_block" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number),
+            "trace_replayBlockTransactions" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, number, new[] { "trace" }),
+            _ => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, stored.Hash),
+        };
 
+        JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(response)["error"], Is.Null, response);
-            Assert.That(cached.Nonce, Is.EqualTo(nonce));
-            ReplayCopies.AssertReplayedCopies(replayed, cached);
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"]?.Children().Select(static trace => (string?)trace["transactionHash"]), Has.Some.EqualTo(stored.Hash.ToString()),
+                "the replay traced the transaction");
+            Assert.That(chain.BlockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.None)!.Transactions[0], Is.SameAs(stored.Instance),
+                "the block tree keeps its own transaction");
+            ReplayCopies.AssertReplayedCopies(replayed, 1, stored);
         }
     }
 
