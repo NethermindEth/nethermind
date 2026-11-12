@@ -35,7 +35,7 @@ jobs:
   benchmark:
     name: Network benchmarks
     if: github.repository_owner == 'NethermindEth'
-    runs-on: benchmark
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     defaults:
       run:
