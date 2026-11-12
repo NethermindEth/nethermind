@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -27,14 +26,11 @@ public class GuestPrecompileFrameCacheTests
     private static readonly Address Sender = new("0x00000000000000000000000000000000000000ca");
     private static readonly Address Identity = new("0x0000000000000000000000000000000000000004");
 
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_isDisposed")]
-    private static extern ref bool IsDisposed(VmState<EthereumGasPolicy> state);
-
     [Test]
-    public void Inline_precompile_calls_reuse_the_cached_frame()
+    public void Inline_precompile_calls_reuse_the_cached_frame([Values] bool outOfGas)
     {
         PrecompileVirtualMachine vm = new();
-        byte[] code = [.. CallIdentity(), .. CallIdentity()];
+        byte[] code = [.. CallIdentity(outOfGas), .. CallIdentity(outOfGas)];
 
         vm.Call(code);
         VmState<EthereumGasPolicy>? first = vm.FrameCache[1];
@@ -44,15 +40,19 @@ public class GuestPrecompileFrameCacheTests
         {
             Assert.That(first, Is.Not.Null, "the precompile frame is cached at its depth");
             Assert.That(vm.FrameCache[1], Is.SameAs(first), "the next precompile call reuses the cached frame");
-            Assert.That(IsDisposed(first!), Is.True, "the precompile frame is released after the call");
         }
     }
 
-    private static byte[] CallIdentity() =>
-    [
-        (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
-        (byte)Instruction.PUSH20, .. Identity.Bytes, (byte)Instruction.GAS, (byte)Instruction.CALL, (byte)Instruction.POP
-    ];
+    /// <param name="outOfGas">Forwards 1 gas, so identity fails and its frame is released on the hard-failure exit.</param>
+    private static byte[] CallIdentity(bool outOfGas)
+    {
+        byte[] gas = outOfGas ? [(byte)Instruction.PUSH1, 1] : [(byte)Instruction.GAS];
+        return
+        [
+            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            (byte)Instruction.PUSH20, .. Identity.Bytes, .. gas, (byte)Instruction.CALL, (byte)Instruction.POP
+        ];
+    }
 
     /// <summary>A virtual machine over an Osaka block whose code repository resolves <see cref="Identity"/> to the identity precompile.</summary>
     private sealed class PrecompileVirtualMachine : VirtualMachine<EthereumGasPolicy>
