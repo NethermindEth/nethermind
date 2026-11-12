@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -48,9 +49,11 @@ public class PrewarmerTxAdapter(
             long probeStart = Stopwatch.GetTimestamp();
             _probeClass = 6;
             _probeFootprint = null;
+            int g0Bits = preWarmer.ProbeBitsAtMain();
             if (eligible && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
                 ProbeAdd(0, transaction, probeStart);
+                G0Add(footprint!.FromMempool ? 0 : 1, g0Bits, transaction, probeStart);
                 return result;
             }
 
@@ -62,8 +65,18 @@ public class PrewarmerTxAdapter(
             ProbeAdd(probeClass, transaction, probeStart);
             if (probeClass == 1)
             {
-                ProbeAdd(ProbeMissClass(_probeMissBits), transaction, probeStart);
+                int missClass = ProbeMissClass(_probeMissBits);
+                ProbeAdd(missClass, transaction, probeStart);
                 if ((_probeMissBits & 512) != 0) ProbeAdd(17, transaction, probeStart);
+                G0Add(missClass == 9 ? 4 : missClass == 7 ? 5 : 6, g0Bits, transaction, probeStart);
+            }
+            else if (_probeFootprint is not null)
+            {
+                G0Add(_probeFootprint!.FromMempool ? 2 : 3, g0Bits, transaction, probeStart);
+            }
+            else
+            {
+                G0Add(7, g0Bits, transaction, probeStart);
             }
             return executed;
         }
@@ -199,9 +212,11 @@ public class PrewarmerTxAdapter(
     {
         if (_blockExecutionContext.Header is null) return;
         long number = (long)_blockExecutionContext.Header.Number;
-        if (number == _probeBlock) return;
+        Hash256? hash = _blockExecutionContext.Header.Hash;
+        if (number == _probeBlock && hash == _probeHash) return;
         if (_probeBlock >= 0)
         {
+            G0Flush();
             System.Text.StringBuilder sb = new();
             sb.Append("HANDOFFPROBE block=").Append(_probeBlock);
             for (int i = 0; i < ProbeNames.Length; i++)
@@ -216,6 +231,49 @@ public class PrewarmerTxAdapter(
         Array.Clear(_probeGas);
         Array.Clear(_probeTicks);
         _probeBlock = number;
+        _probeHash = hash;
+    }
+
+    private static readonly string[] G0Names = ["rep_mp", "rep_blk", "rej_mp", "rej_blk", "m_running", "m_none", "m_other", "other"];
+    private readonly long[] _g0Count = new long[8];
+    private readonly long[] _g0Gas = new long[8];
+    private readonly long[] _g0Ticks = new long[8];
+    private Hash256? _probeHash;
+    private long _g0Seeded;
+    private long _g0StoredMark = Blockchain.Metrics.PrewarmMempoolRunsStored;
+    private long _g0TakenMark = Blockchain.Metrics.PrewarmMempoolRunsTakenOver;
+
+    private void G0Add(int outcome, int bits, Transaction tx, long start)
+    {
+        _g0Ticks[outcome] += Stopwatch.GetTimestamp() - start;
+        _g0Count[outcome]++;
+        _g0Gas[outcome] += (long)tx.SpentGas;
+        if (bits > 0 && (bits & 4096) != 0) _g0Seeded++;
+    }
+
+    private void G0Flush()
+    {
+        long stored = Blockchain.Metrics.PrewarmMempoolRunsStored;
+        long taken = Blockchain.Metrics.PrewarmMempoolRunsTakenOver;
+        long totalTicks = 0;
+        foreach (long t in _g0Ticks) totalTicks += t;
+        System.Text.StringBuilder sb = new();
+        sb.Append("G0PROBE block=").Append(_probeBlock).Append(" hash=").Append(_probeHash)
+            .Append(" tx_us=").Append(totalTicks * 1_000_000 / Stopwatch.Frequency);
+        for (int i = 0; i < G0Names.Length; i++)
+        {
+            sb.Append(' ').Append(G0Names[i]).Append('=').Append(_g0Count[i]).Append('/').Append(_g0Gas[i]).Append('/')
+                .Append(_g0Ticks[i] * 1_000_000 / Stopwatch.Frequency);
+        }
+
+        sb.Append(" mp_seeded=").Append(_g0Seeded).Append(" mp_stored_d=").Append(stored - _g0StoredMark).Append(" mp_taken_d=").Append(taken - _g0TakenMark);
+        Console.WriteLine(sb.ToString());
+        Array.Clear(_g0Count);
+        Array.Clear(_g0Gas);
+        Array.Clear(_g0Ticks);
+        _g0Seeded = 0;
+        _g0StoredMark = stored;
+        _g0TakenMark = taken;
     }
 
     private void ProbeAdd(int probeClass, Transaction tx, long start)
