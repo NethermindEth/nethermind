@@ -102,6 +102,21 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Non_null_array_of_an_empty_list_is_empty_and_the_reader_moves_past_it([Values] bool throughReader)
+    {
+        WithdrawalDecoder decoder = new();
+        RlpReader context = new(new byte[] { Rlp.EmptyListByte, 0x05 });
+        Withdrawal[] decoded = throughReader ? context.DecodeNonNullArray(decoder) : decoder.DecodeNonNullArray(ref context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.Empty);
+            Assert.That(context.Position, Is.EqualTo(1));
+            Assert.That(context.DecodeInt(), Is.EqualTo(5));
+        }
+    }
+
+    [Test]
     public void Decoder_non_null_array_rejects_empty_list_for_value_type_element()
     {
         static void Decode()

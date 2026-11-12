@@ -95,6 +95,8 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <inheritdoc/>
     public virtual T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
+        if (decoderContext.TrySkipEmptyList()) return [];
+
         int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
         decoderContext.GuardLimit(length, limit);

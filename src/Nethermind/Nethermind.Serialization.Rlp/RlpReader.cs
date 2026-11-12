@@ -493,6 +493,17 @@ public ref struct RlpReader
 
     public readonly byte PeekByte() => Data[Position];
 
+    /// <summary>Skips an empty list at the current position, if there is one.</summary>
+    /// <returns><see langword="true"/> if the reader was at an empty list and moved past it.</returns>
+    /// <remarks>An empty list decodes to an empty array whatever its element type or limit, so array decoders return early on it.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TrySkipEmptyList()
+    {
+        if (Position >= Data.Length || Data[Position] != Rlp.EmptyListByte) return false;
+        Position++;
+        return true;
+    }
+
     private readonly byte PeekByte(int offset) => Data[Position + offset];
 
     public void SkipBytes(int length) => Position += length;
@@ -587,6 +598,8 @@ public ref struct RlpReader
     {
         decoder ??= Rlp.GetDecoder<T>()
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
+
+        if (TrySkipEmptyList()) return [];
 
         int positionCheck = ReadSequenceLength() + Position;
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
