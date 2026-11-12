@@ -48,7 +48,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         HeaderDecoder decoder = new();
-        RlpReader decoderContext = new(decoder.Encode(header).Bytes);
+        RlpReader decoderContext = new(decoder.Encode(header));
 
         BlockHeader decoded = decoder.Decode(ref decoderContext, excludeHashes ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None)!;
 

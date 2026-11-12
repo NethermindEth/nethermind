@@ -77,13 +77,13 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithError("réverted ✓").TestObject;
 
             ReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage);
-            RlpReader reader = new(rlp.Bytes);
+            byte[] rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage);
+            RlpReader reader = new(rlp);
             TxReceipt deserialized = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.Storage);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(rlp.Bytes, Has.Length.EqualTo(decoder.GetLength(txReceipt, RlpBehaviors.Storage)));
+                Assert.That(rlp, Has.Length.EqualTo(decoder.GetLength(txReceipt, RlpBehaviors.Storage)));
                 Assert.That(deserialized.Error, Is.EqualTo("réverted ✓"));
             }
         }

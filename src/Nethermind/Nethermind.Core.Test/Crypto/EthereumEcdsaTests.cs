@@ -432,7 +432,7 @@ namespace Nethermind.Core.Test.Crypto
             .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+        private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
         public enum SignedField { Nonce, Signature, RecoveryId }
 

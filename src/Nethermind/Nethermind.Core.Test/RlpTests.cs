@@ -1006,7 +1006,7 @@ namespace Nethermind.Core.Test
         [TestCase(4, 65536)]
         public void Prefix_and_content_length_of_list(int prefixLength, int contentLength)
         {
-            byte[] data = Rlp.Encode(new byte[contentLength]);
+            byte[] data = RlpTestHelper.EncodeSequence(new byte[contentLength]);
 
             Assert.That(RlpTestHelper.PrefixAndContentLength(data), Is.EqualTo((prefixLength, contentLength)));
         }

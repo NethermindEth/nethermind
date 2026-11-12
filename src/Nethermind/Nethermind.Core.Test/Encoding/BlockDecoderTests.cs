@@ -273,7 +273,7 @@ public class BlockDecoderTests
         Block block = Build.A.Block.WithNumber(1).WithUncles(Build.A.BlockHeader.TestObject)
             .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
         BlockDecoder decoder = new();
-        RlpReader ctx = new(decoder.Encode(block).Bytes);
+        RlpReader ctx = new(decoder.Encode(block));
 
         Block decoded = decoder.Decode(ref ctx, RlpBehaviors.ExcludeHashes)!;
 
