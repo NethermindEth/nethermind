@@ -5,9 +5,12 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
+[assembly: InternalsVisibleTo("Nethermind.Facade")]
 
 namespace Nethermind.Evm;
 
@@ -17,7 +20,7 @@ namespace Nethermind.Evm;
 /// field. A key that differs from a field name only in case names that field. Keys are compared as UTF-8 bytes, so a valid
 /// key allocates nothing.
 /// </remarks>
-public sealed class OverrideFields
+internal sealed class OverrideFields
 {
     private readonly byte[][] _names;
 

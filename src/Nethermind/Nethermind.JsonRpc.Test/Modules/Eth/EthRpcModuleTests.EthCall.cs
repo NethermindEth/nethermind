@@ -1116,6 +1116,39 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Call_methods_check_a_precompile_move_against_the_fork_of_the_block_override(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool intoOsaka)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)1, Osaka.Instance)));
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        // P256VERIFY is a precompile from Osaka on.
+        object? stateOverride = JsonSerializer.Deserialize<object>("""{"0x0000000000000000000000000000000000000100":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""");
+        object blockOverride = new { number = intoOsaka ? "0x1" : "0x0" };
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, intoOsaka ? "0x0" : "latest", stateOverride, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), intoOsaka ? Is.Null : Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+    }
+
+    [Test]
+    public async Task Call_methods_check_account_override_keys(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "debug_traceCall")] string method,
+        [Values("\"bogusField\":\"0x1\"", "\"Balance\":\"0x2\"", "\"Code\":\"0x00\"")] string key)
+    {
+        using Context ctx = await Context.Create();
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc100000000000000000000000000000000000000"}""");
+        string stateOverride = "{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\"," + key + "}}";
+
+        string serialized = method == "debug_traceCall"
+            ? await RpcTest.TestSerializedRequest(ctx.Test.DebugRpcModule, method, transaction, "latest", JsonSerializer.Deserialize<object>("{\"stateOverrides\":" + stateOverride + "}"))
+            : await ctx.Test.TestEthRpc(method, transaction, "latest", JsonSerializer.Deserialize<object>(stateOverride));
+
+        // A key in another case names its field, so only a second key for the field or an unknown key is rejected.
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), key.StartsWith("\"Code\"") ? Is.Null : Is.EqualTo(ErrorCodes.InvalidParams), serialized);
+    }
+
+    [Test]
     public async Task Eth_call_puts_the_higher_of_two_moved_precompiles_at_their_destination([Values] bool higherListedFirst)
     {
         const string ecMul = "\"0x0000000000000000000000000000000000000007\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";

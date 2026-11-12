@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // As in Geth, overrides are validated before the call's fee fields.
-                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, specProvider.GetSpec(header))) is { } overrideError)
+                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header))) is { } overrideError)
                     return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
 
                 CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();

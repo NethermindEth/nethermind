@@ -107,23 +107,6 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
-    [Test]
-    public async Task Call_methods_check_account_override_keys(
-        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "debug_traceCall")] string method,
-        [Values("\"bogusField\":\"0x1\"", "\"Balance\":\"0x2\"", "\"Code\":\"0x00\"")] string key)
-    {
-        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        JsonElement call = ParseJson("{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}");
-        string stateOverride = "{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\"," + key + "}}";
-
-        string response = method == "debug_traceCall"
-            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, call, "latest", ParseJson("{\"stateOverrides\":" + stateOverride + "}"))
-            : await chain.TestEthRpc(method, call, "latest", ParseJson(stateOverride));
-
-        // A key in another case names its field, so only a second key for the field or an unknown key is rejected.
-        Assert.That(ErrorCode(response), key.StartsWith("\"Code\"") ? Is.Null : Is.EqualTo(ErrorCodes.InvalidParams), response);
-    }
-
     private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
     private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
