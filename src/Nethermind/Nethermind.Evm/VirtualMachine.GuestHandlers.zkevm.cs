@@ -131,6 +131,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
+        if (spec.SelfBalanceOpcodeEnabled)
+            lookup[(int)Instruction.SELFBALANCE] = AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
@@ -1868,6 +1870,40 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
         }
 
+        /// <summary>SELFBALANCE: the balance of the executing account, read off the state with no shell around the call.</summary>
+        /// <remarks>A short gas or a full stack runs the shared handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSelfBalance(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, SelfBalanceGasCost.GasCost))
+            {
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                ref readonly UInt256 balance = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in balance)), ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SelfBalanceOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
         /// <remarks>
         /// Immediates that run past the end of the code read the padding's zeros, as the EVM pads them. A short gas or
@@ -3303,9 +3339,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 else
                 {
                     ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref quotient);
-                    // The quotient must not alias an operand.
-                    EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
-                    divisor = result;
+                    if (ZiskFlag.IsActive)
+                    {
+                        // The ZisK library reads both operands before it writes, so the quotient takes the divisor's slot.
+                        EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out divisor);
+                    }
+                    else
+                    {
+                        // The quotient must not alias an operand.
+                        EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
+                        divisor = result;
+                    }
 
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
                     handlers = state.OpcodeHandlers;
