@@ -160,7 +160,7 @@ public class GuestDispatchDifferentialTests
     /// </remarks>
     [Test]
     public void Caller_continues_a_nested_call_on_the_handlers_its_gas_allows(
-        [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction op,
         [Values(0, 7, 15, 16)] int callDepth,
         [Values] bool retainsGas)
     {
@@ -169,7 +169,7 @@ public class GuestDispatchDifferentialTests
         [
             (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
             (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
-            .. op == Instruction.CALL ? new byte[] { (byte)Instruction.PUSH0 } : [],
+            .. op is Instruction.CALL or Instruction.CALLCODE ? new byte[] { (byte)Instruction.PUSH0 } : [],
             (byte)Instruction.PUSH20, .. target.Bytes,
             (byte)Instruction.PUSH2, 0xff, 0xff, (byte)op
         ];
