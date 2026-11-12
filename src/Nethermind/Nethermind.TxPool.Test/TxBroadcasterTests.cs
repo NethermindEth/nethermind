@@ -67,6 +67,22 @@ public class TxBroadcasterTests
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
+    public void Broadcast_failure_restarts_timer()
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(_ => throw new InvalidOperationException());
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, headInfo, _logManager);
+        timer.ClearReceivedCalls();
+
+        Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
+
+        timer.Received(1).Enabled = true;
+    }
+
+    [Test]
     public void should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
         ManualTimestamper timestamper = new(DateTime.UtcNow);
