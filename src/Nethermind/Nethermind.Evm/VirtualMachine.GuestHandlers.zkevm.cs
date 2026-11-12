@@ -2620,14 +2620,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         gas -= (nuint)cost;
                         if (size != 0)
-                        {
-                            if (TSource.InMemoryLayout)
-                                SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)size);
-                            else if (EvmPooledMemory.IsSwizzled)
-                                SwizzledMemory.Write(ref range, source.Slice((int)from, (int)size));
-                            else
-                                Bytes.Copy(source.Slice((int)from, (int)size), MemoryMarshal.CreateSpan(ref range, (int)size));
-                        }
+                            CopyFromSource<TSource>(ref range, source, from, (uint)size);
 
                         head -= 3;
                         sp = ref Moved(ref sp, -3);
@@ -2700,12 +2693,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 if (inSource)
                                 {
                                     copied = (uint)Math.Min(size, (ulong)source.Length - from);
-                                    if (TSource.InMemoryLayout)
-                                        SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)copied);
-                                    else if (EvmPooledMemory.IsSwizzled)
-                                        SwizzledMemory.Write(ref range, source.Slice((int)from, (int)copied));
-                                    else
-                                        Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
+                                    CopyFromSource<TSource>(ref range, source, from, copied);
                                 }
 
                                 if (copied < size)
@@ -2737,6 +2725,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>
+        /// Copies <paramref name="length"/> bytes of <paramref name="source"/> from <paramref name="from"/> into memory at
+        /// <paramref name="range"/>, in the memory layout.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void CopyFromSource<TSource>(ref byte range, ReadOnlySpan<byte> source, ulong from, uint length)
+            where TSource : struct, ICopySource
+        {
+            if (TSource.InMemoryLayout)
+                SwizzledMemory.Copy(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), (nint)length);
+            else if (EvmPooledMemory.IsSwizzled)
+                SwizzledMemory.Write(ref range, source.Slice((int)from, (int)length));
+            else
+                Bytes.Copy(source.Slice((int)from, (int)length), MemoryMarshal.CreateSpan(ref range, (int)length));
         }
 
         /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
