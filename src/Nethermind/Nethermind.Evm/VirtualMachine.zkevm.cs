@@ -224,11 +224,14 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>
     /// The frame loop would otherwise take the caller off its chain, enter the child, and on its return restore the
     /// caller's stack and enter its chain again. Only an untraced run nests: tracers observe the loop's order of events.
+    /// The caller must retain enough gas to cover its code length after forwarding gas, so nested frames cannot pay
+    /// for their unchecked tails with the same gas. Otherwise the frame loop reselects its handlers on return.
     /// </remarks>
     internal bool TryRunStagedFrameNested(ref EvmStack stack, out EvmExceptionType resumeResult)
     {
         VmState<TGasPolicy> child = Unsafe.As<VmState<TGasPolicy>>(ReturnData!);
-        if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth)
+        if (IsTracingActions || child.Env.CallDepth > MaxNestedCallDepth ||
+            GetExecutionGas(ref _currentState.Gas) < (ulong)stack.CodeLength)
         {
             resumeResult = EvmExceptionType.Suspend;
             return false;
