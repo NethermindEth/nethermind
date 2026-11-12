@@ -652,6 +652,7 @@ public class GuestDispatchDifferentialTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
+            Assert.That(Matches(complete, Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic, initial: Funded(ample))), Is.True);
             if (isStatic)
             {
                 Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StaticCallViolation));
