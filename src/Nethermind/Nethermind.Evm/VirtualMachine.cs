@@ -877,6 +877,10 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
+                if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                {
+                    TraceCodeDepositOutOfGas();
+                }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
@@ -1434,6 +1438,10 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
+                    if (codeDepositGasCost != ulong.MaxValue && !CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
+                    {
+                        TraceCodeDepositOutOfGas();
+                    }
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1460,6 +1468,15 @@ public partial class VirtualMachine<TGasPolicy>(
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceCodeDepositOutOfGas() =>
+        // Wrappers and composites must be traversed even when their aggregate flags match.
+        _txTracer.ForEach<ITxTracer, string>(
+            static tracer => tracer is not ITxTracerWrapper and not CompositeTxTracer
+                && tracer.IsTracingActions && !tracer.IsTracingInstructions && !tracer.IsTracingMemory,
+            "contract creation code storage out of gas",
+            static (tracer, error) => tracer.ReportActionErrorDetails(error));
 
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);

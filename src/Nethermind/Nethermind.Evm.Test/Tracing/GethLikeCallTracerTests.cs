@@ -749,7 +749,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     public enum ChildOutcome { StackUnderflow, InvalidInstruction, InvalidJumpDestination, StackOverflow, StaticCallViolation, PrecompileFailure, OutOfGas, Revert }
 
-    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert }
+    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert, ExecutionOutOfGas, Oversize, InvalidDepositOutOfGas }
 
     public enum TraceDispatch { Untraced, Cancelable, Traced }
 
@@ -816,7 +816,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
-    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch)
+    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch,
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode)
     {
         byte[] initCode = outcome switch
         {
@@ -824,9 +825,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             FailedCreate.InvalidInstruction => [(byte)Instruction.INVALID],
             FailedCreate.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
             FailedCreate.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            FailedCreate.InvalidDepositOutOfGas => DepositInitCode(1024, 0xEF),
+            FailedCreate.Oversize => DepositInitCode(CancunSpec.MaxCodeSize + 1),
+            FailedCreate.ExecutionOutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
             _ => Prepare.EvmCode.Revert(0, 0).Done
         };
-        byte[] code = Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).STOP().Done;
+        Prepare create = opcode == Instruction.CREATE
+            ? Prepare.EvmCode.Create(initCode, 0)
+            : Prepare.EvmCode.Create2(initCode, new byte[32], 0);
+        byte[] code = create.Op(Instruction.POP).STOP().Done;
 
         using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, outcome == FailedCreate.Revert ? 0 : 1, out ulong spentGas);
         NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
@@ -834,8 +841,22 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE), "type");
+            Assert.That(frame.Type, Is.EqualTo(opcode), "type");
             Assert.That(frame.GasUsed, Is.EqualTo(outcome == FailedCreate.Revert ? RevertGas : frame.Gas), "gasUsed");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract");
+            Assert.That(frame.Output.IsEmpty, Is.True, "failed creation output");
+            Assert.That(root.Error, Is.Null, "the parent survives a failed creation");
+            if (outcome is FailedCreate.DepositOutOfGas or FailedCreate.InvalidDeposit or FailedCreate.InvalidDepositOutOfGas
+                or FailedCreate.Oversize or FailedCreate.ExecutionOutOfGas)
+            {
+                string expectedError = outcome switch
+                {
+                    FailedCreate.DepositOutOfGas => "contract creation code storage out of gas",
+                    FailedCreate.InvalidDeposit or FailedCreate.InvalidDepositOutOfGas => "invalid code: must not begin with 0xef",
+                    _ => "out of gas"
+                };
+                Assert.That(frame.Error, Is.EqualTo(expectedError), "creation error precedence");
+            }
             Assert.That(frame.Error, Is.Not.Null, "error");
             if (outcome == FailedCreate.Revert)
             {
@@ -843,6 +864,179 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             }
 
             Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+        }
+    }
+
+    private static byte[] DepositInitCode(int length, byte firstByte = 0) => Prepare.EvmCode
+        .PushData(firstByte).PushData(0).Op(Instruction.MSTORE8)
+        .PushData(length).PushData(0).Op(Instruction.RETURN).Done;
+
+    public enum DepositOutcome { EnoughGas, InsufficientGas, InvalidCode, InvalidCodeAndInsufficientGas, Oversize, ExecutionOutOfGas }
+
+    private static IEnumerable<TestCaseData> RootDepositCases()
+    {
+        ForkActivation[] forks = [new(0), new(MainnetSpecProvider.HomesteadBlockNumber), MainnetSpecProvider.CancunActivation, MainnetSpecProvider.OsakaActivation];
+        foreach (ForkActivation activation in forks)
+        {
+            foreach (TraceDispatch dispatch in Enum.GetValues<TraceDispatch>())
+            {
+                yield return new TestCaseData(activation, DepositOutcome.EnoughGas, dispatch);
+                yield return new TestCaseData(activation, DepositOutcome.InsufficientGas, dispatch);
+            }
+        }
+        foreach (DepositOutcome outcome in new[] { DepositOutcome.InvalidCode, DepositOutcome.InvalidCodeAndInsufficientGas, DepositOutcome.Oversize, DepositOutcome.ExecutionOutOfGas })
+        {
+            foreach (TraceDispatch dispatch in Enum.GetValues<TraceDispatch>())
+            {
+                yield return new TestCaseData(MainnetSpecProvider.CancunActivation, outcome, dispatch);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(RootDepositCases))]
+    public void Root_create_code_deposit_diagnostic(ForkActivation activation, DepositOutcome outcome, TraceDispatch dispatch)
+    {
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        int length = outcome switch
+        {
+            DepositOutcome.InsufficientGas or DepositOutcome.InvalidCodeAndInsufficientGas => 1024,
+            DepositOutcome.Oversize => spec.MaxCodeSize + 1,
+            _ => 1
+        };
+        byte[] initCode = outcome == DepositOutcome.ExecutionOutOfGas
+            ? Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done
+            : DepositInitCode(length, outcome is DepositOutcome.InvalidCode or DepositOutcome.InvalidCodeAndInsufficientGas ? (byte)0xEF : (byte)0);
+        // 1024 bytes require 204800 deposit gas; this budget comfortably executes the short initcode,
+        // but cannot pay that deposit. The one-byte control requires only 200 deposit gas.
+        const ulong gasLimit = 100000;
+        (Block block, Transaction tx) = PrepareInitTx(activation, gasLimit, initCode);
+        Address address = ContractAddress.From(Sender, TestState.GetNonce(Sender));
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        using GethLikeTxMemoryTracer baseline = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, baseline);
+        using GethLikeTxTrace expectedStruct = baseline.BuildResult();
+
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(null));
+        using GethLikeTxMemoryTracer memory = new(tx, GethTraceOptions.Default);
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
+            _ => new CompositeTxTracer(memory.WithCancellation(CancellationToken.None),
+                new CompositeTxTracer(NullTxTracer.Instance, native).WithCancellation(CancellationToken.None))
+        };
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace result = native.BuildResult();
+        using GethLikeTxTrace actualStruct = memory.BuildResult();
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)result.CustomTracerResult!.Value!;
+        bool frontierEmpty = activation.BlockNumber == 0 && outcome == DepositOutcome.InsufficientGas;
+        bool success = outcome == DepositOutcome.EnoughGas || frontierEmpty;
+        string? error = outcome switch
+        {
+            DepositOutcome.EnoughGas => null,
+            DepositOutcome.InsufficientGas => frontierEmpty ? null : "contract creation code storage out of gas",
+            DepositOutcome.InvalidCode => "invalid code: must not begin with 0xef",
+            _ => "out of gas"
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE));
+            Assert.That(frame.Error, Is.EqualTo(error));
+            Assert.That(frame.Gas, Is.EqualTo(gasLimit));
+            Assert.That(frame.GasUsed, Is.EqualTo(receipt.SpentGas));
+            if (!success) Assert.That(frame.GasUsed, Is.EqualTo(gasLimit));
+            Assert.That(frame.To, Is.EqualTo(success ? address : null));
+            Assert.That(frame.Output.ToArray(), Is.EqualTo(receipt.Output));
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
+            if (success) Assert.That(TestState.GetCode(address), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+        }
+        if (dispatch == TraceDispatch.Traced) AssertDepositStructTrace(actualStruct, expectedStruct);
+    }
+
+    private static IEnumerable<TestCaseData> ChildDepositCases()
+    {
+        foreach (ForkActivation activation in new ForkActivation[] { new(0), new(MainnetSpecProvider.HomesteadBlockNumber), MainnetSpecProvider.OsakaActivation })
+        {
+            foreach (int length in new[] { 1, 1024 })
+            {
+                yield return new TestCaseData(activation, Instruction.CREATE, length, false);
+            }
+        }
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, false);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE, 1024, true);
+        yield return new TestCaseData(MainnetSpecProvider.OsakaActivation, Instruction.CREATE2, 1024, true);
+    }
+
+    [TestCaseSource(nameof(ChildDepositCases))]
+    public void Child_create_code_deposit_diagnostic(ForkActivation activation, Instruction opcode, int length, bool onlyTopCall)
+    {
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        byte[] initCode = DepositInitCode(length);
+        byte[] salt = new byte[32];
+        Prepare create = opcode == Instruction.CREATE
+            ? Prepare.EvmCode.Create(initCode, 0)
+            : Prepare.EvmCode.Create2(initCode, salt, 0);
+        // Return the CREATE result, so a surviving parent proves whether the address or zero was pushed.
+        byte[] code = create.PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        (Block block, Transaction tx) = PrepareTx(activation, 100000, code);
+        ulong nonce = TestState.GetNonce(Recipient);
+        Address address = opcode == Instruction.CREATE ? ContractAddress.From(Recipient, nonce) : ContractAddress.From(Recipient, salt, initCode);
+        UInt256 balance = TestState.GetBalance(Recipient);
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        using GethLikeTxMemoryTracer baseline = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, baseline);
+        using GethLikeTxTrace expectedStruct = baseline.BuildResult();
+        NativeCallTracer native = new(tx, spec, GetGethTraceOptions(onlyTopCall ? OnlyTopCall : null));
+        GethLikeTxMemoryTracer memory = new(tx, GethTraceOptions.Default);
+        using CompositeTxTracer tracer = new(memory.WithCancellation(CancellationToken.None),
+            new CompositeTxTracer(NullTxTracer.Instance, native).WithCancellation(CancellationToken.None));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace result = native.BuildResult();
+        using GethLikeTxTrace actualStruct = memory.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)result.CustomTracerResult!.Value!;
+        bool frontierEmpty = activation.BlockNumber == 0 && length == 1024;
+        bool success = length == 1 || frontierEmpty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Error, Is.Null, "the parent survives");
+            Assert.That(root.GasUsed, Is.EqualTo(receipt.SpentGas));
+            Assert.That(root.Output.ToArray(), Is.EqualTo(success ? address.Bytes.PadLeft(32) : new byte[32]));
+            Assert.That(root.Calls, Has.Count.EqualTo(onlyTopCall ? 0 : 1));
+            Assert.That(TestState.AccountExists(address), Is.EqualTo(success));
+            if (success) Assert.That(TestState.GetCode(address), Is.EqualTo(frontierEmpty ? Array.Empty<byte>() : new byte[length]));
+            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(nonce + 1));
+            Assert.That(TestState.GetBalance(Recipient), Is.EqualTo(balance + tx.Value));
+        }
+        if (!onlyTopCall)
+        {
+            NativeCallTracerCallFrame child = root.Calls.AssertSingle();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(child.Type, Is.EqualTo(opcode));
+                Assert.That(child.Error, Is.EqualTo(success ? null : "contract creation code storage out of gas"));
+                Assert.That(child.To, Is.EqualTo(success ? address : null));
+                Assert.That(child.Input.ToArray(), Is.EqualTo(initCode));
+                Assert.That(child.Output.ToArray(), Is.EqualTo(success ? new byte[length] : Array.Empty<byte>()));
+                if (length == 1024) Assert.That(child.GasUsed, Is.EqualTo(child.Gas));
+            }
+        }
+        AssertDepositStructTrace(actualStruct, expectedStruct);
+    }
+
+    private static void AssertDepositStructTrace(GethLikeTxTrace actual, GethLikeTxTrace expected)
+    {
+        Assert.That(actual.Entries, Has.Count.EqualTo(expected.Entries.Count));
+        for (int i = 0; i < expected.Entries.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Entries[i].Error, Is.EqualTo(expected.Entries[i].Error), $"entry {i} error");
+                Assert.That(actual.Entries[i].GasCost, Is.EqualTo(expected.Entries[i].GasCost), $"entry {i} cost");
+                Assert.That(actual.Entries[i].Gas, Is.EqualTo(expected.Entries[i].Gas), $"entry {i} gas");
+            }
         }
     }
 
@@ -884,13 +1078,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private sealed class GasSpentTracer : TxTracer
     {
         public ulong SpentGas { get; private set; }
+        public byte[] Output { get; private set; } = [];
         public override bool IsTracingReceipt => true;
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
-            SpentGas = gasSpent.SpentGas;
+            (SpentGas, Output) = (gasSpent.SpentGas, output);
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
-            SpentGas = gasSpent.SpentGas;
+            (SpentGas, Output) = (gasSpent.SpentGas, output);
     }
 
     [Test]
