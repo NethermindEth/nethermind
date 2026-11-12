@@ -56,6 +56,48 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private static readonly (string Payload, string Diagnostic)[] RawBlockDecodeCases =
+    [
+        ("0xdeadbeef", "rlp: value size exceeds available input length"),
+        ("0xc1", "rlp: value size exceeds available input length"),
+        ("0xf864", "rlp: value size exceeds available input length"),
+        ("0xfb80000000", "rlp: value size exceeds available input length"),
+        ("0xfbffffffff", "rlp: value size exceeds available input length"),
+        ("0xfc01", "rlp: value size exceeds available input length"),
+        ("0xfc0100000000", "rlp: value size exceeds available input length"),
+        ("0xff0100000000000000", "rlp: value size exceeds available input length"),
+        ("0xffffffffffffffffff", "rlp: value size exceeds available input length"),
+        ("0xf801", "RLP length below 56 must use the short form"),
+        ("0xf90038", "RLP length has leading zero bytes"),
+        ("0xf83af9ffff" + new string('0', 110), "RLP is truncated"),
+        ("0xc0", "rlp: too few elements for types.extblock"),
+        ("0x", "EOF")
+    ];
+
+    [Test]
+    public async Task Debug_traceBlock_preserves_decode_diagnostic(
+        [ValueSource(nameof(RawBlockDecodeCases))] (string Payload, string Diagnostic) input, [Values] bool streamMode,
+        [Values("debug_traceBlock", "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method)
+    {
+        using Context context = await Context.Create();
+        object options = new { streamMode, tracer = "noopTracer" };
+        object[] parameters = method switch
+        {
+            "debug_traceTransactionInBlockByHash" => [input.Payload, TestItem.KeccakA, options],
+            "debug_traceTransactionInBlockByIndex" => [input.Payload, 0, options],
+            _ => [input.Payload, options]
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"could not decode block: {input.Diagnostic}"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     [Test]
     public async Task Specified_block_empty_tracer_uses_default_opcode_logger(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool streamMode)
@@ -1045,7 +1087,7 @@ public partial class DebugRpcModuleTests
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
                 if (invalidRlp)
-                    Assert.That((string?)json["error"]?["message"], Does.Contain("Error decoding block RLP"), response);
+                    Assert.That((string?)json["error"]?["message"], Does.Contain("could not decode block:"), response);
             }
         }
         else
@@ -1354,11 +1396,11 @@ public partial class DebugRpcModuleTests
             ("genesis", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("genesis", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("genesis", "5s", false, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
-            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
-            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
+            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
             ("empty", "5s", false, null, null, raw, null, null),
             ("empty", "5s", true, null, null, raw, null, null),
-            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
             ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("empty", "bad", null, noop, null, raw, null, null),
             ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
@@ -2539,7 +2581,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(actual["result"], Is.Null, response);
                 Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
-                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.Contain("decoding block RLP"));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.StartWith("could not decode block:"));
             }
             return;
         }
@@ -3205,7 +3247,7 @@ public partial class DebugRpcModuleTests
             else
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain("decoding block RLP"), response);
+                Assert.That((string?)json["error"]?["message"], Does.StartWith("could not decode block:"), response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
