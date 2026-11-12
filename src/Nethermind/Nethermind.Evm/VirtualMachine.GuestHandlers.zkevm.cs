@@ -155,6 +155,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MUL] = AsTableEntry(&RawCalliHelper.ExecuteMul);
         lookup[(int)Instruction.DIV] = AsTableEntry(&RawCalliHelper.ExecuteDiv);
         lookup[(int)Instruction.MOD] = AsTableEntry(&RawCalliHelper.ExecuteMod);
+        lookup[(int)Instruction.SMOD] = AsTableEntry(&RawCalliHelper.ExecuteSMod);
         lookup[(int)Instruction.ADDMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpAddMod>);
         lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
         lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
@@ -3477,6 +3478,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpDiv, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>SMOD of two operands with no sign bit set, which is their MOD.</summary>
+        /// <remarks>Runs <see cref="ExecuteMod"/>; a negative operand, a short stack or gas runs the shared SMOD handler.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSMod(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            // The sign bits end the top limbs of the dividend and the divisor.
+            nint handler = head > 1 &&
+                ((Unsafe.Add(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1)), 3) | Unsafe.Add(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2)), 3)) >> 63) == 0
+                ? Entry(&ExecuteMod)
+                : Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpSMod, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, handler);
         }
 
         /// <summary>MOD of a dividend below 2^64 by a divisor below 2^64, or by a power of two, which masks the dividend.</summary>
