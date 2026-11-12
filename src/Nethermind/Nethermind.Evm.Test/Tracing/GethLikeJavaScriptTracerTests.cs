@@ -96,7 +96,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         foreach (int length in new[] { 0, 1, 19, 20, 21, 32 })
         {
-            byte[] bytes = Enumerable.Range(1, length).Select(static value => (byte)value).ToArray();
+            byte[] bytes = new byte[length];
+            for (int i = 0; i < length; i++)
+                bytes[i] = (byte)(i + 1);
             string inputHex = bytes.ToHexString(withZeroX: true);
             string addressHex = "0x" + inputHex[2..].PadLeft(40, '0')[^40..];
             string array = "[" + string.Join(",", bytes) + "]";
