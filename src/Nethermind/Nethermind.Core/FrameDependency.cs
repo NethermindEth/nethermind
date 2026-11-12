@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
@@ -206,15 +205,15 @@ public static class Eip8288Dependencies
 
     private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, bool sphincs)
     {
-        List<byte> entries = new(dependencies.Count * 64);
+        KeccakHash hash = KeccakHash.Create();
         foreach (FrameDependency dependency in dependencies)
         {
             if ((dependency.Scheme == Eip8288Constants.LeanSphincsScheme) != sphincs) continue;
-            entries.AddRange(dependency.DataHash.Bytes);
-            entries.AddRange(dependency.VerificationKey.Bytes);
+            hash.Update(dependency.DataHash.Bytes);
+            hash.Update(dependency.VerificationKey.Bytes);
         }
 
-        return ValueKeccak.Compute(CollectionsMarshal.AsSpan(entries));
+        return hash.GenerateValueHash();
     }
 
     /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
