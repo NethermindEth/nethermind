@@ -20,8 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 10;
-    private const int MaxRecursiveInputs = 16;
+    private const uint ExpectedAbiVersion = 11;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
@@ -39,8 +38,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
             Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
-                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
-                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
+                Eip8288Constants.MaxInnerProofsPerStep, Eip8288Constants.LeanSphincsWitnessBytes,
+                Eip8288Constants.MaxClaimsPerBatchLeaf, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -212,7 +211,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     internal static byte[] SerializeInput(AggregationInput input)
     {
-        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > MaxRecursiveInputs || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.Discards.Count > Eip8288Constants.MaxProofDependencies
+            || InnerProofs(input) > Eip8288Constants.MaxInnerProofsPerStep)
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
@@ -235,8 +235,30 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
         writer.Write(input.Discards.Count);
         foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
+        // An optional trailing section, absent when there are no batch leaves.
+        if (input.BatchLeaves.Count != 0)
+        {
+            writer.Write(input.BatchLeaves.Count);
+            foreach (BatchLeafInput leaf in input.BatchLeaves)
+            {
+                if (leaf.Claims.Count is 0 or > Eip8288Constants.MaxClaimsPerBatchLeaf) throw new ArgumentException("Invalid batch leaf claims", nameof(input));
+                writer.Write(leaf.VerificationKeyHash.Bytes);
+                writer.Write(leaf.Claims.Count);
+                foreach (ValueHash256 claim in leaf.Claims) writer.Write(claim.Bytes);
+                WriteBlob(writer, leaf.Proof.Span);
+            }
+        }
         if (stream.Length > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large", nameof(input));
         return stream.ToArray();
+    }
+
+    /// <summary>EIP-8288 inner proofs of one step: direct leanSTARK witnesses, batch leaves and recursive proofs.</summary>
+    private static int InnerProofs(AggregationInput input)
+    {
+        int count = input.BatchLeaves.Count + input.RecursiveProofs.Count;
+        foreach (FrameDependency dep in input.Deps)
+            if (dep.Scheme == Eip8288Constants.LeanStarkScheme) count++;
+        return count;
     }
 
     private static void WriteDependency(BinaryWriter writer, FrameDependency dep)

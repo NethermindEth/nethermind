@@ -24,15 +24,20 @@ public static class Eip8288Constants
     /// <remarks>The dependency-list limit of the circuit behind the pinned <see cref="AggregatedVk"/>, not a FOCIL omission bound;
     /// EIP-8288 has no block dependency quota. Mode-1 wrapper proofs above it are invalid (EIP-8288), discarded without penalty;
     /// an inclusion-list proof above it imposes no obligation; a block whose dependencies exceed it is invalid here, since no
-    /// proof under that key can cover it, as with <see cref="MaxAggregateProofBytes"/>.</remarks>
+    /// proof under that key can cover it, as with <see cref="MaxAggregateProofBytes"/>. EIP-8288 requires an aggregation output
+    /// capacity of at least <c>MAX_RLP_BLOCK_SIZE // 96</c>, which this prototype guest does not reach.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>Maximum leanSTARK dependencies in one dependency list of the pinned recursive guest, selected, child and discard
-    /// lists alike.</summary>
-    /// <remarks>Part of the circuit limit like <see cref="MaxProofDependencies"/>: a statement over more is split or deferred by the
-    /// builder, a mode-1 wrapper proof over it is invalid, an inclusion-list proof over it imposes no obligation, and a block over
-    /// it is invalid here, since no proof under the pinned <see cref="AggregatedVk"/> can cover it.</remarks>
-    public const int MaxGenericStarkProofs = 16;
+    /// <summary>EIP-8288 <c>MAX_CLAIMS_PER_BATCH_LEAF</c> (TBD in the EIP): claims one leanSTARK batch leaf may prove.</summary>
+    /// <remarks>A parameter of the pinned guest, so changing it changes <see cref="AggregatedVk"/>. It bounds a single leaf only;
+    /// recursive aggregation combines leaves into larger dependency lists.</remarks>
+    public const int MaxClaimsPerBatchLeaf = 16;
+
+    /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): direct leanSTARK proofs, batch leaves and recursive
+    /// proofs verified by one aggregation step together.</summary>
+    /// <remarks>One native aggregation call is a step; the pinned guest realizes it as a tree of smaller nodes under the same
+    /// <see cref="AggregatedVk"/>. Larger inputs need further steps.</remarks>
+    public const int MaxInnerProofsPerStep = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
     public const int MaxLeanStarkInstructions = 2048;
@@ -106,5 +111,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("0ec59d6f0da0b9d769620f1b0142bcac81d5561a2599ae670badcb4edbfa5736");
 }

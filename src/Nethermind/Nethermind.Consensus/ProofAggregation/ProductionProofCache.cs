@@ -151,7 +151,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         ValueHash256 statement = depsHash;
         ArgumentNullException.ThrowIfNull(input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies
-            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies)
+            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxProofDependencies
+            // Batch leaves are private to their owner's own aggregation; no wrapper or block carries one to this cache.
+            || input.BatchLeaves.Count != 0)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)

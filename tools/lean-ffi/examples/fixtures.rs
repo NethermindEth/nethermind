@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-use nethermind_lean::{aggregated_vk, keccak, prove_stark};
+use nethermind_lean::{aggregated_vk, batch_hash, keccak, prove_stark};
 fn main() {
     let directory = std::env::args().nth(1).expect("fixture output directory");
     if directory == "--sign-message" {
@@ -54,14 +54,29 @@ fn main() {
         multi_keys.extend_from_slice(&sphincs::sign(&sk, &message).to_bytes());
     }
     save("sphincs-multi-keys.bin", &multi_keys);
-    let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";
-    let mut public_input = [0; 32];
-    public_input[0] = 7;
-    public_input[16] = 9;
-    let (proof, key) = prove_stark(source, &public_input).unwrap();
+    // A verifier program accepting any statement: one key proves the singleton and the batch leaf below.
+    let source = "from snark_lib import *\ndef main():\n    x = HeapBuf(2)\n    x[1] = 3\n    x[GEN] = x[1] * x[1]\n    return\n";
+    let mut claim = [0; 32];
+    claim[0] = 7;
+    claim[16] = 9;
+    let (proof, key) = prove_stark(source, &batch_hash(&[claim])).unwrap();
     save("stark-key.bin", &key);
-    save("stark-message.bin", &public_input);
+    save("stark-message.bin", &claim);
     save("stark-proof.bin", &proof);
+    let claims = [keccak(b"batch claim 0"), keccak(b"batch claim 1")];
+    let claims = if claims[0] < claims[1] {
+        claims
+    } else {
+        [claims[1], claims[0]]
+    };
+    let (batch, batch_key) = prove_stark(source, &batch_hash(&claims)).unwrap();
+    assert_eq!(batch_key, key);
+    save("stark-batch-claims.bin", &claims.concat());
+    save("stark-batch-proof.bin", &batch);
+    for (index, claim) in claims.iter().enumerate() {
+        let (single, _) = prove_stark(source, &batch_hash(&[*claim])).unwrap();
+        save(&format!("stark-batch-singleton-{index}.bin"), &single);
+    }
     let key = aggregated_vk();
     save("aggregated-key.bin", &key);
     println!(

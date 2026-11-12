@@ -378,8 +378,9 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void BlockProductionTransactionPicker_caps_generic_stark_verification_work([Values(16, 17)] int count)
+        public void BlockProductionTransactionPicker_counts_generic_stark_claims_only_against_the_list_bound([Values(16, 17)] int count)
         {
+            // EIP-8288 batch leaves: leanSTARK claims have no cap of their own beyond the proof's dependency list.
             FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
                 new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -392,8 +393,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
             Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;
             BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, transaction, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
-            Assert.That(result.Action, Is.EqualTo(count == 16 ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
-            if (count == 17) Assert.That(result.Reason, Is.EqualTo("Generic STARK proof count limit exceeded"));
+            Assert.That(result.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
         }
 
         [Test]

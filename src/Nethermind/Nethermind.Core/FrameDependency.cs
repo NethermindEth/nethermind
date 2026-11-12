@@ -220,22 +220,12 @@ public static class Eip8288Dependencies
     /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
     public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
 
-    /// <summary>The leanSTARK dependencies in <paramref name="dependencies"/>, repeats included.</summary>
-    public static int CountLeanStark(IEnumerable<FrameDependency> dependencies)
-    {
-        int count = 0;
-        foreach (FrameDependency dependency in dependencies)
-            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) count++;
-        return count;
-    }
-
     /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
-    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
-    /// leanSTARK.</summary>
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>.</summary>
     /// <remarks>The circuit's dependency-list limit: a statement over it is split or deferred when built and a mode-1 proof over it
     /// is invalid when received (EIP-8288).</remarks>
     public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
-        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies;
 
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)

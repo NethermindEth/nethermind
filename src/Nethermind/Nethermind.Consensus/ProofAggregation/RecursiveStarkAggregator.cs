@@ -79,6 +79,8 @@ public static class RecursiveStarkAggregator
             if (proof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             size += 8 + (long)proof.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + proof.Proof.Length;
         }
+        if (input.BatchLeaves.Count != 0) size += 4;
+        foreach (BatchLeafInput leaf in input.BatchLeaves) size += 40 + 32L * leaf.Claims.Count + leaf.Proof.Length;
         return size;
     }
 

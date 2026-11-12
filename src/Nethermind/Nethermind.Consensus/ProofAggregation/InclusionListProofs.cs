@@ -111,8 +111,8 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
-    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or more than
-    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at most that
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies is not verified: the pinned
+    /// guest commits to at most that
     /// many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
     /// dependency-bearing obligation.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)

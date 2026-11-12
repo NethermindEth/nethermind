@@ -115,7 +115,7 @@ public class LeanProofBudgetTests
     public void Proof_union_limit_rejects_a_new_claim_but_preserves_existing_coverage([Values] bool generic)
     {
         LeanProofBudget budget = new();
-        int maximum = generic ? Eip8288Constants.MaxGenericStarkProofs : Eip8288Constants.MaxProofDependencies;
+        int maximum = Eip8288Constants.MaxProofDependencies;
         byte scheme = generic ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
         FrameDependency[] dependencies = new FrameDependency[maximum];
         for (int i = 0; i < dependencies.Length; i++)
@@ -128,7 +128,7 @@ public class LeanProofBudgetTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(budget.TryPrepare(new() { Deps = [extra], Witnesses = [new byte[] { 1 }] }, [extra], out _, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(generic ? "Generic STARK proof count limit exceeded" : "Dependency proof count limit exceeded"));
+            Assert.That(error, Is.EqualTo("Dependency proof count limit exceeded"));
         }
     }
 

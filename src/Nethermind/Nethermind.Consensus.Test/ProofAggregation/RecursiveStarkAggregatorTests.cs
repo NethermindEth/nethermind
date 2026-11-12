@@ -396,7 +396,7 @@ public class RecursiveStarkAggregatorTests
             dependencies[i] = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(i.ToString()), default);
             children[i] = new([dependencies[i]], LeanProofTestEnvelope.Create([dependencies[i]]));
         }
-        GenericBoundedVerifier verifier = new();
+        StepBoundedVerifier verifier = new();
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependencies[0]]);
         byte[] proof = RecursiveStarkAggregator.Prove(new()
         {
@@ -528,7 +528,7 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
-    private sealed class GenericBoundedVerifier : ILeanProofVerifier
+    private sealed class StepBoundedVerifier : ILeanProofVerifier
     {
         public int ProofCalls { get; private set; }
         public void EnsureAvailable() { }
@@ -541,7 +541,7 @@ public class RecursiveStarkAggregatorTests
             {
                 Assert.That(RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
                 Assert.That(actual, Is.EqualTo(hash));
-                Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
+                Assert.That(input.RecursiveProofs.Count + input.Deps.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxInnerProofsPerStep));
             }
             ProofCalls++;
             return hash.ToByteArray();
