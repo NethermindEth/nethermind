@@ -79,9 +79,13 @@ public class OptimismEthRpcModuleTest
         return rf;
     }
 
-    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null) =>
-        TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
+    /// <param name="bridge">Replaces the chain's blockchain bridge; without it the chain keeps its own.</param>
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null, IBlockchainBridge? bridge = null)
+    {
+        TestRpcBlockchain.Builder<TestRpcBlockchain> builder = TestRpcBlockchain.ForTest(sealEngineType: SealEngineType.Optimism);
+        if (bridge is not null) builder = builder.WithBlockchainBridge(bridge);
+
+        return builder
             .WithBlockFinder(blockFinder)
             .WithReceiptFinder(receiptFinder)
             .WithOptimismEthRpcModule(
@@ -91,6 +95,7 @@ public class OptimismEthRpcModuleTest
                 sealer: Substitute.For<ITxSealer>(),
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build(specProvider);
+    }
 
     private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
     {
@@ -1156,6 +1161,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
@@ -1230,6 +1236,7 @@ public class OptimismEthRpcModuleTest
                 txIndex: receipt.Index,
                 blockTimestamp: 0,
                 baseFee: 0,
+                spec: Cancun.Instance,
                 receipt: receipt));
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
@@ -1721,6 +1728,30 @@ public class OptimismEthRpcModuleTest
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{(byHash ? block.Hash : block.Number)}}"},"id":67}"""));
     }
 
+    [Test]
+    public async Task Transaction_receipt_of_a_block_pruned_below_the_lowest_served_block_returns_pruned_history([Values] bool bodyPrunedAfterTheReceiptRead)
+    {
+        Block block = Build.A.Block.WithNumber(LowestServedBlock - 2).TestObject;
+        IBlockFinder blockFinder = FinderWithoutTheBodyOf(block);
+        blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.RequireCanonical).Returns(block.Header);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(TestItem.KeccakA).Returns(block.Hash);
+        // The bridge finds no receipt, or finds one whose block the module then no longer finds.
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        if (bodyPrunedAfterTheReceiptRead)
+            bridge.GetTxReceiptInfo(TestItem.KeccakA).Returns((Build.A.Receipt.WithBlockHash(block.Hash).TestObject, 0UL, new TxGasInfo(1), 0));
+        using TestRpcBlockchain rpc = await BuildOptimismRpc(blockFinder, receiptFinder, bridge: bridge);
+
+        string pruned = await rpc.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA);
+        string unknown = await rpc.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}"""));
+            Assert.That(unknown, Is.EqualTo(NullResult), "an unknown transaction");
+        }
+    }
+
     private const string UnknownHash = "0x0000000000000000000000000000000000000000000000000000000000000001";
     private const string HeaderNotFound = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"header not found"},"id":67}""";
     private const string UnknownBlock = """{"jsonrpc":"2.0","error":{"code":-39001,"message":"Unknown block error"},"id":67}""";
@@ -1775,7 +1806,7 @@ internal static class TestRpcBlockchainExt
             new EthSyncingInfo(blockchain.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
-            new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
+            new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider, blockchain.RpcConfig),
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,

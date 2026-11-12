@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
-            int size = message.Content.ReadableBytes;
+            int size = message.Content.Length;
             switch (message.PacketType)
             {
                 case Eth65MessageCode.NewPooledTransactionHashes:
@@ -75,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message);
                             ReportIn(newPooledTxMsg, size);
                             Handle(newPooledTxMsg);
                         }

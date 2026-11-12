@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -257,7 +258,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
         try
         {
-            return Decode(memoryOwner.Memory);
+            return Decode(memoryOwner.Memory, blockHash);
         }
         finally
         {
@@ -268,11 +269,11 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// <returns>The block, or <see langword="null"/> when the stored block does not decode as the layout this reader
     /// knows, so that a body field a later fork adds, or anything else unexpected, leaves the block to the block tree's
     /// decoder instead of failing the request.</returns>
-    private HashesOnlyBlock? Decode(Memory<byte> memory)
+    private HashesOnlyBlock? Decode(Memory<byte> memory, Hash256 blockHash)
     {
         try
         {
-            return DecodeKnownLayout(memory);
+            return DecodeKnownLayout(memory, blockHash);
         }
         catch (Exception)
         {
@@ -283,30 +284,30 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// <remarks>Mirrors <see cref="BlockDecoder"/> and <see cref="BlockBodyDecoder.DecodeUnwrapped"/>, with its count
     /// limits: header, then transactions, uncles and optional withdrawals. The reader is span-backed so that nothing decoded keeps a slice of
     /// the database buffer, which is released on return.</remarks>
-    private HashesOnlyBlock? DecodeKnownLayout(Memory<byte> memory)
+    private HashesOnlyBlock? DecodeKnownLayout(Memory<byte> memory, Hash256 blockHash)
     {
-        RlpReader reader = new(memory.Span);
-        if (reader.IsNextItemEmptyList())
+        RlpReader outer = new(memory.Span);
+        if (outer.IsNextItemEmptyList())
         {
             return null;
         }
 
-        int sequenceLength = reader.ReadSequenceLength();
-        int blockEnd = reader.Position + sequenceLength;
-        BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref reader);
+        RlpReader reader = outer.EnterSequence<OffFlag>(out int itemLength);
+        BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
+        header.Hash = blockHash;
         ValueHash256[] transactionHashes = ReadTransactionHashes(ref reader, memory, header);
-        BlockHeader[] uncles = reader.DecodeNonNullArray(_headerDecoder, limit: BlockBodyDecoder.UnclesCountLimit);
-        Withdrawal[]? withdrawals = reader.PeekNumberOfItemsRemaining(blockEnd, 1) > 0
-            ? reader.DecodeNonNullArray(WithdrawalDecoder, limit: BlockBodyDecoder.WithdrawalsCountLimit)
+        BlockHeader[] uncles = _headerDecoder.DecodeNonNullArray(ref reader, RlpBehaviors.TrustedInput, BlockBodyDecoder.UnclesCountLimit);
+        Withdrawal[]? withdrawals = reader.HasNext
+            ? WithdrawalDecoder.DecodeNonNullArray(ref reader, RlpBehaviors.TrustedInput, BlockBodyDecoder.WithdrawalsCountLimit)
             : null;
-        if (reader.Position != blockEnd)
+        if (reader.HasNext)
         {
             return null;
         }
 
         Block block = new(header, new BlockBody([], uncles, withdrawals))
         {
-            EncodedSize = Rlp.LengthOfSequence(sequenceLength)
+            EncodedSize = itemLength
         };
         return new HashesOnlyBlock(block, transactionHashes);
     }
@@ -315,12 +316,10 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// the way the transaction decoder sets <see cref="Transaction.Hash"/>.</remarks>
     private static ValueHash256[] ReadTransactionHashes(ref RlpReader reader, Memory<byte> memory, BlockHeader header)
     {
-        int contentLength = reader.ReadSequenceLength();
-        RlpLimit limit = BlockBodyDecoder.TransactionsCountLimit;
-        int count = reader.PeekNumberOfItemsRemaining(reader.Position + contentLength, limit.Limit + 1);
-        reader.GuardLimit(count, limit);
-        ReceiptRecoveryBlock transactions = new(null, header, memory.Slice(reader.Position, contentLength), count);
-        reader.SkipBytes(contentLength);
+        RlpReader items = reader.EnterSequence<OffFlag>(out int itemLength);
+        int count = items.CountItems<OffFlag>(BlockBodyDecoder.TransactionsCountLimit);
+        ReceiptRecoveryBlock transactions = new(null, header, memory.SliceOf(items.ReadRaw(items.Remaining)), count);
+        reader.ExitSequence(items, itemLength);
         if (count == 0)
         {
             return [];

@@ -11,6 +11,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -188,7 +189,7 @@ internal static class GetPayloadDirectResponseWriter
         int length = decoder.GetLength(blockAccessList, RlpBehaviors.None);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-        RlpWriter rlpWriter = new(buffer);
+        RlpWriter rlpWriter = RlpWriter.ContentWriter(buffer.AsSpan(0, length));
         decoder.Encode(ref rlpWriter, blockAccessList);
         HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
         ArrayPool<byte>.Shared.Return(buffer);

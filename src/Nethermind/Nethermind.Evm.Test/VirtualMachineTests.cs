@@ -93,6 +93,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b", 21011UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_Jump"),
         new TestCaseData("60016005575b", 21015UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpI_charge_out_of_gas"),
         new TestCaseData("60016005575b", 21016UL, 4, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+        new TestCaseData("600157", 100000UL, 2, nameof(EvmExceptionType.StackUnderflow)).SetName("JumpI_stack_underflow"),
+        new TestCaseData("6001600057", 100000UL, 3, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("JumpI_invalid_destination"),
         new TestCaseData("600161000057", 100000UL, 3, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_JumpI_taken_to_invalid_destination"),
         new TestCaseData("61000556605b00", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_Jump_into_push_data"),
         // The low byte is a real JUMPDEST, but the nonzero high byte must still invalidate the destination.
@@ -769,11 +771,18 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Modular_arithmetic_preserves_full_width_operands(
         [Values(Instruction.ADDMOD, Instruction.MULMOD)] Instruction opcode,
-        [Values(0, 1, 251, -1)] int modulusValue, [Values] bool traced)
+        [Values(0, 1, 251, -1, -2, -3)] int modulusValue, [Values] bool traced)
     {
         BigInteger a = (BigInteger.One << 256) - 1;
         BigInteger b = a - 1;
-        BigInteger modulus = modulusValue == -1 ? a - 2 : modulusValue;
+        // -2 and -3 give the modulus an operand's value (x mod x, (x * y) mod x); the slots stay distinct.
+        BigInteger modulus = modulusValue switch
+        {
+            -1 => a - 2,
+            -2 => b,
+            -3 => a,
+            _ => modulusValue
+        };
         BigInteger expected = modulus.IsZero ? BigInteger.Zero
             : (opcode == Instruction.ADDMOD ? a + b : a * b) % modulus;
         byte[] code = [(byte)Instruction.PUSH32, .. ((UInt256)modulus).ToBigEndian(),
@@ -2463,7 +2472,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         const int levels = VirtualMachineStatics.MaxCachedFrameDepth + 5;
         byte[] code = Prepare.EvmCode
             .MSTORE(0, ((UInt256)levels).ToBigEndian()).MSTORE(32, ((UInt256)RevertEvery).ToBigEndian())
-            .CALL(CallGas * 10, Recursive, 0, 0, 64, 0x20, 32)
+            .CALL(CallGas * 30, Recursive, 0, 0, 64, 0x20, 32)
             .PushData(0x40).Op(Instruction.MSTORE)
             .RETURN(0x20, 64)
             .Done;
@@ -2612,6 +2621,14 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(Machine.FrameCache[1], Is.Not.Null, "the cached path was exercised");
             Assert.That(Machine.FrameCache[2], Is.Not.Null, "the cached path was exercised");
         }
+
+        if (name == "recursion")
+        {
+            RecordingTracer depths = new(Machine);
+            _processor.CallAndRestore(transaction, context, depths);
+            // Both deep chains must cross from the cached slots into pooled frames, or the program does not cover the boundary.
+            Assert.That(depths.Frames.Count(static f => f.Depth == VirtualMachineStatics.MaxCachedFrameDepth + 3), Is.EqualTo(2));
+        }
     }
 
     private static IEnumerable<TestCaseData> DifferentialPrograms()
@@ -2639,10 +2656,10 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
                 }
                 break;
             case "recursion":
-                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 4, gas: CallGas * 15);
                 driver.Call(Instruction.CALL, Probe);
                 driver.Call(Instruction.CALL, Recursive, levels: 3);
-                driver.Call(Instruction.CALL, Recursive, levels: 10, gas: CallGas * 10);
+                driver.Call(Instruction.CALL, Recursive, levels: VirtualMachineStatics.MaxCachedFrameDepth + 2, gas: CallGas * 12);
                 driver.Call(Instruction.STATICCALL, Recursive, levels: 2);
                 driver.Call(Instruction.CALL, ProbeCaller);
                 break;
@@ -3232,7 +3249,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             int inLength = ProbeInputLength;
             if (target == Recursive || target == Chain)
             {
-                code.MSTORE(0, ((UInt256)random.Next(0, 14)).ToBigEndian()).MSTORE(32, ((UInt256)random.Next(0, 6)).ToBigEndian());
+                code.MSTORE(0, ((UInt256)random.Next(0, VirtualMachineStatics.MaxCachedFrameDepth + 6)).ToBigEndian()).MSTORE(32, ((UInt256)random.Next(0, 6)).ToBigEndian());
                 inLength = 64;
             }
 

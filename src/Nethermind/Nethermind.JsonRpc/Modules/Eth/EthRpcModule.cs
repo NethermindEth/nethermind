@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -426,7 +427,7 @@ public partial class EthRpcModule(
                 RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
             return await SendTx(tx);
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
         }
@@ -966,7 +967,9 @@ public partial class EthRpcModule(
             txIndex: (int)positionIndex,
             blockTimestamp: header.Timestamp,
             baseFee: header.BaseFeePerGas,
-            receipt: null);
+            receipt: null,
+            spec: _specProvider.GetSpec(header),
+            excessBlobGas: header.ExcessBlobGas);
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
@@ -1376,12 +1379,37 @@ public partial class EthRpcModule(
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
         return ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart));
     }
+
+    /// <summary>
+    /// Answers a receipt lookup by transaction hash that has no receipt to return: the
+    /// <see cref="ErrorCodes.PrunedHistoryUnavailable"/> error when the transaction index still places the transaction
+    /// in a canonical block below the served floor, otherwise a <c>null</c> result.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The floor is <see cref="IBlockFinder.LowestServedBlock"/>, the oldest block the node advertises as served. It
+    /// can come from the configured ancient bodies barrier or the download frontiers as well as from history pruning,
+    /// so a block below it may still be stored. The error code is the one a block search returns when it misses below
+    /// the floor. Every other miss is a <c>null</c> result: the index gives no block hash, the block it names is not
+    /// canonical or its header is not stored, or the block is at or above the floor.
+    /// </para>
+    /// <para>
+    /// History pruning deletes bodies and receipts but leaves the transaction index to a background sweep, so an entry
+    /// can outlive its block's history; with <see cref="IReceiptConfig.TxLookupLimit"/> 0 nothing removes it.
+    /// </para>
+    /// </remarks>
+    protected ResultWrapper<ReceiptForRpc?> GetMissingTransactionReceiptResult(Hash256 txHash) =>
+        _receiptFinder.FindBlockHash(txHash) is { } blockHash
+        && _blockFinder.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical) is { } header
+        && _blockFinder.IsBlockPruned(new BlockParameter(header.Number))
+            ? ResultWrapper<ReceiptForRpc?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<ReceiptForRpc?>.Success(null);
 
     public virtual ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {

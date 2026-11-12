@@ -3,5 +3,6 @@
 
 using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]

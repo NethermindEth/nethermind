@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core.Test;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -71,6 +72,22 @@ public class RlpItemListTests
             byte[] first = list[i].ToArray();
             byte[] second = list[i].ToArray();
             Assert.That(second, Is.EqualTo(first), $"re-access of item {i} should be identical");
+        }
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void ForwardSkipAccess_ReturnsCorrectData(byte[][] items)
+    {
+        using RlpItemList list = CreateList(items);
+
+        for (int i = 0; i < items.Length; i += 2)
+        {
+            Assert.That(list[i], Is.SequenceEqualTo(Rlp.Encode(items[i]).Bytes), $"item {i}");
+        }
+
+        for (int i = 1; i < items.Length; i += 2)
+        {
+            Assert.That(list.ReadContent(i).ToArray(), Is.EqualTo(items[i]), $"content {i}");
         }
     }
 
@@ -256,7 +273,7 @@ public class RlpItemListTests
         int innerSeqLen = Rlp.LengthOfSequence(contentLength);
         int outerSeqLen = Rlp.LengthOfSequence(innerSeqLen);
         byte[] expected = new byte[outerSeqLen];
-        RlpWriter expectedWriter = new(expected);
+        RlpWriter expectedWriter = RlpWriter.ContentWriter(expected);
         expectedWriter.StartSequence(innerSeqLen);
         expectedWriter.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -266,9 +283,9 @@ public class RlpItemListTests
         Assert.That(view.RlpLength, Is.EqualTo(outerSeqLen));
 
         byte[] actual = new byte[view.RlpLength];
-        RlpWriter writer = new(actual);
+        RlpWriter writer = RlpWriter.ContentWriter(actual);
         view.Write(ref writer);
-        Assert.That(actual.AsSpan(0, writer.Position), Is.SequenceEqualTo(expected));
+        Assert.That(actual.AsSpan(0, writer.Length), Is.SequenceEqualTo(expected));
     }
 
     [Test]
@@ -329,9 +346,9 @@ public class RlpItemListTests
         byte[] expectedBytes = [0xc2, 0x01, 0x02];
         Assert.That(inner0.RlpLength, Is.EqualTo(expectedBytes.Length));
         byte[] actual = new byte[inner0.RlpLength];
-        RlpWriter writer = new(actual);
+        RlpWriter writer = RlpWriter.ContentWriter(actual);
         inner0.Write(ref writer);
-        Assert.That(actual.AsSpan(0, writer.Position), Is.SequenceEqualTo(expectedBytes));
+        Assert.That(actual.AsSpan(0, writer.Length), Is.SequenceEqualTo(expectedBytes));
     }
 
     private static RlpItemList CreateList(byte[][] items)
@@ -344,7 +361,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] data = new byte[totalLength];
-        RlpWriter writer = new(data);
+        RlpWriter writer = RlpWriter.ContentWriter(data);
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -376,7 +393,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(outerContentLength);
         byte[] data = new byte[totalLength];
-        RlpWriter writer = new(data);
+        RlpWriter writer = RlpWriter.ContentWriter(data);
 
         writer.StartSequence(outerContentLength);
         for (int i = 0; i < nestedItems.Length; i++)

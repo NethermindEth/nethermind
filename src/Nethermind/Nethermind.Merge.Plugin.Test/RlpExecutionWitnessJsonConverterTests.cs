@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -84,11 +85,11 @@ public class RlpExecutionWitnessJsonConverterTests
             state: [[0xde, 0xad]],
             keys: []);
 
-        RlpReader reader = new(Bytes.FromHexString(WitnessHex(result)));
-        reader.ReadSequenceLength();
+        RlpReader reader = new RlpReader(Bytes.FromHexString(WitnessHex(result))).EnterSequence(out _);
 
-        int headersContentLength = reader.ReadSequenceLength();
-        byte[] decodedHeader = reader.Read(headersContentLength).ToArray();
+        RlpReader headers = reader.EnterSequence(out int headersLength);
+        byte[] decodedHeader = headers.ReadRaw(headers.Remaining).ToArray();
+        reader.ExitSequence(headers, headersLength);
         byte[][] codes = reader.DecodeByteArrays();
         byte[][] state = reader.DecodeByteArrays();
         reader.CheckEnd();

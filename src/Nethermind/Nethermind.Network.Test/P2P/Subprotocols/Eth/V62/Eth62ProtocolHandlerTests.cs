@@ -38,6 +38,7 @@ using NUnit.Framework;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -285,7 +286,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             packet.ReadByte();
 
             Assert.Throws<SubprotocolException>(
-                () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth62MessageCode.GetBlockHeaders }));
+                () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth62MessageCode.GetBlockHeaders }));
         }
 
         [Test]
@@ -413,7 +414,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             getBlockHeadersPacket.ReadByte();
 
             _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null!, _handler)).Do(_ => throw new Exception());
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock });
+            _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock });
 
             _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
         }
@@ -444,7 +445,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             if (trailingByte)
                 packet.WriteByte(0);
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpException>() : Throws.Nothing);
+            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode }), trailingByte ? Throws.InstanceOf<RlpReaderException>() : Throws.Nothing);
 
             DisposableByteBuffer Serialize<T>(T message) where T : P2PMessage
             {
@@ -649,7 +650,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         /// <summary>
-        /// Calls <see cref="ZeroNettyP2PHandler.ExceptionCaught"/> with <see cref="RlpException"/> directly
+        /// Calls <see cref="ZeroNettyP2PHandler.ExceptionCaught"/> with <see cref="RlpReaderException"/> directly
         /// (without testing the whole pipeline) and verifies disconnect was triggered.
         /// </summary>
         [Test]
@@ -659,14 +660,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             IByteBuffer malformedTransactionsPacket = Unpooled.WrappedBuffer([0xc1, 0xc0]);
 
             HandleIncomingStatusMessage();
-            RlpException exception = Assert.Throws<RlpException>(() => HandleZeroMessage(malformedTransactionsPacket, Eth62MessageCode.Transactions));
+            RlpReaderException exception = Assert.Throws<RlpReaderException>(() => HandleZeroMessage(malformedTransactionsPacket, Eth62MessageCode.Transactions));
 
             ZeroNettyP2PHandler zeroNettyP2PHandler = new(_session, LimboLogs.Instance);
             zeroNettyP2PHandler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception!);
 
             _session.Received().InitiateDisconnect(
                 DisconnectReason.Exception,
-                Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
+                Arg.Is<string>(details => details.Contains("RlpReaderException") && details.Contains("Transaction decoding returned null")));
         }
 
         private class AlwaysTimeoutBackgroundTaskScheduler(bool reject = false) : IBackgroundTaskScheduler
@@ -1178,11 +1179,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
 
         private void HandleZeroMessage(IByteBuffer msg, int messageCode) =>
-            _handler.HandleMessage(new ZeroPacket(msg) { PacketType = (byte)messageCode });
+            _handler.HandleMessage(new NettyBufferPacket(msg) { PacketType = (byte)messageCode });
 
         private BlockBody?[] RequestBlockBodies(params Hash256[] hashes)
         {
@@ -1213,7 +1214,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             getBlockHeadersPacket.ReadByte();
             Assert.Throws<SubprotocolException>(
                 () => _handler.HandleMessage(
-                    new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
+                    new NettyBufferPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
         }
 
         private void HandleIncomingStatusMessage()
@@ -1222,7 +1223,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
         }
 
         [Test]
@@ -1233,7 +1234,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using StatusMessage filler = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
             using DisposableByteBuffer packet = _svc.ZeroSerialize(filler).AsDisposable();
             packet.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(packet) { PacketType = 99 });
+            _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = 99 });
 
             _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }

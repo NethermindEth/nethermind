@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -36,7 +35,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static readonly ReceiptMessageDecoder69 ReceiptMessageDecoder = new();
     private static readonly Func<ReceiptsMessage70, int, ReceiptsMessage70> SelectReceipts =
         static (message, _) => message;
-    private static readonly Action<IByteBuffer, GetReceiptsMessage70> ValidateReceipts =
+    private static readonly Action<ReadOnlySpan<byte>, GetReceiptsMessage70> ValidateReceipts =
         static (content, request) => ReceiptsResponseBudget.ThrowIfExceeded(content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
 
     /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
@@ -74,11 +73,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                HandleCorrelatedResponse(_receiptsRequests70, message.Content, size, SelectReceipts, ValidateReceipts);
+                HandleCorrelatedResponse(_receiptsRequests70, message, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);

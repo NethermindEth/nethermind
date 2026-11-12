@@ -37,7 +37,7 @@ public static partial class KzgPolynomialCommitments
         ReadOnlySpan<byte> proof) =>
         IsCompressedInfinity(commitment) && IsCompressedInfinity(proof)
             ? y.Length == 32 && !y.ContainsAnyExcept((byte)0) && z.Length == 32 && z.SequenceCompareTo(BlsModulusBigEndian) < 0
-            : Accelerators.KzgPointEval(commitment, z, y, proof);
+            : CurveAccelerators.KzgPointEval(commitment, z, y, proof);
 
     /// <summary><see cref="BlsModulus"/> as big-endian bytes, which unlike the field need no static initializer.</summary>
     private static ReadOnlySpan<byte> BlsModulusBigEndian =>

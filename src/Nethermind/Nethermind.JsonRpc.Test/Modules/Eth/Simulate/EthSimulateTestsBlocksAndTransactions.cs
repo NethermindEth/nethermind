@@ -498,8 +498,8 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task Simulated_header_matches_the_canonical_encoding(IReleaseSpec spec)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(new TestSpecProvider(spec));
-        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN: returns the hash of the block two back.
-        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000f3\"}}," + Calls + "}";
+        // NUMBER PUSH1 2 SWAP1 SUB BLOCKHASH PUSH1 0 MSTORE PUSH1 32 PUSH1 0 LOG0 PUSH1 32 PUSH1 0 RETURN: logs and returns the hash of the block two back.
+        const string GrandparentHashReader = "{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x43600290034060005260206000a060206000f3\"}}," + Calls + "}";
         string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"calls\":[]},{\"calls\":[]}," + GrandparentHashReader), "latest");
         Assert.That(ErrorCode(response), Is.Null, response);
         using JsonDocument document = JsonDocument.Parse(response);
@@ -537,6 +537,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(Quantity("size"), Is.EqualTo((ulong)Rlp.LengthOfSequence(header.Length + 2)));
             Assert.That(child.GetProperty("parentHash").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
             Assert.That(grandchild.GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo(block.GetProperty("hash").GetString()));
+            Assert.That(grandchild.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("blockHash").GetString(), Is.EqualTo(grandchild.GetProperty("hash").GetString()));
         }
 
         ulong Quantity(string name) => Convert.ToUInt64(block.GetProperty(name).GetString(), 16);

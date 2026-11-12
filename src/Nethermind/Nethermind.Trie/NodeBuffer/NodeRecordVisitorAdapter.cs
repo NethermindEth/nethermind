@@ -25,6 +25,9 @@ public sealed class NodeRecordVisitorAdapter<TNodeContext>(INodeRecordVisitor<TN
     public bool IsFullDbScan => visitor.IsFullDbScan;
 
     /// <inheritdoc/>
+    public bool IsRangeScan => visitor.IsRangeScan;
+
+    /// <inheritdoc/>
     public bool ExpectAccounts => visitor.ExpectAccounts;
 
     /// <inheritdoc/>

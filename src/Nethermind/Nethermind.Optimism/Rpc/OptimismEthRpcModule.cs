@@ -250,13 +250,13 @@ public class OptimismEthRpcModule(
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         Block block = foundBlock.Object;
@@ -330,6 +330,7 @@ public class OptimismEthRpcModule(
                 txIndex: (int)positionIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
+                spec: _specProvider.GetSpec(block.Header),
                 receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
@@ -368,6 +369,7 @@ public class OptimismEthRpcModule(
                 TxReceipt[] receipts = _receiptFinder.Get(block);
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
@@ -381,6 +383,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
+                            spec: spec,
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

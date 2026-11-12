@@ -232,7 +232,7 @@ public class FrameTxPeerFloodMeasurement
         StatusMessage status = new() { GenesisHash = genesis.Hash!, BestHash = genesis.Hash! };
         using DisposableByteBuffer buffer = serializer.ZeroSerialize(status).AsDisposable();
         buffer.ReadByte();
-        handler.HandleMessage(new ZeroPacket(buffer) { PacketType = Eth62MessageCode.Status });
+        handler.HandleMessage(new NettyBufferPacket(buffer) { PacketType = Eth62MessageCode.Status });
     }
 
     /// <summary>Wire bytes of one <c>Transactions</c> message, without the message-code prefix.</summary>

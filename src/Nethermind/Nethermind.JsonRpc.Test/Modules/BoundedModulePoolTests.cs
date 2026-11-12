@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -124,6 +125,95 @@ public class BoundedModulePoolTests
         for (int i = 0; i < 2; i++)
         {
             await Assert.ThrowsAsync(expectedException, () => emptyPool.GetModule(false));
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_queued_rental_ends_at_once_and_frees_only_its_own_queue_slot()
+    {
+        BoundedModulePool<IEthRpcModule> pool = new(_modulePool.Factory, 1, Timeout.Infinite, new RpcLimits(queuedLimit: 1));
+        IEthRpcModule held = await pool.GetModule(false);
+        CancellationTokenSource abort = new();
+        Task<IEthRpcModule> queued = pool.GetModule(false, abort.Token);
+        // Twice, so that a second decrement of the slot (an undercount) shows up as one admission too many.
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(queued.IsCompleted, Is.False, "queued behind the held module");
+            await abort.CancelAsync();
+            OperationCanceledException? canceled = await Assert.CatchAsync<OperationCanceledException>(() => queued.WaitAsync(Watchdog));
+            Assert.That(canceled!.CancellationToken, Is.EqualTo(abort.Token));
+
+            abort.Dispose();
+            abort = new();
+            queued = pool.GetModule(false, abort.Token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queued, Is.Not.Null.And.Property(nameof(Task.IsCompleted)).False, "the freed slot admits exactly one waiter");
+                Assert.That(pool.GetModule(false).Exception?.InnerException, Is.InstanceOf<LimitExceededException>(), "and no second one");
+            }
+        }
+
+        pool.ReturnModule(held);
+        Assert.That(await queued.WaitAsync(Watchdog), Is.SameAs(held));
+        pool.ReturnModule(held);
+        Assert.That(pool.GetModule(false).IsCompletedSuccessfully, Is.True);
+        abort.Dispose();
+    }
+
+    [Test]
+    public async Task Rental_granted_after_its_token_was_cancelled_gives_the_module_back()
+    {
+        BoundedModulePool<IEthRpcModule> pool = new(_modulePool.Factory, 1, Timeout.Infinite, new RpcLimits(queuedLimit: 1));
+        IEthRpcModule held = await pool.GetModule(false);
+        using CancellationTokenSource abort = new();
+        ParkingSynchronizationContext parking = new();
+        Task<IEthRpcModule> queued = parking.Start(() => pool.GetModule(false, abort.Token));
+
+        // The return grants the wait, but its continuation is parked, so the token is cancelled before the rental sees the grant.
+        pool.ReturnModule(held);
+        await parking.Parked.WaitAsync(Watchdog);
+        await abort.CancelAsync();
+        parking.RunParked();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued.IsCanceled, Is.True);
+            Assert.That(pool.GetModule(false).IsCompletedSuccessfully, Is.True, "the grant went back to the pool");
+        }
+    }
+
+    [Test]
+    public void Cancelled_token_does_not_affect_a_rental_that_does_not_queue([Values] bool canBeShared)
+    {
+        Task<IEthRpcModule> first = _modulePool.GetModule(canBeShared, new CancellationToken(canceled: true));
+        Assert.That(first.IsCompletedSuccessfully, Is.True);
+        _modulePool.ReturnModule(first.Result);
+        Assert.That(_modulePool.GetModule(canBeShared, new CancellationToken(canceled: true)), Is.SameAs(first));
+    }
+
+    private static readonly TimeSpan Watchdog = TimeSpan.FromSeconds(10);
+
+    /// <summary>Holds the one continuation posted to it until the test runs it.</summary>
+    private sealed class ParkingSynchronizationContext : SynchronizationContext
+    {
+        private readonly TaskCompletionSource<Action> _parked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task Parked => _parked.Task;
+        public override void Post(SendOrPostCallback d, object? state) => _parked.SetResult(() => d(state));
+        public void RunParked() => _parked.Task.Result();
+
+        /// <summary>Calls <paramref name="start"/> with this context current, so the awaits it begins resume here.</summary>
+        public T Start<T>(Func<T> start)
+        {
+            SynchronizationContext? outer = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                return start();
+            }
+            finally
+            {
+                SetSynchronizationContext(outer);
+            }
         }
     }
 

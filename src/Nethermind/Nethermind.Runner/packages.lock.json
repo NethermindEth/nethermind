@@ -1110,6 +1110,13 @@
           "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
+      "nethermind.serialization.fluentrlp": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Numerics.Int256": "[1.12.0, )"
+        }
+      },
       "nethermind.serialization.json": {
         "type": "Project",
         "dependencies": {
@@ -1122,7 +1129,8 @@
         "dependencies": {
           "Ckzg.Bindings": "[2.1.8.1680, )",
           "Nethermind.Core": "[2.3.0-preview, )",
-          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )"
+          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )",
+          "Nethermind.Serialization.FluentRlp": "[2.3.0-preview, )"
         }
       },
       "nethermind.serialization.ssz": {
@@ -1222,6 +1230,13 @@
           "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
+      "nethermind.stateless.executor": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
@@ -1257,6 +1272,13 @@
           "Nethermind.Db": "[2.3.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.trustedinput": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Stateless.Executor": "[2.3.0-preview, )"
         }
       },
       "nethermind.txpool": {

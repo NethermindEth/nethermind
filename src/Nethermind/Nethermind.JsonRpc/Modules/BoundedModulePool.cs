@@ -107,7 +107,11 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
 
-        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : ExclusivePath();
+        public Task<T> GetModule(bool canBeShared) => GetModule(canBeShared, default);
+
+        /// <remarks>Only a rental that has to queue observes <paramref name="cancellationToken"/>.</remarks>
+        public Task<T> GetModule(bool canBeShared, CancellationToken cancellationToken) =>
+            canBeShared ? SharedPath() : ExclusivePath(cancellationToken);
 
         private Task<T> SharedPath()
         {
@@ -115,16 +119,23 @@ namespace Nethermind.JsonRpc.Modules
             return _sharedAsTask;
         }
 
-        private Task<T> ExclusivePath() => _semaphore.Wait(0) ? Dequeue() : SlowPath();
+        private Task<T> ExclusivePath(CancellationToken cancellationToken) => _semaphore.Wait(0) ? Dequeue() : SlowPath(cancellationToken);
 
-        private async Task<T> SlowPath()
+        private async Task<T> SlowPath(CancellationToken cancellationToken)
         {
             _limits.AcquireQueuedSlot();
             try
             {
-                if (!await _semaphore.WaitAsync(_timeout))
+                if (!await _semaphore.WaitAsync(_timeout, cancellationToken))
                 {
                     throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
+                }
+
+                // The wait can be granted after the token was cancelled: give the permit back instead of handing a module to a caller that is gone.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _semaphore.Release();
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
             }
             finally

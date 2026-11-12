@@ -59,14 +59,14 @@ namespace Nethermind.State
         public static StorageRangeVisitor CollectStorageRange(this IStateReader stateReader, BlockHeader? baseBlock, Address address, in ValueHash256 startKey, int limit)
         {
             StorageRangeVisitor visitor = new(address, startKey, limit);
-            stateReader.RunTreeVisitor(visitor, baseBlock);
+            stateReader.RunTreeVisitor(visitor, baseBlock, visitingOptions: null, diagnostics: null);
             return visitor;
         }
 
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
         {
             TreeDumper dumper = new();
-            stateReader.RunTreeVisitor(dumper, baseBlock);
+            stateReader.RunTreeVisitor(dumper, baseBlock, visitingOptions: null, diagnostics: null);
             return dumper.ToString();
         }
     }

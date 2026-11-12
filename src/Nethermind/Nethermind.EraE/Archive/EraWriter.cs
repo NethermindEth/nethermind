@@ -16,6 +16,7 @@ using Nethermind.Era1.Exceptions;
 using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 using Timestamper = Nethermind.Core.Timestamper;
@@ -283,10 +284,12 @@ public sealed class EraWriter : IDisposable
         ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
         try
         {
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(totalLength);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            RlpSequence sequence = writer.StartSequence(totalLength);
             foreach (TxReceipt receipt in receipts)
                 WriteReceipt(ref writer, receipt, isEip658);
+            writer.EndSequence(sequence);
+            Rlp.CheckLength(in writer, bytes.Length);
             return bytes;
         }
         catch
@@ -309,8 +312,7 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void WriteReceipt(ref RlpWriter writer, TxReceipt receipt, bool isEip658)
     {
         int logsLength = 0;
         if (receipt.Logs is not null)
@@ -322,7 +324,7 @@ public sealed class EraWriter : IDisposable
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
         int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)
@@ -340,12 +342,15 @@ public sealed class EraWriter : IDisposable
 
         writer.Encode(receipt.GasUsedTotal);
 
-        writer.StartSequence(logsLength);
+        RlpSequence logsSequence = writer.StartSequence(logsLength);
         if (receipt.Logs is not null)
         {
             foreach (LogEntry log in receipt.Logs)
                 LogEntryDecoder.Instance.Encode(ref writer, log);
         }
+
+        writer.EndSequence(logsSequence);
+        writer.EndSequence(sequence);
     }
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)
