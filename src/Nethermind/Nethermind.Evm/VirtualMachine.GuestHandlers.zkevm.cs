@@ -1939,8 +1939,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref byte bytes = ref MemoryMarshal.GetReference(vm.BlockExecutionContext.Coinbase.Bytes);
                 slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
                 Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
-                // The leading four bytes of the address end the third limb.
-                Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32;
+                // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
+                // alone, as the shift does not drop the gather of the four bytes after them.
+                Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
+                    ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
+                    : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
                 Unsafe.Add(ref slot, 3) = 0;
             }
         }

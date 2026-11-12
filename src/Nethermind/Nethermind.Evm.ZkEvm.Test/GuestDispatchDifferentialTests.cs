@@ -89,14 +89,15 @@ public class GuestDispatchDifferentialTests
                 }
 
         Outcome complete = Run(11, [], 0, new CodeInfo(code), Table.Untraced, spec, context: context);
-        bool enabled = opcode switch
+        bool installed = opcode switch
         {
             Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
             Instruction.BASEFEE => spec.BaseFeeEnabled,
-            Instruction.BLOBBASEFEE => spec.BlobBaseFeeEnabled && optionalFields,
+            Instruction.BLOBBASEFEE => spec.BlobBaseFeeEnabled,
             Instruction.SLOTNUM => spec.IsEip7843Enabled,
             _ => true
         };
+        bool enabled = installed && (opcode is not Instruction.BLOBBASEFEE || optionalFields);
         UInt256 value = opcode switch
         {
             Instruction.COINBASE => new UInt256(coinbase.Bytes, isBigEndian: true),
@@ -113,6 +114,7 @@ public class GuestDispatchDifferentialTests
         {
             Assert.That(complete.Exception, Is.EqualTo(enabled ? EvmExceptionType.Stop : EvmExceptionType.BadInstruction));
             if (enabled) Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(value.ToBigEndian())));
+            Assert.That(VirtualMachine<EthereumGasPolicy>.PushesContextWordThroughGuestHandlerForTests(spec, opcode), Is.EqualTo(installed));
         }
     }
 
