@@ -20,6 +20,7 @@
     <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="$(EnableZkEvm) == 'true'" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
+    <PackageReference Include="Nethermind.Crypto.Lean" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,7 +28,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-
-  <Import Project="../../../tools/lean-ffi/LeanFfi.targets" Condition="'$(BuildLeanFfi)' == 'true'" />
 
 </Project>

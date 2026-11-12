@@ -42,10 +42,6 @@ jobs:
     timeout-minutes: 40
     env:
       NATIVE_TEST_PROJECT: Nethermind.Crypto.LeanFfi.Test
-      RUSTFLAGS: -C target-cpu=native
-      # rustdoc reads neither RUSTFLAGS nor .cargo/config.toml, so without this the doctest build hits
-      # the crate's carry-less-multiply compile_error.
-      RUSTDOCFLAGS: -C target-cpu=native
       LEANVM_NUM_THREADS: 1
     strategy:
       fail-fast: false
@@ -69,7 +65,6 @@ jobs:
             # Lean/Frame changes and shared paths exercised by the live native fixtures.
             # Other projects remain covered by the ordinary build/test matrix.
             cat > "$RUNNER_TEMP/lean-native-patterns" <<'PATHS'
-          ^tools/lean-ffi/
           ^src/Nethermind/Nethermind\.Crypto\.LeanFfi\.Test/
           ^src/Nethermind/.*(/|^)(ProofAggregation|[^/]*Eip8288[^/]*|I?Lean[^/]*|NativeLean[^/]*|[^/]*FrameTx[^/]*)(/|\.cs$)
           ^src/Nethermind/Nethermind\.Core/(Block(Header|Body)?|Transaction[^/]*|TxFrame|FrameMode|FrameFlags|RecursiveStark(Commitment)?)\.cs$
@@ -108,61 +103,11 @@ jobs:
         if: steps.lean-paths.outputs.run == 'true'
         uses: actions/setup-dotnet@v5
 
-      - name: Set up Rust
-        if: steps.lean-paths.outputs.run == 'true'
-        run: |
-          toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' tools/lean-ffi/rust-toolchain.toml)
-          test -n "$toolchain"
-          rustup toolchain install "$toolchain" --profile minimal
-
-      - name: Fingerprint host CPU
-        if: steps.lean-paths.outputs.run == 'true'
-        id: lean-cpu
-        run: |
-          LC_ALL=C lscpu > "$RUNNER_TEMP/lean-cpu-info"
-          awk -F: '$1 ~ /^(Architecture|Vendor ID|CPU family|Model|Model name|Stepping|Flags|Features)$/ { print }' "$RUNNER_TEMP/lean-cpu-info" > "$RUNNER_TEMP/lean-cpu-features"
-          grep -qE '^(Flags|Features):' "$RUNNER_TEMP/lean-cpu-features"
-          printf '%s\n' "$RUSTFLAGS" >> "$RUNNER_TEMP/lean-cpu-features"
-          fingerprint=$(sha256sum "$RUNNER_TEMP/lean-cpu-features" | cut -d' ' -f1)
-          echo "hash=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Cargo sources
-        if: steps.lean-paths.outputs.run == 'true'
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: lean-cargo-sources-${{ runner.os }}-${{ hashFiles('tools/lean-ffi/Cargo.lock') }}
-          restore-keys: lean-cargo-sources-${{ runner.os }}-
-
-      - name: Cache host-native Cargo artifacts
-        if: steps.lean-paths.outputs.run == 'true'
-        uses: actions/cache@v5
-        with:
-          path: tools/lean-ffi/target
-          key: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-${{ hashFiles('tools/lean-ffi/src/**', 'tools/lean-ffi/examples/**', 'tools/lean-ffi/crates/**', 'tools/lean-ffi/Cargo.toml') }}
-          # Never restore host-native code across CPU features or Rust/lockfile versions.
-          restore-keys: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-
-
-      - name: Test native proof backend
-        if: steps.lean-paths.outputs.run == 'true'
-        working-directory: tools/lean-ffi
-        # jemalloc keeps a proof's peak mapped for the next one, so one process per test bounds the resident set to the
-        # largest single test. --workspace also runs the vendored guest crates' own tests.
-        run: |
-          cargo test --release --locked --workspace --no-run
-          tests=$(cargo test --release --locked --workspace -q -- --list --format terse | sed -n 's/: test$//p')
-          test -n "$tests"
-          for name in $tests; do
-            cargo test --release --locked --workspace -q -- --exact "$name" || exit 1
-          done
-
       - name: Test live Lean integration
         if: steps.lean-paths.outputs.run == 'true'
         run: |
-          dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1 -p:BuildLeanFfi=true
-          dotnet run --project "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --no-build -p:BuildLeanFfi=true
+          dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1
+          dotnet run --project "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --no-build
 
   tests:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})

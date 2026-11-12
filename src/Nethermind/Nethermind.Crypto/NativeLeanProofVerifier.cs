@@ -49,7 +49,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
         catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
         {
-            throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend. Build with BuildLeanFfi=true and install the host library beside Nethermind.", exception);
+            throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend from the Nethermind.Crypto.Lean package, for linux-x64 or linux-arm64.", exception);
         }
     }
 
