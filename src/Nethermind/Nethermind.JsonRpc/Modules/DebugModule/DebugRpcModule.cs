@@ -201,6 +201,17 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetTraceCallHeader(blockParameter, options?.TxIndex, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
+            bool missingExplicitBlock = blockParameter.Type is BlockParameterType.BlockNumber or BlockParameterType.BlockHash
+                && headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error is BlockFinderExtensions.HeaderNotFound or BlockFinderExtensions.BlockBodyNotFound;
+            bool missingTaggedBlock = blockParameter.Type is BlockParameterType.Safe or BlockParameterType.Finalized
+                && ((headerError.ErrorCode == ErrorCodes.ResourceNotFound && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+                    || headerError.ErrorCode == ErrorCodes.UnknownBlockError);
+
+            if ((missingExplicitBlock || missingTaggedBlock) && GetMissingBlockMessage(blockParameter) is { } message)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+            }
             return headerError;
         }
 
@@ -298,6 +309,15 @@ public class DebugRpcModule(
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
+
+    private static string? GetMissingBlockMessage(BlockParameter parameter) => parameter.Type switch
+    {
+        BlockParameterType.BlockNumber => $"block #{parameter.BlockNumber} not found",
+        BlockParameterType.BlockHash => $"block {parameter.BlockHash} not found",
+        BlockParameterType.Safe => "safe block not found",
+        BlockParameterType.Finalized => "finalized block not found",
+        _ => null
+    };
 
     private UInt256? GetRejectedTraceCallBlobBaseFee(Transaction tx, BlockHeader header, GethTraceOptions options)
     {
@@ -719,19 +739,13 @@ public class DebugRpcModule(
         if (headerError is not null)
         {
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound)
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
+                && blockNumber.Type is BlockParameterType.BlockNumber or BlockParameterType.Safe or BlockParameterType.Finalized
+                && GetMissingBlockMessage(blockNumber) is { } message)
             {
-                string? message = blockNumber.Type switch
-                {
-                    BlockParameterType.BlockNumber => $"block #{blockNumber.BlockNumber} not found",
-                    BlockParameterType.Safe => "safe block not found",
-                    BlockParameterType.Finalized => "finalized block not found",
-                    _ => null
-                };
-                if (message is not null)
-                    return blockNumber.Type == BlockParameterType.BlockNumber
-                        ? MissingTraceBlock(message, blockNumber.BlockNumber, headerError.IsTemporary)
-                        : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+                return blockNumber.Type == BlockParameterType.BlockNumber
+                    ? MissingTraceBlock(message, blockNumber.BlockNumber, headerError.IsTemporary)
+                    : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, headerError.IsTemporary);
             }
             return headerError;
         }

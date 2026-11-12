@@ -1297,7 +1297,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         LoadTxIndexSweepCursor();
 
         byte[]? compactionDone = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionDone);
-        _blobCompactionReclaimedThrough = compactionDone is null ? 0 : new RlpReader(compactionDone).DecodeULong();
+        _blobCompactionReclaimedThrough = compactionDone is null ? 0 : DecodePointer(compactionDone);
         byte[]? compactionOwed = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionOwed);
         // Legacy pointers cannot distinguish completed pruning from a database synced directly to the barrier.
         // Only recorded reclaim work arms the rewrite; an unfinished legacy reclaim will record it as it resumes.
