@@ -267,22 +267,34 @@ public static partial class Accelerators
     /// </summary>
     /// <remarks>EVM semantics: a zero divisor gives zero and <c>-2^255 / -1</c> gives <c>-2^255</c>. Otherwise as <see cref="Div256"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void SDiv256(ulong* a, ulong* b, ulong* quotient) => zkvm_u256_le_sdiv(a, b, quotient);
+    public static unsafe void SDiv256(ulong* a, ulong* b, ulong* quotient)
+    {
+        Status status = zkvm_u256_le_sdiv(a, b, quotient);
+
+        ThrowIfFailed(status, nameof(zkvm_u256_le_sdiv));
+    }
 
     /// <summary>
     /// Computes the signed <c>a mod b</c> for 256-bit two's-complement integers, with the sign of <paramref name="a"/>.
     /// </summary>
     /// <remarks>EVM semantics: a zero divisor gives zero. Otherwise as <see cref="Div256"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static unsafe void SMod256(ulong* a, ulong* b, ulong* remainder) => zkvm_u256_le_smod(a, b, remainder);
+    public static unsafe void SMod256(ulong* a, ulong* b, ulong* remainder)
+    {
+        Status status = zkvm_u256_le_smod(a, b, remainder);
+
+        ThrowIfFailed(status, nameof(zkvm_u256_le_smod));
+    }
 
     /// <inheritdoc cref="Sha256"/>
-    /// <remarks>Runs ZisK's own SHA-256 library routine, which always succeeds.</remarks>
+    /// <remarks>Runs ZisK's own SHA-256 library routine.</remarks>
     public static void ZiskSha256(ReadOnlySpan<byte> data, Span<byte> output)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
 
-        zisklib_sha256(data, (nuint)data.Length, output);
+        Status status = zisklib_sha256(data, (nuint)data.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_sha256));
     }
 
     /// <inheritdoc cref="ModExp"/>
@@ -297,12 +309,14 @@ public static partial class Accelerators
     }
 
     /// <inheritdoc cref="Ripemd160"/>
-    /// <remarks>Runs ZisK's own RIPEMD-160 library routine, which always succeeds.</remarks>
+    /// <remarks>Runs ZisK's own RIPEMD-160 library routine.</remarks>
     public static void ZiskRipemd160(ReadOnlySpan<byte> data, Span<byte> output)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(output.Length, 32, nameof(output));
 
-        zisklib_ripemd160(data, (nuint)data.Length, output);
+        Status status = zisklib_ripemd160(data, (nuint)data.Length, output);
+
+        ThrowIfFailed(status, nameof(zisklib_ripemd160));
     }
 
     /// <summary>
