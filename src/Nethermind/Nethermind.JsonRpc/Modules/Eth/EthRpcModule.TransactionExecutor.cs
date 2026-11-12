@@ -76,22 +76,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                if (stateOverride is not null)
-                {
-                    IReleaseSpec spec = specProvider.GetSpec(header);
-                    foreach ((Address address, AccountOverride? accountOverride) in stateOverride)
-                    {
-                        if (accountOverride?.MovePrecompileToAddress is not null &&
-                            spec.IsPrecompile(address) &&
-                            accountOverride.MovePrecompileToAddress == address)
-                        {
-                            return ResultWrapper<TResult>.Fail(
-                                $"account {address} is already overridden",
-                                ErrorCodes.InvalidInput);
-                        }
-                    }
-                }
-
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
                 if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
@@ -117,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 // As in Geth, overrides are validated before the call's fee fields.
-                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetStorageConflictError(stateOverride)) is { } overrideError)
+                if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, specProvider.GetSpec(header))) is { } overrideError)
                     return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
 
                 CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();

@@ -1096,6 +1096,41 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    [Test]
+    public async Task Call_methods_reject_an_invalid_precompile_move_as_invalid_input(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values("not a precompile", "onto an overridden account", "onto itself")] string move)
+    {
+        string stateOverrideJson = move switch
+        {
+            "not a precompile" => """{"0xc100000000000000000000000000000000000000":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"}}""",
+            "onto an overridden account" => """{"0x0000000000000000000000000000000000000004":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000"},"0xc200000000000000000000000000000000000000":{"balance":"0x1"}}""",
+            _ => """{"0x0000000000000000000000000000000000000004":{"movePrecompileToAddress":"0x0000000000000000000000000000000000000004"}}"""
+        };
+        object? transaction = JsonSerializer.Deserialize<object>("""{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_puts_the_higher_of_two_moved_precompiles_at_their_destination([Values] bool higherListedFirst)
+    {
+        const string ecMul = "\"0x0000000000000000000000000000000000000007\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        const string identity = "\"0x0000000000000000000000000000000000000004\":{\"movePrecompileToAddress\":\"0xc200000000000000000000000000000000000000\"}";
+        string stateOverrideJson = "{" + (higherListedFirst ? ecMul + "," + identity : identity + "," + ecMul) + "}";
+        // On 96 zero bytes, ecMul returns the 64-byte point at infinity and identity returns the 96 bytes.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x""" + new string('0', 192) + "\"}");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", JsonSerializer.Deserialize<object>(stateOverrideJson));
+
+        Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo("0x" + new string('0', 128)), serialized);
+    }
+
     [TestCase(
         "When balance and nonce is overridden",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x1"}""",
