@@ -647,6 +647,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 }
                             }
                         }
+                        // No branch follows: the ISZERO only inverts the result, which it then replaces in the same step.
+                        else if (TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+                        {
+                            nint inverse = -TCondition.Inputs * LimbsPerWord;
+                            Unsafe.Add(ref end, inverse) = condition ^ 1;
+                            Unsafe.Add(ref end, inverse + 1) = 0;
+                            Unsafe.Add(ref end, inverse + 2) = 0;
+                            Unsafe.Add(ref end, inverse + 3) = 0;
+                            head -= TCondition.Inputs - 1;
+                            sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
+                            ip = ref Unsafe.Add(ref ip, 2);
+                            goto Dispatch;
+                        }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
                     else if (TShape.Kind == TestedShape.Kind
