@@ -134,17 +134,31 @@ public class TransactionForRpcDeserializationTests
     private static TransactionForRpc DeserializeBlobHashSequence(ReadOnlySequence<byte> sequence, bool frame)
     {
         Utf8JsonReader reader = new(sequence);
-        Assert.That(reader.Read(), Is.True);
-        Assert.That(reader.Read(), Is.True);
+        bool readArray = reader.Read();
+        bool readTransaction = reader.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readArray, Is.True);
+            Assert.That(readTransaction, Is.True);
+        }
         TransactionForRpc rpc = frame
             ? TypeInfoJsonSerializer.Deserialize<FrameTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions)!
             : TypeInfoJsonSerializer.Deserialize<BlobTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions)!;
-        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndObject));
-        Assert.That(reader.Read(), Is.True);
-        Assert.That(reader.GetInt32(), Is.EqualTo(17));
-        Assert.That(reader.Read(), Is.True);
-        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
-        Assert.That(reader.Read(), Is.False);
+        JsonTokenType transactionEnd = reader.TokenType;
+        bool readSentinel = reader.Read();
+        int sentinel = reader.GetInt32();
+        bool readEnd = reader.Read();
+        JsonTokenType arrayEnd = reader.TokenType;
+        bool readTail = reader.Read();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionEnd, Is.EqualTo(JsonTokenType.EndObject));
+            Assert.That(readSentinel, Is.True);
+            Assert.That(sentinel, Is.EqualTo(17));
+            Assert.That(readEnd, Is.True);
+            Assert.That(arrayEnd, Is.EqualTo(JsonTokenType.EndArray));
+            Assert.That(readTail, Is.False);
+        }
         return rpc;
     }
 
