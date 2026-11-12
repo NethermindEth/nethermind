@@ -41,7 +41,7 @@ public class NethermindRunnerModule(
     ILogManager logManager
 ) : Module
 {
-    // Warmup builds another runner root; duplicate registration would invalidate live sidecar options.
+    // Warmup builds another runner root; avoid duplicate converters and unnecessary global options refreshes.
     private static readonly Lazy<TxReceiptConverter> _receiptConverterRegistration = new(() =>
     {
         TxReceiptConverter converter = new();
