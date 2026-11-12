@@ -22,6 +22,8 @@ public static class E1Probe
     private static long _rootTicks;
     private static long _it0Start;
     private static long _it0End;
+    private static long _it0Warm;
+    private static long _it0Apply;
     private static bool _parallel;
     private static long[] _start = new long[1024];
     private static long[] _end = new long[1024];
@@ -45,7 +47,7 @@ public static class E1Probe
         Array.Clear(_start, 0, n);
         Array.Clear(_end, 0, n);
         _preTicks = _execTicks = _finTicks = _rootTicks = 0;
-        _it0Start = _it0End = 0;
+        _it0Start = _it0End = _it0Warm = _it0Apply = 0;
         _parallel = false;
         _threads = 0;
         _blockStart = Stopwatch.GetTimestamp();
@@ -89,6 +91,16 @@ public static class E1Probe
         _it0End = Stopwatch.GetTimestamp();
     }
 
+    public static void WarmEnd()
+    {
+        if (_active) _it0Warm = Stopwatch.GetTimestamp();
+    }
+
+    public static void ApplyEnd()
+    {
+        if (_active) _it0Apply = Stopwatch.GetTimestamp();
+    }
+
     public static void Root(long start)
     {
         if (!_active || start == 0) return;
@@ -103,7 +115,7 @@ public static class E1Probe
         StringBuilder sb = _sb.Clear();
         CultureInfo c = CultureInfo.InvariantCulture;
         sb.Append(c, $"E1PROBE block={block.Number} mode={(_parallel ? 'p' : 's')} n={block.Transactions.Length} cpu={_threads} gas={block.GasUsed} pre={Us(_preTicks)} exec={Us(_execTicks)} fin={Us(_finTicks)} root={Us(_rootTicks)}");
-        if (_it0End != 0) sb.Append(c, $" it0={Us(_it0Start - _execStart)}:{Us(_it0End - _execStart)}");
+        if (_it0End != 0) sb.Append(c, $" it0={Us(_it0Start - _execStart)}:{Us(_it0Warm - _execStart)}:{Us(_it0Apply - _execStart)}:{Us(_it0End - _execStart)}");
         sb.Append(" tx=");
         Transaction[] txs = block.Transactions;
         for (int i = 0; i < txs.Length; i++)

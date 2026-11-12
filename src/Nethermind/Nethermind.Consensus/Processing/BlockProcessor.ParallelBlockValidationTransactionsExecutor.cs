@@ -206,6 +206,7 @@ public partial class BlockProcessor
                                     if (state.IsBlockRejected) return state;
                                     long it0Start = E1Probe.Now();
                                     state.BalManager.WaitForBalWarmup();
+                                    E1Probe.WarmEnd();
                                     if (state.IsBlockRejected) return state;
                                     ReadOnlyBlockAccessList bal = state.Block.BlockAccessList;
                                     // The world state never sees the BAL's writes, so its account changes would miss them.
@@ -214,6 +215,7 @@ public partial class BlockProcessor
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
                                     state.StateProvider.Commit(state.SpecProvider.GetSpec(state.Block.Header));
                                     state.StateProvider.ApplyBal(bal, state.Rejection);
+                                    E1Probe.ApplyEnd();
                                     if (state.IsBlockRejected) return state;
                                     state.StateProvider.RecalculateStateRoot();
                                     E1Probe.Iteration0(it0Start);
