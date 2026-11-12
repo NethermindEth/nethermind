@@ -105,7 +105,7 @@ jobs:
       - name: Execution requests and witness tests
         run: |
           dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
-            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
+            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.Stateless.ExistingBlockWitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
       - name: Test
         env:
           EEZ_CONFORMANCE_VECTOR_DIR: ${{ runner.temp }}/eez-vectors

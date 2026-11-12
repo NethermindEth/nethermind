@@ -3,9 +3,12 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -48,7 +51,7 @@ public class ExistingBlockWitnessTests
         call[63] = (byte)(27 + signature.RecoveryId);
         signature.Bytes.CopyTo(call.AsSpan(64));
         Transaction transaction = Build.A.Transaction.WithTo(ECRecoverPrecompile.Address).WithData(call)
-            .WithGasLimit(100000).WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            .WithValue(0).WithGasLimit(100000).WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(
             amsterdam: true, currentChainActivation: true, requests: false, transaction: transaction);
         using (witness)
@@ -69,7 +72,32 @@ public class ExistingBlockWitnessTests
     private const int SlotsPerContract = 64;
 
     [Test]
-    public async Task Witness_of_a_block_touching_many_storage_tries_replays_statelessly([Values] bool traced)
+    public void Stateless_environment_replays_valid_blocks_with_optional_tracing([Values] bool traced)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(
+            amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            StatelessBlockProcessingEnv stateless = new(witness, specProvider, Always.Valid, LimboLogs.Instance);
+            IBlockTracer tracer = Substitute.For<IBlockTracer>();
+            tracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+            StatelessBlockProcessingResult result = traced ? stateless.Process(block, true, tracer) : stateless.Process(block);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsValid, Is.True, result.Error);
+                Assert.That(result.ProcessedBlock?.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
+            }
+            if (traced)
+            {
+                tracer.Received(1).StartNewBlockTrace(Arg.Any<Block>());
+                tracer.Received(1).StartNewTxTrace(Arg.Any<Transaction>());
+                tracer.Received(1).EndBlockTrace();
+            }
+        }
+    }
+
+    [Test]
+    public async Task Witness_of_a_block_touching_many_storage_tries_replays_statelessly()
     {
         Address[] contracts = [.. Enumerable.Range(0, Contracts).Select(static i => new Address(Keccak.Compute($"contract{i}").Bytes[..Address.Size]))];
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -101,22 +129,10 @@ public class ExistingBlockWitnessTests
         using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
 
         StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance);
-        IBlockTracer tracer = Substitute.For<IBlockTracer>();
-        tracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
-        Block candidate = block.WithReplacedHeader(block.Header.Clone());
-        candidate.Header.TotalDifficulty = null;
-        StatelessBlockProcessingResult result = traced ? stateless.Process(candidate, true, tracer) : stateless.Process(candidate);
+        using IDisposable stateScope = stateless.WorldState.BeginScope(parent);
+        (Block processed, _) = stateless.BlockProcessor.ProcessOne(
+            block.WithReplacedHeader(block.Header.Clone()), ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(block.Header), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.IsValid, Is.True, result.Error);
-            Assert.That(result.ProcessedBlock?.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
-        }
-        if (traced)
-        {
-            tracer.Received(1).StartNewBlockTrace(Arg.Any<Block>());
-            tracer.Received(Contracts).StartNewTxTrace(Arg.Any<Transaction>());
-            tracer.Received(1).EndBlockTrace();
-        }
+        Assert.That(processed.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
     }
 }

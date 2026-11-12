@@ -412,9 +412,14 @@ public class StatelessInputGeneratorTests
                 .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
             StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using IDisposable scope = env.WorldState.BeginScope(parent);
-            (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
+            (Block block, TxReceipt[] receipts) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
-            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
+                if (transaction is not null)
+                    Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success), "The supplied transaction must execute successfully.");
+            }
             return (block, witness, specProvider);
         }
         catch
