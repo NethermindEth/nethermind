@@ -8,6 +8,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base;
@@ -39,7 +40,7 @@ public class BlockAccessListAccountJson
     /// False when the list was dropped: it does not match the header, or it cannot be encoded to hash. The block
     /// then executes without one and is judged on its header.
     /// </returns>
-    /// <exception cref="RlpException">
+    /// <exception cref="RlpReaderException">
     /// The header commits to a list the decoder rejects, so the block is invalid, as a payload carrying that list is
     /// on the engine path.
     /// </exception>
@@ -50,7 +51,7 @@ public class BlockAccessListAccountJson
         {
             encoded = Encode(accounts);
         }
-        catch (Exception e) when (e is RlpException or FormatException or ArgumentException)
+        catch (Exception e) when (e is RlpReaderException or FormatException or ArgumentException)
         {
             return false;
         }

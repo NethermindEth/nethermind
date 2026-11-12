@@ -10,6 +10,8 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto;
@@ -28,18 +30,12 @@ public static class EthereumEcdsaExtensions
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
 
-    /// <remarks>Every recovery computes a signing hash, a cache hit included, so the hasher is reused rather than allocated.</remarks>
-    [ThreadStatic]
-    private static KeccakHash? _signingHasher;
-
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
     internal static void ClearSenderCache() => _senderCache.Clear();
 
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
-        KeccakRlpWriter writer = new();
-        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
-        Signature sig = ecdsa.Sign(signer, writer.GetValueHash());
+        Signature sig = ecdsa.Sign(signer, AuthorizationSignatureHash(chainId, codeAddress, nonce));
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
     }
 
@@ -50,9 +46,7 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        KeccakRlpWriter writer = new();
-        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _txDecoder.ComputeValueHash(tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
         tx.Signature = ecdsa.Sign(privateKey, in hash);
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
@@ -184,13 +178,7 @@ public static class EthereumEcdsaExtensions
     {
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
 
-        KeccakHash hasher = _signingHasher ??= KeccakHash.Create();
-        // Reset first, so an exception that interrupted a previous encoding cannot leave this thread's hasher partly fed.
-        hasher.Reset();
-        KeccakRlpWriter writer = new(hasher);
-        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
-
-        return writer.GetValueHash();
+        return _txDecoder.ComputeValueHash(tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
     }
 
     /// <summary>Resolves whether the EIP-155 chain id triplet is part of the signed payload, and which chain id it carries.</summary>
@@ -280,18 +268,20 @@ public static class EthereumEcdsaExtensions
             ? stackalloc byte[StackMessageLimit]
             : rented = SafeArrayPool<byte>.Shared.Rent(length);
 
-        RlpWriter writer = new(message);
-        if (typed) WriteByte(ref writer, (byte)tx.Type);
-        writer.StartSequence(contentLength);
-        WriteRaw(ref writer, signedPayload);
+        RlpWriter writer = RlpWriter.ContentWriter(message[..length]);
+        if (typed) writer.WriteByte((byte)tx.Type);
+        RlpSequence sequence = writer.StartSequence(contentLength);
+        writer.WriteEncoded(signedPayload);
 
         if (eip155Length > 0)
         {
             writer.Encode(chainId);
             // The two empty byte arrays standing in for r and s, as LegacyTxDecoder encodes them.
-            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
-            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
+            writer.WriteByte(Rlp.EmptyByteArrayByte);
+            writer.WriteByte(Rlp.EmptyByteArrayByte);
         }
+
+        writer.EndSequence(sequence);
 
         ValueHash256 hash = ValueKeccak.Compute(message[..length]);
 
@@ -301,13 +291,6 @@ public static class EthereumEcdsaExtensions
     }
 
     private const int StackMessageLimit = 1024;
-
-    // The write primitives are explicit interface implementations, so they are reached through the constraint.
-    private static void WriteByte<TWriter>(ref TWriter writer, byte value)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.WriteByte(value);
-
-    private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
     /// <summary>The largest chain id for which both EIP-155 <c>v</c> values fit a ulong.</summary>
     public const ulong MaxEip155ChainId = (ulong.MaxValue - 36) / 2;
@@ -327,9 +310,17 @@ public static class EthereumEcdsaExtensions
     }
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
+        => ecdsa.RecoverAddress(tuple.AuthoritySignature, AuthorizationSignatureHash(tuple.ChainId, tuple.CodeAddress, tuple.Nonce));
+
+    [SkipLocalsInit]
+    private static ValueHash256 AuthorizationSignatureHash(in UInt256 chainId, Address codeAddress, ulong nonce)
     {
-        KeccakRlpWriter writer = new();
-        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-        return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());
+        // Magic byte, sequence prefix, chain id, address and nonce.
+        Span<byte> buffer = stackalloc byte[1 + 3 + 33 + 21 + 9];
+        buffer = buffer[..AuthorizationTupleDecoder.GetSignaturePayloadLength(chainId, codeAddress, nonce)];
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
+        Rlp.CheckLength(in writer, buffer.Length);
+        return ValueKeccak.Compute(buffer);
     }
 }

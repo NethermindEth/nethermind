@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -14,16 +15,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public int Serialize(Span<byte> destination, T message)
         {
-            RlpWriter writer = new(destination);
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
 
-            writer.StartSequence(GetContentLength(message));
+            RlpSequence sequence = writer.StartSequence(GetContentLength(message));
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
                 writer.Encode(hashes[i]);
             }
 
-            return writer.Position;
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
         public abstract T Deserialize(ReadOnlySpan<byte> data);

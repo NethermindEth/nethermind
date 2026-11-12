@@ -565,7 +565,9 @@ public sealed partial class KeccakHash
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
         // An equal resumable length guarantees the keyed node's states were written, not left uninitialized.
-        if (nodes is null || index >= (nuint)WitnessNodes.Count || !ReferenceEquals(nodes[index], previous)
+        // Both writers of Count check it against the length of Nodes, so the read after the Count check is unchecked.
+        if (nodes is null || index >= (nuint)WitnessNodes.Count
+            || !ReferenceEquals(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(nodes), index), previous)
             || previous!.Length != input.Length || !IsResumable(input.Length))
         {
             return ValueKeccak.Compute(input);
@@ -1078,9 +1080,20 @@ public sealed partial class KeccakHash
             Accelerators.KeccakXorin((ulong*)Unsafe.AsPointer(ref lane), data, length);
     }
 
+    /// <remarks>On ZisK a direct DMA call: the struct copy the JIT emits reaches the same precompile through a wrapper
+    /// and corelib's copy routine, which spill registers around it. The refs are not pinned: the guest is single-threaded
+    /// and collects only when it allocates, so no GC can run between taking their addresses and the call returning.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CopyState(ref ulong lane, ref ulong source) =>
+    private static unsafe void CopyState(ref ulong lane, ref ulong source)
+    {
+        if (ZiskFlag.IsActive)
+        {
+            Bytes.Memmove(Unsafe.AsPointer(ref lane), Unsafe.AsPointer(ref source), (nuint)sizeof(KeccakState));
+            return;
+        }
+
         Unsafe.As<ulong, KeccakState>(ref lane) = Unsafe.As<ulong, KeccakState>(ref source);
+    }
 
     /// <summary>Absorbs the first <paramref name="count"/> whole lanes of <paramref name="data"/>, at most sixteen.</summary>
     /// <param name="intoZeroState">Whether those state lanes are still zero, so the lanes are written rather than XORed.</param>

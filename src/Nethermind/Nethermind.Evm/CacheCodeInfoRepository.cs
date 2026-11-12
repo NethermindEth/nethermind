@@ -85,21 +85,21 @@ public partial class CacheCodeInfoRepository : ICodeInfoRepository
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
+        if (CodeInfoRepository.InsertCode(worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 
     /// <remarks>Not added to the shared code cache: the code lives for one transaction, and a read caches it anyway.</remarks>
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
-        CodeInfoRepository.InsertTransientCode(_worldState, code, codeOwner, spec);
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _inner.InsertTransientCode(worldState, code, codeOwner, spec);
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec)
     {
-        bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
+        bool result = CodeInfoRepository.SetDelegation(worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
         if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));

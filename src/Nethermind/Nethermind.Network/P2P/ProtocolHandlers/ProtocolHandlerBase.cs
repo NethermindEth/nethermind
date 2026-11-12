@@ -14,7 +14,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -65,14 +65,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 HandleRlpLimitException<T>(size, e);
                 throw;
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 HandleRlpException<T>(size, e);
                 throw;
             }
         }
 
-        private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
+        private void HandleRlpException<T>(int dataLength, RlpReaderException e) where T : P2PMessage
         {
             if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
@@ -86,7 +86,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private void TraceRlpException(string messageType, RlpException exception) =>
+        private void TraceRlpException(string messageType, RlpReaderException exception) =>
             Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide}, with exception {exception:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -108,7 +108,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 HandleRlpLimitException<T>(size, e);
                 throw;
             }
-            catch (RlpException e)
+            catch (RlpReaderException e)
             {
                 HandleRlpException<T>(size, e);
                 throw;

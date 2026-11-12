@@ -55,6 +55,69 @@ public class GuestDispatchDifferentialTests
 
     public enum Table { Untraced, Cancelable, Traced }
 
+    private static readonly Instruction[] ContextOpcodes =
+    [
+        Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO,
+        Instruction.GASLIMIT, Instruction.CHAINID, Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SLOTNUM
+    ];
+
+    [Test]
+    public void Context_words_match_the_shared_handlers(
+        [ValueSource(nameof(ContextOpcodes))] Instruction opcode,
+        [ValueSource(nameof(Forks))] IReleaseSpec spec,
+        [Values] bool optionalFields)
+    {
+        UInt256 word = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
+        Address coinbase = new("0x0102030405060708090a0b0c0d0e0f1011121314");
+        BlockHeader header = new(Hash256.Zero, Hash256.Zero, coinbase, word, 0x123456789, 0x23456789a, 0x3456789ab, [])
+        {
+            IsPostMerge = optionalFields,
+            MixHash = new Hash256((word + 1).ToBigEndian()),
+            BaseFeePerGas = word + 2,
+            ExcessBlobGas = optionalFields ? 0UL : null,
+            SlotNumber = optionalFields ? 0x456789abcUL : null
+        };
+        BlockExecutionContext context = new(header, spec, word + 3);
+        byte[] code = [(byte)opcode, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP];
+        foreach (byte[] program in (byte[][])[[(byte)opcode, (byte)Instruction.STOP], code])
+            foreach (int head in (int[])[0, 1022, 1023, 1024])
+                for (ulong gas = 0; gas <= 11; gas++)
+                {
+                    Outcome actual = Run(gas, [], head, new CodeInfo(program), Table.Untraced, spec, context: context);
+                    Outcome expected = Run(gas, [], head, new CodeInfo(program), Table.Traced, spec, context: context);
+                    Assert.That(Matches(actual, expected), Is.True, $"{opcode} head {head} gas {gas}\n{actual}\n{expected}");
+                }
+
+        Outcome complete = Run(11, [], 0, new CodeInfo(code), Table.Untraced, spec, context: context);
+        bool installed = opcode switch
+        {
+            Instruction.CHAINID => spec.ChainIdOpcodeEnabled,
+            Instruction.BASEFEE => spec.BaseFeeEnabled,
+            Instruction.BLOBBASEFEE => spec.BlobBaseFeeEnabled,
+            Instruction.SLOTNUM => spec.IsEip7843Enabled,
+            _ => true
+        };
+        bool enabled = installed && (opcode is not Instruction.BLOBBASEFEE || optionalFields);
+        UInt256 value = opcode switch
+        {
+            Instruction.COINBASE => new UInt256(coinbase.Bytes, isBigEndian: true),
+            Instruction.TIMESTAMP => header.Timestamp,
+            Instruction.NUMBER => header.Number,
+            Instruction.PREVRANDAO => optionalFields ? word + 1 : word,
+            Instruction.GASLIMIT => header.GasLimit,
+            Instruction.CHAINID => BlockchainIds.Mainnet,
+            Instruction.BASEFEE => word + 2,
+            Instruction.BLOBBASEFEE => word + 3,
+            _ => header.SlotNumber.GetValueOrDefault()
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(complete.Exception, Is.EqualTo(enabled ? EvmExceptionType.Stop : EvmExceptionType.BadInstruction));
+            if (enabled) Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(value.ToBigEndian())));
+            Assert.That(VirtualMachine<EthereumGasPolicy>.PushesContextWordThroughGuestHandlerForTests(spec, opcode), Is.EqualTo(installed));
+        }
+    }
+
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
         EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy, long Refund,
@@ -891,7 +954,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(110);
+            int pick = random.Next(119);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -976,6 +1039,7 @@ public class GuestDispatchDifferentialTests
                         code.Add((byte)pair[random.Next(4) == 0 ? 0 : 1]);
                         break;
                     }
+                case < 118: code.Add((byte)ContextOpcodes[pick - 109]); break;
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -1072,9 +1136,10 @@ public class GuestDispatchDifferentialTests
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
-        ICodeInfoRepository? codeInfoRepository = null)
+        ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        if (context is { } blockContext) vm.SetBlockExecutionContext(blockContext);
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (codeInfoRepository is not null)
         {
@@ -1161,7 +1226,8 @@ public class GuestDispatchDifferentialTests
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
         (opcode is >= Instruction.ADDRESS and <= (Instruction)0x4f &&
-            opcode is not (Instruction.CALLDATALOAD or Instruction.CALLDATASIZE or Instruction.CALLDATACOPY or Instruction.CODESIZE or Instruction.CODECOPY)) ||
+            opcode is not (Instruction.CALLDATALOAD or Instruction.CALLDATASIZE or Instruction.CALLDATACOPY or Instruction.CODESIZE or Instruction.CODECOPY) &&
+            !ContextOpcodes.Contains(opcode)) ||
         opcode is >= Instruction.LOG0 and <= Instruction.LOG4 ||
         (opcode >= Instruction.CREATE && opcode != Instruction.INVALID);
 

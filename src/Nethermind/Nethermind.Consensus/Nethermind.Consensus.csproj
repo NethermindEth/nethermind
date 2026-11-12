@@ -12,7 +12,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ethereum.Test.Base" />
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
-    <InternalsVisibleTo Include="Nethermind.Consensus.ZkEvm.Test" />
     <InternalsVisibleTo Include="Nethermind.JsonRpc" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>

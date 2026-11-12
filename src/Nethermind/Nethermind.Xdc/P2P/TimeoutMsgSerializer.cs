@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Network;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
@@ -15,9 +16,9 @@ internal class TimeoutMsgSerializer : IMessageSerializer<TimeoutMsg>
 
     public int Serialize(Span<byte> destination, TimeoutMsg message)
     {
-        RlpWriter writer = new(destination);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
         _timeDecoder.Encode(ref writer, message.Timeout);
-        return writer.Position;
+        return writer.Length;
     }
 
     public TimeoutMsg Deserialize(ReadOnlySpan<byte> data)

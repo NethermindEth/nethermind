@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Serialization.FluentRlp;
+
 namespace Nethermind.Serialization.Rlp;
 
 public interface IRlpWrapper
 {
     int RlpLength { get; }
-    void Write<TWriter>(ref TWriter writer)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
+    void Write(ref RlpWriter writer);
 }
