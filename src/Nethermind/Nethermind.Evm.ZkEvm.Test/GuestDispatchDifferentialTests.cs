@@ -52,6 +52,8 @@ public class GuestDispatchDifferentialTests
     // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
     private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
+    // Differs from the caller and the beneficiary, so a read of the wrong account fails.
+    private static readonly Address BalanceOwner = new("0x00000000000000000000000000000000000000aa");
 
     public enum Table { Untraced, Cancelable, Traced }
 
@@ -72,6 +74,9 @@ public class GuestDispatchDifferentialTests
                 Outcome expected = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec, balance: balance);
                 Assert.That(Matches(actual, expected), Is.True, $"head {head} gas {gas}\n{actual}\n{expected}");
             }
+
+        // The fallback runs the shared body too, so only the table shows that the guest handler is installed.
+        Assert.That(VirtualMachine<EthereumGasPolicy>.ReadsSelfBalanceThroughGuestHandlerForTests(spec), Is.EqualTo(spec.SelfBalanceOpcodeEnabled));
 
         if (head == 0 && spec.SelfBalanceOpcodeEnabled)
         {
@@ -1113,7 +1118,7 @@ public class GuestDispatchDifferentialTests
             // A precompile the calls reach runs inline, through the frame handlers.
             vm.PrepareFrameHandlersForTests();
         }
-        using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, balance is null ? Address.Zero : BalanceOwner, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
         vm.Enter(frame);
@@ -1249,7 +1254,7 @@ public class GuestDispatchDifferentialTests
 
         public override ref readonly UInt256 GetBalance(Address address)
         {
-            Assert.That(address, Is.EqualTo(Address.Zero));
+            Assert.That(address, Is.EqualTo(BalanceOwner));
             Reads++;
             return ref _balance;
         }

@@ -1871,7 +1871,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>SELFBALANCE: the balance of the executing account, read off the state with no shell around the call.</summary>
-        /// <remarks>Short gas or fewer than two free stack slots runs the shared handler instead.</remarks>
+        /// <remarks>A short gas or a full stack runs the shared handler instead, which faults on it.</remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteSelfBalance(
