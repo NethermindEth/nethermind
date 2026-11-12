@@ -567,6 +567,31 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Every immediate, valid or not, at stack heights on both sides of the depths they decode to and at the limit, with
+    /// too little gas and enough. The opcode alone, as the whole program, reads its immediate from the code's padding.
+    /// </remarks>
+    [Test]
+    public void Eip8024_stack_ops_match_the_shared_handlers(
+        [Values(Instruction.DUPN, Instruction.SWAPN, Instruction.EXCHANGE)] Instruction op, [Values(2ul, 3ul, 100ul)] ulong gas)
+    {
+        int[] heads = [0, 1, 2, 15, 16, 17, 18, 29, 30, 31, 100, 234, 235, 236, 1023, 1024];
+        List<string> mismatches = [];
+        for (int immediate = -1; immediate < 256 && mismatches.Count < 5; immediate++)
+        {
+            byte[] code = immediate < 0 ? [(byte)op] : [(byte)op, (byte)immediate, (byte)Instruction.STOP];
+            foreach (int head in heads)
+            {
+                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, Amsterdam.Instance);
+                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, Amsterdam.Instance);
+                if (!Matches(untraced, traced))
+                    mismatches.Add($"code {Convert.ToHexString(code)} head {head}\n untraced {untraced}\n traced   {traced}");
+            }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
     /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
     /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the
