@@ -1247,19 +1247,19 @@ namespace Nethermind.Trie
                 // Slots are patched in order, so the bytes before the first patched hash are the previous ones.
                 int unchanged = FullBranchRlpLength;
                 ushort taken = TakenChildren(item);
-                // Eight slots a step: most slots are empty, and an empty slot then costs one load and one branch.
-                const int slotsPerStep = 8;
+                // Only the guest's unroll has been benchmarked; retain the host's single-slot loop.
+                int slotsPerStep = ZkEvmFlag.IsActive ? 8 : 1;
                 for (; Unsafe.IsAddressLessThan(ref group, ref end) && (!TracksTakenChildren || taken != 0);
                     group = ref Unsafe.Add(ref group, slotsPerStep), taken >>= slotsPerStep)
                 {
                     if (!TryPatchFullBranchChild(tree, ref path, ref group, 0, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
-                        || !TryPatchFullBranchChild(tree, ref path, ref group, 1, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
+                        || ZkEvmFlag.IsActive && (!TryPatchFullBranchChild(tree, ref path, ref group, 1, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
                         || !TryPatchFullBranchChild(tree, ref path, ref group, 2, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
                         || !TryPatchFullBranchChild(tree, ref path, ref group, 3, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
                         || !TryPatchFullBranchChild(tree, ref path, ref group, 4, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
                         || !TryPatchFullBranchChild(tree, ref path, ref group, 5, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
                         || !TryPatchFullBranchChild(tree, ref path, ref group, 6, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)
-                        || !TryPatchFullBranchChild(tree, ref path, ref group, 7, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel))
+                        || !TryPatchFullBranchChild(tree, ref path, ref group, 7, ref end, taken, destination, ref unchanged, bufferPool, canBeParallel)))
                     {
                         return false;
                     }
