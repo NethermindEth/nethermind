@@ -829,7 +829,7 @@ public class HistoryPrunerTests
 
             Task disposal = pruner.DisposeAsync().AsTask();
             await interrupted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.That(disposal.IsCompleted, Is.False, "disposal must join the interrupted native operation");
+            Assert.That(await Task.WhenAny(disposal, Task.Delay(500)), Is.Not.SameAs(disposal), "disposal must join the interrupted native operation");
         }
         finally
         {
