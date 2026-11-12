@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Network;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -14,9 +15,9 @@ internal class SyncInfoMsgSerializer : IMessageSerializer<SyncInfoMsg>
 
     public int Serialize(Span<byte> destination, SyncInfoMsg message)
     {
-        RlpWriter writer = new(destination);
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
         _syncInfoDecoder.Encode(ref writer, message.SyncInfo);
-        return writer.Position;
+        return writer.Length;
     }
 
     public SyncInfoMsg Deserialize(ReadOnlySpan<byte> data)

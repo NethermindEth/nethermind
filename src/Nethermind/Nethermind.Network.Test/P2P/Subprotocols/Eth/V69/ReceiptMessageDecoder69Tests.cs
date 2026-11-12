@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
@@ -49,7 +50,7 @@ public class ReceiptMessageDecoder69Tests
             Assert.That(decoded.StatusCode, Is.EqualTo(skipStateAndStatus ? 0 : receipt.StatusCode));
             Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
             Assert.That(decoded.Logs, Is.Empty);
-            Assert.That(context.Position, Is.EqualTo(encoded.Length));
+            Assert.That(context.BytesRead, Is.EqualTo(encoded.Length));
         }
     }
 
@@ -60,7 +61,7 @@ public class ReceiptMessageDecoder69Tests
         // guard passes and the null rejection in the decode loop is what must fire.
         byte[] encoded = EncodeReceipt([null, PaddedLog]);
 
-        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -87,7 +88,7 @@ public class ReceiptMessageDecoder69Tests
     {
         byte[] encoded = ReceiptRlpBuilder.EncodeReceipt69WithFirstItem(TxType.EIP1559, new byte[length]);
 
-        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpException>());
+        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -113,7 +114,7 @@ public class ReceiptMessageDecoder69Tests
         TxReceipt receipt = new() { Logs = null };
         ReceiptMessageDecoder69 decoder = new();
 
-        Assert.That(Execute, Throws.TypeOf<RlpException>());
+        Assert.That(Execute, Throws.TypeOf<RlpReaderException>());
 
         void Execute()
         {
@@ -123,7 +124,7 @@ public class ReceiptMessageDecoder69Tests
                 return;
             }
 
-            RlpWriter writer = new(new byte[64]);
+            RlpWriter writer = RlpWriter.ContentWriter(new byte[64]);
             decoder.Encode(ref writer, receipt);
         }
     }
@@ -161,7 +162,7 @@ public class ReceiptMessageDecoder69Tests
         if (underDeclare)
         {
             encoded[index]--;
-            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpException>());
+            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpReaderException>());
         }
         else
         {
@@ -176,7 +177,7 @@ public class ReceiptMessageDecoder69Tests
     private static int LogsHeaderIndex(byte[] encoded, int logsContentLength)
     {
         RlpReader locator = new(encoded);
-        int payloadEnd = locator.ReadSequenceLength() + locator.Position;
+        locator.EnterSequence(out int payloadEnd);
         int headerIndex = payloadEnd - logsContentLength - 1;
         Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + logsContentLength)),
             "the logs list header is not where the payload layout puts it");
@@ -245,17 +246,19 @@ public class ReceiptMessageDecoder69Tests
     /// field and make the under-declared case throw for the wrong reason.</remarks>
     private static int FramesHeaderIndex(byte[] encoded)
     {
-        RlpReader locator = new(encoded);
-        int payloadEnd = locator.ReadSequenceLength() + locator.Position;
+        RlpReader outer = new(encoded);
+        RlpReader locator = outer.EnterSequence(out int payloadEnd);
+        int contentStart = payloadEnd - locator.Remaining;
         locator.DecodeByte();
         locator.DecodeULong();
         locator.DecodeAddress();
 
-        int headerIndex = locator.Position;
-        int framesContentLength = locator.ReadSequenceLength();
+        int headerIndex = contentStart + locator.BytesRead;
+        RlpReader frames = locator.EnterSequence(out int framesItemLength);
+        int framesContentLength = frames.Remaining;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(locator.Position + framesContentLength, Is.EqualTo(payloadEnd),
+            Assert.That(headerIndex + framesItemLength, Is.EqualTo(payloadEnd),
                 "the frames list is not the last item of the payload");
             Assert.That(encoded[headerIndex], Is.EqualTo((byte)(ShortSequenceHeaderBase + framesContentLength)),
                 "the frames list header is not a single byte");
@@ -266,7 +269,7 @@ public class ReceiptMessageDecoder69Tests
     private static byte[] Encode(ReceiptMessageDecoder69 decoder, TxReceipt receipt)
     {
         byte[] encoded = new byte[decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts)];
-        RlpWriter writer = new(encoded);
+        RlpWriter writer = RlpWriter.ContentWriter(encoded);
         decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
         return encoded;
     }

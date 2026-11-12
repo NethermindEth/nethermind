@@ -6,8 +6,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -236,7 +238,7 @@ public class L1OriginStoreTests
         L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         Action act = () => _decoder.Encode(origin);
-        Assert.That(act, Throws.TypeOf<RlpException>()
+        Assert.That(act, Throws.TypeOf<RlpReaderException>()
             .With.Message.EqualTo($"Signature should be exactly {L1OriginDecoder.SignatureLength}"));
     }
 
@@ -251,10 +253,20 @@ public class L1OriginStoreTests
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        RlpReader ctx = new(encoded.Bytes);
-        (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
+        (int prefixLength, int contentLength) = RlpTestHelper.PrefixAndContentLength(encoded.Bytes);
 
         Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");
+    }
+
+    [Test]
+    public void Decodes_with_a_trailing_item()
+    {
+        L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, Enumerable.Range(0, 8).ToArray(), true, Enumerable.Range(0, 65).Select(i => (byte)i).ToArray());
+        byte[] canonical = _decoder.Encode(origin).Bytes;
+
+        L1Origin? decoded = _decoder.Decode(RlpTestHelper.WithTrailingItem(canonical));
+
+        Assert.That(_decoder.Encode(decoded).Bytes, Is.EqualTo(canonical));
     }
 
     [Test]

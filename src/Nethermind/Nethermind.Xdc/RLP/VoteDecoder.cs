@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 
@@ -14,38 +15,33 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
 
     protected override Vote DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryReadEmptySequence())
         {
-            decoderContext.ReadByte();
             return null;
         }
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        BlockRoundInfo proposedBlockInfo = _xdcBlockInfoDecoder.Decode(ref fields, rlpBehaviors);
         Signature signature = null;
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
-            signature = decoderContext.DecodeSignature();
+            signature = fields.DecodeSignature();
         }
-        ulong gapNumber = decoderContext.DecodeULong();
+        ulong gapNumber = fields.DecodeULong();
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(endPosition);
-        }
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         _xdcBlockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
@@ -54,18 +50,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
             writer.Encode(sigBuffer);
         }
         writer.Encode(item.GapNumber);
-    }
-
-    public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

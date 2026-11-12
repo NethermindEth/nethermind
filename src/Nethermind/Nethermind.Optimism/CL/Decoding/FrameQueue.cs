@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
@@ -51,7 +52,7 @@ public class FrameQueue(ILogManager logManager) : IFrameQueue
 
             RlpReader rlp = new(decodedChannel.Span);
             ReadOnlySpan<byte> batchDataSpan = rlp.DecodeByteArraySpan();
-            ReadOnlyMemory<byte> batchData = decodedChannel.Slice(rlp.Position - batchDataSpan.Length, batchDataSpan.Length);
+            ReadOnlyMemory<byte> batchData = decodedChannel.Slice(rlp.BytesRead - batchDataSpan.Length, batchDataSpan.Length);
             BatchV1[] batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;
         }

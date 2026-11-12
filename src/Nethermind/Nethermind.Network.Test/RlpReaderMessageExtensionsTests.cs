@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -19,7 +19,7 @@ public class RlpReaderMessageExtensionsTests
 
         if (trailingData)
         {
-            Assert.Throws<RlpException>(() => CheckEnd(data, message));
+            Assert.Throws<RlpReaderException>(() => CheckEnd(data, message));
         }
         else
         {
@@ -31,7 +31,7 @@ public class RlpReaderMessageExtensionsTests
         static IDisposable CheckEnd(byte[] data, IDisposable message)
         {
             RlpReader ctx = new(data);
-            ctx.ReadSequenceLength();
+            ctx.SkipItem();
             return ctx.CheckEnd(message);
         }
     }
