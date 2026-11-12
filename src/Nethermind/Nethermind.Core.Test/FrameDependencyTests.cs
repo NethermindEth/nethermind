@@ -94,14 +94,20 @@ public class FrameDependencyTests
     private static readonly FrameDependency VectorB = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 1);
     private static readonly FrameDependency VectorC = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x01, 0, 0xFF);
     private static readonly FrameDependency VectorD = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0xA5, 0, 0x5A);
+    private static readonly FrameDependency VectorG1 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0);
+    private static readonly FrameDependency VectorG2 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0xA5, 0, 0x5A);
 
-    // Expected digests computed with OpenSSL's Keccak-256 from the EIP-8288 get_deps_hash pseudocode.
+    // Expected digests computed with OpenSSL's Keccak-256: leanSPHINCS-only lists from the EIP-8288 get_deps_hash
+    // pseudocode, lists with leanSTARK entries from this node's split-domain deviation.
     private static IEnumerable<TestCaseData> DepsHashVectors()
     {
         yield return new TestCaseData(Array.Empty<FrameDependency>(), "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").SetName("empty");
         yield return new TestCaseData(new[] { VectorA }, "535b1be06804ff1c42441f5b486c07a4f0b788bb24cbd7a3a21c405a869730b5").SetName("one");
         yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "a9cb9f718bf29878fea69d892f229c0a49932e21555106f3bf37044f142262ba").SetName("three_with_duplicate");
         yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "43c9b8d263f3c5128d4b200350327b8ff8423c4d2235654c497b281c0efc7a2e").SetName("four");
+        yield return new TestCaseData(new[] { VectorG1 }, "472b9b9746554a2d22de24296cc51b74741f0a369b0355bbbc07dace239e4c49").SetName("stark_only");
+        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "82cb3c09f78c3f79ed0f35e6c946c28c79861d6c743468255a828b8ba22fbab9").SetName("mixed");
+        yield return new TestCaseData(new[] { VectorG2, VectorD }, "527d30bc3378b13fda7d9d0815b5d31abcb474d1ce10ee338c30be03e3fb8cde").SetName("same_data_and_key_under_both_schemes");
     }
 
     [TestCaseSource(nameof(DepsHashVectors))]
@@ -131,6 +137,11 @@ public class FrameDependencyTests
         byte[] expected = [.. List(VectorA, VectorB), .. List(second), .. domain];
         Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorB, second, VectorA]), Is.EqualTo(ValueKeccak.Compute(expected)));
     }
+
+    // The scheme is part of a dependency: the same data and key under the other scheme is another digest.
+    [Test]
+    public void Same_data_and_key_under_the_other_scheme_is_another_digest() =>
+        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG2]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorD])));
 
     [TestCase(Eip8288Constants.LeanSphincsScheme, true)]
     [TestCase(Eip8288Constants.LeanStarkScheme, true)]

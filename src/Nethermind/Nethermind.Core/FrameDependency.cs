@@ -183,7 +183,8 @@ public static class Eip8288Dependencies
     /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
     /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses Keccak-256, the hash the pinned recursive guest commits its
     /// dependency digest with. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
-    /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any leanSTARK dependency commits to
+    /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any non-leanSPHINCS dependency (only leanSTARK passes
+    /// validation) commits to
     /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
     /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries,
     /// and the position of an entry's list binds its scheme.</remarks>
