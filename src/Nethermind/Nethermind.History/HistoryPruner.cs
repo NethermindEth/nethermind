@@ -817,7 +817,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
             lock (_pruneLock)
             {
-                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough).Bytes);
+                _metadataDb.PutSpan(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 _blobCompactionReclaimedThrough = reclaimedThrough;
             }
 

@@ -53,6 +53,7 @@ public class WitnessTrieValidationTests
         BranchWithValue,
         BranchWithListValue,
         BranchWithShortHashReference,
+        BranchWithEmbeddedChildAndShortHashReference,
         ExtensionToLeaf,
         HighFlagExtensionToLeaf,
         ExtensionToNothing,
@@ -62,6 +63,7 @@ public class WitnessTrieValidationTests
         HashReferenceToShortNode,
         NonCanonicalListHeader,
         NonCanonicalLeafValue,
+        LeafValueLengthWithLeadingZero,
         DeeplyNestedItem,
     }
 
@@ -82,6 +84,9 @@ public class WitnessTrieValidationTests
             Malformation.BranchWithValue => Hashed(BranchOfReferences(Rlp.Encode(new byte[] { 1 }), (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
             Malformation.BranchWithListValue => Hashed(BranchOfReferences([0xc1, 0x80], (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Reference(sibling))), leaf, sibling),
             Malformation.BranchWithShortHashReference => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray, (AccountKey[1], Reference(leaf)), (AccountKey[1] ^ 1, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
+            // An embedded child before the short reference, so the check reads the branch's slots up to it.
+            Malformation.BranchWithEmbeddedChildAndShortHashReference => Hashed(BranchOfReferences(RlpTestHelper.OfEmptyByteArray,
+                (0, [0xc2, 0x01, 0x02]), (AccountKey[1], Reference(leaf)), (15, Rlp.Encode(new byte[Hash256.Size - 1]))), leaf),
             Malformation.ExtensionToLeaf => Hashed(Extension(AccountKey[1..2], leaf), leaf),
             // Flag nibble 5: an extension, as the spec reads only its two low bits.
             Malformation.HighFlagExtensionToLeaf => Hashed(HighFlagExtension(AccountKey[1..2], leaf), leaf),
@@ -94,6 +99,7 @@ public class WitnessTrieValidationTests
             // A leaf short enough for a one-byte list header, given a long one.
             Malformation.NonCanonicalListHeader => Hashed([0xf8, (byte)(smallLeaf.Length - 1), .. smallLeaf.AsSpan(1)]),
             Malformation.NonCanonicalLeafValue => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), [0x81, 0x01])),
+            Malformation.LeafValueLengthWithLeadingZero => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..], isLeaf: true)), [0xb9, 0x00, 0x40, .. new byte[0x40]])),
             // Deep enough to overflow the stack were it measured before its prefix is checked.
             Malformation.DeeplyNestedItem => Hashed(RlpTestHelper.EncodeSequence(Rlp.Encode(HexPrefix.ToBytes(AccountKey[1..2], isLeaf: false)), NestedLists(20_000))),
             _ => Hashed(Branch((0, tinyLeaf), (1, tinyLeaf))),

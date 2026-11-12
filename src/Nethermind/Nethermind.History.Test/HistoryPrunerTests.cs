@@ -552,8 +552,8 @@ public class HistoryPrunerTests
         // process exit aborted before completion, so its marker is absent. Nothing else is owed - retention is
         // unchanged - so only the owed-compaction term can re-enter pruning after the restart.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
-        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber));
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(BeaconGenesisBlockNumber));
         metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
 
         HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb, NullPrunedReceiptRetention.Instance);
@@ -736,8 +736,8 @@ public class HistoryPrunerTests
         HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
         using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
         IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber).Bytes);
-        if (reclaimCursor != 0) metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimCursor).Bytes);
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(BeaconGenesisBlockNumber));
+        if (reclaimCursor != 0) metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimCursor));
 
         HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb);
         blocksDb.CompactReclaimingBlobFiles().Returns(true);
@@ -760,8 +760,8 @@ public class HistoryPrunerTests
         const ulong reclaimedThrough = 200_000;
         chain.BlockTree.SyncPivot = (reclaimedThrough, Hash256.Zero);
         IDb metadata = chain.Container.Resolve<IDbProvider>().MetadataDb;
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(reclaimedThrough).Bytes);
-        metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimedThrough).Bytes);
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(reclaimedThrough));
+        metadata.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(reclaimedThrough));
         metadata.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
         MutableRetention retention = new() { ExpiredUpperBound = expiredUpperBound };
         HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out IDb blocksDb, retention);
