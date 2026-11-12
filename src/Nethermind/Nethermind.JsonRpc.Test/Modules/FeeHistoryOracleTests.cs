@@ -581,13 +581,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [Test]
         [CancelAfter(30_000)]
-        public async Task GetFeeHistory_UncachedRequestsAtLimit_ReportsBlockBeyondHead(CancellationToken cancellationToken)
+        public async Task GetFeeHistory_UncachedRequestsAtLimit_ReportsBlockBeyondHead([Values] bool byHash, CancellationToken cancellationToken)
         {
             using FeeHistoryTestBlockchain chain = await FeeHistoryTestBlockchain.Create(blockCount: 5);
             using FeeHistoryOracle feeHistoryOracle = chain.CreateOracle(new JsonRpcConfig { FeeHistoryMaxConcurrentRequests = 1 }, maxDistanceFromHead: 0);
             await using PausedRequest uncached = chain.PauseUncachedRequest(feeHistoryOracle, 1, 2, cancellationToken);
 
-            using ResultWrapper<FeeHistoryResults> beyondHead = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(10UL), []);
+            using ResultWrapper<FeeHistoryResults> beyondHead = feeHistoryOracle.GetFeeHistory(1, byHash ? new BlockParameter(TestItem.KeccakA) : new BlockParameter(10UL), []);
             Assert.That(beyondHead.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
         }
 

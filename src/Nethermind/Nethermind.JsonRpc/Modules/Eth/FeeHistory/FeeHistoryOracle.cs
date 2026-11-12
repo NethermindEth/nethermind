@@ -97,7 +97,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards, ref UncachedRequestSlot uncachedRequestSlot, out bool headerFound)
         {
-            Hash256? hash = blockParameter is { Type: BlockParameterType.BlockHash, RequireCanonical: false }
+            bool hashUnchecked = blockParameter is { Type: BlockParameterType.BlockHash, RequireCanonical: false };
+            Hash256? hash = hashUnchecked
                 ? blockParameter.BlockHash
                 : _blockTree.FindHeader(blockParameter)?.Hash;
             headerFound = hash is not null;
@@ -111,6 +112,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             if (_blockTree.Head is { } head && head.Hash == hash)
             {
                 return SaveHistorySearchInfo(head, withRewards: false);
+            }
+
+            // An unknown hash is reported as not found rather than taking a slot, as an unknown block number is.
+            if (hashUnchecked && _blockTree.FindHeader(hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is null)
+            {
+                headerFound = false;
+                return null;
             }
 
             if (hash is not null)
