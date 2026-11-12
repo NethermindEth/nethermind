@@ -800,6 +800,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         };
         _processor.CallAndRestore(tx, block.Header, tracer);
         using GethLikeTxTrace callResult = native.BuildResult();
+        using GethLikeTxTrace? opcodeResult = memory?.BuildResult();
         NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)callResult.CustomTracerResult!.Value!;
         NativeCallTracerCallFrame frame = child ? root.Calls.AssertSingle() : root;
 
@@ -813,12 +814,14 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Assert.That(frame.Gas, Is.EqualTo(ChildGas), "forwarded gas");
                 Assert.That(frame.GasUsed, expectedError is null ? Is.LessThan(ChildGas) : Is.EqualTo(ChildGas), "child gas used");
             }
+        }
 
-            if (memory is not null)
+        if (opcodeResult is not null)
+        {
+            int matchingSteps = 0;
+            foreach (GethTxTraceEntry entry in opcodeResult.Entries)
             {
-                using GethLikeTxTrace opcodeResult = memory.BuildResult();
-                int matchingSteps = 0;
-                foreach (GethTxTraceEntry entry in opcodeResult.Entries)
+                using (Assert.EnterMultipleScope())
                 {
                     Assert.That(entry.Error, Is.Null, $"struct step {entry.ProgramCounter} at depth {entry.Depth}");
                     if (entry.Opcode == OpcodeJsonNames.GetName(opcode) && entry.Depth == (child ? 2 : 1))
@@ -828,8 +831,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                             Assert.That(entry.GasCost, Is.Zero, "invalid opcode step gas cost");
                     }
                 }
-                Assert.That(matchingSteps, Is.EqualTo(1), "the opcode's struct step is present exactly once");
             }
+            Assert.That(matchingSteps, Is.EqualTo(1), "the opcode's struct step is present exactly once");
         }
     }
 
