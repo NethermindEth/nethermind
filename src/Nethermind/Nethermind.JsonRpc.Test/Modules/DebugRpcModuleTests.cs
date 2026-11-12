@@ -567,6 +567,55 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_hash_selector_ignores_requireCanonical(
+        [Values] bool requireCanonical, [Values] bool indexed)
+    {
+        using Context context = await Context.Create();
+        await AddBlockWithTransfer(context);
+        Block canonical = context.Blockchain.BlockTree.Head!;
+        BlockHeader parent = context.Blockchain.BlockTree.FindHeader(canonical.ParentHash!, BlockTreeLookupOptions.None)!;
+        Address beneficiary = canonical.Beneficiary == TestItem.AddressD ? TestItem.AddressE : TestItem.AddressD;
+        // Flat-state retention identifies snapshots by both height and root, not by root alone.
+        Block sibling = Build.A.Block.WithParent(parent).WithStateRoot(canonical.StateRoot!)
+            .WithBeneficiary(beneficiary).WithExtraData([1]).TestObject;
+        AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(sibling.Hash, Is.Not.EqualTo(canonical.Hash));
+            Assert.That(sibling.Transactions, Is.Empty);
+            Assert.That(context.Blockchain.StateReader.HasStateForBlock(sibling.Header), Is.True,
+                "The non-indexed call must have a retained snapshot at the sibling's own height and root.");
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash));
+        }
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" },
+            new { blockHash = sibling.Hash!.ToString(), requireCanonical },
+            new
+            {
+                streamMode = false,
+                txIndex = indexed ? "0x0" : null,
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressC.ToString()] = new { code = "0x4160005260206000f3" }
+                }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x" + new string('0', 24) + beneficiary.ToString()[2..]), response);
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash));
+            Assert.That(context.Blockchain.BlockTree.Head!.Hash, Is.EqualTo(canonical.Hash));
+            Assert.That(sibling.Header.StateRoot, Is.EqualTo(canonical.StateRoot));
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCall_missing_block_preserves_selector_policy(
         [Values("number", "number-object", "hash", "hash-object", "safe", "finalized")] string selectorKind,
         [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool invalidOptions)
