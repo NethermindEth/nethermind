@@ -468,6 +468,29 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        [TestCase(false, TestName = "Memo_Hit_MatchesFreshComputation_Prague")]
+        [TestCase(true, TestName = "Memo_Hit_MatchesFreshComputation_Amsterdam")]
+        public void IntrinsicGasMemo_Hit_ReturnsEveryFieldOfTheFreshComputation(bool amsterdam)
+        {
+            IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
+            Transaction tx = Build.A.Transaction.SignedAndResolved()
+                .WithData([0, 1, 2, 0])
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
+                .TestObject;
+            IntrinsicGas<EthereumGasPolicy> expected = EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(tx, spec);
+
+            EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+            object? memo = tx.IntrinsicGasMemo;
+            IntrinsicGas<EthereumGasPolicy> hit = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memo));
+                Assert.That(hit.Standard, Is.EqualTo(expected.Standard));
+                Assert.That(hit.FloorGas, Is.EqualTo(expected.FloorGas));
+            }
+        }
+
         [Test]
         public void IntrinsicGasMemo_WhenEip2780SenderIsResolved_RecomputesSelfTransfer()
         {
