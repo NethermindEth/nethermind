@@ -19,6 +19,7 @@ mkdir -p "$OUT"
 
 # FX can be the signer the Nethermind.Crypto.Lean package ships in testing/runtimes/<rid>/native; otherwise build it.
 if [ -z "${FX:-}" ]; then
+  [ "${PQ_SCHEME:-sphincs}" = sphincs ] || die "PQ_SCHEME=$PQ_SCHEME needs FX: only the package signer proves leanSTARK"
   FX=$ROOT/tools/lean-ffi/target/release/examples/fixtures
   (cd "$ROOT/tools/lean-ffi" && cargo build -q --release --locked --example fixtures) > "$OUT/fixtures.build.log" 2>&1 \
     || die "fixtures build failed: $(tail -20 "$OUT/fixtures.build.log")"

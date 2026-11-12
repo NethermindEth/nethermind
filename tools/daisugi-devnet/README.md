@@ -170,7 +170,7 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 - `run.sh` writes `NETHERMIND_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.
 - The PQ key defaults to the first account ethereum-package prefunds from its default mnemonic.
 - Env: `PACKAGE` (pinned ethereum-package commit), `NETHERMIND_IMAGE`, `LIGHTHOUSE_IMAGE`, `NODES` (`1`), `PQ_SERIES` (`3`), `PQ_KEY`, `KEEP`.
-- `kurtosis/sync.sh <enclave>` (after `KEEP=1`): a late-joining Nethermind + Lighthouse pair on the enclave's network, the Compose `genesis` sync pair of step 6, peered only with node 1. `sync-check.sh` then compares it with node 1 (`EL_RPC_PORT`, `CL_HTTP_PORT` of node 1).
+- `kurtosis/sync.sh <enclave>` (after `KEEP=1`, with `NODES` 2 or more: a single-node enclave's beacon runs `--target-peers=0`): a late-joining Nethermind + Lighthouse pair on the enclave's network, the Compose `genesis` sync pair of step 6, peered only with node 1. Then compare it with the enclave nodes: `EL_RPC_PORTS="<node ELs> 28547" CL_HTTP_PORTS="<node beacon APIs> 25053" ./sync-check.sh <proof block>...` (the enclave's dynamic ports, node 1 first).
 
 ### PQ transaction series
 
@@ -181,7 +181,7 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 3. A byte-identical resend of sequence 0 is rejected as `already known`; a new transaction on sequence 0 as `keyed nonce sequence not current`.
 
 - Every included receipt must have status `0x1`. Expected last line: `PASS pq: blocks <b0> <b1> <b2>`.
-- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
+- Env: `PQ_KEY`, `CHAIN_ID`, `OUT` (fresh directory) are required; `PORT` (`8545`), `FX`, `PQ_SCHEME` (`sphincs`; `stark` or `mixed` need the package signer in `FX`), `TO`, `NONCE`, `NONCE_KEY`, `RECEIPT_TRIES` (`60`).
 
 ## Environment variables
 
@@ -211,4 +211,4 @@ rm -rf run/devnet-1
 - Single host, Docker network only. No bootnodes, discovery, public ENRs or multi-host topology yet.
 - arm64: no runtime-validated Lighthouse image (lock `binarySha256` for arm64 is `null`); Nethermind arm64 not run here.
 - Nethermind pin is interim; the Lean library is built locally until the NuGet package exists.
-- `proof.sh`, `sync.sh` and `sync-check.sh` read fixed container names and host ports, so they run only against the default `DEVNET_PREFIX`.
+- `proof.sh`, `sync.sh` and `sync-check.sh` default to fixed container names and host ports, so without `EL_CONTAINER`/`BN_CONTAINER` or `EL_RPC_PORTS`/`CL_HTTP_PORTS` they run only against the default `DEVNET_PREFIX`.

@@ -29,7 +29,7 @@ while i < len(b): i = item(i); n += 1
 print(n)' "$1"; }
 fail() { echo "FAIL: $*"; exit 1; }
 # A Kurtosis container (<service>--<uuid>) logs to the enclave's aggregator; `docker logs` shows only its first lines.
-logs() { if [[ -n ${ENCLAVE:-} ]]; then kurtosis service logs -a "$ENCLAVE" "${1%%--*}"; else docker logs "$1"; fi 2>&1; }
+logs() { if [[ -n ${KURTOSIS_ENCLAVE:-} ]]; then kurtosis service logs -a "$KURTOSIS_ENCLAVE" "${1%%--*}"; else docker logs "$1"; fi 2>&1; }
 
 echo "== genesis"
 until curl -sf -o /dev/null -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' $EL; do sleep 2; done
