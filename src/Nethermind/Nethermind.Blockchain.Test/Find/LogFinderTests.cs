@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -802,8 +803,8 @@ public class LogFinderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpException>());
-            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpException>());
+            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpReaderException>());
+            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
         }
     }
 
@@ -1175,10 +1176,10 @@ public class LogFinderTests
         public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
             Decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-        public Hash256[] DecodeTopics(RlpReader reader)
+        public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Interlocked.Increment(ref _decodeTopicsCalls);
-            return Decoder.DecodeTopics(reader);
+            return Decoder.DecodeTopics(reader, rlpBehaviors);
         }
 
         public bool CanDecodeBloom => Decoder.CanDecodeBloom;
@@ -1186,7 +1187,7 @@ public class LogFinderTests
 
     private sealed class TopicStreamingCountingDecoder(IReceiptRefTopicDecoder decoder) : TopicCountingDecoder(decoder), IReceiptRefTopicDecoder
     {
-        public int StartDecodingTopics(ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
+        public RlpReader StartDecodingTopics(scoped ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
 
         public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => Decoder.DecodeTopic(ref reader, index, topic);
     }

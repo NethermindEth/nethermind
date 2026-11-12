@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -434,18 +435,10 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
-
-            KeccakRlpWriter writer = new();
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                WriteByte(ref writer, bytes[i]);
-            }
-
-            Assert.That(writer.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
         [Test]
-        public void KeccakRlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding()
+        public void RlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding()
         {
             byte[] large = new byte[60];
             for (int i = 0; i < large.Length; i++)
@@ -457,23 +450,11 @@ namespace Nethermind.Core.Test
             byte[] expected = EncodeItems(items);
             using RlpByteArrayList list = CreateList(expected);
 
-            KeccakRlpWriter writer = new();
+            byte[] actual = new byte[Rlp.LengthOfByteArrayList(list)];
+            RlpWriter writer = RlpWriter.ContentWriter(actual);
             writer.WriteByteArrayList(list);
 
-            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
-        }
-
-        [Test]
-        public void KeccakRlpWriter_EncodeEmptyBloom_HashesCanonicalZeroBytes()
-        {
-            byte[] expected = new byte[Rlp.LengthOf(Bloom.Empty)];
-            RlpWriter expectedWriter = new(expected);
-            expectedWriter.Encode(Bloom.Empty);
-
-            KeccakRlpWriter writer = new();
-            writer.Encode(Bloom.Empty);
-
-            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
@@ -1533,7 +1514,7 @@ namespace Nethermind.Core.Test
             }
 
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(encoded);
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
             writer.StartSequence(contentLength);
             for (int i = 0; i < items.Length; i++)
             {
@@ -1548,10 +1529,6 @@ namespace Nethermind.Core.Test
             ExactMemoryOwner memoryOwner = new(encoded);
             return new RlpByteArrayList(memoryOwner, memoryOwner.Memory);
         }
-
-        private static void WriteByte<TWriter>(ref TWriter writer, byte value)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
-            => writer.WriteByte(value);
 
         private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>
         {

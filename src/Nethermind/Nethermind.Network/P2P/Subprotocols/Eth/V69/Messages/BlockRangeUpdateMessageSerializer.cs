@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -11,13 +12,14 @@ public class BlockRangeUpdateMessageSerializer :
 {
     public int Serialize(Span<byte> destination, BlockRangeUpdateMessage message)
     {
-        RlpWriter writer = new(destination);
-        writer.StartSequence(GetContentLength(message));
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        RlpSequence sequence = writer.StartSequence(GetContentLength(message));
 
         writer.Encode(message.EarliestBlock);
         writer.Encode(message.LatestBlock);
         writer.Encode(message.LatestBlockHash);
-        return writer.Position;
+        writer.EndSequence(sequence);
+        return writer.Length;
     }
 
     public BlockRangeUpdateMessage Deserialize(ReadOnlySpan<byte> data)
@@ -28,16 +30,18 @@ public class BlockRangeUpdateMessageSerializer :
         return message;
     }
 
-    private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
+    private static BlockRangeUpdateMessage Deserialize(ref RlpReader reader)
     {
-        ctx.ReadSequenceLength();
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
 
-        return new BlockRangeUpdateMessage
+        BlockRangeUpdateMessage message = new()
         {
             EarliestBlock = ctx.DecodeULong(),
             LatestBlock = ctx.DecodeULong(),
             LatestBlockHash = ctx.DecodeKeccak()
         };
+        reader.ExitSequenceIgnoringRest(ctx, itemLength);
+        return message;
     }
 
     public int GetLength(BlockRangeUpdateMessage message) => Rlp.LengthOfSequence(GetContentLength(message));

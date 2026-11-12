@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -16,9 +17,10 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
         GetDataLength(msg, out int contentLength);
 
         RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.SearchedNodeId);
         writer.Encode(msg.ExpirationTime);
+        writer.EndSequence(sequence);
 
         return CompletePacket(destination, in writer, out _);
     }
@@ -26,8 +28,7 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
     public FindNodeMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
         (PublicKey FarPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
-        RlpReader ctx = new(data);
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
         byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
         long expirationTime = ctx.DecodeLong();
 

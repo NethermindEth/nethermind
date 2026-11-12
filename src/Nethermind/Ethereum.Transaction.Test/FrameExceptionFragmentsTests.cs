@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -41,7 +42,7 @@ public class FrameExceptionFragmentsTests
     private static string DecodeFailureMessage(byte[] payload)
     {
         // Catch, not Throws: the length guard raises the RlpLimitException subclass.
-        RlpException thrown = Assert.Catch<RlpException>(() =>
+        RlpReaderException thrown = Assert.Catch<RlpReaderException>(() =>
         {
             RlpReader reader = new(payload);
             Rlp.GetDecoder<Nethermind.Core.Transaction>()!
@@ -199,7 +200,7 @@ public class FrameExceptionFragmentsTests
         // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
         yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
             .SetName("Decode covers short frame data under a long-form header");
-        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "Data checkpoint failed")
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "RLP data is truncated")
             .SetName("Decode covers frame limits missing an element");
     }
 

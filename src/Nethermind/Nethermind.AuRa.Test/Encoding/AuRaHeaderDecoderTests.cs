@@ -6,7 +6,9 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -45,7 +47,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithAura(42, null).TestObject;
         Rlp rlp = _decoder.Encode(header);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
@@ -74,7 +76,7 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAura(42, [0x01]).TestObject;
         Rlp rlp = _decoder.Encode(header);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpReaderException>());
 
         void Decode()
         {
@@ -113,11 +115,10 @@ public class AuRaHeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithAura(42, signature).TestObject;
 
         byte[] encoded = _decoder.Encode(header).Bytes;
-        RlpReader ctx = new(encoded);
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(encoded).EnterSequence(out _);
         for (int i = 0; i < 13; i++) ctx.SkipItem();
 
-        (int _, int sealItemLen) = ctx.PeekPrefixAndContentLength();
+        (int _, int sealItemLen) = RlpTestHelper.PrefixAndContentLength(ctx.PeekNextItem());
         Assert.That(sealItemLen, Is.Not.EqualTo(Nethermind.Core.Crypto.Hash256.Size));
 
         long decodedStep = (long)ctx.DecodeUInt256();

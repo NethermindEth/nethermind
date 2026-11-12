@@ -17,7 +17,7 @@ public class RlpReaderTest
     public void ReadString(byte[] prefix, string expected)
     {
         byte[] source = [.. prefix, .. Encoding.UTF8.GetBytes(expected)];
-        string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
+        string actual = RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
         Assert.That(actual, Is.EqualTo(expected));
     }
@@ -29,13 +29,13 @@ public class RlpReaderTest
         {
             int integer = i;
             byte[] source = [(byte)integer];
-            int actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
+            int actual = RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
 
             Assert.That(actual, Is.EqualTo(integer));
         }
 
         byte[] zero = [0x80];
-        Assert.That(Rlp.Read(zero, static (scoped ref RlpReader r) => r.ReadInt32()), Is.Zero);
+        Assert.That(RlpCodec.Read(zero, static (scoped ref RlpReader r) => r.ReadInt32()), Is.Zero);
     }
 
     [Test]
@@ -45,7 +45,7 @@ public class RlpReaderTest
         {
             int integer = i;
             byte[] source = [0x82, (byte)((integer & 0xFF00) >> 8), (byte)((integer & 0x00FF) >> 0)];
-            int actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
+            int actual = RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadInt32());
 
             Assert.That(actual, Is.EqualTo(integer));
         }
@@ -55,7 +55,7 @@ public class RlpReaderTest
     public void ReadStringList()
     {
         byte[] source = [0xc8, 0x83, .. "cat"u8, 0x83, .. "dog"u8];
-        (string, string) actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        (string, string) actual = RlpCodec.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -74,7 +74,7 @@ public class RlpReaderTest
     {
         byte[] source = [0xc0];
 
-        object[] actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        object[] actual = RlpCodec.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader _) => Array.Empty<object>());
         });
@@ -87,7 +87,7 @@ public class RlpReaderTest
     {
         byte[] source = [0x82, 0x04, 0x00];
 
-        ReadOnlySpan<byte> actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes());
+        ReadOnlySpan<byte> actual = RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadBytes());
 
         ReadOnlySpan<byte> expected = [0x04, 0x00];
         Assert.That(actual.SequenceEqual(expected), Is.True);
@@ -98,7 +98,7 @@ public class RlpReaderTest
     {
         byte[] source = [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0];
 
-        object[] actual = Rlp.Read(source, static (scoped ref RlpReader r) =>
+        object[] actual = RlpCodec.Read(source, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -154,7 +154,7 @@ public class RlpReaderTest
     {
         byte[] rlp = WriteDogs(itemCount);
 
-        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        Assert.That(() => RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) => r.ReadString());
         }), Throws.InstanceOf<RlpReaderException>());
@@ -165,7 +165,7 @@ public class RlpReaderTest
     {
         byte[] rlp = WriteDogs(itemCount);
 
-        List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        List<string> decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) =>
         {
             return r.ReadSequence(static (scoped ref RlpReader r) =>
             {
@@ -217,9 +217,9 @@ public class RlpReaderTest
 
     private static int Read(byte[] source, Shape shape) => shape switch
     {
-        Shape.Integer => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32()),
-        Shape.Bytes => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length),
-        _ => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadSequence(ReadAllBytes)),
+        Shape.Integer => RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadInt32()),
+        Shape.Bytes => RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length),
+        _ => RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadSequence(ReadAllBytes)),
     };
 
     [Test]
@@ -227,7 +227,7 @@ public class RlpReaderTest
     {
         byte[] source = [0xb9, 0x00, 0x38, .. new byte[56]];
 
-        Assert.That(() => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => RlpCodec.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -235,7 +235,7 @@ public class RlpReaderTest
     {
         byte[] source = NestedLists(1_000_000);
 
-        Assert.That(() => Rlp.Read(source, ReadDepth), Throws.TypeOf<RlpReaderException>());
+        Assert.That(() => RlpCodec.Read(source, ReadDepth), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -303,7 +303,7 @@ public class RlpReaderTest
         => payloadLength <= 55 ? 1 : payloadLength <= 0xff ? 2 : payloadLength <= 0xffff ? 3 : payloadLength <= 0xffffff ? 4 : 5;
 
     private static byte[] WriteDogs(int itemCount)
-        => Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
+        => RlpCodec.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
         {
             w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
             {

@@ -15,6 +15,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -123,7 +124,7 @@ public class DiscoveryMessageSerializerTests
 
         byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
 
-        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpException>());
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -133,7 +134,7 @@ public class DiscoveryMessageSerializerTests
         payload[^1] = prefix;
         byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
 
-        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpException>());
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpReaderException>());
     }
 
     [Test]
@@ -163,21 +164,20 @@ public class DiscoveryMessageSerializerTests
             { FarAddress = destination };
 
         byte[] packet = _messageSerializationService.SerializeToArray(message);
-        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(packet.AsSpan(DiscoveryPacketDataOffset)).EnterSequence(out _);
         Assert.That(ctx.DecodeInt(), Is.EqualTo(message.Version));
 
-        int sourceEnd = ctx.ReadSequenceLength() + ctx.Position;
-        byte[] sourceIp = ctx.DecodeByteArraySpan().ToArray();
-        int sourceUdpPort = ctx.DecodeInt();
-        int sourceTcpPort = ctx.DecodeInt();
-        ctx.Check(sourceEnd);
+        RlpReader sourceReader = ctx.EnterSequence(out int sourceLength);
+        byte[] sourceIp = sourceReader.DecodeByteArraySpan().ToArray();
+        int sourceUdpPort = sourceReader.DecodeInt();
+        int sourceTcpPort = sourceReader.DecodeInt();
+        ctx.ExitSequence(sourceReader, sourceLength);
 
-        int destinationEnd = ctx.ReadSequenceLength() + ctx.Position;
-        byte[] destinationIp = ctx.DecodeByteArraySpan().ToArray();
-        int destinationUdpPort = ctx.DecodeInt();
-        int destinationTcpPort = ctx.DecodeInt();
-        ctx.Check(destinationEnd);
+        RlpReader destinationReader = ctx.EnterSequence(out int destinationLength);
+        byte[] destinationIp = destinationReader.DecodeByteArraySpan().ToArray();
+        int destinationUdpPort = destinationReader.DecodeInt();
+        int destinationTcpPort = destinationReader.DecodeInt();
+        ctx.ExitSequence(destinationReader, destinationLength);
 
         using (Assert.EnterMultipleScope())
         {
@@ -307,9 +307,7 @@ public class DiscoveryMessageSerializerTests
         };
 
         byte[] packet = _messageSerializationService.SerializeToArray(message);
-        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
-        ctx.ReadSequenceLength();
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(packet.AsSpan(DiscoveryPacketDataOffset)).EnterSequence(out _).EnterSequence(out _);
         byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
 
         using (Assert.EnterMultipleScope())
@@ -341,7 +339,7 @@ public class DiscoveryMessageSerializerTests
             Rlp.LengthOf(futureValue);
 
         byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(data);
+        RlpWriter writer = RlpWriter.ContentWriter(data);
         writer.StartSequence(contentLength);
         writer.StartSequence(addressLength);
         writer.Encode(ip);
@@ -515,14 +513,13 @@ public class DiscoveryMessageSerializerTests
             };
 
         byte[] packet = _messageSerializationService.SerializeToArray(message);
-        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
-        ctx.ReadSequenceLength();
-        int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
-        int nodeEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader nodes = new RlpReader(packet.AsSpan(DiscoveryPacketDataOffset)).EnterSequence(out _).EnterSequence(out _);
+        RlpReader ctx = nodes.EnterSequence(out int nodeLength);
         byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
         int firstPort = ctx.DecodeInt();
         int secondPort = ctx.DecodeInt();
         ReadOnlySpan<byte> encodedId = ctx.DecodeByteArraySpan();
+        nodes.ExitSequence(ctx, nodeLength);
 
         using (Assert.EnterMultipleScope())
         {
@@ -530,8 +527,8 @@ public class DiscoveryMessageSerializerTests
             Assert.That(firstPort, Is.EqualTo(node.DiscoveryPort));
             Assert.That(secondPort, Is.EqualTo(node.Port));
             Assert.That(encodedId.SequenceEqual(node.Id.Bytes), Is.True);
-            Assert.That(ctx.Position, Is.EqualTo(nodeEnd));
-            Assert.That(ctx.Position, Is.EqualTo(nodesEnd));
+            Assert.That(ctx.HasNext, Is.False);
+            Assert.That(nodes.HasNext, Is.False);
         }
 
         NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(packet);
@@ -594,7 +591,7 @@ public class DiscoveryMessageSerializerTests
         int contentLength = Rlp.LengthOfSequence(nodesContentLength) + Rlp.LengthOf(expirationTime);
 
         byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(data);
+        RlpWriter writer = RlpWriter.ContentWriter(data);
         writer.StartSequence(contentLength);
         writer.StartSequence(nodesContentLength);
         writer.StartSequence(nodeContentLength);
@@ -691,7 +688,7 @@ public class DiscoveryMessageSerializerTests
         int addressContentLength = Rlp.LengthOf(new byte[] { 127, 0, 0, 1 }) + Rlp.LengthOf(30303) + Rlp.LengthOf(30303);
         int contentLength = Rlp.LengthOfSequence(addressContentLength) + Rlp.LengthOf(new byte[33]) + Rlp.LengthOf(expirationTime);
         byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(data);
+        RlpWriter writer = RlpWriter.ContentWriter(data);
         writer.StartSequence(contentLength);
         writer.StartSequence(addressContentLength);
         writer.Encode(new byte[] { 127, 0, 0, 1 });
