@@ -79,8 +79,6 @@ public static class RecursiveStarkAggregator
             if (proof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             size += 8 + (long)proof.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + proof.Proof.Length;
         }
-        if (input.BatchLeaves.Count != 0) size += 4;
-        foreach (BatchLeafInput leaf in input.BatchLeaves) size += 40 + 32L * leaf.Claims.Count + leaf.Proof.Length;
         return size;
     }
 
@@ -171,6 +169,9 @@ public static class RecursiveStarkAggregator
         byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
+        // Batch leaves are private to their owner, who aggregates them through the verifier directly; this node-side fold never
+        // receives one and does not split them across steps.
+        if (input.BatchLeaves.Count != 0) throw new ArgumentException("Batch leaves are not folded by the managed aggregator", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
             if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
         if (input.Deps.Count == 0 && input.RecursiveProofs.Count == 1 && input.Discards.Count == 0)

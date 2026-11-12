@@ -387,6 +387,18 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Batch_leaves_are_refused_rather_than_dropped()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 claim = ValueKeccak.Compute("claim");
+        AggregationInput input = new() { BatchLeaves = [new(default, [claim], new byte[] { 1 })] };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanStarkScheme, claim, default)]);
+
+        Assert.That(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash), Throws.ArgumentException);
+        Assert.That(verifier.ProofCalls, Is.Zero);
+    }
+
+    [Test]
     public void Hierarchical_children_prune_discarded_generic_claims_before_the_native_count_limit()
     {
         FrameDependency[] dependencies = new FrameDependency[33];
