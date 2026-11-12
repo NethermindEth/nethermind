@@ -1641,25 +1641,27 @@ public partial class EthRpcModuleTests
             Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"), serialized);
     }
 
-    [Test]
-    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits()
+    // Chain 1, nonce 0, 100000 gas, no value or data; the cases differ in the recipient and the access list.
+    [TestCase("", "0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28", TestName = "Fee cap beyond 256 bits names a call")]
+    [TestCase(""","to":null""", "0x8e5bf475233b54bb39af2a960ff11fdf9efab2dbfd3e6ac0e003c6ad8a434230", TestName = "Fee cap beyond 256 bits names a contract creation")]
+    [TestCase(""","accessList":[{"address":"0x00000000000000000000000000000000000000aa","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001"]}]""", "0x6bba4617a334e048a917b2f0761a50ca98f60c5c0442538a5d36c8489d307e49", TestName = "Fee cap beyond 256 bits names a call with an access list")]
+    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits(string extraFields, string expectedHash)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
         UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
         UInt256 priorityFee = UInt256.MaxValue;
 
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
-            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"}"""), "latest", TipFeeState(OneEtherBalance));
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"{{extraFields}}}"""), "latest", TipFeeState(OneEtherBalance));
 
         string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
         UInt256 lowBits = baseFee * 2 - 1;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(baseFee, Is.EqualTo((UInt256)765_625_000), "the hash below is for this base fee");
-            // The transaction is named with the 257-bit fee cap it was filled with: chain 1, nonce 0, 100000 gas,
-            // no value, data or access list.
+            // The transaction is named with the 257-bit fee cap it was filled with.
             Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
-                Is.EqualTo($"failed to apply transaction: 0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28 err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
+                Is.EqualTo($"failed to apply transaction: {expectedHash} err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
                 serialized);
         }
     }
@@ -1799,7 +1801,7 @@ public partial class EthRpcModuleTests
     {
         JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
         request["from"] = TipFeeSender;
-        request["to"] = TipFeeTarget;
+        if (!request.ContainsKey("to")) request["to"] = TipFeeTarget;
         request["gas"] = TipFeeGas.ToHexString(true);
         return JsonSerializer.Deserialize<object>(request.ToJsonString());
     }
