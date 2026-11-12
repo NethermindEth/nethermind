@@ -1653,19 +1653,39 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void CompactReclaimingBlobFiles_DoesNotReportCompletionAfterInterrupt()
+        public void CompactReclaimingBlobFiles_ReportsCompletionOnlyWhenTheRewriteWasNotInterrupted([Values] bool duringRewrite)
         {
             using RocksDbInstance instance = OpenBlocksInstance(new DbConfig(), out IRocksDbConfig tableConfig);
-            using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.Default, interrupt: true);
+            using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.Default,
+                interrupt: duringRewrite, interruptAfterRewrite: !duringRewrite);
             db.Tune(ITunableDb.TuneType.EnableBlobFiles);
             SeedBlobValues(db, 100);
 
-            bool interrupted = db.CompactReclaimingBlobFiles();
+            bool completed = db.CompactReclaimingBlobFiles();
             bool retried = db.CompactReclaimingBlobFiles();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(interrupted, Is.False);
+                Assert.That(completed, Is.EqualTo(!duringRewrite), "a shutdown after the rewrite finished must not make the next start repeat it");
                 Assert.That(retried, Is.False);
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_WithholdsAnyBlobOptionUntilTheRewriteEnds()
+        {
+            using RocksDbInstance instance = OpenBlocksInstance(new DbConfig(), out IRocksDbConfig tableConfig);
+            using TuneDuringCompactionDbOnTheRocks db = new(instance, tableConfig, LimboLogs.Instance, ITunableDb.TuneType.EnableBlobFiles,
+                optionToInject: new("min_blob_size", "8192"));
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+            SeedBlobValues(db, 100);
+
+            bool completed = db.CompactReclaimingBlobFiles();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed, Is.True);
+                Assert.That(db.LiveInjectedOptionWhenTuneInjected, Is.Null, "a blob option must not go live under the running rewrite");
+                Assert.That(db.LatestLiveOption("min_blob_size"), Is.EqualTo("8192"), "the withheld blob option must go live with the restore");
             }
         }
 
@@ -2814,10 +2834,16 @@ namespace Nethermind.Db.Test
         IRocksDbConfig config,
         ILogManager logManager,
         ITunableDb.TuneType tuneToInject,
-        bool interrupt = false
+        bool interrupt = false,
+        bool interruptAfterRewrite = false,
+        KeyValuePair<string, string>? optionToInject = null
         ) : OptionsCapturingDbOnTheRocks(instance, config, logManager)
     {
+        private bool _rewriteReturned;
+
         public bool TuneInjected { get; private set; }
+
+        public string? LiveInjectedOptionWhenTuneInjected { get; private set; }
 
         // The live enable_blob_files value right after the mid-compaction Tune returned, before the real
         // compaction and the epilogue restore - "true" proves the Tune's attempt to flip blob files off was
@@ -2832,12 +2858,26 @@ namespace Nethermind.Db.Test
             {
                 if (interrupt) InterruptCompactions();
                 Tune(tuneToInject);
+                if (optionToInject is { } option)
+                {
+                    ApplyOptions([option]);
+                    LiveInjectedOptionWhenTuneInjected = LatestLiveOption(option.Key);
+                }
+
                 TuneInjected = true;
                 LiveBlobFilesWhenTuneInjected = LatestLiveBlobFiles();
                 LiveForceThresholdWhenTuneInjected = LatestLiveOption("blob_garbage_collection_force_threshold");
             }
 
             base.CompactOpenRange(cf, forceBottommost);
+            _rewriteReturned = true;
+        }
+
+        // The restore after the rewrite is the window where a shutdown lands on a rewrite that already finished.
+        internal override void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options)
+        {
+            if (interruptAfterRewrite && _rewriteReturned) InterruptCompactions();
+            base.ApplyOptions(options);
         }
     }
 }

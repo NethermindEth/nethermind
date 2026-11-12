@@ -708,6 +708,27 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Blob_compaction_runs_again_only_after_a_raised_barrier_reclaims_more_history([Values] bool raised)
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        SyncConfig syncConfig = new() { AncientBodiesBarrier = BeaconGenesisBlockNumber, AncientReceiptsBarrier = BeaconGenesisBlockNumber, PivotNumber = 100, SnapSync = true };
+
+        HistoryPruner first = CreatePrunerWithSpyBlocksDb(chain, config, out IDb firstBlocksDb, syncConfig: syncConfig);
+        firstBlocksDb.CompactReclaimingBlobFiles().Returns(true);
+        first.TryPruneHistory(CancellationToken.None);
+        await first.BlobCompactionTask;
+        firstBlocksDb.Received(1).CompactReclaimingBlobFiles();
+
+        if (raised) syncConfig.AncientBodiesBarrier = BeaconGenesisBlockNumber + 10;
+        HistoryPruner restarted = CreatePrunerWithSpyBlocksDb(chain, config, out IDb restartedBlocksDb, syncConfig: syncConfig);
+        restartedBlocksDb.CompactReclaimingBlobFiles().Returns(true);
+        restarted.TryPruneHistory(CancellationToken.None);
+        await restarted.BlobCompactionTask;
+        restartedBlocksDb.Received(raised ? 1 : 0).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
     public async Task Blob_compaction_requires_actual_reclaim_with_legacy_pruning_metadata(
         [Values(0UL, 1UL, BeaconGenesisBlockNumber)] ulong reclaimCursor)
     {
@@ -841,6 +862,19 @@ public class HistoryPrunerTests
         Assert.That(metadata.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone), Is.False);
         pruner.TryPruneHistory(CancellationToken.None);
         blocksDb.Received(1).CompactReclaimingBlobFiles();
+    }
+
+    [Test]
+    public async Task Pruning_stops_after_disposal([Values] bool disposed)
+    {
+        HistoryConfig config = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 };
+        using BasicTestBlockchain chain = await CreateBlockchainWithBlocks(config, 100, syncPivot: 100);
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(chain, config, out _);
+        if (disposed) await pruner.DisposeAsync();
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(chain.BlockTree.FindBlock(10UL, BlockTreeLookupOptions.None), disposed ? Is.Not.Null : Is.Null);
     }
 
     private static HistoryPruner CreatePrunerWithSpyBlocksDb(BasicTestBlockchain testBlockchain, IHistoryConfig historyConfig, out IDb blocksDb, IPrunedReceiptRetention retention = null, IProcessExitSource processExitSource = null, ISyncConfig syncConfig = null)

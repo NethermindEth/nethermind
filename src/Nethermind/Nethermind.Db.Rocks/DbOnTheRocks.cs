@@ -1467,10 +1467,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _blobCompactionInProgress = true;
         }
 
+        bool interrupted;
         try
         {
             // Do not block runtime tuning for the duration of the rewrite.
             CompactOpenRange(_columnFamily, forceBottommost: true);
+            // Read at once: InterruptCompactions sets the flag before it disables manual compaction, so a clear flag
+            // here proves the rewrite ran to the end, and a shutdown during the restore below does not undo that.
+            interrupted = Volatile.Read(ref _compactionsInterrupted) != 0;
         }
         finally
         {
@@ -1481,13 +1485,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        return CanConfirmBlobCompaction();
+        return !interrupted && CanConfirmBlobCompaction();
     }
 
     private bool CanConfirmBlobCompaction()
     {
-        if (Volatile.Read(ref _compactionsInterrupted) != 0) return false;
-
         // CompactRange's C API discards its status. Fail closed if RocksDB reports a background error,
         // including one predating this attempt, rather than permanently consuming the one-shot.
         if (_db.TryGetIntProperty("rocksdb.background-errors", out ulong errors) && errors == 0) return true;
@@ -1495,6 +1497,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (_logger.IsError) _logger.Error($"Cannot confirm blob-file compaction of {Name}: RocksDB background errors are present or unavailable. Completion will not be recorded.");
         return false;
     }
+
+    private static bool IsBlobOption(string key) => key.Contains("blob", StringComparison.Ordinal);
 
     private bool HasBlobFiles() => !_db.TryGetIntProperty("rocksdb.num-blob-files", out ulong count) || count > 0;
 
@@ -1792,7 +1796,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             List<KeyValuePair<string, string>>? liveOptions = _blobCompactionInProgress ? [] : null;
             foreach ((string key, string value) in options)
             {
-                if (_effectiveBlobGcOptions.ContainsKey(key))
+                // Withhold every blob option, not only the tracked ones: a live min_blob_size change would otherwise mix
+                // blob configurations within the one rewrite. A withheld key is tracked from then on, so the restore applies it.
+                if (_effectiveBlobGcOptions.ContainsKey(key) || (_blobCompactionInProgress && IsBlobOption(key)))
                 {
                     _effectiveBlobGcOptions[key] = value;
                     if (_blobCompactionInProgress) continue;

@@ -95,8 +95,8 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
     private bool _hasLoadedBalsDeletePointer;
-    // One-shot: once a blob-reclaiming compaction completes it is persisted and never repeated for the DB's life.
-    private bool _blobCompactionDone;
+    // The reclaim cursor the last completed blob-reclaiming compaction covered; only a reclaim past it owes another.
+    private ulong _blobCompactionReclaimedThrough;
     private bool _blobCompactionOwed;
     private bool _blobCompactionAttempted;
     private volatile bool _disposed;
@@ -144,9 +144,8 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        // Armed only under fixed barriers: Rolling keeps advancing the cutoff, so retained bodies re-pin fresh blob
-        // files and the one run's benefit decays while its done-marker would wrongly block any re-run (see remarks on
-        // CompactBlocksReclaimingBlobFiles). Under a fixed barrier a single run suffices.
+        // Armed only under fixed barriers: Rolling advances the cutoff on every pass, so each pass would owe another
+        // store-wide rewrite of hours. Under a fixed barrier one run per barrier suffices.
         _compactBlocksOnPrune = historyConfig.CompactBlocksOnPrune && historyConfig.Pruning == PruningModes.UseAncientBarriers;
         _balPruningOnly = !_enabled
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
@@ -764,16 +763,16 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
     /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
     /// fixed barriers), a reclaim has removed history from the blocks database and reached the configured ancient
-    /// barrier, and the completion marker is unset.</summary>
+    /// barrier, and no completed run covered that reclaim yet.</summary>
     /// <remarks>Actual reclaim work is persisted separately from the cursor: a freshly synced database can start
     /// with its cursor at the barrier without ever having stored the older bodies. It is deferred until the
-    /// cursor reaches the barrier because the marker is permanent: under fast sync the live pivot clamps
-    /// <see cref="AncientBodiesBarrier"/> and the reclaim, so a rewrite fired on a partial reclaim would leave the
-    /// later reclaim re-pinning blob files with no second rewrite possible. The target is therefore the configured
-    /// barrier, not the pivot-clamped one.</remarks>
+    /// cursor reaches the barrier because each run takes hours: under fast sync the live pivot clamps
+    /// <see cref="AncientBodiesBarrier"/> and the reclaim, so a rewrite fired on a partial reclaim would be followed
+    /// by another once the pivot moves. The target is therefore the configured barrier, not the pivot-clamped one.
+    /// A raised barrier moves the cursor past the one a completed run covered, so the rewrite is owed again.</remarks>
     private bool IsBlobCompactionOwed() =>
         _compactBlocksOnPrune
-        && !_blobCompactionDone
+        && _blobCompactionReclaimedThrough < _blocksReclaimCursor
         && !_blobCompactionAttempted
         && _blobCompactionOwed
         && _blocksReclaimCursor > _minDeletableBlockNumber
@@ -786,16 +785,18 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         if (_blocksReclaimCursor < _blocksDeletePointer
             || ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber) < SliceCleanupTarget()) return;
         _blobCompactionAttempted = true;
-        BlobCompactionTask = Task.Factory.StartNew(CompactBlocksReclaimingBlobFiles,
+        ulong reclaimedThrough = _blocksReclaimCursor;
+        BlobCompactionTask = Task.Factory.StartNew(() => CompactBlocksReclaimingBlobFiles(reclaimedThrough),
             CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
-    /// <summary>Runs once, after pruning has reclaimed history, the store-wide blocks-database compaction that
+    /// <summary>Runs, after pruning has reclaimed history, the store-wide blocks-database compaction that
     /// retires the stale RocksDB blob files a plain range reclaim cannot free while a surviving key still
-    /// references the oldest blob file. Persists a marker on completion so it never repeats.</summary>
+    /// references the oldest blob file. Persists the reclaim cursor it covered, so it repeats only after a later
+    /// reclaim moves past it.</summary>
     /// <remarks>Runs on a dedicated maintenance thread without the pruning lock. Disposal cancels and joins it
     /// before its database dependencies are released. A failed or declined attempt is retried only after restart.</remarks>
-    private void CompactBlocksReclaimingBlobFiles()
+    private void CompactBlocksReclaimingBlobFiles(ulong reclaimedThrough)
     {
         try
         {
@@ -815,8 +816,8 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 
             lock (_pruneLock)
             {
-                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, [1]);
-                _blobCompactionDone = true;
+                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough).Bytes);
+                _blobCompactionReclaimedThrough = reclaimedThrough;
             }
 
             if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
@@ -1294,7 +1295,8 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
         LoadTxIndexSweepCursor();
 
-        _blobCompactionDone = _metadataDb.KeyExists(MetadataDbKeys.HistoryPruningBlobCompactionDone);
+        byte[]? compactionDone = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionDone);
+        _blobCompactionReclaimedThrough = compactionDone is null ? 0 : new RlpReader(compactionDone).DecodeULong();
         byte[]? compactionOwed = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionOwed);
         // Legacy pointers cannot distinguish completed pruning from a database synced directly to the barrier.
         // Only recorded reclaim work arms the rewrite; an unfinished legacy reclaim will record it as it resumes.
