@@ -26,6 +26,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private byte[] _memoryBuffer = [];
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
+    private string? _errorDetails;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -63,6 +64,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         IsTracingActions = true;
         if (options.Limit < 0) StopCapture();
     }
+
+    /// <summary>Gets the error that ended the top-level action, if any.</summary>
+    internal string? RootError { get; private set; }
 
     internal void StopCapture()
     {
@@ -174,7 +178,13 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        CompleteAction(0, default, evmExceptionType.GetEvmExceptionDescription());
+        CompleteAction(0, default, _errorDetails ?? evmExceptionType.GetEvmExceptionDescription());
+    }
+
+    public override void ReportActionErrorDetails(string error)
+    {
+        base.ReportActionErrorDetails(error);
+        _errorDetails = error;
     }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
@@ -215,7 +225,15 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (_gasTracker.EndAction(gas) is ulong gasUsed)
             Trace.Gas = gasUsed;
 
-        if (_actionGas?.TryPop(out ulong initialGas) == true && _actionGas.Count != 0)
+        _errorDetails = null;
+        if (_actionGas?.TryPop(out ulong initialGas) != true)
+            return;
+
+        if (_actionGas.Count == 0)
+        {
+            RootError = error;
+        }
+        else
         {
             // The terminal opcode (or caller's CALL for an empty child) precedes the exit record.
             if (CurrentTraceEntry is not null)

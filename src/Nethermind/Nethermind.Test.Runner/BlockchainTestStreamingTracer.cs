@@ -157,7 +157,7 @@ public class BlockchainTestStreamingTracer(
     {
         using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
-        // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
+        // Write trace entry (fields as in GethLikeTxTraceJsonLinesConverter, except memSize before memory, no returnData and default error escaping)
         writer.WriteStartObject();
 
         writer.WritePropertyName("pc");
