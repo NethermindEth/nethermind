@@ -763,8 +763,8 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         /// <remarks>
-        /// The collections are replaced rather than cleared, as clearing keeps their capacity, which grows to tens of
-        /// megabytes during a sync and would otherwise stay allocated for the life of the process.
+        /// The saved-node caches are replaced rather than cleared, as clearing keeps their capacity, which grows to tens
+        /// of megabytes during a sync and would otherwise stay allocated for the life of the process.
         /// </remarks>
         private void CleanupMemory()
         {
@@ -774,8 +774,8 @@ namespace Nethermind.Synchronization.FastSync
             _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
             if (_rootSaved == 1)
             {
-                _previouslyPendingItems = new();
-                _newPendingItems = new();
+                _previouslyPendingItems.Clear();
+                _newPendingItems.Clear();
             }
         }
 

@@ -235,9 +235,9 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public async Task Releases_sync_collections_after_sync_and_can_sync_again()
+        public async Task Releases_saved_node_caches_after_sync_and_can_sync_again()
         {
-            string[] fieldNames = ["_alreadySavedNode", "_alreadySavedCode", "_previouslyPendingItems", "_newPendingItems"];
+            string[] fieldNames = ["_alreadySavedNode", "_alreadySavedCode"];
             object?[] GetCollections(TreeSync treeSync) =>
                 fieldNames.Select(f => typeof(TreeSync).GetField(f, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(treeSync)).ToArray();
 
