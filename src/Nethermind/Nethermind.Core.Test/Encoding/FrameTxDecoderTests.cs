@@ -187,7 +187,7 @@ public class FrameTxDecoderTests
         // The generic fixed-width field message, not a frame-specific one: it is the
         // FrameExceptionFragments.Decode fragment EF fixture rejects match on.
         Assert.That(Decode, Throws.InstanceOf<RlpReaderException>()
-            .With.Message.Contains("RLP byte string has another length than expected"));
+            .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
     /// <summary>A mode or flag byte outside the defined set decodes verbatim and is refused by the stateless
@@ -730,7 +730,7 @@ public class FrameTxDecoderTests
         byte[] payload = TypedPayload(FrameTxBody(chainId: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
 
         Assert.That(() => DecodeConsensusPayload(payload),
-            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("RLP integer is too large"));
+            Throws.InstanceOf<RlpReaderException>().With.Message.Contains("Unexpected length of integer"));
     }
 
     // EIP-8141 requires nonce < 2^64. A wider nonce gets the NonceTooWide error the other transaction types report.
@@ -768,30 +768,29 @@ public class FrameTxDecoderTests
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1] += (byte)overrun;
 
-        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("RLP data is truncated"));
+        Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpReaderException>().With.Message.Contains("payload is incomplete"));
     }
 
     [TestCaseSource(nameof(TruncatedPayloadCases))]
-    public void Decode_InputEndingBeforeThePayloadDoes_ThrowsTruncated(byte[] payload, string message) =>
+    public void Decode_InputEndingBeforeThePayloadDoes_ThrowsTruncated(byte[] payload) =>
         Assert.That(() => DecodeConsensusPayload(payload),
-            Throws.InstanceOf<RlpReaderException>().With.Message.EqualTo(message));
+            Throws.InstanceOf<RlpReaderException>().With.Message.EqualTo("RLP data is truncated: frame transaction payload is incomplete."));
 
     /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.</summary>
     private static IEnumerable<TestCaseData> TruncatedPayloadCases()
     {
-        const string truncated = "RLP data is truncated: not enough bytes for the declared length prefix";
         Rlp chainId = Rlp.Encode(TestBlockchainIds.ChainId);
         Rlp nonce = Rlp.Encode(0L);
         Rlp sender = Rlp.Encode(TestItem.AddressA.Bytes);
 
-        yield return new TestCaseData(new[] { (byte)TxType.FrameTx }, truncated).SetName("Decode_TypeByteAlone_ThrowsTruncated");
-        yield return new TestCaseData(new[] { (byte)TxType.FrameTx, Rlp.EmptyListByte }, truncated)
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx }).SetName("Decode_TypeByteAlone_ThrowsTruncated");
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx, Rlp.EmptyListByte })
             .SetName("Decode_EmptyPayloadList_ThrowsTruncated");
         yield return new TestCaseData(TypedPayload(Rlp.Encode([
                 chainId, nonce, sender,
                 Rlp.Encode(Array.Empty<Rlp>()),                     // frames
                 Rlp.Encode(Array.Empty<Rlp>()),                     // signatures
-                Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L))])), truncated) // fees; no blob_versioned_hashes
+                Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L))]))) // fees; no blob_versioned_hashes
             .SetName("Decode_PayloadWithoutItsLastField_ThrowsTruncated");
 
         // The execution gas limit declares eight bytes and one follows it, so the input ends inside the frame.
@@ -800,15 +799,13 @@ public class FrameTxDecoderTests
             Rlp.Encode((byte)FrameFlags.None),
             Rlp.Encode(TestItem.AddressB.Bytes),
             Rlp.Encode([new Rlp([0x88, 0x01])])]);          // limits
-        yield return new TestCaseData(TypedPayload(Rlp.Encode([chainId, nonce, sender, Rlp.Encode([frameEndingInItsGasLimit])])), truncated)
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([chainId, nonce, sender, Rlp.Encode([frameEndingInItsGasLimit])])))
             .SetName("Decode_InputEndingInsideAFrame_ThrowsTruncated");
 
-        // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry. A fixed-size
-        // field checks its prefix and length in one compare, so it reports the wrong length.
+        // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry.
         Rlp signatureEndingInItsSigner = Rlp.Encode([Rlp.Encode(TxFrameSignature.SchemeArbitrary), new Rlp([0x94, 0x01, 0x02])]);
         yield return new TestCaseData(TypedPayload(Rlp.Encode([
-                chainId, nonce, sender, Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode([signatureEndingInItsSigner])])),
-                "RLP byte string has another length than expected")
+                chainId, nonce, sender, Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode([signatureEndingInItsSigner])])))
             .SetName("Decode_InputEndingInsideASignature_ThrowsTruncated");
     }
 

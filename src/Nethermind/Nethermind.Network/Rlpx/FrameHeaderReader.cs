@@ -15,6 +15,7 @@ namespace Nethermind.Network.Rlpx
     {
         private const int HeaderBodyOffset = 3;
         private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
+        private const byte ShortListMaxPrefix = 0xf7;
 
         public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
 
@@ -41,7 +42,14 @@ namespace Nethermind.Network.Rlpx
         {
             try
             {
-                RlpReader headerBody = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
+                ReadOnlySpan<byte> body = HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength);
+                // The header body is shorter than 56 bytes, so its sequence prefix holds the length.
+                if (body[0] is >= Rlp.EmptyListByte and <= ShortListMaxPrefix && body[0] - Rlp.EmptyListByte > body.Length - 1)
+                {
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {body[0] - Rlp.EmptyListByte} exceeds the {body.Length - 1} bytes left in the header");
+                }
+
+                RlpReader headerBody = new(body);
                 RlpReader headerBodyItems = headerBody.EnterSequence(out _);
                 int numberOfItems = headerBodyItems.CountItems();
                 headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position

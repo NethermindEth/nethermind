@@ -484,8 +484,13 @@ namespace Nethermind.Serialization.Rlp
                 ThrowNullTopic();
             }
 
-            reader.ReadBytes(Hash256.Size).CopyTo(topic);
+            if (reader.Remaining < Rlp.LengthOfKeccakRlp && reader.PeekByte() == Rlp.EmptyByteArrayByte + Hash256.Size) ThrowTopicDecode();
+            reader.DecodeValueKeccakNonNull().Bytes.CopyTo(topic);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowTopicDecode() =>
+            throw new RlpReaderException($"Cannot decode stream of {nameof(Hash256)}");
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowNullTopicElement(int index) =>

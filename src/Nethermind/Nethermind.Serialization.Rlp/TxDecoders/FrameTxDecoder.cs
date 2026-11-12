@@ -39,6 +39,19 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     public override void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        try
+        {
+            DecodeFrameTransaction(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
+        }
+        catch (RlpReaderException e) when (e.Message == RlpReader.TruncatedMessage)
+        {
+            throw new RlpReaderException("RLP data is truncated: frame transaction payload is incomplete.", e);
+        }
+    }
+
+    private void DecodeFrameTransaction(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
+    {
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
         {
             bool isWrapper = rlpBehaviors.IsTrustedInput()

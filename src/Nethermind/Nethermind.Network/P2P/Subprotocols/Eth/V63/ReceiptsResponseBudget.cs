@@ -38,6 +38,18 @@ internal static class ReceiptsResponseBudget
     /// <exception cref="RlpReaderException">The response is not well-formed RLP.</exception>
     public static void ThrowIfExceeded(ReadOnlySpan<byte> content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
     {
+        try
+        {
+            CheckCounts(content, fieldsBeforeReceipts, requestedBlocks, maxReceiptsPerBlock, firstBlockReceiptIndex);
+        }
+        catch (RlpReaderException e) when (e.Message.StartsWith("RLP data is truncated", StringComparison.Ordinal))
+        {
+            throw new RlpReaderException("Receipts response is truncated.", e);
+        }
+    }
+
+    private static void CheckCounts(ReadOnlySpan<byte> content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex)
+    {
         RlpReader ctx = new(content);
         if (fieldsBeforeReceipts is int fields)
         {

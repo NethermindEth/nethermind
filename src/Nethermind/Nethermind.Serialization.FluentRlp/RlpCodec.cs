@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace Nethermind.Serialization.FluentRlp;
@@ -120,7 +121,7 @@ public static class RlpCodec
     {
         RlpReader reader = new(source);
         T result = func(ref reader);
-        if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
+        if (reader.HasNext) ThrowCheckEndFailed(reader.BytesRead);
         return result;
     }
 
@@ -130,7 +131,7 @@ public static class RlpCodec
     {
         RlpReader reader = new(source);
         T result = TConverter.Read(ref reader);
-        if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
+        if (reader.HasNext) ThrowCheckEndFailed(reader.BytesRead);
         return result;
     }
 
@@ -145,4 +146,8 @@ public static class RlpCodec
         bytesRead = reader.BytesRead;
         return result;
     }
+
+    [DoesNotReturn]
+    private static void ThrowCheckEndFailed(int position) =>
+        throw new RlpReaderException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
 }

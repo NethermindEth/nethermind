@@ -40,7 +40,16 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     public PingMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
         (PublicKey FarPublicKey, ValueHash256 Mdc) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
-        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
+        RlpReader ctx;
+        try
+        {
+            ctx = new RlpReader(data).EnterSequence(out _);
+        }
+        catch (RlpReaderException e) when (e.Message.StartsWith("RLP data is truncated", StringComparison.Ordinal))
+        {
+            throw new RlpReaderException("Ping list exceeds packet data.", e);
+        }
+
         ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
         int version = 0;
         if (versionBytes.Length < sizeof(int) ||
