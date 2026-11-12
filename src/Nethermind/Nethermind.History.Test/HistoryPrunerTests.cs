@@ -770,7 +770,7 @@ public class HistoryPrunerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(chain.BlockTree.FindBlock(10UL, BlockTreeLookupOptions.None), Is.Null);
-                Assert.That(new RlpReader(metadata.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor)).DecodeULong(), Is.EqualTo(expiredUpperBound));
+                Assert.That(RlpCodec.Read(metadata.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor)!, static (ref RlpReader r) => r.DecodeULong()), Is.EqualTo(expiredUpperBound));
             }
             return true;
         });
