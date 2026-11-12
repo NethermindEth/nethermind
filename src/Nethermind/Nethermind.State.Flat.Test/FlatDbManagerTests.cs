@@ -165,9 +165,9 @@ public class FlatDbManagerTests
     }
 
     // The compacted snapshots only shorten reads, so a start that cannot write them goes on with the reloaded ones.
-    [TestCase(typeof(InvalidOperationException))]
-    [TestCase(typeof(OperationCanceledException))]
-    public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(Type failure)
+    [Test]
+    public async Task Constructor_starts_when_compacting_the_reloaded_snapshots_fails(
+        [Values(typeof(InvalidOperationException), typeof(OperationCanceledException))] Type failure)
     {
         _persistenceManager.CompactReloadedSnapshots(Arg.Any<CancellationToken>()).Returns(_ => throw (Exception)Activator.CreateInstance(failure)!);
         TestLogger logger = new();
