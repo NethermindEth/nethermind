@@ -11,7 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
@@ -201,13 +201,13 @@ namespace Nethermind.Trie
             {
                 ResolveUnknownNode(tree, path, readFlags, bufferPool);
             }
-            catch (RlpException rlpException)
+            catch (RlpReaderException rlpException)
             {
                 ThrowDecodingError(rlpException, path);
             }
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
+            void ThrowDecodingError(RlpReaderException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
                     Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
         }
 

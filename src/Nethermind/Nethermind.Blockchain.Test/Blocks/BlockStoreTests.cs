@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -291,7 +292,7 @@ public class BlockStoreTests
         db[NumberedKey(block)] = nullBlock ? [0xc0] : [0x01];
 
         if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
-        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
+        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpReaderException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Released, Is.EqualTo(1));

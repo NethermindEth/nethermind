@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
 
@@ -209,7 +209,7 @@ internal static class InputExtractor
             error = null;
             return true;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or RlpException)
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or RlpReaderException)
         {
             trustedInput = null;
             error = ex.Message;

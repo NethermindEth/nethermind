@@ -147,11 +147,19 @@ namespace Nethermind.Evm.Test
             output[4 + byteIndex] = 1;
             output[35] = 0x22;
 
-            Assert.That(TransactionSubstate.GetErrorMessage(output), Does.StartWith("unknown panic code"));
+            Assert.That(TransactionSubstate.GetErrorMessage(output), Is.EqualTo($"unknown panic code: 0x1{new string('0', (30 - byteIndex) * 2)}22"));
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
         {
+            foreach ((string code, string expected) in new[]
+            {
+                ("99", "unknown panic code: 0x99"),
+                ("10000000000000000", "unknown panic code: 0x10000000000000000"),
+                ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "unknown panic code: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+            })
+                yield return (Bytes.FromHexString("4e487b71" + code.PadLeft(64, '0')), expected);
+
             yield return (
                 new byte[]
                 {
@@ -174,7 +182,7 @@ namespace Nethermind.Evm.Test
                     0x4e, 0x48, 0x7b, 0x71,
                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF // Unknown panic code
                 },
-                "unknown panic code (0xff)");
+                "unknown panic code: 0xff");
 
             // Unknown selector — custom error; falls back to Revert sentinel.
             yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, TransactionSubstate.Revert);
