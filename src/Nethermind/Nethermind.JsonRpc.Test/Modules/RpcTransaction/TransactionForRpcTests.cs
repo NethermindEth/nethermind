@@ -171,6 +171,8 @@ public class TransactionForRpcTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), method + ": " + response);
+                Assert.That((string?)json["error"]?["message"],
+                    Is.EqualTo("invalid argument 0: " + RpcTransactionErrors.InvalidBlobVersionedHashSize), method + ": " + response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
