@@ -372,9 +372,14 @@ namespace Nethermind.TxPool
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
-                NotifyAllPeers(_txsToSend, false);
-
-                _txsToSend.Reset();
+                try
+                {
+                    NotifyAllPeers(_txsToSend, false);
+                }
+                finally
+                {
+                    _txsToSend.Reset();
+                }
             }
 
             try

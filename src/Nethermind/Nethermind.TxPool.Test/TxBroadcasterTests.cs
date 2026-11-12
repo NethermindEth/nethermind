@@ -69,17 +69,41 @@ public class TxBroadcasterTests
     [Test]
     public void Broadcast_failure_restarts_timer()
     {
-        ITimer timer = Substitute.For<ITimer>();
-        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         headInfo.IsProcessingBlock.Returns(_ => throw new InvalidOperationException());
-        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, headInfo, _logManager);
-        timer.ClearReceivedCalls();
+        ITimer timer = CreateBroadcasterWithManualTimer(headInfo);
 
         Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
 
         timer.Received(1).Enabled = true;
+    }
+
+    [Test]
+    public void Broadcast_failure_drops_the_failed_batch()
+    {
+        ITxGossipPolicy policy = Substitute.For<ITxGossipPolicy>();
+        policy.CanGossipTransactions.Returns(_ => throw new InvalidOperationException(), _ => true);
+        policy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        ITimer timer = CreateBroadcasterWithManualTimer(Substitute.For<IChainHeadInfoProvider>(), policy);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+        _broadcaster.Broadcast(Build.A.Transaction.SignedAndResolved().TestObject, isPersistent: false);
+
+        Assert.Throws<InvalidOperationException>(() => timer.Elapsed += Raise.Event());
+        timer.Elapsed += Raise.Event();
+        timer.Elapsed += Raise.Event();
+
+        Assert.That(peer.Sent, Is.Empty);
+    }
+
+    private ITimer CreateBroadcasterWithManualTimer(IChainHeadInfoProvider headInfo, ITxGossipPolicy policy = null)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, headInfo, _logManager, policy);
+        timer.ClearReceivedCalls();
+        return timer;
     }
 
     [Test]
