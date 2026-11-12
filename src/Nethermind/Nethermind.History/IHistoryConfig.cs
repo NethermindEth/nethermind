@@ -34,6 +34,11 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
 
+    [ConfigItem(
+        Description = "Whether to run a store-wide compaction of the blocks database after pruning reclaims history up to the ancient bodies barrier, reclaiming stale RocksDB blob files that pruning alone leaves behind. Applies only to 'UseAncientBarriers' pruning and is ignored under 'Rolling', whose advancing cutoff would owe a new compaction on every pass. Expensive: heavy I/O that can take hours on a large database, so it runs once per barrier and again only after a raised barrier reclaims more history. It rewrites every retained body, and RocksDB deletes an old blob file only after all files that reference it are rewritten, so the compaction can temporarily need free disk space close to the size of the retained bodies. Only history reclaimed by this version or later arms it: a database whose pruning finished on an earlier version is not compacted. Most effective when history slices ('HistorySliceAddresses') retain scattered bodies across the pruned range, leaving partially-referenced blob files a plain compaction cannot reclaim; under a plain contiguous prune the reclamation is marginal.",
+        DefaultValue = "false")]
+    bool CompactBlocksOnPrune { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

@@ -12,6 +12,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing
@@ -237,7 +238,7 @@ namespace Nethermind.Consensus.Processing
             {
                 Recover(tx, encoded, releaseSpec);
             }
-            catch (Exception e) when (e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+            catch (Exception e) when (e is InvalidDataException or ArgumentException or CryptographicException or RlpReaderException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
             }

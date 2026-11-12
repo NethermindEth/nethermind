@@ -14,6 +14,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -389,10 +390,10 @@ namespace Nethermind.Merge.Plugin
                 {
                     byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
                     RlpReader ctx = new(hashFromDb);
-                    return ctx.DecodeULong();
+                    return ctx.DecodeULong<OffFlag>();
                 }
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot decode terminal block number");
             }
@@ -411,7 +412,7 @@ namespace Nethermind.Merge.Plugin
                     return ctx.DecodeKeccak();
                 }
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot decode hash with metadata key: {key}");
             }

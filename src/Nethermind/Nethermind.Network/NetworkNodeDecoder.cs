@@ -8,6 +8,7 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
@@ -20,18 +21,21 @@ namespace Nethermind.Network
 
         protected override NetworkNode DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int contentEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit);
-            return IsNodeString(firstItem)
-                ? DecodeNodeStringFormat(ref decoderContext, firstItem, contentEnd)
-                : DecodeLegacyFormat(ref decoderContext, firstItem);
+            RlpReader fields = decoderContext.EnterSequence(out int itemLength);
+            ReadOnlySpan<byte> firstItem = fields.DecodeByteArraySpan(RlpLimit);
+            NetworkNode node = IsNodeString(firstItem)
+                ? DecodeNodeStringFormat(ref fields, firstItem)
+                : DecodeLegacyFormat(ref fields, firstItem);
+            // The legacy format never checked its end.
+            decoderContext.ExitSequenceIgnoringRest(fields, itemLength);
+            return node;
         }
 
-        private static NetworkNode DecodeNodeStringFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
+        private static NetworkNode DecodeNodeStringFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem)
         {
             string nodeString = Encoding.UTF8.GetString(firstItem);
             long reputation = decoderContext.DecodeLong();
-            decoderContext.Check(contentEnd);
+            decoderContext.CheckEnd();
             NetworkNode node = new(NormalizeLegacyUnbracketedIpv6Enode(nodeString));
             node.Reputation = reputation;
             return node;
@@ -85,7 +89,7 @@ namespace Nethermind.Network
             {
                 reputation = decoderContext.DecodeLong();
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 // regression - old format
             }
@@ -94,24 +98,26 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref RlpWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
+            RlpSequence sequence = writer.StartSequence(contentLength);
             if (!ShouldEncodeNodeString(item))
             {
                 EncodeLegacyFormat(ref writer, item);
-                return;
+            }
+            else
+            {
+                writer.Encode(item.ToString());
+                writer.Encode(item.Reputation);
             }
 
-            writer.Encode(item.ToString());
-            writer.Encode(item.Reputation);
+            writer.EndSequence(sequence);
         }
 
         public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-        private static void EncodeLegacyFormat<TWriter>(ref TWriter writer, NetworkNode item)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        private static void EncodeLegacyFormat(ref RlpWriter writer, NetworkNode item)
         {
             writer.Encode(item.NodeId.Bytes);
             writer.Encode(item.Host);

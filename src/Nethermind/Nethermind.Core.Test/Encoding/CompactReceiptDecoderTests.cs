@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 #pragma warning disable 618
@@ -254,7 +255,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.That(
                 () => decoder.Encode(receipt),
-                Throws.TypeOf<RlpException>());
+                Throws.TypeOf<RlpReaderException>());
         }
 
         [Test]

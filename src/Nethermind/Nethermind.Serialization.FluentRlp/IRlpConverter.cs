@@ -20,7 +20,7 @@ public interface IRlpConverter<T> where T : allows ref struct
 
 /// <summary>An <see cref="IRlpConverter{T}"/> that also computes the encoded length of a value without writing it.</summary>
 /// <remarks>
-/// <see cref="Rlp.Write{TConverter, T}(T)"/> uses the length to allocate the exact output and write it in one pass,
+/// <see cref="RlpCodec.Write{TConverter, T}(T)"/> uses the length to allocate the exact output and write it in one pass,
 /// without a buffer copy. <see cref="RlpSerializableAttribute"/> generates it for a record whose field lengths can be
 /// computed.
 /// </remarks>
