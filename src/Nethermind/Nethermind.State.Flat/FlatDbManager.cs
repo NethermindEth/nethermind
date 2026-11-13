@@ -120,7 +120,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             if (compacted > 0 && _logger.IsInfo)
                 _logger.Info($"Compacted the state kept from the last run into {compacted} persisted snapshots in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Stopping. What is left is read one snapshot per block, as before.
         }
