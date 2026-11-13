@@ -692,6 +692,26 @@ public class FrameTxValidationTests
         }
     }
 
+    // ethereum/EIPs#12664: with batch pricing on, batch claims and leaf payments pay no proof share in intrinsic gas; off, every
+    // declaration does.
+    [Test]
+    public void TryCalculateGasBudget_Eip8288_BatchPricingExemptsItsSchemesFromTheProofShare([Values] bool batched)
+    {
+        IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
+        IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        enabled.IsEip8288Enabled.Returns(true);
+        enabled.IsEipBatchedDependencyPricingEnabled.Returns(batched);
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [SelfVerifyFrame(), Frame(),
+            DepFrame([Eip8288Constants.LeanStarkScheme, Eip8288Constants.BatchedLeanStarkScheme, Eip8288Constants.LeanStarkLeafPaymentScheme])]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out _, out _), Is.True);
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out _, out _), Is.True);
+            Assert.That(intrinsic - baseIntrinsic, Is.EqualTo((batched ? 1UL : 3UL) * Eip8288Constants.RecursiveProofShareGas));
+        }
+    }
+
     [TestCase(new ulong[] { }, 0ul)]
     [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
