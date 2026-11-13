@@ -400,9 +400,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
-        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside.
-        foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         List<ValueHash256> hashes = [];
         HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
@@ -415,6 +412,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (hashes.Count == 0) return false;
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
+        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
+        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out.
+        foreach (Transaction transaction in decoded.Transactions)
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
         foreach (ValueHash256 hash in releases)
             if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
         HashSet<ValueHash256> released = [.. releases];
