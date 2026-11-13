@@ -1215,7 +1215,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 0 && TryCharge(ref gas, LowGasCost.GasCost))
+            if (head > 0 && ChargeUntested(ref gas, LowGasCost.GasCost))
             {
                 ref byte top = ref SlotBelow(ref sp, 1);
                 SetWord(ref Unsafe.As<byte, ulong>(ref top), (ulong)EvmInstructions.CountLeadingZeroBitsOfLimbs(ref top));

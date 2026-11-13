@@ -423,7 +423,9 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
-    /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
+    /// <remarks>
+    /// POP and CALLDATALOAD run checked in every table, and the random programs emit no CLZ, so they cannot cover them.
+    /// </remarks>
     [Test]
     public void Always_checked_bodies_keep_the_carried_head([Values] Table table)
     {
@@ -513,6 +515,8 @@ public class GuestDispatchDifferentialTests
     [TestCase("60016002015A00", TestName = "GAS")]
     [TestCase("600160020160006000F3", TestName = "RETURN")]
     [TestCase("60018090505000", TestName = "DUP1 SWAP1 POP POP")]
+    [TestCase("60011E60005200", TestName = "CLZ")]
+    [TestCase("1E00", TestName = "CLZ on an empty stack")]
     public void Gas_shortfalls_of_untested_charges_halt_at_the_next_test(string hex)
     {
         byte[] code = Convert.FromHexString(hex);
