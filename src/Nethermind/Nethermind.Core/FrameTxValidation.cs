@@ -920,7 +920,7 @@ public static class FrameTxValidation
 
     /// <summary><see cref="IsWellFormedDependencyData(ReadOnlySpan{byte}, out string?)"/>, also admitting the batch-pricing EIP's
     /// schemes when <paramref name="batchedEnabled"/> (<see cref="Eip8288Dependencies.IsFrameScheme"/>).</summary>
-    public static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, bool batchedEnabled, out string? error)
+    internal static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, bool batchedEnabled, out string? error)
     {
         error = null;
         if (data.Length == 0 || data.Length % Eip8288Constants.DependencyTripleLength != 0)
@@ -968,9 +968,11 @@ public static class FrameTxValidation
 
         if (!IsWellFormedDependencyData(frame.Data.Span, batchedEnabled, out error)) return false;
 
-        // Every declaration, before deduplication.
+        // Every declaration, before deduplication; the gas depends on the scheme byte alone.
+        ReadOnlySpan<byte> data = frame.Data.Span;
         ulong expectedGas = 0;
-        foreach (FrameDependency dependency in Eip8288Dependencies.ParseFrame(frame)) expectedGas += dependency.VerificationGas;
+        for (int i = 31; i < data.Length; i += Eip8288Constants.DependencyTripleLength)
+            expectedGas += new FrameDependency(data[i], default, default).VerificationGas;
 
         if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)
         {

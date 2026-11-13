@@ -257,7 +257,7 @@ public static class Eip8288Dependencies
     /// <summary>The leanSTARK list key of a dependency: its verification key, or for a batch-pricing EIP scheme
     /// <c>keccak256(scheme word || verification_key_hash)</c>, binding the scheme.</summary>
     /// <remarks>Such a preimage starts with zero bytes and a program key's with the leanVM tag, so it is no program's key.</remarks>
-    public static ValueHash256 SchemeKey(in FrameDependency dependency)
+    private static ValueHash256 SchemeKey(in FrameDependency dependency)
     {
         if (dependency.Scheme is not (Eip8288Constants.BatchedLeanStarkScheme or Eip8288Constants.LeanStarkLeafPaymentScheme))
             return dependency.VerificationKey;
@@ -291,7 +291,7 @@ public static class Eip8288Dependencies
     /// <summary>Whether a dependency frame may declare <paramref name="triple"/>'s scheme: an enabled EIP-8288 one, or, when
     /// <paramref name="batchedEnabled"/>, a batch-pricing EIP batch claim or leaf payment (ethereum/EIPs#12664), a payment with a
     /// nonzero digest. The caller checks the 31 zero padding bytes.</summary>
-    public static bool IsFrameScheme(ReadOnlySpan<byte> triple, bool batchedEnabled) => triple[31] switch
+    internal static bool IsFrameScheme(ReadOnlySpan<byte> triple, bool batchedEnabled) => triple[31] switch
     {
         Eip8288Constants.BatchedLeanStarkScheme => batchedEnabled,
         Eip8288Constants.LeanStarkLeafPaymentScheme => batchedEnabled && !triple[32..64].IsZero(),
