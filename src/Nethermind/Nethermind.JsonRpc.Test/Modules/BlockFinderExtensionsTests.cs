@@ -28,10 +28,11 @@ public class BlockFinderExtensionsTests
         WithoutTheTransaction
     }
 
-    /// <summary>The block's receipts as the finder returns them: none, or one for each of its transactions.</summary>
+    /// <summary>The block's receipts as the finder returns them: none, only the other transaction's, or one for each transaction.</summary>
     public enum Receipts
     {
         Missing,
+        Partial,
         Complete
     }
 
@@ -67,6 +68,8 @@ public class BlockFinderExtensionsTests
             .SetName("IsTransactionPruned_body_with_the_transaction_below_the_floor_above_the_head");
         yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Head, LastRead.Receipts, true)
             .SetName("IsTransactionPruned_receipts_missing_at_the_floor");
+        yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Partial, Head, LastRead.Receipts, true)
+            .SetName("IsTransactionPruned_receipts_partial_at_the_floor");
         yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Complete, Head, LastRead.Receipts, false)
             .SetName("IsTransactionPruned_receipts_stored_at_the_floor");
         yield return new TestCaseData(true, true, Number, Body.WithTheTransaction, Receipts.Missing, Number / 2, LastRead.Header, false)
@@ -88,9 +91,12 @@ public class BlockFinderExtensionsTests
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         if (indexed) receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
-        receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns(receipts is Receipts.Complete
-            ? transactions.Select(static (tx, i) => new TxReceipt { TxHash = tx.Hash, Index = i }).ToArray()
-            : []);
+        receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns(receipts switch
+        {
+            Receipts.Complete => transactions.Select(static (tx, i) => new TxReceipt { TxHash = tx.Hash, Index = i }).ToArray(),
+            Receipts.Partial => [new TxReceipt { TxHash = transactions[0].Hash, Index = 0 }],
+            _ => []
+        });
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
@@ -106,9 +112,6 @@ public class BlockFinderExtensionsTests
         bool pruned = blockFinder.IsTransactionPruned(receiptFinder, txHash);
 
         Assert.That(pruned, Is.EqualTo(expected));
-        // A read is made only once the checks before it pass. A hash without an entry reads nothing past the index;
-        // neither an entry that is not canonical nor a block at or above the floor that is not settled reads a body; a
-        // block below the floor reads no receipts.
         if (lastRead < LastRead.Header) blockFinder.DidNotReceiveWithAnyArgs().FindHeader(null!, default, default);
         if (lastRead < LastRead.Body) blockFinder.DidNotReceiveWithAnyArgs().FindBlock(null!, default, default);
         if (lastRead < LastRead.Receipts)
