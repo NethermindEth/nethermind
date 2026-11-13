@@ -565,7 +565,9 @@ public sealed partial class KeccakHash
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
         // An equal resumable length guarantees the keyed node's states were written, not left uninitialized.
-        if (nodes is null || index >= (nuint)WitnessNodes.Count || !ReferenceEquals(nodes[index], previous)
+        // Both writers of Count check it against the length of Nodes, so the read after the Count check is unchecked.
+        if (nodes is null || index >= (nuint)WitnessNodes.Count
+            || !ReferenceEquals(Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(nodes), index), previous)
             || previous!.Length != input.Length || !IsResumable(input.Length))
         {
             return ValueKeccak.Compute(input);
