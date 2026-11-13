@@ -50,6 +50,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
+        // The build of the untraced table is the last one before the table is set, so its entries are the ones kept.
+        if (_opcodeTable is { NoTrace: null })
+            _sharedHandlers = (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])lookup.Clone();
+
         if (AirbenderFlag.IsActive)
             AirbenderArithmetic.Initialize();
 
@@ -100,13 +104,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
         lookup[(int)Instruction.CODECOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CodeSource>);
-        if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
+        if (SpecFlags.Eip2929(spec))
         {
-            lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
-                ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
-                : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
-            if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
-                lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore);
+            // The EIP-8038 storage handlers do not fit Airbender's 4 MiB ROM, so there the shared handlers run them.
+            if (!SpecFlags.Eip8038(spec))
+                SetStorageHandlers<Eip8038Off>(lookup, spec);
+            else if (!AirbenderFlag.IsActive)
+                SetStorageHandlers<Eip8038On>(lookup, spec);
         }
         if (SpecFlags.Eip2929(spec) && SpecFlags.Eip150(spec) && SpecFlags.Eip158(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
         {
@@ -205,6 +209,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    /// <summary>Sets the guest's SLOAD and SSTORE handlers for the EIP-8038 setting the shared table picks.</summary>
+    private static void SetStorageHandlers<TEip8038>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup, IReleaseSpec spec)
+        where TEip8038 : struct, IEip8038Flag
+    {
+        lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+            ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<TEip8038, OnFlag>)
+            : AsTableEntry(&RawCalliHelper.ExecuteSLoad<TEip8038, OffFlag>);
+        if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
+            lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore<TEip8038>);
+    }
+
     /// <summary>Sets the guest's CALL, STATICCALL and DELEGATECALL handlers for the fork rules the shared table picks.</summary>
     /// <typeparam name="TAmsterdam">EIP-2780, EIP-7708 and EIP-8037, which activate with EIP-8038 in the guest's fork range.</typeparam>
     private static void SetCallHandlers<TAmsterdam, Eip8038>(
@@ -256,7 +272,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// code ends at a shared handler: at the latest the STOP that pads the code. A frame that halts on an exception
         /// consumes all its gas and drops its effects whichever opcode raised it, so halting a few opcodes later gives
         /// the same result. The shortfall stays far below 2^31: a code holds fewer than 2^20 opcodes, and every fixed
-        /// cost charged this way is below 2^6.
+        /// cost charged this way is below 2^6. A frame runs on these handlers only with at least as much gas as its code
+        /// has bytes (see <see cref="RunDispatchLoop{TTracingInst, TCancelable}"/>), so the opcodes a shortfall runs past
+        /// never outnumber the gas that the frame consumes.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ChargeUntested(ref nuint gas, ulong cost)
@@ -2487,7 +2505,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>SLOAD under EIP-2929 without EIP-8038, with the key read from and the value written to its stack slot.</summary>
+        /// <summary>SLOAD under EIP-2929, with the key read from and the value written to its stack slot.</summary>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
         /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
@@ -2496,7 +2514,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSLoad<Eip8360>(
+        internal static EvmExceptionType ExecuteSLoad<TEip8038, Eip8360>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -2505,6 +2523,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TEip8038 : struct, IEip8038Flag
             where Eip8360 : struct, IFlag
         {
             if (head > 0 && !(Eip8360.IsActive && state.Vm.VmState.IsTransientCreateContext))
@@ -2515,7 +2534,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in slot);
                 // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
-                ulong cost = frame.AccessTracker.WarmUp(in storageCell) ? GasCostOf.ColdSLoad : GasCostOf.WarmStateRead;
+                ulong cost = frame.AccessTracker.WarmUp(in storageCell)
+                    ? TEip8038.IsActive ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
+                    : GasCostOf.WarmStateRead;
                 if (!Covers(gas, cost))
                     return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
 
@@ -2530,20 +2551,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, TEip8038, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>SSTORE under EIP-2200 and EIP-2929 without EIP-8038, with the key and value read in their stack slots.</summary>
+        /// <summary>SSTORE under EIP-2200 and EIP-2929, with the key and value read in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies both words off the stack and reads the fork's costs through the spec on every write.
         /// The costs and refunds are those of <see cref="EvmInstructions.InstructionSStoreMetered{TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279}"/>
-        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
+        /// for the same flags, with EIP-8037 following <typeparamref name="TEip8038"/> as the guest's fork range has it.
+        /// A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
         /// or accesses run the shared handler instead, which faults or reports as it does.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSStore(
+        internal static EvmExceptionType ExecuteSStore<TEip8038>(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,
@@ -2552,6 +2574,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte sp)
+            where TEip8038 : struct, IEip8038Flag
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             VmState<TGasPolicy> frame = vm.VmState;
@@ -2562,7 +2585,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref UInt256 newValue = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 2));
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
                 // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
-                if (frame.AccessTracker.WarmUp(in storageCell) && !TryCharge(ref gas, GasCostOf.ColdSLoad))
+                // EIP-8038 charges the warm access on SSTORE too, in place of the net-metered charge below.
+                if (frame.AccessTracker.WarmUp(in storageCell)
+                    ? !TryCharge(ref gas, TEip8038.IsActive ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad)
+                    : TEip8038.IsActive && !TryCharge(ref gas, GasCostOf.WarmStateRead))
                     goto OutOfGas;
 
                 IWorldState worldState = vm.WorldState;
@@ -2582,7 +2608,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 if (currentValue == newValue)
                 {
-                    if (!TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
+                    if (!TEip8038.IsActive && !TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
                 }
                 else
                 {
@@ -2593,17 +2619,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         if (currentValue.IsZero)
                         {
-                            if (!TryCharge(ref gas, GasCostOf.SSet)) goto OutOfGas;
+                            if (TEip8038.IsActive)
+                            {
+                                // EIP-8037 charges the slot's creation as state gas beside the EIP-8038 write, both through the policy.
+                                ref TGasPolicy policy = ref state.Gas;
+                                SetExecutionGas(ref policy, gas);
+                                if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref policy, TGasPolicy.GetStorageSetStateCost(), Eip8038Constants.StorageWrite))
+                                {
+                                    // A shortfall of state gas halts the frame with its execution gas as the policy left it.
+                                    return ExitChain(ref state, GetExecutionGas(ref policy), (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
+                                }
+
+                                gas = ChainGas(GetExecutionGas(ref policy));
+                                if (vm.TxExecutionContext.FrameTxContext is { } chargeFrameCtx)
+                                    chargeFrameCtx.RecordStateChargeOwner(in storageCell, chargeFrameCtx.CurrentFrameIndex);
+                            }
+                            else if (!TryCharge(ref gas, GasCostOf.SSet))
+                            {
+                                goto OutOfGas;
+                            }
                         }
                         else
                         {
-                            if (!TryCharge(ref gas, costs.SStoreResetCost)) goto OutOfGas;
+                            if (!TryCharge(ref gas, TEip8038.IsActive ? Eip8038Constants.StorageWrite : costs.SStoreResetCost)) goto OutOfGas;
                             if (newValue.IsZero) frame.Refund += sClearRefund;
                         }
                     }
                     else
                     {
-                        if (!TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
+                        if (!TEip8038.IsActive && !TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
                         bool originalIsZero = originalValue.IsZero;
                         if (!originalIsZero)
                         {
@@ -2611,7 +2655,37 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             if (newValue.IsZero) frame.Refund += sClearRefund;
                         }
 
-                        if (originalValue == newValue) frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                        if (originalValue == newValue)
+                        {
+                            if (TEip8038.IsActive)
+                            {
+                                // EIP-8038 refunds the first-change write; EIP-8037 also gives a freshly created slot its state gas back in-frame.
+                                if (originalIsZero)
+                                {
+                                    long stateGasCost = TGasPolicy.GetStorageSetStateCost();
+                                    FrameTxContext? reversalFrameCtx = vm.TxExecutionContext.FrameTxContext;
+                                    if (reversalFrameCtx is not null
+                                        && reversalFrameCtx.TryResolveStateChargeOwner(in storageCell, out int chargeOwner)
+                                        && chargeOwner != reversalFrameCtx.CurrentFrameIndex)
+                                    {
+                                        reversalFrameCtx.ReduceFrameStateGas(chargeOwner, stateGasCost);
+                                    }
+                                    else
+                                    {
+                                        ref TGasPolicy policy = ref state.Gas;
+                                        SetExecutionGas(ref policy, gas);
+                                        vm.CreditStateGasRefund<OnFlag>(ref policy, stateGasCost);
+                                        gas = ChainGas(GetExecutionGas(ref policy));
+                                    }
+                                }
+
+                                frame.Refund += (long)Eip8038Constants.StorageWrite;
+                            }
+                            else
+                            {
+                                frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                            }
+                        }
                     }
 
                     if (slots is not null) slots.WriteAt(slot, in newValue);
@@ -2632,7 +2706,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, OffFlag, Eip8038Off, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, TEip8038, TEip8038, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
