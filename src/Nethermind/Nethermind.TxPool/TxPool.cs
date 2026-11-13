@@ -1776,6 +1776,13 @@ namespace Nethermind.TxPool
             return true;
         }
 
+        private bool StartsBroadcast(TxHandlingOptions handlingOptions) =>
+            _txPoolConfig.PersistentBroadcastEnabled
+            && (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+
+        // A local transaction is accepted even while syncing.
+        private bool RejectsWhileSyncing(bool startBroadcast) => !AcceptTxWhenNotSynced && _headInfo.IsSyncing && !startBroadcast;
+
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, object? peer, out bool canRecycle, bool reAddedFromReorg = false)
         {
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
@@ -1786,14 +1793,9 @@ namespace Nethermind.TxPool
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
             }
-            bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
-                                  && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
-                                  TxHandlingOptions.PersistentBroadcast;
+            bool startBroadcast = StartsBroadcast(handlingOptions);
 
-            if (!AcceptTxWhenNotSynced &&
-                _headInfo.IsSyncing &&
-                // If local tx allow it to be accepted even when syncing
-                !startBroadcast)
+            if (RejectsWhileSyncing(startBroadcast))
             {
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Syncing;

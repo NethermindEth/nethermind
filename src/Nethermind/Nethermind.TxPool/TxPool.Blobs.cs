@@ -151,6 +151,7 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (RejectsWhileSyncing(StartsBroadcast(handlingOptions))) return AcceptTxResult.Syncing;
             // SubmitTx would reject a transaction already rejected on this block too, and the filters may simulate.
             if (IsKnown(tx.Hash)) return AcceptTxResult.AlreadyKnown;
 
