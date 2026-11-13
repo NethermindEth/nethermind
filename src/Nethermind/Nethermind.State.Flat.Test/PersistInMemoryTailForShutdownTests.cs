@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -523,6 +524,82 @@ public class PersistInMemoryTailForShutdownTests
         using (window) Assert.That(window!.Bloom.Capacity, Is.EqualTo(1));
     }
 
+    // Each small window's first page enters the residency tracker when its catalog row is written; the pass then demotes
+    // the windows under a boundary, as at runtime, and keeps the pages of those above the last boundary.
+    [Test]
+    public void A_start_keeps_the_pages_of_the_windows_above_the_last_boundary_only()
+    {
+        ConcurrentDictionary<StateId, SnapshotLocation> published = [];
+        IArenaManager? arena = null;
+        using FlatTestContainer tier = SmallTier(arenaPageCacheBytes: 4 * 1024 * 1024, configure: builder =>
+            builder.AddDecorator<ISnapshotCatalog>((context, inner) => new ObservedCatalog(inner, after: entry =>
+            {
+                if (entry.Tier != SnapshotTier.PersistedSmallCompacted) return;
+                published[entry.To] = entry.Location;
+                arena!.PageTracker.TryTouch(entry.Location.ArenaId, FirstPage(entry.Location), out _, out _);
+            })));
+        arena = tier.Resolve<IArenaManager>();
+        ConvertBases(tier, 1, 6);
+        tier.Compactor.CompactReloaded(0, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsTracked(State(6)), Is.True, "(4, 6] lies above the last boundary: kept");
+            Assert.That(IsTracked(State(2)), Is.False, "(0, 2] lies under the CompactSize-wide (0, 4]: demoted");
+        }
+
+        bool IsTracked(StateId to) => arena.PageTracker.ContainsPage(published[to].ArenaId, FirstPage(published[to]));
+        static uint FirstPage(SnapshotLocation location) => (uint)(location.Offset / Environment.SystemPageSize);
+    }
+
+    // The pass stops at the second CompactSize-wide snapshot, whose catalog row fails to be written, or when the process
+    // stops after the fifth small one.
+    [Test]
+    public async Task An_interrupted_start_pass_leaves_a_consistent_catalog_and_the_next_start_finishes([Values] bool processExit)
+    {
+        const int TailLength = 150;
+        using TempPath dir = TempPath.GetTempDirectory();
+        MemDb catalog = new();
+        IPersistence persistence = PersistenceAt(Persisted);
+        await RunAndShutDown(dir.Path, catalog, persistence, TailLength, WriteBlock);
+        using CancellationTokenSource exit = new();
+        int published = 0;
+        ObservedCatalog Interrupt(ISnapshotCatalog inner) => processExit
+            ? new(inner, after: entry => { if (entry.Tier == SnapshotTier.PersistedSmallCompacted && Interlocked.Increment(ref published) == 5) exit.Cancel(); })
+            : new(inner, before: entry => { if (entry.Tier == SnapshotTier.PersistedCompactSized && Interlocked.Increment(ref published) == 2) throw new IOException("injected"); });
+
+        for (int start = 0; start < 2; start++)
+        {
+            using FlatTestContainer restarted = Open(dir.Path, catalog, persistence, configure: start == 0
+                ? builder => builder.AddSingleton<IProcessExitSource>(new ProcessExitSource(exit.Token)).AddDecorator<ISnapshotCatalog>((_, inner) => Interrupt(inner))
+                : null);
+            await using FlatDbManager manager = (FlatDbManager)restarted.Resolve<IFlatDbManager>();
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalog).Load()];
+            using ReadOnlySnapshotBundle head = manager.GatherReadOnlySnapshotBundle(TailBlock(TailLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published, Is.GreaterThanOrEqualTo(processExit ? 5 : 2), "the pass was interrupted");
+                Assert.That(rows.Where(row => !IsLive(restarted, row)), Is.Empty, "a catalog row points at a released snapshot");
+                Assert.That(rows, Has.Length.EqualTo(restarted.Repository.PersistedSnapshotCount), "a catalog row for every snapshot");
+                Assert.That(Enumerable.Range(1, TailLength).Where(i => ReadBalance(manager, TailBlock(i)) != (UInt256)i), Is.Empty, "states read wrong");
+                if (start == 0) Assert.That(head.SnapshotCount, Is.GreaterThan(7), "the interrupted start left work");
+                else Assert.That(head.SnapshotCount, Is.EqualTo(7), "the next start finishes it");
+            }
+        }
+
+        static bool IsLive(FlatTestContainer node, CatalogEntry row)
+        {
+            if (!node.Repository.TryLeasePersistedState(row.To, row.Tier, out PersistedSnapshot? snapshot)) return false;
+            using (snapshot) return snapshot.From == row.From;
+        }
+
+        static UInt256? ReadBalance(FlatDbManager manager, StateId at)
+        {
+            using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(at);
+            return bundle.GetAccount(TestItem.AddressA)?.Balance;
+        }
+    }
+
     private static void WriteBlock(int i, SnapshotContent content)
     {
         content.Accounts[TestItem.AddressA] = new Account((ulong)i, (UInt256)i);
@@ -552,8 +629,9 @@ public class PersistInMemoryTailForShutdownTests
         }
     }
 
-    private static FlatTestContainer SmallTier() =>
-        new(new FlatDbConfig { CompactSize = 4, MaxInMemoryBaseSnapshotCount = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024);
+    private static FlatTestContainer SmallTier(long arenaPageCacheBytes = 0, Action<ContainerBuilder>? configure = null) =>
+        new(new FlatDbConfig { CompactSize = 4, MaxInMemoryBaseSnapshotCount = 4, CompactionOffset = 0 }, arenaFileSizeBytes: 1024 * 1024,
+            arenaPageCacheBytes: arenaPageCacheBytes, configure: configure);
 
     private static void ConvertBases(FlatTestContainer tier, ulong first, ulong last)
     {
@@ -586,13 +664,28 @@ public class PersistInMemoryTailForShutdownTests
     }
 
     private static FlatTestContainer Open(string path, MemDb catalog, IPersistence persistence, IStateHeaderProvider? finality = null,
-        IPersistedSnapshotCompactor? compactor = null) =>
+        IPersistedSnapshotCompactor? compactor = null, Action<ContainerBuilder>? configure = null) =>
         new(new FlatDbConfig { CompactionOffset = 0, InlineCompaction = true }, arenaFileSizeBytes: 1024 * 1024, baseDbPath: path,
             catalogDb: catalog, finalizedStateProvider: finality, loadPersistedTier: false, configure: builder =>
             {
                 builder.AddSingleton(persistence);
                 if (compactor is not null) builder.AddSingleton(compactor);
+                configure?.Invoke(builder);
             });
+
+    /// <summary>A catalog that calls back around every row it writes.</summary>
+    private sealed class ObservedCatalog(ISnapshotCatalog inner, Action<CatalogEntry>? before = null, Action<CatalogEntry>? after = null) : ISnapshotCatalog
+    {
+        public void Add(CatalogEntry entry)
+        {
+            before?.Invoke(entry);
+            inner.Add(entry);
+            after?.Invoke(entry);
+        }
+
+        public bool Remove(in StateId to, SnapshotTier tier) => inner.Remove(to, tier);
+        public IEnumerable<CatalogEntry> Load() => inner.Load();
+    }
 
     private static IPersistence PersistenceAt(StateId state, Action<IPersistence.IPersistenceReader>? configure = null)
     {
