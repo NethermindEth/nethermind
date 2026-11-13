@@ -27,6 +27,9 @@ GUEST_EXTLIB := /airbender/libairbender.bflat.manifest
 # patch reads them.
 OPT_FLAGS := -Os
 TRIM_FLAGS := --no-stacktrace-data
+# The compact Int256: its large arithmetic primitives stay out of line, which
+# on RV32 saves hundreds of kilobytes of ROM.
+GUEST_DOTNET_FLAGS := -p:Int256ZkEvmCompact=true
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
