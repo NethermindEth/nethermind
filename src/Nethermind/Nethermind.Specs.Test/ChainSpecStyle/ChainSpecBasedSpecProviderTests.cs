@@ -1333,6 +1333,38 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
+    [TestCase(0x63ul, false)]
+    [TestCase(0x64ul, true)]
+    public void Nethermind_chainspec_maps_eip8304_activation_and_contract_address(ulong timestamp, bool expectedEnabled)
+    {
+        const string chainSpecJson = """
+        {
+          "name": "Test",
+          "engine": { "NethDev": {} },
+          "params": {
+            "chainID": "0x1",
+            "eip8304TransitionTimestamp": "0x64",
+            "eip8304ContractAddress": "0x0000000000000000000000000000000000008304"
+          },
+          "genesis": {
+            "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+            "difficulty": "0x1",
+            "gasLimit": "0x1000000",
+            "timestamp": "0x0"
+          },
+          "accounts": {}
+        }
+        """;
+
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(LoadChainSpecFromString(chainSpecJson)).GetSpec(new ForkActivation(1, timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8304Enabled, Is.EqualTo(expectedEnabled));
+            Assert.That(spec.Eip8304ContractAddress, Is.EqualTo(new Address("0x0000000000000000000000000000000000008304")));
+        }
+    }
+
     [Test]
     public void Geth_genesis_base_fee_per_gas_supports_uint256_quantity()
     {

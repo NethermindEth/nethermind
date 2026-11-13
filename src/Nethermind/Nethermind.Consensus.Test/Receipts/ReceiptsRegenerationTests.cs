@@ -35,6 +35,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Init.Modules;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using System.Threading;
@@ -374,8 +375,9 @@ public class ReceiptsRegenerationTests
     [Test]
     public async Task Regenerates_an_index_table_publication_block_without_the_receipts_it_covers()
     {
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder.AddSingleton<ISpecProvider>(
-            new TestSpecProvider(new OverridableReleaseSpec(Berlin.Instance) { IsEip8304Enabled = true, Eip8304ContractAddress = TestItem.AddressF })));
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(Berlin.Instance) { IsEip8304Enabled = true, Eip8304ContractAddress = TestItem.AddressF }))
+            .AddModule(new ReceiptRegenerationModule()));
 
         List<Block> blocks = [];
         for (int i = 0; i < 4; i++)
@@ -398,12 +400,7 @@ public class ReceiptsRegenerationTests
             chain.ReceiptStorage.RemoveReceipts(block);
         }
 
-        RegeneratingReceiptsEnvSourceFactory factory = new(
-            chain.Container.Resolve<IOverridableEnvFactory>(),
-            chain.Container.Resolve<ILifetimeScope>(),
-            [.. chain.Container.Resolve<IEnumerable<IBlockValidationModule>>()]);
-        using IShareableOverridableEnvSource<ReceiptsRegenerationEnv> envSource = factory.Create(maxConcurrent: 1);
-        ReceiptsRegenerator regenerator = new(envSource, chain.SpecProvider, chain.EthereumEcdsa, chain.PoSSwitcher, LimboLogs.Instance);
+        ReceiptsRegenerator regenerator = chain.Container.Resolve<ReceiptsRegenerator>();
 
         Assert.That(regenerator.TryRegenerate(blocks[^1], out TxReceipt[] regenerated), Is.True);
         AssertReceiptsMatch(chain.ReceiptStorage.Get(blocks[^1]), regenerated, blocks[^1]);

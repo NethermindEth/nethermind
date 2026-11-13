@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.IndexProof;
 
@@ -34,7 +33,7 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
             return ResultWrapper<IndexProofResult?>.Fail("Transaction not found in index", ErrorCodes.ResourceNotFound);
 
         IndexEntryProof proof = IndexProofEngine.GenerateProof(entries, leafIndex);
-        return ResultWrapper<IndexProofResult?>.Success(BuildResult(proof, level, firstBlock, tableSize));
+        return ResultWrapper<IndexProofResult?>.Success(BuildResult(proof, level, firstBlock, tableSize, FormatStorageSlot(tableSize, firstBlock)));
     }
 
     /// <inheritdoc />
@@ -56,17 +55,18 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
             {
                 return ResultWrapper<IndexProofResult[]?>.Fail(
                     $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
-                    ErrorCodes.InvalidRequest);
+                    ErrorCodes.LimitExceeded);
             }
         }
 
         // One pass over the table for the whole result set; per-proof generation is quadratic in table size.
         IndexEntryProof[] proofs = IndexProofEngine.GenerateProofs(entries, leafIndices);
 
+        string storageSlot = FormatStorageSlot(tableSize, firstBlock);
         IndexProofResult[] results = new IndexProofResult[proofs.Length];
         for (int i = 0; i < proofs.Length; i++)
         {
-            results[i] = BuildResult(proofs[i], level, firstBlock, tableSize);
+            results[i] = BuildResult(proofs[i], level, firstBlock, tableSize, storageSlot);
         }
 
         return ResultWrapper<IndexProofResult[]?>.Success(results);
@@ -78,11 +78,9 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
         if (!TryGetTableParameters(level, firstBlock, out long alignedFirstBlock, out int tableSize))
             return ResultWrapper<StorageSlotInfo>.Fail("Invalid level or block number", ErrorCodes.InvalidParams);
 
-        UInt256 slot = IndexProofEngine.ComputeStorageSlot(tableSize, alignedFirstBlock);
-
         return ResultWrapper<StorageSlotInfo>.Success(new StorageSlotInfo
         {
-            Slot = "0x" + slot.ToString("x"),
+            Slot = FormatStorageSlot(tableSize, alignedFirstBlock),
             Level = level,
             FirstBlock = alignedFirstBlock,
             TableSize = tableSize,
@@ -123,10 +121,11 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
         return true;
     }
 
-    private static IndexProofResult BuildResult(IndexEntryProof proof, int level, long firstBlock, int tableSize)
-    {
-        UInt256 slot = IndexProofEngine.ComputeStorageSlot(tableSize, firstBlock);
+    private static string FormatStorageSlot(int tableSize, long firstBlock) =>
+        "0x" + IndexProofEngine.ComputeStorageSlot(tableSize, firstBlock).ToString("x");
 
+    private static IndexProofResult BuildResult(IndexEntryProof proof, int level, long firstBlock, int tableSize, string storageSlot)
+    {
         byte[][] proofBytes = new byte[proof.Proof.Length][];
         for (int i = 0; i < proof.Proof.Length; i++)
         {
@@ -144,7 +143,7 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
             Level = level,
             FirstBlock = firstBlock,
             TableSize = tableSize,
-            StorageSlot = "0x" + slot.ToString("x"),
+            StorageSlot = storageSlot,
         };
     }
 

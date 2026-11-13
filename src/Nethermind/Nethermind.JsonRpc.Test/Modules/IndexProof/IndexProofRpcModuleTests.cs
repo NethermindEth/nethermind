@@ -147,6 +147,31 @@ public class IndexProofRpcModuleTests
     }
 
     [Test]
+    public void GetLogAddressProofs_rejects_more_matches_than_the_proof_limit([Values(IndexProofRpcModule.MaxLogProofs, IndexProofRpcModule.MaxLogProofs + 1)] int matchCount)
+    {
+        using Context context = new();
+        List<IndexEntry> entries = [];
+        for (uint logIndex = 0; logIndex < matchCount; logIndex++)
+        {
+            entries.Add(IndexEntry.CreateLogAddress(TestItem.AddressA, 100, 0, logIndex));
+        }
+
+        entries.Sort();
+        context.Store(0, 100, entries);
+
+        ResultWrapper<IndexProofResult[]?> result = context.Module.indexProof_getLogAddressProofs(TestItem.AddressA, 100);
+
+        if (matchCount > IndexProofRpcModule.MaxLogProofs)
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+        }
+        else
+        {
+            Assert.That(result.Data, Has.Length.EqualTo(matchCount));
+        }
+    }
+
+    [Test]
     public void GetStorageSlot_invalid_level_fails()
     {
         using Context context = new();

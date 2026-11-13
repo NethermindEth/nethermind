@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -63,7 +64,7 @@ public class ReviewBlockTreeEip8304Tests
         BlockTree tree = CoreBuild.A.BlockTree().OfChainLength(1).TestObject;
 
         await Assert.ThatAsync(() => ExecuteStep(tree, activationTimestamp: 0, syncConfig, new InMemoryReceiptStorage()),
-            throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
+            throws ? Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains("EIP-8304") : Throws.Nothing);
     }
 
     [TestCase(true, false, false)]
@@ -75,13 +76,15 @@ public class ReviewBlockTreeEip8304Tests
         ReceiptConfig receiptConfig = new() { StoreReceipts = storeReceipts, DeriveFromState = deriveFromState };
 
         await Assert.ThatAsync(() => ExecuteStep(tree, activationTimestamp: 0, new SyncConfig(), new InMemoryReceiptStorage(), receiptConfig),
-            throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
+            throws ? Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains("EIP-8304") : Throws.Nothing);
     }
 
     private static async Task ExecuteStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage, IReceiptConfig receiptConfig = null)
     {
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(syncConfig, new InitConfig { ProcessingEnabled = false }, receiptConfig ?? new ReceiptConfig()))
+            .AddModule(new TestNethermindModule(syncConfig, new InitConfig { ProcessingEnabled = false }, receiptConfig ?? new ReceiptConfig(),
+                // History keeps DeriveFromState past the receipt-derivation check, so the case reaches ReviewBlockTree.
+                new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
             .AddSingleton(new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } })
             .AddSingleton<IBlockTree>(tree)
             .AddSingleton(receiptStorage)

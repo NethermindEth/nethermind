@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Int256;
@@ -42,18 +43,28 @@ public static class IndexTableRootCalculator
             return emptyRoot;
         }
 
-        UInt256[] leafHashes = new UInt256[entries.Count];
+        // Merged tables reach large-object size, so the leaves are rented rather than allocated per root.
+        UInt256[] rentedLeaves = ArrayPool<UInt256>.Shared.Rent(entries.Count);
+        Span<UInt256> leafHashes = rentedLeaves.AsSpan(0, entries.Count);
         Span<byte> entryBuffer = stackalloc byte[IndexEntry.MaxEncodedLength];
         Span<byte> hashBuffer = stackalloc byte[SHA256.HashSizeInBytes];
 
-        for (int i = 0; i < entries.Count; i++)
+        UInt256 root;
+        try
         {
-            int encodedLength = entries[i].Encode(entryBuffer);
-            SHA256.HashData(entryBuffer[..encodedLength], hashBuffer);
-            leafHashes[i] = new UInt256(hashBuffer);
-        }
+            for (int i = 0; i < entries.Count; i++)
+            {
+                int encodedLength = entries[i].Encode(entryBuffer);
+                SHA256.HashData(entryBuffer[..encodedLength], hashBuffer);
+                leafHashes[i] = new UInt256(hashBuffer);
+            }
 
-        Merkle.Merkleize(out UInt256 root, leafHashes.AsSpan(), (ulong)entries.Count);
+            Merkle.Merkleize(out root, leafHashes, (ulong)entries.Count);
+        }
+        finally
+        {
+            ArrayPool<UInt256>.Shared.Return(rentedLeaves);
+        }
 
         Merkle.MixIn(ref root, entries.Count);
 
