@@ -28,6 +28,15 @@ public static class RecursiveStarkAggregator
     /// loop takes whatever is available and never waits to fill a leaf, and <see cref="MaxProductionWitnessBytes"/> still
     /// caps a leaf's serialized witnesses.</remarks>
     internal const int DirectBatchSize = Eip8288Constants.MaxLeanSigDepsPerWrapper;
+    /// <summary>leanSTARK dependencies folded into one direct leaf, bounding the wider
+    /// <see cref="DirectBatchSize"/> for them.</summary>
+    /// <remarks>A leanSTARK witness runs about 183 KB against a signature's 6 KB, and the prover's peak memory tracks a
+    /// leaf's witness bytes: measured on the packaged 0.12.0.21 library, leaves of 1/2/4/8/16 generics peaked at
+    /// 0.85/1.27/2.16/3.97/5.85 GiB. Four keeps that at about 2.2 GiB however many a statement carries, at the cost of
+    /// more calls, which signatures no longer pay. Mode 1 bounds generics per statement by
+    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> rather than at one per wrapper, so a whole leaf of them is
+    /// reachable; <see cref="MaxProductionWitnessBytes"/> alone would admit 16.</remarks>
+    internal const int GenericDirectBatchSize = 4;
 
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
@@ -48,9 +57,11 @@ public static class RecursiveStarkAggregator
     internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
-    /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
-    /// needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
-    /// fits one. The estimate only ranks alternative inputs for the same statement.</remarks>
+    /// <remarks>Signatures fold <see cref="DirectBatchSize"/> to a leaf, each generic proof counts as its own leaf, and
+    /// every node beyond the first needs one recursive merge; a recursive child losing dependencies needs a call of its own
+    /// unless the whole input fits one. Generics are counted one per leaf although the batch loop folds up to
+    /// <see cref="GenericDirectBatchSize"/> of them together, so their cost is over-stated; the estimate only ranks
+    /// alternative inputs for the same statement, which that does not disturb.</remarks>
     public static long EstimatedCost(AggregationInput input)
     {
         int signatures = 0, generics = 0;
@@ -61,7 +72,8 @@ public static class RecursiveStarkAggregator
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0)
         {
-            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize) calls = Math.Max(calls, 1);
+            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
+                && generics <= GenericDirectBatchSize) calls = Math.Max(calls, 1);
             else
             {
                 HashSet<FrameDependency> discards = [.. input.Discards];
@@ -169,15 +181,22 @@ public static class RecursiveStarkAggregator
         }
     }
 
-    /// <summary>Whether any direct dependency of <paramref name="input"/> is already proven by one of its recursive children.</summary>
-    private static bool AnyDependencyProvenByChild(AggregationInput input)
+    /// <summary>Whether any of <paramref name="deps"/> is in <paramref name="covered"/>.</summary>
+    private static bool AnyCovered(IReadOnlyList<FrameDependency> deps, HashSet<FrameDependency> covered)
     {
-        if (input.Deps.Count == 0 || input.RecursiveProofs.Count == 0) return false;
-        HashSet<FrameDependency> covered = [];
-        foreach (RecursiveProofInput child in input.RecursiveProofs) covered.UnionWith(child.InnerDeps);
-        foreach (FrameDependency dependency in input.Deps)
+        if (covered.Count == 0) return false;
+        foreach (FrameDependency dependency in deps)
             if (covered.Contains(dependency)) return true;
         return false;
+    }
+
+    /// <summary>The leanSTARK dependencies among <paramref name="deps"/>.</summary>
+    private static int GenericCount(IReadOnlyList<FrameDependency> deps)
+    {
+        int generics = 0;
+        foreach (FrameDependency dependency in deps)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
+        return generics;
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
@@ -205,13 +224,16 @@ public static class RecursiveStarkAggregator
                 return parent.Proof.ToArray();
             }
         }
+        HashSet<FrameDependency> recursiveCoverage = [];
+        foreach (RecursiveProofInput child in input.RecursiveProofs) recursiveCoverage.UnionWith(child.InnerDeps);
         // A direct dependency a child already proves is authenticated and then left out of the leaf below, so the one-call
         // path is only equivalent while no child covers one: taking it then would fold that witness again for nothing.
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
+            && GenericCount(input.Deps) <= GenericDirectBatchSize
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes
-            && !AnyDependencyProvenByChild(input))
+            && !AnyCovered(input.Deps, recursiveCoverage))
         {
             byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -219,8 +241,6 @@ public static class RecursiveStarkAggregator
         }
 
         HashSet<FrameDependency> discarded = [.. input.Discards];
-        HashSet<FrameDependency> recursiveCoverage = [];
-        foreach (RecursiveProofInput child in input.RecursiveProofs) recursiveCoverage.UnionWith(child.InnerDeps);
         List<RecursiveProofInput> children = [];
         for (int i = 0; i < input.RecursiveProofs.Count; i++)
         {
@@ -238,6 +258,7 @@ public static class RecursiveStarkAggregator
             List<FrameDependency> deps = [];
             List<ReadOnlyMemory<byte>> witnesses = [];
             long bytes = 12;
+            int generics = 0;
             do
             {
                 FrameDependency dependency = input.Deps[offset];
@@ -258,6 +279,11 @@ public static class RecursiveStarkAggregator
                 ReadOnlyMemory<byte> witness = input.Witnesses[offset];
                 long entrySize = Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
                 if (deps.Count > 0 && bytes + entrySize > MaxProductionWitnessBytes) break;
+                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme)
+                {
+                    if (generics == GenericDirectBatchSize) break;
+                    generics++;
+                }
                 deps.Add(input.Deps[offset]);
                 witnesses.Add(witness);
                 bytes += entrySize;
