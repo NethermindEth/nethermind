@@ -768,9 +768,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private void ClearIntraTxCache(ReadOnlySpan<Change> changes)
     {
-        int capacity = _intraTxCache.Capacity;
-        if (capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
-            || _intraTxCache.Count > capacity / Core.Collections.CollectionExtensions.SparseClearCapacityDivisor)
+        if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(_intraTxCache.Count, _intraTxCache.Capacity))
         {
             _intraTxCache.ClearAndTrim();
             return;

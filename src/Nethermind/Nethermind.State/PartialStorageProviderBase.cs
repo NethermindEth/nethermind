@@ -164,9 +164,7 @@ namespace Nethermind.State
 
         private void ClearIntraBlockCache()
         {
-            int capacity = _intraBlockCache.Capacity;
-            if (capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity
-                || _intraBlockCache.Count > capacity / Core.Collections.CollectionExtensions.SparseClearCapacityDivisor)
+            if (!Core.Collections.CollectionExtensions.IsSparseForRemoval(_intraBlockCache.Count, _intraBlockCache.Capacity))
             {
                 _intraBlockCache.ClearAndTrim();
                 return;
