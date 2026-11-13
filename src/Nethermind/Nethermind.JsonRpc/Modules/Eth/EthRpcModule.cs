@@ -80,6 +80,7 @@ public partial class EthRpcModule(
     public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     private const string UnknownAccount = "unknown account";
+    private const string FromIsNotSigner = "from does not match the signer";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -364,8 +365,12 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
-        ReportUnknownAccountFirst(rpcTx, await SignAndSendTransaction(rpcTx));
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    {
+        (ResultWrapper<Hash256> result, bool signatureKept) = await SignAndSendTransaction(rpcTx);
+        // The wallet plays no part in a transaction sent under the signature its request brought.
+        return signatureKept ? result : ReportUnknownAccountFirst(rpcTx, result);
+    }
 
     /// <summary>
     /// A request from an account this node holds no key for fails as an unknown account whatever else is wrong
@@ -398,25 +403,66 @@ public partial class EthRpcModule(
             : null;
     }
 
-    private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    /// <returns>The result, and whether the request keeps the signature it brought.</returns>
+    private async Task<(ResultWrapper<Hash256> Result, bool SignatureKept)> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
-            return sendError;
+            return (sendError, false);
 
         // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
         IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
-            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
+            return (ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput), false);
         }
-
-        tx.ChainId = _blockchainBridge.GetChainId();
 
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
+        // A frame transaction has no r/s signature: its sender is part of its payload, and r/s it carries are not used.
+        bool signed = tx.Signature is not null && !tx.SupportsFrames;
+        // Without a nonce the node picks one and the wallet signs for from, so the request's signature is not kept.
+        if (signed && nonce is null)
+            tx.Signature = null;
+
+        bool signatureKept = signed && nonce is not null;
+        // A typed transaction signs the chain id it carries, so one that keeps its signature keeps the chain id its request
+        // gives: its signer is recovered over the payload it signed, and the pool answers a chain id that is not this node's.
+        // A legacy transaction's recovery and validation take the chain id from its v, not from this field.
+        if (!signatureKept || tx.Type == TxType.Legacy || tx.ChainId is null)
+            tx.ChainId = _blockchainBridge.GetChainId();
+
+        if (signatureKept && SendAsSigner(tx, (rpcTx as LegacyTransactionForRpc)?.From) is { } signerError)
+            return (signerError, true);
+
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
-        return await SendTx(tx, options);
+        return (await SendTx(tx, options), signatureKept);
+    }
+
+    /// <summary>
+    /// Makes the account that signed <paramref name="tx"/> its sender: every node that executes the transaction
+    /// recovers its sender from the signature.
+    /// </summary>
+    /// <param name="from">The request's <c>from</c>, or null when it leaves it out.</param>
+    /// <returns>The error that stops the send, or null when the signer is recovered and <paramref name="from"/>, if given, names it.</returns>
+    /// <remarks>
+    /// Where the spec does not validate chain ids, a legacy signature for another chain is accepted, and block processing
+    /// recovers it over the chain id it carries; so does this. Where the spec validates them, the pool refuses such a
+    /// signature, and block processing would recover another account from it. The transaction is still sent as that
+    /// account, and <paramref name="from"/> may name either it or the account that made the signature over its own chain
+    /// id, so the request gets the pool's answer, as the same transaction sent raw does.
+    /// </remarks>
+    private ResultWrapper<Hash256>? SendAsSigner(Transaction tx, Address? from)
+    {
+        IReleaseSpec spec = _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : _specProvider.GenesisSpec;
+        if (_blockchainBridge.RecoverTxSender(tx, useSignatureChainId: !spec.ValidateChainId) is not { } signer)
+            return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+
+        if (from is not null && from != signer && from != _blockchainBridge.RecoverTxSender(tx, useSignatureChainId: true))
+            return ResultWrapper<Hash256>.Fail(FromIsNotSigner, ErrorCodes.InvalidInput);
+
+        tx.SenderAddress = signer;
+        return null;
     }
 
     public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
