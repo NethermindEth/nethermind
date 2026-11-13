@@ -77,9 +77,12 @@ public class IndexTableStoreTests
         IReadOnlyList<IndexEntry> retrievedB = store.Get(0, 100, TestItem.KeccakD);
         IReadOnlyList<IndexEntry> latest = store.Get(0, 100);
 
-        Assert.That(retrievedA, Is.Not.Null);
-        Assert.That(retrievedB, Is.Not.Null);
-        Assert.That(latest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrievedA, Is.Not.Null);
+            Assert.That(retrievedB, Is.Not.Null);
+            Assert.That(latest, Is.Not.Null);
+        }
 
         using (Assert.EnterMultipleScope())
         {

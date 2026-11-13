@@ -167,8 +167,11 @@ public class IndexTableIntegrationTests
                 bool eligible = firstBlock >= activationBlock;
                 if (eligible) published[level]++;
 
-                Assert.That(GetStoredRoot(chain, parent, size, firstBlock), Is.EqualTo(empty), $"level-{level} root of blocks {firstBlock}+ before block {number}");
-                Assert.That(GetStoredRoot(chain, head, size, firstBlock), Is.EqualTo(eligible ? SszRoot(table) : empty), $"level-{level} root of blocks {firstBlock}+ at block {number}");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(GetStoredRoot(chain, parent, size, firstBlock), Is.EqualTo(empty), $"level-{level} root of blocks {firstBlock}+ before block {number}");
+                    Assert.That(GetStoredRoot(chain, head, size, firstBlock), Is.EqualTo(eligible ? SszRoot(table) : empty), $"level-{level} root of blocks {firstBlock}+ at block {number}");
+                }
             }
 
             parent = head;
