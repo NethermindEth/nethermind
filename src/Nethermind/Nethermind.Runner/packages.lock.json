@@ -719,7 +719,7 @@
           "Ckzg.Bindings": "[2.1.8.1680, )",
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto.Bls": "[0.3.17.15, )",
-          "Nethermind.Crypto.Lean": "[0.14.0-feature-eip8288-batch-leaves.34, )",
+          "Nethermind.Crypto.Lean": "[0.14.1-feature-eip8288-batch-leaves.37, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.14, )"
         }
@@ -1538,9 +1538,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -1817,9 +1817,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -1919,9 +1919,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2021,9 +2021,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2123,9 +2123,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2225,9 +2225,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
@@ -2327,9 +2327,9 @@
       },
       "Nethermind.Crypto.Lean": {
         "type": "CentralTransitive",
-        "requested": "[0.14.0-feature-eip8288-batch-leaves.34, )",
-        "resolved": "0.14.0-feature-eip8288-batch-leaves.34",
-        "contentHash": "5yTAesyQ5g7/A+iDSWE9gEMDFDQeab+0bobtmmtw1r/40UR7ugh5OI8KNwraX23pu535nL9gxB0f/GsCVO5DwQ=="
+        "requested": "[0.14.1-feature-eip8288-batch-leaves.37, )",
+        "resolved": "0.14.1-feature-eip8288-batch-leaves.37",
+        "contentHash": "lD1O+5LeVf1sfq8KenXo3TneBvkmu2S8Aw9SphVhvMVr1vSdw7Wy+G0D+MSMNbCw+1mEltekTmFUvu1Z8o8yrw=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
