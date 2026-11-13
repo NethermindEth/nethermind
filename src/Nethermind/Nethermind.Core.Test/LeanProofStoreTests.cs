@@ -55,7 +55,8 @@ public class LeanProofStoreTests
     }
 
     // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves nothing to shed, and an admitted
-    // one fits again once the fewest pending transactions that make room are released. None may exceed capacity meanwhile.
+    // one fits again once the fewest pending transactions that make room are released. None may exceed capacity meanwhile, and the
+    // staged witnesses cover the admitted transaction only once staging ends.
     [Test]
     public void Admission_beyond_capacity_fits_again_once_room_is_released([Values] bool admitted)
     {
@@ -86,6 +87,7 @@ public class LeanProofStoreTests
             Assert.That(overdrawn, Is.True);
             Assert.That(store.ShedExcess(), Is.EqualTo(!admitted));
             Assert.That(overdrawnAgain, Is.EqualTo(!admitted), "no admission exceeds capacity while the store is over it");
+            Assert.That(store.Covers(incomingTransaction), Is.False, "staged coverage is not published");
             Assert.That(store.ReleasesToFit([first]), admitted ? Is.Null : Is.Empty);
             Assert.That(store.ReleasesToFit([first, second, pinned[2].Hash!.ValueHash256]), admitted ? Is.EqualTo(new[] { first, second }) : Is.Empty);
         }
@@ -94,6 +96,7 @@ public class LeanProofStoreTests
             store.UnpinPending(first);
             store.UnpinPending(second);
         }
+        store.EndStaging(commit: admitted);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.ShedExcess(), Is.True);

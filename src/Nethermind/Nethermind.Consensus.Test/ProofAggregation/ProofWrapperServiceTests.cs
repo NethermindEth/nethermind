@@ -996,7 +996,8 @@ public class ProofWrapperServiceTests
     // Pinned witnesses are never evicted, so with proof capacity full a wrapper of executable transactions evicts pending ones the
     // next blocks could not include, oldest first, but only when that frees enough, never one whose witness stays pinned, and only
     // as far as admission pooled transactions pinning its new witnesses, each submitted once, as without eviction. Should a victim
-    // become executable meanwhile, the admission is rolled back instead. Either way the store ends within capacity.
+    // become executable meanwhile, the admission is rolled back instead. The witnesses stay staged, out of other admissions' reach,
+    // until that is decided, and an excess left over is drained first. Either way the store ends within capacity.
     [TestCase(64, false, false, 0UL, 2, TestName = "Non-executable transactions are evicted")]
     [TestCase(0, false, false, 0UL, 0, TestName = "Executable transactions are kept")]
     [TestCase(1, false, false, 0UL, 0, TestName = "Nothing is evicted when it would not free enough")]
@@ -1008,7 +1009,8 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
     [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
-    [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "A rejected wrapper whose witness another transaction pinned evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1068,6 +1070,17 @@ public class ProofWrapperServiceTests
         }
         Transaction oldest = pinned[0];
         HashSet<Address> filled = [];
+        bool foreignAdmitted = false;
+        if (incoming == "drain")
+        {
+            // A transaction outside the pool's view leaves the store over capacity, as an admission beyond it might have.
+            FrameDependency extra = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("extra"), default);
+            bool over = store.TryBeginAdmission([extra], [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? excess, overCapacity: true)
+                && store.PinPending(Transaction(extra, TestItem.AddressE), new object());
+            excess?.Dispose();
+            store.EndStaging(commit: true);
+            Assert.That(over && !store.ShedExcess(), Is.True);
+        }
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
@@ -1075,16 +1088,15 @@ public class ProofWrapperServiceTests
             Transaction submitted = call.Arg<Transaction>();
             if (incoming == "foreign")
             {
-                // Another admission of the same witness reuses its record and pins it for its own transaction.
+                // Another admission of the same witness would reuse its record and pin it for its own transaction.
                 List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(submitted, FrameTxSigHash.ComputeValue);
-                bool reused = store.TryBeginAdmission(dependencies, [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? other);
-                bool foreignPinned = reused && store.PinPending(Transaction(dependencies[0], TestItem.AddressF), new object());
+                foreignAdmitted = store.TryBeginAdmission(dependencies, [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? other)
+                    && store.PinPending(Transaction(dependencies[0], TestItem.AddressF), new object());
                 other?.Dispose();
-                Assert.That(foreignPinned, Is.True);
             }
             return incoming switch
             {
-                "simulation" or "foreign" => AcceptTxResult.FrameSimulationFailed,
+                "simulation" or "foreign" or "drain" => AcceptTxResult.FrameSimulationFailed,
                 "unpinned" when submitted.SenderAddress == Address.Zero => AcceptTxResult.FrameSimulationFailed,
                 "known" => AcceptTxResult.AlreadyKnown,
                 _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
@@ -1135,7 +1147,7 @@ public class ProofWrapperServiceTests
             Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
-        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" ? ProofWrapperAcceptanceStatus.PoolRejected
+        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" ? ProofWrapperAcceptanceStatus.PoolRejected
             : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
@@ -1148,13 +1160,20 @@ public class ProofWrapperServiceTests
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
             pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
-            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted || incoming == "foreign"));
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
             if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
-            // The other transaction's pin keeps that witness over capacity, so no further admission may exceed it.
-            Assert.That(store.ShedExcess(), Is.EqualTo(incoming != "foreign"), "the store ends within capacity");
-            if (incoming == "foreign")
-                Assert.That(store.TryBeginAdmission([new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("third"), default)],
-                    [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out _, overCapacity: true), Is.False);
+            Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
+            Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
+        }
+        // Nothing is left to refuse a later admission beyond capacity.
+        bool later = store.TryBeginAdmission([new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("later"), default)],
+            [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? laterAdmission, overCapacity: true);
+        laterAdmission?.Dispose();
+        store.EndStaging(commit: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(later, Is.True);
+            Assert.That(store.ShedExcess(), Is.True);
         }
     }
 

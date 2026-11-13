@@ -417,6 +417,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         if (stale.Count != 0) _evictionCandidates?.Candidates.RemoveAll(stale.Contains);
         if (candidates.Count == 0) return false;
+        // An excess left over would refuse every admission beyond capacity; clear it first.
+        DrainExcess();
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, [.. candidates.Keys])
             is not { Count: > 0 } releases) return false;
         if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out IDisposable? overCapacity,
@@ -429,12 +431,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Returns the store within capacity after an admission beyond it: sheds what no pending transaction pins, then evicts
     /// the fewest <paramref name="victims"/> still not executable that make room, or else rolls back the <paramref name="admitted"/>
-    /// transactions.</summary>
+    /// transactions, and publishes the admission's witnesses only if they stay.</summary>
     /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted or
-    /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed. The
-    /// admitted transactions' coverage is published before this runs, so another transaction may pin those witnesses meanwhile and
-    /// keep the store over capacity after a rollback; the excess is then at most this wrapper's witnesses, and the store refuses
-    /// any further admission beyond capacity until it clears.</remarks>
+    /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed.
+    /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.</remarks>
     /// <returns>Whether the admitted transactions were rolled back.</returns>
     private bool RestoreCapacity(List<Transaction> victims, List<Transaction> admitted)
     {
@@ -442,20 +442,45 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             HashSet<Transaction> planned = [.. victims];
             _evictionCandidates?.Candidates.RemoveAll(planned.Contains);
-            if (leanProofStore.ShedExcess() || admitted.Count == 0) return false;
-            FeeFloors floors = ExecutableFeeFloors();
-            List<ValueHash256> evictable = [];
-            foreach (Transaction victim in victims)
-                if (IsStillNotExecutable(victim, floors)) evictable.Add(victim.Hash!.ValueHash256);
-            List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
-            if (releases is null)
-                foreach (Transaction transaction in admitted) txPool.RemoveTransaction(transaction.Hash);
-            else
-                foreach (ValueHash256 hash in releases)
-                    if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
-            leanProofStore.ShedExcess();
-            return releases is null;
+            bool rolledBack = false;
+            if (admitted.Count != 0 && !leanProofStore.ShedExcess())
+            {
+                FeeFloors floors = ExecutableFeeFloors();
+                List<ValueHash256> evictable = [];
+                foreach (Transaction victim in victims)
+                    if (IsStillNotExecutable(victim, floors)) evictable.Add(victim.Hash!.ValueHash256);
+                List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
+                rolledBack = releases is null;
+                if (rolledBack)
+                    foreach (Transaction transaction in admitted) txPool.RemoveTransaction(transaction.Hash);
+                else
+                    foreach (ValueHash256 hash in releases!)
+                        if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+            }
+            leanProofStore.EndStaging(commit: admitted.Count != 0 && !rolledBack);
+            DrainExcess();
+            return rolledBack;
         }
+    }
+
+    /// <summary>Evicts pending transactions not executable at the head until the store fits capacity again, as far as at most
+    /// <see cref="MaxEvictedPerAdmission"/> of them can, so no excess outlives the admission that caused it.</summary>
+    /// <remarks>Called under the commit lock. Excess only remains when executable transactions pin it, and they leave the pool once
+    /// included.</remarks>
+    private void DrainExcess()
+    {
+        if (leanProofStore.ShedExcess()) return;
+        FeeFloors floors = ExecutableFeeFloors();
+        List<ValueHash256> candidates = [];
+        foreach (Transaction candidate in NotExecutable([], floors))
+        {
+            if (candidates.Count == MaxEvictedPerAdmission) break;
+            if (IsStillNotExecutable(candidate, floors)) candidates.Add(candidate.Hash!.ValueHash256);
+        }
+        if (leanProofStore.ReleasesToFit(candidates) is not { } releases) return;
+        foreach (ValueHash256 hash in releases)
+            if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+        leanProofStore.ShedExcess();
     }
 
     private sealed class CapacityRestoringScope(ProofWrapperService service, IDisposable admission, List<Transaction> victims,
