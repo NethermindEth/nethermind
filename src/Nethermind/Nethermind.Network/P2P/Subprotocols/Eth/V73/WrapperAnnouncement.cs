@@ -81,8 +81,8 @@ public sealed class WrapperAnnouncement
 
 /// <summary>What announcement suppression compares between wrappers: mode, proof bytes and verification work.</summary>
 /// <param name="ProofBytes">The witness or proof bytes a verifier decodes.</param>
-/// <param name="VerificationWork">Each leanSPHINCS verification at its EIP-8288 verification gas, and each STARK verification,
-/// direct or the mode-1 aggregate, at a local estimate of ten leanSPHINCS verifications.</param>
+/// <param name="VerificationWork">Direct verifications priced at their EIP-8288 verification gas, or for mode 1 a local
+/// estimate of one recursive STARK verification, ten leanSPHINCS verifications.</param>
 public readonly record struct WrapperShape(int Mode, int ProofBytes, long VerificationWork);
 
 /// <summary>The canonical EIP-8288 wrapper encoding, checked on receipt before validation.</summary>
@@ -91,9 +91,9 @@ public static class WrapperBodies
     /// <summary>EIP-7594 cell proofs per blob in a blob network wrapper.</summary>
     private const int CellProofsPerBlob = 128;
 
-    // A local estimate of verifying one STARK, direct or aggregate, kept at ten leanSPHINCS signatures: EIP-8288's leanSTARK
-    // declaration gas prices a generic proof's recursive child slot, not a mempool node's single verification.
-    private const long StarkVerificationWork = 10 * (long)Eip8288Constants.LeanSphincsVerificationGas;
+    // A local estimate of verifying one aggregate proof, kept at ten leanSPHINCS signatures: EIP-8288's leanSTARK declaration gas
+    // prices a generic proof's recursive child slot, not a mempool node's single verification.
+    private const long AggregateVerificationWork = 10 * (long)Eip8288Constants.LeanSphincsVerificationGas;
 
     /// <summary>Checks the canonical wrapper encoding and returns its consensus transaction hashes, in order.</summary>
     /// <remarks>Checks the encoding rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
@@ -133,8 +133,8 @@ public static class WrapperBodies
             if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
                 || !Eip8288Dependencies.IsKnownScheme(dependency[31])) throw new RlpException("Invalid dependency");
             dependency.CopyTo(dependencyEntries.AsSpan(i * Eip8288Constants.DependencyTripleLength));
-            work += dependency[31] == Eip8288Constants.LeanStarkScheme
-                ? StarkVerificationWork : (long)Eip8288Constants.LeanSphincsVerificationGas;
+            work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
         if (mode == 0)
         {
@@ -147,7 +147,7 @@ public static class WrapperBodies
             // The local pinned-prover bound applies to every aggregate proof before decoding or verification.
             if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof is empty or exceeds the local proof size bound");
             verificationBytes = proof.Length;
-            work = StarkVerificationWork;
+            work = AggregateVerificationWork;
         }
         content.End();
         shape = new((int)mode, verificationBytes, work);

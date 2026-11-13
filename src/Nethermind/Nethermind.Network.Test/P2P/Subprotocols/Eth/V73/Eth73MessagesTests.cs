@@ -93,7 +93,7 @@ public class Eth73MessagesTests
             Assert.That(announcement.Coverage.DepsHash.ToString(false), Is.EqualTo(VectorDepsHash));
             Assert.That(announcement.Coverage.TxsHash.ToString(false), Is.EqualTo(VectorTxsHash));
             Assert.That(shape.Mode, Is.EqualTo(mode));
-            // One STARK verification is a local estimate of ten leanSPHINCS signatures, not a generic declaration's gas.
+            // One aggregate verification is a local estimate of ten leanSPHINCS signatures, not a generic declaration's gas.
             if (mode == 1) Assert.That(shape.VerificationWork, Is.EqualTo(10 * (long)Eip8288Constants.LeanSphincsVerificationGas));
             // response_rlp: ProofWrappers [7, [[hash, wrapper]]] embeds the wrapper as an RLP item after its hash.
             Assert.That(new ProofWrappersMessageSerializer().Encode(new(7, [new(announcement.Hash, wrapper)])).ToHexString(),
