@@ -282,9 +282,7 @@ public class ExecutionPayload : IExecutionPayloadParams, IExecutionPayloadFactor
     /// <param name="transactions">An array of transactions to encode.</param>
     public void SetTransactions(params Transaction[] transactions)
     {
-        Transactions = transactions
-            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping))
-            .ToArray();
+        Transactions = Array.ConvertAll(transactions, static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping));
         _transactions = transactions;
     }
 
