@@ -323,10 +323,18 @@ public sealed class HalfPathMigrator(
 
         private bool Collect(in ValueHash256? address, in TreePath path, Range rlp, in ValueHash256? leafPath, Range leafValue)
         {
-            if (_from.IsCopied(address, path)) return false;
+            if (leafPath is { } key ? IsCopied(address, key) : _from.IsCopied(address, path)) return false;
             _entries.Add(new Entry(address, path, rlp, leafPath, leafValue));
             return true;
         }
+
+        /// <summary>Whether the account or slot at <paramref name="key"/> has been copied.</summary>
+        /// <remarks>
+        /// A leaf goes by its key rather than its path: deleting the key the cursor is at can move the leaf after it up to a path the
+        /// cursor has passed, and the persist that does so writes the moved leaf but not its value, which is unchanged.
+        /// </remarks>
+        private bool IsCopied(in ValueHash256? address, in ValueHash256 key) =>
+            address is { } storage ? _from.IsCopied(storage, key) : _from.IsCopied(key);
 
         /// <summary>A collected node, with its RLP and, for a leaf, its value located in the buffer.</summary>
         /// <param name="Address">The account path of the storage trie, or <c>null</c> for the state trie.</param>

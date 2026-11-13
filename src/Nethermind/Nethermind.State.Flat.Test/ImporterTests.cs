@@ -302,24 +302,56 @@ public class ImporterTests
         (Hash256 builtRoot, _) = BuildState(halfPath);
         Hash256 root = AddEmbeddedNodesAccount(halfPath, builtRoot);
         StateId state = new(1, root);
-        MigrationRun migration = new(halfPath, _persistence, _columnsDb, state, chunkNodes, rejectedWrites: firstWriteRejected ? 1 : 0);
+        MigrationRun migration = new(halfPath, _persistence, _columnsDb, state, MigrationCursor.Start, chunkNodes, rejectedWrites: firstWriteRejected ? 1 : 0);
         long migratedBefore = Metrics.HalfPathMigratedNodes;
 
         await migration.Run();
 
-        using SnapshotableMemColumnsDb<FlatDbColumns> importedDb = new();
-        await new Importer(halfPath, new RocksDbPersistence(importedDb, LimboLogs.Instance, NullTrieNodeLog.Instance), LimboLogs.Instance).Copy(state);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(migration.Cursor.Current, Is.Null, "complete");
             Assert.That(Metrics.HalfPathMigratedNodes - migratedBefore, Is.EqualTo(CollectNodes(halfPath, root).Count),
                 "every node is counted once, rejected chunks not at all");
             Assert.That(BasePersistence.ReadMigrationCursor(_columnsDb.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
-            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>().Where(static column => column != FlatDbColumns.Metadata))
+        }
+        await AssertFlatHoldsWhatTheImporterWrites(halfPath, state);
+    }
+
+    [Test]
+    public async Task Migration_copies_a_leaf_a_deletion_moved_up_to_a_path_the_cursor_has_passed([Values] bool slotDeleted)
+    {
+        // A block deleted the account or slot the cursor is at, moving the one leaf left in its trie up to the root: a path the
+        // cursor has passed, holding a key it has not. The block wrote the moved leaf but not its value, which is unchanged.
+        NodeStorage halfPath = new(_trieDb);
+        StorageTree storageTree = new(new RawScopedTrieStore(halfPath, TestItem.AddressA.ToAccountPath.ToCommitment()), LimboLogs.Instance);
+        storageTree.Set(UInt256.One, [1]);
+        storageTree.Commit();
+        StateTree stateTree = new(new RawScopedTrieStore(halfPath), LimboLogs.Instance);
+        stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(1).WithChangedStorageRoot(storageTree.RootHash));
+        stateTree.Commit();
+        StateId state = new(1, stateTree.RootHash);
+        // The deleted key comes before every other.
+        MigrationCursor cursor = slotDeleted
+            ? new MigrationCursor(TestItem.AddressA.ToAccountPath, default(ValueHash256))
+            : new MigrationCursor(default(ValueHash256), null);
+        MigrationRun migration = new(halfPath, _persistence, _columnsDb, state, cursor, chunkNodes: 1_000, rejectedWrites: 0);
+
+        // Each trie holds one leaf, written with its value only where the cursor has passed its key.
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(state, state))
+        {
+            foreach ((Hash256? address, TreePath path, TrieNode leaf) in CollectNodes(halfPath, stateTree.RootHash))
             {
-                Assert.That(Contents(_columnsDb, column), Is.EquivalentTo(Contents(importedDb, column)), column.ToString());
+                if (!cursor.IsCopied(address, path)) continue;
+                ValueHash256 key = path.Append(leaf.Key).Path;
+                bool valueCopied = address is null ? cursor.IsCopied(key) : cursor.IsCopied(address.ValueHash256, key);
+                Importer.WriteNode(batch, address, path, leaf.FullRlp.AsSpan(), valueCopied ? key : default(ValueHash256?), leaf.Value.AsSpan());
             }
         }
+
+        await migration.Run();
+
+        Assert.That(migration.Cursor.Current, Is.Null, "complete");
+        await AssertFlatHoldsWhatTheImporterWrites(halfPath, state);
     }
 
     [Test]
@@ -330,7 +362,7 @@ public class ImporterTests
         (Hash256? address, TreePath path, TrieNode missing) = CollectNodes(halfPath, root)
             .Last(static entry => entry.Address is not null && !entry.Node.IsLeaf);
         halfPath.Set(address, path, missing.Keccak!.ValueHash256, null);
-        MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), chunkNodes: 7, rejectedWrites: 0);
+        MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), MigrationCursor.Start, chunkNodes: 7, rejectedWrites: 0);
 
         await migration.Run();
 
@@ -347,7 +379,7 @@ public class ImporterTests
         TaskCompletionSource committing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim commit = new();
         // A snap sync starting wipes flat from another thread, here while the chunk walks or while it commits.
-        MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), chunkNodes: 1_000, rejectedWrites: 0)
+        MigrationRun migration = new(halfPath, _persistence, _columnsDb, new StateId(1, root), MigrationCursor.Start, chunkNodes: 1_000, rejectedWrites: 0)
         {
             AfterLease = duringCommit ? null : static persistence => persistence.Clear(),
             BeforeCommit = duringCommit ? WaitForWipe : null,
@@ -501,6 +533,20 @@ public class ImporterTests
         return collector.Nodes;
     }
 
+    /// <summary>Asserts that flat holds what the importer writes for <paramref name="state"/>, the metadata aside.</summary>
+    private async Task AssertFlatHoldsWhatTheImporterWrites(INodeStorage halfPath, StateId state)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> importedDb = new();
+        await new Importer(halfPath, new RocksDbPersistence(importedDb, LimboLogs.Instance, NullTrieNodeLog.Instance), LimboLogs.Instance).Copy(state);
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>().Where(static column => column != FlatDbColumns.Metadata))
+            {
+                Assert.That(Contents(_columnsDb, column), Is.EquivalentTo(Contents(importedDb, column)), column.ToString());
+            }
+        }
+    }
+
     private static Dictionary<string, string> Contents(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
         db.GetColumnDb(column).GetAll().ToDictionary(static entry => entry.Key.ToHexString(), static entry => entry.Value!.ToHexString());
 
@@ -545,7 +591,7 @@ public class ImporterTests
         public void Compact() => throw new NotSupportedException();
     }
 
-    /// <summary>A migration of the HalfPath state at <paramref name="state"/> into an empty flat DB pointing at it, run on the test thread.</summary>
+    /// <summary>A migration from <paramref name="from"/> of the HalfPath state at <paramref name="state"/> into an empty flat DB pointing at it, run on the test thread.</summary>
     private sealed class MigrationRun
     {
         private readonly Queue<Func<Task>> _scheduled = new();
@@ -564,11 +610,11 @@ public class ImporterTests
         /// <summary>Runs once a chunk is written to its batch, before the batch is committed.</summary>
         public Action? BeforeCommit { get; init; }
 
-        public MigrationRun(INodeStorage halfPath, IPersistence flat, IColumnsDb<FlatDbColumns> flatDb, StateId state, int chunkNodes, int rejectedWrites)
+        public MigrationRun(INodeStorage halfPath, IPersistence flat, IColumnsDb<FlatDbColumns> flatDb, StateId state, MigrationCursor from, int chunkNodes, int rejectedWrites)
         {
             flat.CreateWriteBatch(StateId.PreGenesis, state).Dispose();
             _metadata = flatDb.GetColumnDb(FlatDbColumns.Metadata);
-            BasePersistence.WriteMigrationCursor(_metadata, MigrationCursor.Start);
+            BasePersistence.WriteMigrationCursor(_metadata, from);
             Cursor = new HalfPathMigrationCursor(flatDb);
             IPersistence persistence = Persistence = new HalfPathFallbackPersistence(flat, halfPath, Cursor);
             _rejectedWrites = rejectedWrites;
