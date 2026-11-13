@@ -416,12 +416,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
             is not { Count: > 0 } releases) return false;
         // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
-        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out; a transaction the pool already
-        // rejected this block fails it before any of the others is simulated, so repeating a wrapper costs no validation.
+        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out. A transaction the pool already knows,
+        // or that failed this check on the head, fails it before any other is simulated, so repeating a wrapper costs no validation.
+        HashSet<ValueHash256> rejected = DryRunRejected();
         foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && txPool.IsKnown(transaction.Hash)) return false;
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)
+                && (rejected.Contains(transaction.Hash.ValueHash256) || txPool.IsKnown(transaction.Hash))) return false;
         foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction, handling)) return false;
+        {
+            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) || txPool.ValidateTxBeforeProofAdmission(transaction, handling)) continue;
+            if (rejected.Count < MaxDryRunRejected) rejected.Add(transaction.Hash.ValueHash256);
+            return false;
+        }
         foreach (ValueHash256 hash in releases)
             if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
         HashSet<ValueHash256> released = [.. releases];
@@ -466,6 +472,22 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// read and replaced under the commit lock.</summary>
     /// <remarks>Transactions removed or made executable since remain listed until an admission rechecks and drops them.</remarks>
     private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
+
+    /// <summary>Transactions that failed <see cref="TryBeginAdmission"/>'s admission check on the head, read and replaced under
+    /// the commit lock.</summary>
+    /// <remarks>Kept here rather than in the pool's known set: the check runs out of the context a submission sees (witnesses,
+    /// predecessors and evicted reservations aside), so its rejection must not refuse the transaction elsewhere.</remarks>
+    private (Hash256? Head, HashSet<ValueHash256> Hashes) _dryRunRejected = (null, []);
+
+    /// <summary>Bounds <see cref="_dryRunRejected"/> per head; beyond it a rejection is validated again when repeated.</summary>
+    private const int MaxDryRunRejected = 4_096;
+
+    private HashSet<ValueHash256> DryRunRejected()
+    {
+        Hash256? head = blockFinder.Head?.Hash;
+        if (_dryRunRejected.Head != head) _dryRunRejected = (head, []);
+        return _dryRunRejected.Hashes;
+    }
 
     /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
     /// first, with those admitted locally after all others.</summary>

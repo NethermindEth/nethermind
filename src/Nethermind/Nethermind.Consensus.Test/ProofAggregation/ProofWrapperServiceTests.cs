@@ -1078,6 +1078,8 @@ public class ProofWrapperServiceTests
         }).Bytes;
 
         ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
+        // A repeat of a wrapper whose dry run failed on this head is refused before any transaction is validated again.
+        if (incomingUnfunded) await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
         if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
             Assert.That((await service.AcceptOwnedDetailedAsync(Incoming("second", Address.SystemUser))).Status,
@@ -1091,6 +1093,7 @@ public class ProofWrapperServiceTests
             if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
             // The admission dry run simulates, so it runs only once eviction could free enough.
+            if (incomingUnfunded) pool.Received(1).ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
             if (removed == 0 && !incomingUnfunded) pool.DidNotReceive().ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
     }
