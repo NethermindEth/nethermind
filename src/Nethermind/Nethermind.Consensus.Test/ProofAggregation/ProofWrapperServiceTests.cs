@@ -992,7 +992,10 @@ public class ProofWrapperServiceTests
     }
 
     // Pinned witnesses are never evicted, so with proof capacity full a wrapper of executable transactions evicts pending ones the
-    // next blocks could not include, oldest first, but only when that frees enough, and never one whose witness stays pinned.
+    // next blocks could not include, oldest first, but only when that frees enough, never one whose witness stays pinned, and only
+    // as far as admission pooled transactions pinning its new witnesses, each submitted once, as without eviction. Should a victim
+    // become executable meanwhile, the admission is rolled back instead. The witnesses stay staged, out of other admissions' reach,
+    // until that is decided, and an excess left over is drained first. Either way the store ends within capacity.
     [TestCase(64, false, false, 0UL, 2, TestName = "Non-executable transactions are evicted")]
     [TestCase(0, false, false, 0UL, 0, TestName = "Executable transactions are kept")]
     [TestCase(1, false, false, 0UL, 0, TestName = "Nothing is evicted when it would not free enough")]
@@ -1002,20 +1005,22 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
-    [TestCase(64, false, false, 0UL, 0, false, false, false, true, TestName = "An incoming transaction admission would reject evicts nothing")]
-    [TestCase(64, false, false, 0UL, 0, false, false, false, false, true, TestName = "An incoming transaction the pool already rejected evicts nothing unvalidated")]
-    [TestCase(64, false, false, 0UL, 2, false, false, false, false, false, true, TestName = "An incoming transaction deferred once is validated again on the same head")]
-    [TestCase(64, false, false, 0UL, 0, false, false, false, false, false, false, true, TestName = "Replays of an incoming transaction stop being validated after the per-head limit")]
-    [TestCase(64, false, false, 0UL, 0, false, false, false, false, false, false, true, true, TestName = "A new head resets the per-head validation limit")]
+    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "foreign", TestName = "Witnesses staged beyond capacity are out of other admissions' reach")]
+    [TestCase(64, false, false, 0UL, 2, false, false, false, "drain", TestName = "An excess left over is drained before admitting beyond capacity")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "blobs", TestName = "An incoming transaction awaiting blob availability evicts nothing")]
     public async Task Full_proof_capacity_evicts_non_executable_transactions(int nonExecutable, bool sharedPins,
         bool oldestSharedWithExecutable, ulong incomingNonce, int removed, bool localVictims = false, bool secondWrapper = false,
-        bool gapFilled = false, bool incomingRejected = false, bool incomingKnown = false, bool incomingDeferredOnce = false,
-        bool incomingAlwaysDeferred = false, bool newHead = false)
+        bool gapFilled = false, string? incoming = null)
     {
         const int pinnedCount = 64;
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         object poolOwner = new();
-        static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0)
+        static Transaction Transaction(FrameDependency dependency, Address sender, ulong timestamp = 0, ulong nonce = 0, bool awaitsBlobs = false)
         {
             Transaction transaction = new()
             {
@@ -1025,9 +1030,19 @@ public class ProofWrapperServiceTests
                 SenderAddress = sender,
                 Nonce = nonce,
                 Timestamp = timestamp,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
             };
+            if (awaitsBlobs)
+            {
+                byte[] commitment = Enumerable.Repeat((byte)1, 48).ToArray();
+                byte[] versionedHash = System.Security.Cryptography.SHA256.HashData(commitment);
+                versionedHash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                transaction.BlobVersionedHashes = [versionedHash];
+                transaction.MaxFee = transaction.GetBlobGas();
+                transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], [commitment],
+                    [.. Enumerable.Range(0, Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
+            }
             transaction.Hash = transaction.CalculateHash();
             return transaction;
         }
@@ -1040,6 +1055,9 @@ public class ProofWrapperServiceTests
             Transaction transaction = Transaction(dependency, TestItem.Addresses[i], (ulong)i);
             Assert.That(store.PinPending(transaction, poolOwner), Is.True);
             if (sharedPins) Assert.That(store.PinPending(transaction, new object()), Is.True);
+            // The incoming sender already pins witnesses up to its quota, through records nothing would release.
+            if (incoming == "quota" && i >= pinnedCount - 12)
+                Assert.That(store.PinPending(Transaction(dependency, Address.Zero, nonce: (ulong)i), new object()), Is.True);
             pinned.Add(transaction);
             if (i == 0 && oldestSharedWithExecutable)
             {
@@ -1049,20 +1067,42 @@ public class ProofWrapperServiceTests
             }
         }
         Transaction oldest = pinned[0];
+        HashSet<Address> filled = [];
+        bool foreignAdmitted = false;
+        if (incoming == "drain")
+        {
+            // A transaction outside the pool's view leaves the store over capacity, as an admission beyond it might have.
+            FrameDependency extra = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("extra"), default);
+            bool over = store.TryBeginAdmission([extra], [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? excess, overCapacity: true)
+                && store.PinPending(Transaction(extra, TestItem.AddressE), new object());
+            excess?.Dispose();
+            if (excess is not null) store.EndStaging(excess, commit: true);
+            Assert.That(over && !store.ShedExcess(), Is.True);
+        }
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(call => incomingRejected ? AcceptTxResult.FrameSimulationFailed
-                : store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof);
-        pool.IsKnown(Arg.Any<Hash256>()).Returns(incomingKnown);
-        int dryRuns = 0;
-        pool.ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(_ => incomingRejected ? AcceptTxResult.FrameSimulationFailed
-                : incomingAlwaysDeferred || incomingDeferredOnce && dryRuns++ == 0 ? AcceptTxResult.FrameSimulationDeferred
-                : AcceptTxResult.Accepted);
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            if (incoming == "gap") filled.Add(oldest.SenderAddress!);
+            Transaction submitted = call.Arg<Transaction>();
+            if (incoming == "foreign")
+            {
+                // Another admission of the same witness would reuse its record and pin it for its own transaction.
+                List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(submitted, FrameTxSigHash.ComputeValue);
+                foreignAdmitted = store.TryBeginAdmission(dependencies, [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? other)
+                    && store.PinPending(Transaction(dependencies[0], TestItem.AddressF), new object());
+                other?.Dispose();
+            }
+            return incoming switch
+            {
+                "simulation" or "foreign" or "drain" => AcceptTxResult.FrameSimulationFailed,
+                "unpinned" when submitted.SenderAddress == Address.Zero => AcceptTxResult.FrameSimulationFailed,
+                "known" => AcceptTxResult.AlreadyKnown,
+                _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
+            };
+        });
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         pool.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(call => [.. pinned.Where(tx => tx.SenderAddress == call.Arg<Address>())]);
-        HashSet<Address> filled = [];
         pool.GetLatestPendingNonce(Arg.Any<Address>()).Returns(call =>
             Array.IndexOf(TestItem.Addresses, call.Arg<Address>()) >= nonExecutable || filled.Contains(call.Arg<Address>()) ? ulong.MaxValue : 0UL);
         pool.RemoveTransaction(Arg.Any<Hash256?>()).Returns(call =>
@@ -1070,50 +1110,68 @@ public class ProofWrapperServiceTests
             store.UnpinPending(call.Arg<Hash256>().ValueHash256, poolOwner);
             return true;
         });
+        IWrappedBlobTransactionAdmission blobAdmission = Substitute.For<IWrappedBlobTransactionAdmission>();
+        blobAdmission.Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>()).Returns(AcceptTxResult.Accepted);
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store,
+            new FakeLeanProofVerifier(true), blobAdmission);
         if (localVictims)
             foreach (Transaction transaction in pinned.Take(2))
                 Assert.That((await service.AcceptDetailedAsync(DirectWrapper(transaction))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
-        byte[] Incoming(string name, Address sender) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        Transaction Incoming(string name, Address sender) =>
+            Transaction(new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default), sender, nonce: incomingNonce, awaitsBlobs: incoming == "blobs");
+        // A transaction whose witness fits the store as it is, so admitting it alone needs no eviction.
+        FrameDependency small = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("small"), default);
+        Transaction existing = Transaction(small, Address.SystemUser);
+        byte[] Wrapper(params Transaction[] transactions)
         {
-            Transactions = [Transaction(new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default), sender, nonce: incomingNonce)],
-            Deps = [new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default)],
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]]
-        }).Bytes;
-
-        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
-        // A repeat of a wrapper whose dry run a transaction's content failed on this head is refused before any transaction is
-        // validated again; one only deferred is validated again.
-        if (incomingRejected || incomingDeferredOnce) result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
-        // A deferral counts towards the per-head limit without refusing the transaction outright; the next head starts afresh.
-        if (incomingAlwaysDeferred)
-        {
-            for (int i = 0; i < 2; i++) result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
-            if (newHead)
+            List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+                transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+            return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                finder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
-                result = await service.AcceptOwnedDetailedAsync(Incoming("incoming", Address.Zero));
-            }
+                Transactions = [.. transactions.OrderBy(static transaction => transaction.Hash!.ToString())],
+                Deps = dependencies,
+                Mode = MempoolWrapper.ModeDirect,
+                Proofs = [.. dependencies.Select(dependency => dependency.Equals(small)
+                    ? new byte[1] : new byte[LeanProofStore.MaxWrapperBytes * 3 / 4])]
+            }).Bytes;
         }
+
+        Transaction first = Incoming("incoming", Address.Zero);
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(incoming == "unpinned" ? Wrapper(first, existing) : Wrapper(first));
         if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
-            Assert.That((await service.AcceptOwnedDetailedAsync(Incoming("second", Address.SystemUser))).Status,
+            Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
+        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" or "foreign" or "drain" ? ProofWrapperAcceptanceStatus.PoolRejected
+            : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure), result.Result.Error);
+            Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
             pool.Received(removed).RemoveTransaction(Arg.Any<Hash256?>());
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
-            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims ? 1 : 0).RemoveTransaction(oldest.Hash);
-            // The admission dry run simulates, so it runs only once eviction could free enough.
-            if (incomingRejected || incomingDeferredOnce || incomingAlwaysDeferred)
-                pool.Received(incomingRejected ? 1 : newHead ? 3 : 2).ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
-            if (removed == 0 && !incomingRejected && !incomingAlwaysDeferred) pool.DidNotReceive().ValidateTxBeforeProofAdmission(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && incoming != "gap" ? 1 : 0).RemoveTransaction(oldest.Hash);
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || incoming == "gap" ? 1 : 0)
+                .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
+            pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
+            blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
+            Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
+            Assert.That(foreignAdmitted, Is.False, "staged witnesses are out of other admissions' reach");
+            Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
+        }
+        // Nothing is left to refuse a later admission beyond capacity.
+        bool later = store.TryBeginAdmission([new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("later"), default)],
+            [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]], null, out IDisposable? laterAdmission, overCapacity: true);
+        laterAdmission?.Dispose();
+        if (laterAdmission is not null) store.EndStaging(laterAdmission, commit: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(later, Is.True);
+            Assert.That(store.ShedExcess(), Is.True);
         }
     }
 

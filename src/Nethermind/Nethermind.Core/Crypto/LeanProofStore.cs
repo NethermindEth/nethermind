@@ -36,6 +36,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     private readonly AsyncLocal<AdmissionScope?> _admission = new();
     private long _storedBytes;
     private long _cachedBytes;
+    // Records stored beyond capacity, by the admission that staged them, with the coverage they would have published, held back
+    // until that admission's EndStaging.
+    private readonly Dictionary<ProofRecord, (object Admission, List<FrameDependency> Deferred)> _staged = [];
 
     private sealed record PendingProof(Address Sender, ProofRecord[] Records, KeyValuePair<FrameDependency, ProofRecord>[] Coverage);
 
@@ -97,22 +100,30 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
+    /// <param name="overCapacity">Stores the witnesses even beyond capacity, unless the store is already over it. Records stored
+    /// so are staged: no other admission may use them and their coverage is published only by <see cref="EndStaging"/> with this
+    /// admission, which the caller must call once it has restored capacity through <see cref="ShedExcess"/> and
+    /// <see cref="ReleasesToFit"/>.</param>
     public bool TryBeginAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
-        byte[]? recursiveProof, out IDisposable? admission)
+        byte[]? recursiveProof, out IDisposable? admission, bool overCapacity = false)
     {
         ValidateShape(dependencies, witnesses, recursiveProof);
         admission = null;
         lock (_lock)
         {
             (Dictionary<FrameDependency, ProofRecord> records, HashSet<ProofRecord> incoming) = PlanAdmission(dependencies, witnesses, recursiveProof);
+            if (IsStaged(records)) return false;
             HashSet<ProofRecord> selected = [.. records.Values];
             // Protect existing coverage before finding room for the missing part of this wrapper.
             foreach (ProofRecord record in selected) record.Pins++;
             long incomingBytes = 0;
             foreach (ProofRecord record in incoming) incomingBytes += record.Size;
+            bool fits = true;
             if (incoming.Count != 0)
             {
-                if (!MakeRoom(incomingBytes, incoming.Count))
+                fits = MakeRoom(incomingBytes, incoming.Count);
+                // Only one admission at a time may exceed capacity: none may while the store is over it.
+                if (!fits && (!overCapacity || !MakeRoom(0, 0)))
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;
@@ -120,6 +131,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
                 foreach (ProofRecord record in incoming) Insert(record);
             }
             AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]));
+            if (incoming.Count != 0 && !fits)
+                foreach (ProofRecord record in incoming) _staged.Add(record, (scope, []));
             _admission.Value = scope;
             admission = scope;
             return true;
@@ -163,7 +176,52 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         lock (_lock)
         {
             (Dictionary<FrameDependency, ProofRecord> records, HashSet<ProofRecord> incoming) = PlanAdmission(dependencies, witnesses, recursiveProof);
-            HashSet<ProofRecord> selected = [.. records.Values];
+            return IsStaged(records) ? null : Releases([.. records.Values], incoming, candidates);
+        }
+    }
+
+    /// <summary>The fewest of <paramref name="candidates"/>, pending transactions considered in order, whose pins must be released
+    /// for the stored witnesses to fit capacity: empty when they fit already, null when releasing them all would not suffice.</summary>
+    /// <remarks>Counts as <see cref="ReleasesForAdmission"/> does, for an admission that adds nothing.</remarks>
+    public List<ValueHash256>? ReleasesToFit(IReadOnlyList<ValueHash256> candidates) => Releases([], [], candidates);
+
+    /// <summary>Removes unpinned records until the store fits capacity, returning whether it now does.</summary>
+    public bool ShedExcess()
+    {
+        lock (_lock) return MakeRoom(0, 0);
+    }
+
+    /// <summary>Ends the staging of <paramref name="admission"/>, begun beyond capacity: publishes the coverage its records held
+    /// back, or, unless <paramref name="commit"/>, removes those no pending transaction pins.</summary>
+    /// <remarks>Records other admissions staged are left as they are.</remarks>
+    public void EndStaging(IDisposable admission, bool commit)
+    {
+        lock (_lock)
+        {
+            List<(ProofRecord Record, List<FrameDependency> Deferred)> staged = [];
+            foreach ((ProofRecord record, (object owner, List<FrameDependency> deferred)) in _staged)
+                if (ReferenceEquals(owner, admission)) staged.Add((record, deferred));
+            foreach ((ProofRecord record, List<FrameDependency> deferred) in staged)
+            {
+                _staged.Remove(record);
+                if (!commit && record.Pins == 0) Remove(record);
+                else
+                    foreach (FrameDependency dependency in deferred) Publish(dependency, record);
+            }
+        }
+    }
+
+    private bool IsStaged(Dictionary<FrameDependency, ProofRecord> records)
+    {
+        foreach (ProofRecord record in records.Values)
+            if (_staged.ContainsKey(record)) return true;
+        return false;
+    }
+
+    private List<ValueHash256>? Releases(HashSet<ProofRecord> selected, HashSet<ProofRecord> incoming, IReadOnlyList<ValueHash256> candidates)
+    {
+        lock (_lock)
+        {
             long bytes = _storedBytes;
             int count = _records.Count;
             foreach (ProofRecord record in incoming)
@@ -430,6 +488,11 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     {
         // A record the verifier-change rule removed never covers a dependency again.
         if (record.Node is null) return;
+        if (_staged.TryGetValue(record, out (object, List<FrameDependency> Deferred) staged))
+        {
+            staged.Deferred.Add(dependency);
+            return;
+        }
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
             if (ReferenceEquals(previous, record)) return;
@@ -474,6 +537,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         if (record.Node is null) return;
         _records.Remove(record.Node);
         record.Node = null;
+        _staged.Remove(record);
         _identities.Remove(record.Identity);
         _storedBytes -= record.Size;
         foreach (FrameDependency dependency in record.Dependencies)
@@ -500,6 +564,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         ProofRecord? recursive = null;
         foreach (ProofRecord candidate in holders)
         {
+            if (_staged.ContainsKey(candidate)) continue;
             if (candidate.Witnesses is not null) return candidate;
             recursive ??= candidate;
         }

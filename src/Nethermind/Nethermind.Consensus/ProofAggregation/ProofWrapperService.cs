@@ -315,11 +315,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             TxHandlingOptions handling = copyInput ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
             Result<Hash256[]> admission;
             IDisposable? scope;
+            List<Transaction> admittedTransactions = [];
             int pooled = 0, admitted = 0;
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
-                if (!TryBeginAdmission(decoded, handling, source, out scope))
+                if (!TryBeginAdmission(decoded, admittedTransactions, out scope))
                     return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             }
             using (scope)
@@ -349,7 +350,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
                             ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source,
-                            handling);
+                            handling, admittedTransactions);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
@@ -362,6 +363,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 admission = firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
             }
+            if (scope is CapacityRestoringScope { RolledBack: true })
+                return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
             // Already pending transactions are free to include, so only newly admitted ones may carry rejected ones, at most one each.
@@ -389,52 +392,110 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
     }
 
-    /// <summary>Reserves the wrapper's witnesses, first evicting pending transactions not executable at the head when proof
-    /// capacity is full.</summary>
+    /// <summary>Reserves the wrapper's witnesses, beyond proof capacity when it is full and evicting pending transactions not
+    /// executable at the head could make room.</summary>
     /// <remarks>Witnesses pinned by pending transactions are never evicted, so a full store would otherwise refuse every wrapper.
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
-    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, only those whose
-    /// eviction frees witness capacity, and only once every new incoming transaction passes admission but for its witnesses.
-    /// That check is best-effort: it judges each transaction alone, without its wrapper's earlier ones from the same sender, and
-    /// admission can still defer a peer's transaction once the head's simulation budget is spent, partly by the check itself.
-    /// Either way at most <see cref="MaxEvictedPerAdmission"/> transactions the next blocks could not include are lost.</remarks>
-    private bool TryBeginAdmission(MempoolWrapper decoded, TxHandlingOptions handling, object? source, out IDisposable? scope)
+    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
+    /// eviction frees witness capacity. They are evicted only when the scope ends (<see cref="RestoreCapacity"/>), so a rejected
+    /// wrapper evicts nothing. Transactions awaiting blob availability are not pooled by admission, so a wrapper adding one never
+    /// evicts.</remarks>
+    /// <param name="admitted">The transactions the admission will pool, which <see cref="RestoreCapacity"/> rolls back when no
+    /// eviction can make room for them.</param>
+    private bool TryBeginAdmission(MempoolWrapper decoded, List<Transaction> admitted, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
-        List<ValueHash256> hashes = [];
+        Dictionary<ValueHash256, Transaction> candidates = [];
         HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
         {
-            if (hashes.Count == MaxEvictedPerAdmission) break;
-            if (IsStillNotExecutable(candidate, floors)) hashes.Add(candidate.Hash!.ValueHash256);
+            if (candidates.Count == MaxEvictedPerAdmission) break;
+            if (IsStillNotExecutable(candidate, floors)) candidates.Add(candidate.Hash!.ValueHash256, candidate);
             else stale.Add(candidate);
         }
         if (stale.Count != 0) _evictionCandidates?.Candidates.RemoveAll(stale.Contains);
-        if (hashes.Count == 0) return false;
-        if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, hashes)
+        if (candidates.Count == 0) return false;
+        // An excess left over would refuse every admission beyond capacity; clear it first.
+        DrainExcess();
+        if (leanProofStore.ReleasesForAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, [.. candidates.Keys])
             is not { Count: > 0 } releases) return false;
-        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
-        // it may simulate and recover signatures, once nothing cheaper has ruled eviction out. A transaction the pool already knows,
-        // or that used up its checks on the head, fails it before any other is simulated, so repeating a wrapper costs little.
-        Hash256? head = blockFinder.Head?.Hash;
-        foreach (Transaction transaction in decoded.Transactions)
-            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)
-                && (_dryRunAttempts.IsExhausted(head, transaction, source, handling) || txPool.IsKnown(transaction.Hash))) return false;
-        foreach (Transaction transaction in decoded.Transactions)
+        if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out IDisposable? overCapacity,
+            overCapacity: true)) return false;
+        List<Transaction> victims = new(releases.Count);
+        foreach (ValueHash256 hash in releases) victims.Add(candidates[hash]);
+        scope = new CapacityRestoringScope(this, overCapacity!, victims, admitted);
+        return true;
+    }
+
+    /// <summary>Returns the store within capacity after an admission beyond it: sheds what no pending transaction pins, then evicts
+    /// the fewest <paramref name="victims"/> still not executable that make room, or else rolls back the <paramref name="admitted"/>
+    /// transactions, and publishes the admission's witnesses only if they stay.</summary>
+    /// <remarks>Victims are rechecked, as gossip or the admission itself may since have filled a nonce gap. Nothing is evicted or
+    /// rolled back when nothing was admitted, nor when the admitted transactions' witnesses fit once unpinned records are shed.
+    /// Until this decides, the store stages those witnesses, so no other transaction can pin them and keep it over capacity.</remarks>
+    /// <returns>Whether the admitted transactions were rolled back.</returns>
+    private bool RestoreCapacity(IDisposable admission, List<Transaction> victims, List<Transaction> admitted)
+    {
+        lock (_commitLock)
         {
-            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
-            AcceptTxResult result = txPool.ValidateTxBeforeProofAdmission(transaction, handling);
-            if (result) continue;
-            _dryRunAttempts.Record(head, transaction, source, handling, result);
-            return false;
+            HashSet<Transaction> planned = [.. victims];
+            _evictionCandidates?.Candidates.RemoveAll(planned.Contains);
+            bool rolledBack = false;
+            if (admitted.Count != 0 && !leanProofStore.ShedExcess())
+            {
+                FeeFloors floors = ExecutableFeeFloors();
+                List<ValueHash256> evictable = [];
+                foreach (Transaction victim in victims)
+                    if (IsStillNotExecutable(victim, floors)) evictable.Add(victim.Hash!.ValueHash256);
+                List<ValueHash256>? releases = leanProofStore.ReleasesToFit(evictable);
+                rolledBack = releases is null;
+                if (rolledBack)
+                    foreach (Transaction transaction in admitted) txPool.RemoveTransaction(transaction.Hash);
+                else
+                    foreach (ValueHash256 hash in releases!)
+                        if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
+            }
+            leanProofStore.EndStaging(admission, commit: admitted.Count != 0 && !rolledBack);
+            DrainExcess();
+            return rolledBack;
         }
+    }
+
+    /// <summary>Evicts pending transactions not executable at the head until the store fits capacity again, as far as at most
+    /// <see cref="MaxEvictedPerAdmission"/> of them can, so no excess outlives the admission that caused it.</summary>
+    /// <remarks>Called under the commit lock. Excess only remains when executable transactions pin it, and they leave the pool once
+    /// included.</remarks>
+    private void DrainExcess()
+    {
+        if (leanProofStore.ShedExcess()) return;
+        FeeFloors floors = ExecutableFeeFloors();
+        List<ValueHash256> candidates = [];
+        foreach (Transaction candidate in NotExecutable([], floors))
+        {
+            if (candidates.Count == MaxEvictedPerAdmission) break;
+            if (IsStillNotExecutable(candidate, floors)) candidates.Add(candidate.Hash!.ValueHash256);
+        }
+        if (leanProofStore.ReleasesToFit(candidates) is not { } releases) return;
         foreach (ValueHash256 hash in releases)
             if (txPool.RemoveTransaction(new Hash256(hash))) TxPool.Metrics.Eip8288CapacityEvictedTransactions++;
-        HashSet<ValueHash256> released = [.. releases];
-        _evictionCandidates?.Candidates.RemoveAll(transaction => released.Contains(transaction.Hash!.ValueHash256));
-        return leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope);
+        leanProofStore.ShedExcess();
+    }
+
+    private sealed class CapacityRestoringScope(ProofWrapperService service, IDisposable admission, List<Transaction> victims,
+        List<Transaction> admitted) : IDisposable
+    {
+        private int _disposed;
+
+        public bool RolledBack { get; private set; }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            admission.Dispose();
+            RolledBack = service.RestoreCapacity(admission, victims, admitted);
+        }
     }
 
     /// <summary>Whether <paramref name="candidate"/>, listed as not executable when the head was scanned, is still pending and not
@@ -474,9 +535,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// read and replaced under the commit lock.</summary>
     /// <remarks>Transactions removed or made executable since remain listed until an admission rechecks and drops them.</remarks>
     private (Hash256 Head, List<Transaction> Candidates)? _evictionCandidates;
-
-    /// <summary>The admission checks incoming transactions failed before eviction on the head, used under the commit lock.</summary>
-    private readonly DryRunAttempts _dryRunAttempts = new();
 
     /// <summary>Pending dependency-bearing transactions not executable at the head, other than <paramref name="wrapped"/>'s, oldest
     /// first, with those admitted locally after all others.</summary>
@@ -527,14 +585,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Whether <paramref name="wrapped"/> adds transactions to the pool and each it adds would be executable at the head:
     /// fees of at least <paramref name="floors"/> and account nonces continuing the sender's pending ones.</summary>
-    /// <remarks>An EIP-8250 keyed transaction is never judged executable here, as its nonce lives in state this does not read.</remarks>
+    /// <remarks>An EIP-8250 keyed transaction is never judged executable here, as its nonce lives in state this does not read, nor
+    /// is one awaiting blob availability, which admission pins without pooling.</remarks>
     private bool AddsOnlyExecutable(IReadOnlyList<Transaction> wrapped, in FeeFloors floors)
     {
         List<Transaction> added = [];
         foreach (Transaction transaction in wrapped)
         {
             if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
-            if (KeyedNonceManager.UsesKeyedNonce(transaction) || !IsPriced(transaction, floors)) return false;
+            if (KeyedNonceManager.UsesKeyedNonce(transaction) || transaction.IsAwaitingAvailability() || !IsPriced(transaction, floors)) return false;
             added.Add(transaction);
         }
         added.Sort(static (x, y) => x.SenderAddress!.Bytes.SequenceCompareTo(y.SenderAddress!.Bytes) is var bySender && bySender != 0
@@ -618,7 +677,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <param name="handling">Local submissions persist and bypass the pool's gossip-only filters; peer-served ones do not.</param>
     private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
         ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source,
-        TxHandlingOptions handling)
+        TxHandlingOptions handling, List<Transaction> admittedTransactions)
     {
         for (int i = start; i < end; i++)
         {
@@ -642,6 +701,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 pooled++;
                 admitted++;
+                admittedTransactions.Add(transaction);
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
                 if ((handling & TxHandlingOptions.PersistentBroadcast) != 0) MarkLocal(hash);
             }

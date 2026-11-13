@@ -76,16 +76,6 @@ namespace Nethermind.TxPool
         /// </summary>
         AcceptTxResult ValidateTxForBlobSampling(Transaction tx);
         /// <summary>
-        /// Runs a transaction's admission checks without inserting it or reserving its EIP-8288 witnesses, which have not been
-        /// stored yet: what a caller must know before evicting pending transactions to make room for those witnesses.
-        /// </summary>
-        /// <remarks>The caller must already have checked that the incoming nonces continue the sender's pending ones, which
-        /// the nonce-gap check cannot see while the earlier incoming transactions are unpooled. Blob proofs are deferred exactly
-        /// when <see cref="TransactionExtensions.IsAwaitingAvailability"/> sends the transaction to cell sampling instead. Nothing is
-        /// recorded, a rejection included, since the checks run out of a submission's context. A pool that cannot run the checks
-        /// rejects, so its caller evicts nothing.</remarks>
-        AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx, TxHandlingOptions handlingOptions) => AcceptTxResult.Invalid;
-        /// <summary>
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
