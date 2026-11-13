@@ -280,8 +280,8 @@ public class Eip8288BlockProductionTests
     [Test]
     public async Task Scheduled_statement_finishes_after_a_later_slot_starts()
     {
-        // Five witnesses fold over several native calls; a statement longer than a slot must still finish and be stored.
-        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 5)
+        // More than one leaf, so the statement folds over several native calls; one longer than a slot must still finish and be stored.
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, RecursiveStarkAggregator.DirectBatchSize + 1)
             .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"slow-{i}"), default)));
         AggregationInput input = new() { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
         using ManualResetEventSlim entered = new();
@@ -493,8 +493,10 @@ public class Eip8288BlockProductionTests
     [Test]
     public void Canceled_production_reuses_verified_completed_steps_without_finishing_the_canceled_tree()
     {
-        FrameDependency[] dependencies = new FrameDependency[8];
-        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[8];
+        // Two leaves and a merge, so there are three completed steps to reuse whatever the leaf size is.
+        const int count = RecursiveStarkAggregator.DirectBatchSize + 1;
+        FrameDependency[] dependencies = new FrameDependency[count];
+        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[count];
         for (int i = 0; i < dependencies.Length; i++)
         {
             dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
@@ -650,8 +652,9 @@ public class Eip8288BlockProductionTests
     [Test]
     public async Task Producer_waiting_behind_background_aggregation_is_served_after_one_native_call()
     {
-        FrameDependency[] dependencies = new FrameDependency[8];
-        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[8];
+        // More than one leaf, so the background fold takes several native calls and the producer can be served between them.
+        FrameDependency[] dependencies = new FrameDependency[RecursiveStarkAggregator.DirectBatchSize + 1];
+        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[dependencies.Length];
         for (int i = 0; i < dependencies.Length; i++)
         {
             dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"background:{i}"), default);
@@ -880,7 +883,9 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency[] backlog = [.. Enumerable.Range(0, 12).Select(i =>
+        // Three whole leaves and two merges, above MaxScheduledStatementCost, so the statement is cut to a prefix.
+        const int leaf = RecursiveStarkAggregator.DirectBatchSize;
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 3 * leaf).Select(i =>
             new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"backlog-{i}"), default))];
         for (int i = 0; i < backlog.Length; i++)
         {
@@ -892,14 +897,21 @@ public class Eip8288BlockProductionTests
         using CancellationTokenSource deadline = new();
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Twelve witnesses need three leaves and two merges; the budget allows two leaves and one merge.
+        // The widest nonce-ordered prefix whose estimate still fits the bound, which need not end on a leaf boundary.
+        int widest = 1;
+        while (widest < backlog.Length
+               && RecursiveStarkAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
+                  <= BlockProcessor.MaxScheduledStatementCost) widest++;
         HashSet<FrameDependency> all = [.. backlog];
-        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
-        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > 8), Is.False);
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == widest), Is.True.After(5000, 20));
+        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > widest), Is.False);
     }
 
+    // A transaction declares at most MaxSigsPerTx leanSPHINCS dependencies, which one direct leaf now covers, so no single
+    // transaction can exceed MaxScheduledStatementCost: the "pass over" branch is a safety net for future constant changes.
+    // What is asserted here is the consequence, that such a transaction is scheduled with the rest rather than skipped.
     [Test]
-    public async Task Scheduled_production_proof_passes_over_a_transaction_that_alone_exceeds_the_bound()
+    public async Task Widest_transaction_is_scheduled_within_the_statement_bound()
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
@@ -928,13 +940,16 @@ public class Eip8288BlockProductionTests
         using CancellationTokenSource deadline = new();
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
+        AggregationInput wideInput = new() { Deps = wide, Witnesses = new ReadOnlyMemory<byte>[wide.Length] };
+        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(BlockProcessor.MaxScheduledStatementCost));
         HashSet<FrameDependency> all = [.. backlog, .. wide];
-        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
-        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.False);
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.True.After(5000, 20));
     }
 
+    // Folding the proven signatures again costs one unit each; merging their proof in costs MergeCost whatever the set size,
+    // so extension wins once the set outgrows a merge. A whole leaf does; a single signature does not.
     [TestCase(1, false)]
-    [TestCase(8, true)]
+    [TestCase(RecursiveStarkAggregator.DirectBatchSize, true)]
     public async Task Scheduled_production_proof_extends_a_proven_subset_only_when_cheaper(int provenCount, bool extended)
     {
         CountingVerifier verifier = new();
@@ -966,7 +981,7 @@ public class Eip8288BlockProductionTests
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call proves the statement");
             Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(extended ? 1 : 0));
             Assert.That(verifier.LastInput.Deps, Is.EquivalentTo(extended ? new[] { added } : full.ToArray()),
-                extended ? "eight proven signatures cost more to fold again than one merge" : "one signature is cheaper to fold than to merge");
+                extended ? "a whole leaf of proven signatures costs more to fold again than one merge" : "one signature is cheaper to fold than to merge");
         }
     }
 

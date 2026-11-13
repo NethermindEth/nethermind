@@ -39,14 +39,20 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
         - Eip8288Constants.MaxProofDependencies * (2 + Eip8288Constants.DependencyTripleLength) - 64;
 
+    /// <summary>Recursive merges of already proven aggregates a produced wrapper may fold on top of its fresh signatures.</summary>
+    /// <remarks>Held at the three merges a <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> set needed when a direct leaf took four
+    /// signatures, so widening <see cref="RecursiveStarkAggregator.DirectBatchSize"/> cannot tighten what a wrapper covers.</remarks>
+    private const long WrapperMergeAllowance = 3;
+
     /// <summary>Estimated proving cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) one produced wrapper may take: that of
-    /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
+    /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures, plus <see cref="WrapperMergeAllowance"/> merges.</summary>
     /// <remarks>EIP-8288 limits mode 1 only by <c>MAX_WRAPPER_BYTES</c> and the circuit's dependency-list limit, here
     /// <see cref="Eip8288Constants.MaxProofDependencies"/>, so a produced wrapper is bounded by those and this budget: it may cover many more dependencies
     /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A transaction exceeding it
-    /// alone is produced in a wrapper of its own.</remarks>
+    /// alone is produced in a wrapper of its own. The budget is deliberately independent of the direct leaf size: it is a cap on
+    /// the work one wrapper may take, not a restatement of how that work is split.</remarks>
     internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
-        + (Eip8288Constants.MaxLeanSigDepsPerWrapper / RecursiveStarkAggregator.DirectBatchSize - 1) * RecursiveStarkAggregator.MergeCost;
+        + WrapperMergeAllowance * RecursiveStarkAggregator.MergeCost;
 
     /// <summary>How long aggregation leaves a dependency set a peer offers a proof of, before proving it itself.</summary>
     internal static readonly TimeSpan ReuseOfferWait = TimeSpan.FromMilliseconds(2 * Eip8288Constants.AggregationInterval);
