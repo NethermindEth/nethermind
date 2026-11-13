@@ -179,6 +179,8 @@ namespace Nethermind.Core
             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
 
             public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+
+            public void PutSpan(long key, ReadOnlySpan<byte> value) => db.PutSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _), value);
         }
 
         public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)

@@ -50,7 +50,7 @@ public class HistoryRowScannerTests
             using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
             HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
             RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory,
-                TestItem.AddressA.ToAccountPath.Bytes, 0, AccountDecoder.Slim.EncodeAsBytes(account));
+                TestItem.AddressA.ToAccountPath.Bytes, 0, AccountDecoder.Slim.Encode(account));
             session.ImportPage(Store(source, FlatHistoryColumns.AccountHistory), format, FlatHistoryColumns.AccountHistory, CancellationToken.None);
             session.ImportGenesis([new(TestItem.AddressA, account)], CancellationToken.None);
             Assert.That(session.IsReady, Is.True);
@@ -448,7 +448,7 @@ public class HistoryRowScannerTests
         if (clearAt <= 5) storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
         storageTree.UpdateRootHash();
         Account account = new(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString);
-        byte[] accountRow = AccountDecoder.Slim.EncodeAsBytes(account);
+        byte[] accountRow = AccountDecoder.Slim.Encode(account);
         RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, address.Bytes, 5, accountRow);
         RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, address.Bytes, clearAt, []);
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
@@ -470,7 +470,7 @@ public class HistoryRowScannerTests
         switch (corruption)
         {
             case ScratchCorruption.WrongBalance:
-                scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, AccountDecoder.Slim.EncodeAsBytes(account.WithChangedBalance(99)));
+                scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, AccountDecoder.Slim.Encode(account.WithChangedBalance(99)));
                 break;
             case ScratchCorruption.MalformedAccountRow:
                 scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, [0xff]);
@@ -524,7 +524,7 @@ public class HistoryRowScannerTests
         StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
         storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
         storageTree.UpdateRootHash();
-        byte[] accountRow = AccountDecoder.Slim.EncodeAsBytes(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
+        byte[] accountRow = AccountDecoder.Slim.Encode(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
         RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, live.Bytes, 5, accountRow);
         RecordScanSlot(source, live, slot, 5, new UInt256(128), rlpWrapped);
         RecordScanSlot(source, orphan, slot, 3, owner == SlotOwner.NoneWithZeroedSlot ? UInt256.Zero : new UInt256(7), rlpWrapped);

@@ -274,7 +274,7 @@ public class OverlayRpcModuleTests
         Deployment deployment = await Deploy(chain);
         Block block = chain.BlockFinder.FindBlock(deployment.Last)!;
         ulong[] nonces = [.. block.Transactions.Select(static tx => tx.Nonce)];
-        byte[][] encoded = [.. block.Transactions.Select(static tx => Rlp.Encode(tx).Bytes)];
+        byte[][] encoded = [.. block.Transactions.Select(static tx => Rlp.Encode(tx))];
 
         using JsonDocument response = await Request(chain, "overlay_getLogs",
             new { fromBlock = deployment.Last.ToHexString(true), toBlock = deployment.Last.ToHexString(true) },
@@ -285,7 +285,7 @@ public class OverlayRpcModuleTests
         {
             Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
             Assert.That(reloaded.Transactions.Select(static tx => tx.Nonce), Is.EqualTo(nonces));
-            Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx).Bytes), Is.EqualTo(encoded));
+            Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx)), Is.EqualTo(encoded));
         }
     }
 

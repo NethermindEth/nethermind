@@ -55,7 +55,7 @@ public class RangeQueryVisitorTests
         int k = 0;
         foreach ((ValueHash256 _, byte[]? value) in leafCollector.Leafs)
         {
-            Assert.That(Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes, Is.EqualTo(value));
+            Assert.That(Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account), Is.EqualTo(value));
         }
     }
 

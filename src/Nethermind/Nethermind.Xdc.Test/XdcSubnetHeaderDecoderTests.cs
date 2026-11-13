@@ -19,8 +19,8 @@ namespace Nethermind.Xdc.Test
             XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
             XdcSubnetBlockHeader header = builder.TestObject;
 
-            Rlp encoded = codec.Encode(header, forSealing ? RlpBehaviors.ForSealing : RlpBehaviors.None);
-            return (header, encoded.Bytes);
+            byte[] encoded = codec.Encode(header, forSealing ? RlpBehaviors.ForSealing : RlpBehaviors.None);
+            return (header, encoded);
         }
 
         [Test]
@@ -101,7 +101,7 @@ namespace Nethermind.Xdc.Test
 
         private static void AssertRoundTrip(XdcSubnetHeaderDecoder codec, XdcSubnetBlockHeader original)
         {
-            RlpReader context = new(codec.Encode(original).Bytes);
+            RlpReader context = new(codec.Encode(original));
 
             BlockHeader? decodedBase = codec.Decode(ref context);
             Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");

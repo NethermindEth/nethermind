@@ -61,7 +61,7 @@ internal class QuorumCertificateDecoderTests
         XdcBlockInfoDecoder decoder = new();
         BlockRoundInfo info = new(Hash256.Zero, 2, 3);
 
-        BlockRoundInfo? decoded = decoder.Decode(RlpTestHelper.WithTrailingItem(decoder.EncodeAsBytes(info)));
+        BlockRoundInfo? decoded = decoder.Decode(RlpTestHelper.WithTrailingItem(decoder.Encode(info)));
 
         Assert.That(decoded, Is.EqualTo(info).UsingXdcComparer());
     }

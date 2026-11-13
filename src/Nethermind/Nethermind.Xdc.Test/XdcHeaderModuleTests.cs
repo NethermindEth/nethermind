@@ -70,9 +70,9 @@ public class XdcHeaderModuleTests
 
         BlockHeader plain = Build.A.BlockHeader.TestObject;
 
-        Rlp encoded = Rlp.Encode(plain);
+        byte[] encoded = Rlp.Encode(plain);
 
-        Assert.That(encoded.Bytes, Is.EqualTo(new HeaderDecoder().Encode(plain).Bytes));
+        Assert.That(encoded, Is.EqualTo(new HeaderDecoder().Encode(plain)));
     }
 
     [Test]

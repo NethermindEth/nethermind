@@ -79,9 +79,9 @@ public class XdcMessageDecodingCompatibilityTests
 
     private static IEnumerable<TestCaseData> Encodings()
     {
-        yield return new TestCaseData(Sample.Of(static () => new VoteMsg { Vote = SignedVote() }), new VoteDecoder().Encode(SignedVote()).Bytes).SetName("xdc vote");
-        yield return new TestCaseData(Sample.Of(static () => new TimeoutMsg { Timeout = SignedTimeout() }), new TimeoutDecoder().Encode(SignedTimeout()).Bytes).SetName("xdc timeout");
-        yield return new TestCaseData(Sample.Of(static () => new SyncInfoMsg { SyncInfo = SignedSyncInfo() }), new SyncInfoDecoder().Encode(SignedSyncInfo()).Bytes).SetName("xdc sync info");
+        yield return new TestCaseData(Sample.Of(static () => new VoteMsg { Vote = SignedVote() }), new VoteDecoder().Encode(SignedVote())).SetName("xdc vote");
+        yield return new TestCaseData(Sample.Of(static () => new TimeoutMsg { Timeout = SignedTimeout() }), new TimeoutDecoder().Encode(SignedTimeout())).SetName("xdc timeout");
+        yield return new TestCaseData(Sample.Of(static () => new SyncInfoMsg { SyncInfo = SignedSyncInfo() }), new SyncInfoDecoder().Encode(SignedSyncInfo())).SetName("xdc sync info");
     }
 
     [TestCaseSource(nameof(Encodings))]

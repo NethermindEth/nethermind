@@ -612,7 +612,7 @@ public partial class EngineModuleTests
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
         GetPayloadV6Result res = getPayloadResult.Data!;
         Assert.That(res.ExecutionPayload.BlockAccessList, Is.Not.Null);
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(res.ExecutionPayload.BlockAccessList))!;
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(res.ExecutionPayload.BlockAccessList)!;
 
         BlockAccessListBuilder expectedBalBuilder = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1681,7 +1681,7 @@ public partial class EngineModuleTests
         Address senderAddress = TestItem.AddressA;
 
         ReadOnlyBlockAccessList modifiedBal = CreateBlockAccessList();
-        byte[] modifiedBalRlp = Rlp.Encode(modifiedBal).Bytes;
+        byte[] modifiedBalRlp = Rlp.Encode(modifiedBal);
         block.BlockAccessList = modifiedBal;
         block.EncodedBlockAccessList = modifiedBalRlp;
         block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(modifiedBalRlp).Bytes);

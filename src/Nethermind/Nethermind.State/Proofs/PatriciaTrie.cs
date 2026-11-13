@@ -47,7 +47,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
         if (!CanBuildProof)
             throw new NotSupportedException("Building proofs not supported");
 
-        ProofCollector proofCollector = new(Rlp.Encode(index).Bytes);
+        ProofCollector proofCollector = new(Rlp.Encode(index));
 
         Accept(proofCollector, RootHash, new());
 

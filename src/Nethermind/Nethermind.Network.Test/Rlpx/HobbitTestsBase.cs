@@ -55,7 +55,7 @@ public abstract class HobbitTestsBase
 
             if (outbound == StackType.Zero)
             {
-                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType).Bytes;
+                byte[] rlpPacketType = Rlp.Encode((long)packet.PacketType);
                 IByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length);
                 packetBuffer.WriteBytes(rlpPacketType);
                 packetBuffer.WriteBytes(packet.Data);

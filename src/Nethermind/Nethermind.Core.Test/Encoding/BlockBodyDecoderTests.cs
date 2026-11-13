@@ -20,8 +20,8 @@ public class BlockBodyDecoderTests
         BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
         BlockDecoder blockDecoder = new();
         byte[] bytes = format == "block"
-            ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
-            : BlockBodyDecoder.Instance.Encode(body).Bytes;
+            ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body))
+            : BlockBodyDecoder.Instance.Encode(body);
 
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
@@ -46,14 +46,14 @@ public class BlockBodyDecoderTests
     public void Decode_failure_returns_owned_transactions(
         [Values("uncles", "withdrawals", "trailing", "transaction", "null-transaction")] string malformedField)
     {
-        Rlp transactions = Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject)]);
+        byte[] transactions = RlpTestHelper.EncodeSequence([Rlp.Encode(Build.A.Transaction.Signed().TestObject)]);
         byte[] bytes = malformedField switch
         {
-            "transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), new Rlp([0xc1, 0x80])]), Rlp.OfEmptyList).Bytes,
-            "null-transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), Rlp.OfEmptyList]), Rlp.OfEmptyList).Bytes,
-            "uncles" => Rlp.Encode(transactions, Rlp.OfEmptyByteArray).Bytes,
-            "withdrawals" => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes,
-            _ => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes
+            "transaction" => RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([Rlp.Encode(Build.A.Transaction.Signed().TestObject), [0xc1, 0x80]]), RlpTestHelper.OfEmptyList),
+            "null-transaction" => RlpTestHelper.EncodeSequence(RlpTestHelper.EncodeSequence([Rlp.Encode(Build.A.Transaction.Signed().TestObject), RlpTestHelper.OfEmptyList]), RlpTestHelper.OfEmptyList),
+            "uncles" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyByteArray),
+            "withdrawals" => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray),
+            _ => RlpTestHelper.EncodeSequence(transactions, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyList, RlpTestHelper.OfEmptyByteArray)
         };
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 

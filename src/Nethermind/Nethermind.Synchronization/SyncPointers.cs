@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -22,10 +23,11 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedBodyNumber
     {
         get => _lowestInsertedBodyNumber;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedBodyNumber = value;
-            if (value.HasValue) _metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value).Bytes);
+            if (value.HasValue) _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
         }
     }
 
@@ -34,12 +36,13 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedReceiptBlockNumber
     {
         get => _lowestInsertedReceiptBlock;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedReceiptBlock = value;
             if (value.HasValue)
             {
-                _defaultReceiptDbColumn.Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(value.Value).Bytes);
+                _defaultReceiptDbColumn.PutSpan(PersistentReceiptStorage.LowestInsertedReceiptBlockKey.Bytes, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
             }
         }
     }
@@ -49,12 +52,13 @@ public class SyncPointers : ISyncPointers
     public ulong? LowestInsertedBlockAccessListBlockNumber
     {
         get => _lowestInsertedBlockAccessListBlock;
+        [SkipLocalsInit]
         set
         {
             _lowestInsertedBlockAccessListBlock = value;
             if (value.HasValue)
             {
-                _metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value).Bytes);
+                _metadataDb.PutSpan(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
             }
         }
     }

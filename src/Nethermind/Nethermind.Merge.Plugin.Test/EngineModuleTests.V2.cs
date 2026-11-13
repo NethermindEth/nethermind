@@ -539,7 +539,7 @@ public partial class EngineModuleTests
             .Returns(i =>
             {
                 Block? block = input.Impl(i);
-                return block is null ? null : blockDecoder.Encode(block).Bytes;
+                return block is null ? null : blockDecoder.Encode(block);
             });
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>

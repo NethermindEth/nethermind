@@ -38,11 +38,11 @@ public class SnapshotManagerTests
     {
         // Import blocks
         _blockTree = Build.A.BlockTree().TestObject;
-        Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
-        Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block2Rlp)));
-        Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
-        Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
-        Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
+        Block block1 = Rlp.Decode<Block>(Bytes.FromHexString(Block1Rlp));
+        Block block2 = Rlp.Decode<Block>(Bytes.FromHexString(Block2Rlp));
+        Block block3 = Rlp.Decode<Block>(Bytes.FromHexString(Block3Rlp));
+        Block block4 = Rlp.Decode<Block>(Bytes.FromHexString(Block4Rlp));
+        Block block5 = Rlp.Decode<Block>(Bytes.FromHexString(Block5Rlp));
         Block genesisBlock = CliqueTests.GetGenesis();
         // Add blocks
         MineBlock(_blockTree, genesisBlock);

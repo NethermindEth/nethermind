@@ -82,7 +82,7 @@ public class BlockAccessListItemLimitTests
         ReadOnlyBlockAccessList tampered = new(accounts, list.ItemCount);
 
         BlockHeader header = produced.Header.Clone();
-        header.BlockAccessListHash = Keccak.Compute(Rlp.Encode(tampered).Bytes);
+        header.BlockAccessListHash = Keccak.Compute(Rlp.Encode(tampered));
         header.Hash = header.CalculateHash();
         Block suggested = produced.WithReplacedHeader(header);
         suggested.BlockAccessList = tampered;

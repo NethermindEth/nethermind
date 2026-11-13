@@ -94,7 +94,7 @@ public partial class DebugRpcModuleTests
             TxHash = filtered ? block.Transactions[2].Hash : null
         };
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> Trace() => raw
-            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes, options)
+            ? chain.DebugRpcModule.debug_traceBlock(Nethermind.Serialization.Rlp.Rlp.Encode(block), options)
             : byHash ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
             : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         // Keep parallel routing enabled but serialize execution so fake-clock advancement is deterministic.
@@ -177,7 +177,7 @@ public partial class DebugRpcModuleTests
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            "debug_traceBlock" => Rlp.Encode(block).ToHexString(true),
             _ => block.Hash!
         };
         bool named = method is "debug_traceBlockByNumber" or "debug_traceBlockByHash";
@@ -350,7 +350,7 @@ public partial class DebugRpcModuleTests
             {
                 "debug_traceBlockByHash" => block.Hash!,
                 "debug_traceBlockByNumber" => "latest",
-                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToHexString(true),
                 _ => throw new AssertionException($"Unexpected block tracing method: {method}")
             };
             return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,

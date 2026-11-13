@@ -12,6 +12,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -21,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -406,7 +406,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(releaseSpec.IsCancunEnabled ? Keccak.Zero : null)
             .WithBlobGasUsed(hasBlobFields ? 0UL : null)
             .WithExcessBlobGas(hasBlobFields ? 0UL : null)
-            .WithEncodedBlockAccessList(hasAmsterdamFields ? Rlp.OfEmptyList.Bytes : null)
+            .WithEncodedBlockAccessList(hasAmsterdamFields ? RlpTestHelper.OfEmptyList : null)
             .WithSlotNumber(hasAmsterdamFields ? 0UL : null)
             .TestObject;
         IEngineRpcModule rpc = chain.EngineRpcModule;

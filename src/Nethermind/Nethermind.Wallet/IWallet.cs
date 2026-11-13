@@ -45,7 +45,7 @@ namespace Nethermind.Wallet
 
         bool TrySignTransaction(Transaction tx, ulong chainId)
         {
-            ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            ValueHash256 hash = TxDecoder.Instance.ComputeValueHash(tx, RlpBehaviors.SkipTypedWrapping, true, true, chainId);
             if (!TrySign(in hash, tx.SenderAddress, out Signature sig)) return false;
             sig.V = tx.Type == TxType.Legacy ? EthereumEcdsaExtensions.CalculateV(chainId, sig.RecoveryId == 1) : (ulong)(sig.RecoveryId + 27);
             tx.Signature = sig;

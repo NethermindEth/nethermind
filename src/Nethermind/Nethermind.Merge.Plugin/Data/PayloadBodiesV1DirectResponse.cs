@@ -125,7 +125,7 @@ internal static class PayloadBodiesDirectResponseWriter
         byte[][] encodedTransactions = new byte[transactions.Length][];
         for (int i = 0, count = encodedTransactions.Length; i < count; i++)
         {
-            encodedTransactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            encodedTransactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping);
         }
 
         return encodedTransactions;
@@ -323,7 +323,7 @@ internal static class PayloadBodiesDirectResponseWriter
     private static ReadOnlySpan<byte> ReadTransactionBytes(ref RlpReader ctx)
     {
         ReadOnlySpan<byte> transaction = ctx.ReadEncodedItem();
-        if (transaction[0] >= Rlp.OfEmptyList[0])
+        if (transaction[0] >= Rlp.EmptyListByte)
         {
             return transaction;
         }

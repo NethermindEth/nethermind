@@ -382,7 +382,7 @@ public partial class DebugRpcModuleTests
         UInt256 senderBalance = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressB);
         Block block = await AddTraceCallPrefixTransfers(chain, 3);
         Transaction[] transactions = block.Transactions;
-        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString();
+        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true);
         int prefixLength = index < 0 ? 3 : index;
         for (int i = 0; i < prefixLength; i++)
             senderBalance -= transactions[i].Value + transactions[i].GasPrice * transactions[i].BlockGasUsed;
@@ -412,7 +412,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((output.StartsWith("0x") ? output[2..] : output), Is.EqualTo(expected), response);
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true), Is.EqualTo(canonicalHeader));
             Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
         }
     }

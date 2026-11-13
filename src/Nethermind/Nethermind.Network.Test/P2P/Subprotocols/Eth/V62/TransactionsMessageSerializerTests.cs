@@ -138,8 +138,8 @@ public class TransactionsMessageSerializerTests
     {
         Transaction validTxBefore = SimpleSignedTx();
         Transaction validTxAfter = SimpleSignedTx(1);
-        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
-        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm);
+        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm);
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
@@ -162,7 +162,7 @@ public class TransactionsMessageSerializerTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
-        (int _, int contentLength) = RlpTestHelper.PrefixAndContentLength(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm).Bytes);
+        (int _, int contentLength) = RlpTestHelper.PrefixAndContentLength(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm));
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = contentLength });
         using TransactionsMessage message = new(new[] { typedTx }.ToPooledList());
@@ -472,7 +472,7 @@ public class TransactionsMessageSerializerProcessWidePoolTests
         if (returnMode == BlobReturnMode.MalformedList)
         {
             buffer.Clear();
-            buffer.WriteBytes(Rlp.Encode(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), Rlp.OfEmptyList).Bytes);
+            buffer.WriteBytes(RlpTestHelper.EncodeSequence(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), RlpTestHelper.OfEmptyList));
             Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
         }
         if (returnMode == BlobReturnMode.MalformedWrapper)

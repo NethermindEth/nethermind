@@ -238,7 +238,7 @@ public class BalApplierDifferentialTests(bool flatScope)
             if (!string.Equals(block.GetProperty("parentHash").GetString(), parent, StringComparison.OrdinalIgnoreCase)) break;
             if (!block.TryGetProperty("blockAccessList", out JsonElement bal) || bal.ValueKind != JsonValueKind.String) break;
 
-            lists.Add(Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(Bytes.FromHexString(bal.GetString()!)))!);
+            lists.Add(Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(bal.GetString()!))!);
             roots.Add(new Hash256(block.GetProperty("stateRoot").GetString()!));
             parent = block.GetProperty("blockHash").GetString()!;
         }

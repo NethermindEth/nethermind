@@ -10,7 +10,6 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test;
@@ -32,8 +31,8 @@ public class L1OriginStoreTests
     [Test]
     public void Null_origin_roundtrips()
     {
-        Rlp encoded = _decoder.Encode((L1Origin?)null);
-        RlpReader reader = new(encoded.Bytes);
+        byte[] encoded = _decoder.Encode((L1Origin?)null);
+        RlpReader reader = new(encoded);
 
         Assert.That(_decoder.Decode(ref reader), Is.Null);
     }
@@ -252,21 +251,21 @@ public class L1OriginStoreTests
         byte[]? signature = withSignature ? Enumerable.Range(0, 65).Select(i => (byte)i).ToArray() : null;
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
-        Rlp encoded = _decoder.Encode(origin);
-        (int prefixLength, int contentLength) = RlpTestHelper.PrefixAndContentLength(encoded.Bytes);
+        byte[] encoded = _decoder.Encode(origin);
+        (int prefixLength, int contentLength) = RlpTestHelper.PrefixAndContentLength(encoded);
 
-        Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");
+        Assert.That(contentLength, Is.EqualTo(encoded.Length - prefixLength), "StartSequence must receive content length, not total length");
     }
 
     [Test]
     public void Decodes_with_a_trailing_item()
     {
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, Enumerable.Range(0, 8).ToArray(), true, Enumerable.Range(0, 65).Select(i => (byte)i).ToArray());
-        byte[] canonical = _decoder.Encode(origin).Bytes;
+        byte[] canonical = _decoder.Encode(origin);
 
         L1Origin? decoded = _decoder.Decode(RlpTestHelper.WithTrailingItem(canonical));
 
-        Assert.That(_decoder.Encode(decoded).Bytes, Is.EqualTo(canonical));
+        Assert.That(_decoder.Encode(decoded), Is.EqualTo(canonical));
     }
 
     [Test]

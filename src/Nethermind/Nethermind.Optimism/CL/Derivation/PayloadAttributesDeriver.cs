@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.CL.Decoding;
@@ -68,7 +68,7 @@ public class PayloadAttributesDeriver(
     {
         byte[][] transactions =
         [
-            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
+            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping),
             .. batch.Transactions
         ];
         return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);
@@ -81,14 +81,13 @@ public class PayloadAttributesDeriver(
         Transaction systemTransaction,
         ReceiptForRpc[] l1OriginReceipts)
     {
-        byte[][] transactions =
-        [
-            Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping).Bytes,
-            .. _depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts)
-                    .Select(x => Rlp.Encode(x, RlpBehaviors.SkipTypedWrapping).Bytes),
-            .. batch.Transactions,
-        ];
-        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions);
+        List<byte[]> transactions = [Rlp.Encode(systemTransaction, RlpBehaviors.SkipTypedWrapping)];
+        foreach (Transaction deposit in _depositTransactionBuilder.BuildUserDepositTransactions(l1OriginReceipts))
+        {
+            transactions.Add(Rlp.Encode(deposit, RlpBehaviors.SkipTypedWrapping));
+        }
+        transactions.AddRange(batch.Transactions);
+        return BuildOneBlock(l1Origin, batch.Timestamp, systemConfig, transactions.ToArray());
     }
 
     private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong timestamp, SystemConfig systemConfig, byte[][] txs)

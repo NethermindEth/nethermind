@@ -164,11 +164,11 @@ public class DeferredBlockStoreTests
         ];
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(txs).TestObject;
 
-        byte[] fromScratch = new BlockDecoder().Encode(block).Bytes;
+        byte[] fromScratch = new BlockDecoder().Encode(block);
 
         // Mirror the newPayload path: the block arrives with pre-encoded transactions the snapshot must carry
         // through the deferred write without changing the persisted bytes.
-        byte[][] encodedTransactions = Array.ConvertAll(txs, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        byte[][] encodedTransactions = Array.ConvertAll(txs, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping));
         block.EncodedTransactions = encodedTransactions;
 
         _store.InsertDeferred(block);

@@ -180,8 +180,8 @@ namespace Nethermind.Hive.Test
             using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(blocksDir.Path);
 
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(invalidBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(validSibling).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(invalidBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(validSibling));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -264,11 +264,11 @@ namespace Nethermind.Hive.Test
             using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(blocksDir.Path);
 
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();

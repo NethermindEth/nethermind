@@ -57,7 +57,7 @@ public class RlpItemListTests
 
         for (int i = 0; i < items.Length; i++)
         {
-            byte[] expectedRlp = Rlp.Encode(items[i]).Bytes;
+            byte[] expectedRlp = Rlp.Encode(items[i]);
             Assert.That(list[i], Is.SequenceEqualTo(expectedRlp), $"item {i} should be raw RLP");
         }
     }
@@ -82,7 +82,7 @@ public class RlpItemListTests
 
         for (int i = 0; i < items.Length; i += 2)
         {
-            Assert.That(list[i], Is.SequenceEqualTo(Rlp.Encode(items[i]).Bytes), $"item {i}");
+            Assert.That(list[i], Is.SequenceEqualTo(Rlp.Encode(items[i])), $"item {i}");
         }
 
         for (int i = 1; i < items.Length; i += 2)
@@ -98,16 +98,16 @@ public class RlpItemListTests
 
         using RlpItemList list = CreateList(items);
 
-        byte[] lastExpected = Rlp.Encode(items[^1]).Bytes;
+        byte[] lastExpected = Rlp.Encode(items[^1]);
         Assert.That(list[items.Length - 1], Is.SequenceEqualTo(lastExpected));
 
-        byte[] firstExpected = Rlp.Encode(items[0]).Bytes;
+        byte[] firstExpected = Rlp.Encode(items[0]);
         Assert.That(list[0], Is.SequenceEqualTo(firstExpected));
 
         if (items.Length > 2)
         {
             int mid = items.Length / 2;
-            byte[] midExpected = Rlp.Encode(items[mid]).Bytes;
+            byte[] midExpected = Rlp.Encode(items[mid]);
             Assert.That(list[mid], Is.SequenceEqualTo(midExpected));
         }
     }
