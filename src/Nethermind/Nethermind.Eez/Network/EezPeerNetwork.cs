@@ -53,11 +53,15 @@ public sealed class EezPeerNetwork : IStoppableService, IAsyncDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Channel<NodeRecord> _discovery = Channel.CreateBounded<NodeRecord>(new BoundedChannelOptions(32)
     {
-        SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest, AllowSynchronousContinuations = false
+        SingleReader = true,
+        FullMode = BoundedChannelFullMode.DropOldest,
+        AllowSynchronousContinuations = false
     });
     private readonly Channel<byte> _heads = Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
     {
-        SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest, AllowSynchronousContinuations = false
+        SingleReader = true,
+        FullMode = BoundedChannelFullMode.DropOldest,
+        AllowSynchronousContinuations = false
     });
     private ILocalPeer? _local;
     private PubsubRouter? _router;
@@ -89,8 +93,11 @@ public sealed class EezPeerNetwork : IStoppableService, IAsyncDisposable
             .AddSingleton<MultistreamProtocol>()
             .AddSingleton(new PubsubSettings
             {
-                LowestDegree = 5, MessageCacheTtl = 60000,
-                AppSpecificWeight = 0, IPColocationFactorWeight = 0, BehaviorPenaltyWeight = 0,
+                LowestDegree = 5,
+                MessageCacheTtl = 60000,
+                AppSpecificWeight = 0,
+                IPColocationFactorWeight = 0,
+                BehaviorPenaltyWeight = 0,
                 TopicScoreParams = new() { [Codec.Topic] = new TopicScoreParams { TopicWeight = 0 } },
                 MaxRpcBytes = SequencerHeadCodec.MaxFrameSize,
                 MaxOutboundRpcBytesPerPeer = SequencerHeadCodec.MaxFrameSize + 5L,

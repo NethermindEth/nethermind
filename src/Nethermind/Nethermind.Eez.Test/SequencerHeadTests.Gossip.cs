@@ -383,7 +383,8 @@ public partial class SequencerHeadTests
         Identity identity = new(bytes, KeyType.Secp256K1);
         Identity advertised = new(new Libp2pPublicKey
         {
-            Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(key.CompressedPublicKey.Bytes)
+            Type = KeyType.Secp256K1,
+            Data = ByteString.CopyFrom(key.CompressedPublicKey.Bytes)
         });
         byte[] payload = [1, 2, 3];
         using (Assert.EnterMultipleScope())

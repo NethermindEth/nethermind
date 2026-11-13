@@ -148,7 +148,9 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
                 .AddSingleton<SequencerPeerBlocks>()
                 .AddSingleton<IUnsafeHeadSource, SequencerPeerHeadSource>()
                 .AddDecorator<INodeSource, EezPeerDiscovery>()
-                .AddDecorator<INodeRecordProvider, EezPeerRecordProvider>();
+                .AddSingleton<EezPeerRecordProvider>()
+                .AddDecorator<INodeRecordProvider>(static (context, inner) =>
+                    context.Resolve<EezPeerRecordProvider>(TypedParameter.From(inner)));
         }
 
         if (!string.IsNullOrEmpty(config.SequencerRpcUrl))

@@ -123,7 +123,8 @@ public class EezModuleTests
     }
 
     [Test]
-    public async Task Peer_ENR_has_a_signed_overlay_port_and_keeps_the_eth_fork()
+    public async Task Peer_ENR_has_a_signed_overlay_port_and_keeps_the_eth_fork(
+        [Values("match", "hash", "next")] string peerFork)
     {
         EezConfig config = OverlayConfig(true);
         await using IContainer container = OverlayContainer(config);
@@ -146,10 +147,19 @@ public class EezModuleTests
             Assert.That(verifier.Verify(record), Is.True);
             Assert.That(advertised.ForkHash, Is.EqualTo(fork.HashBytes));
             Assert.That(advertised.Next, Is.EqualTo(fork.Next));
-            Assert.That(network.TryAddress(record, out _), Is.True);
         }
-        record.SetEntry(new EthEntry(fork.HashBytes, fork.Next + 1));
-        Assert.That(network.TryAddress(record, out _), Is.False);
+        NodeRecord peerRecord = NodeRecord.FromEnrString(record.ToString());
+        peerRecord.SetEntry(new IpEntry(IPAddress.Loopback));
+        byte[] peerHash = [.. fork.HashBytes];
+        if (peerFork == "hash") peerHash[0] ^= 1;
+        peerRecord.SetEntry(new EthEntry(peerHash, peerFork == "next" ? fork.Next + 1 : fork.Next));
+        NodeRecordSigner peerSigner = new(container.Resolve<IEthereumEcdsa>(), TestItem.PrivateKeyA);
+        peerSigner.Sign(peerRecord);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Verify(peerRecord), Is.True);
+            Assert.That(network.TryAddress(peerRecord, out _), Is.EqualTo(peerFork == "match"));
+        }
     }
 
     private static EezConfig OverlayConfig(bool enabled) => new()

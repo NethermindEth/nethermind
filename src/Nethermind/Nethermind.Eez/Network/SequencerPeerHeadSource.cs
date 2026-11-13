@@ -125,7 +125,10 @@ internal sealed class SequencerPeerHeadSource : IUnsafeHeadSource
 
         private static EezL1Block Describe(BlockHeader header) => new()
         {
-            Hash = header.Hash!, ParentHash = header.ParentHash!, Number = header.Number, Timestamp = header.Timestamp
+            Hash = header.Hash!,
+            ParentHash = header.ParentHash!,
+            Number = header.Number,
+            Timestamp = header.Timestamp
         };
     }
 }
