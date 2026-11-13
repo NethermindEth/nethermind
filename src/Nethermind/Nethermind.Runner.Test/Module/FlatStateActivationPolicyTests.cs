@@ -195,6 +195,10 @@ public class FlatStateActivationPolicyTests
     [TestCase(Flags.Repaired, "holds no state", Description = "Repaired flat, state pointer dropped")]
     [TestCase(Flags.FlatHasData | Flags.WipedForSync, "holds no state", Description = "Interrupted wipe")]
     [TestCase(Flags.WipedForSync, "holds no state", Description = "Resync in progress")]
+    // The wipe ends the migration, so the state sync refills flat rather than a migration from the patricia state kept beside it.
+    [TestCase(Flags.Repaired | Flags.FlatHasData | Flags.Migrating | Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, "FlatDb.OnRepair=Ignore", Description = "Repaired flat while migrating")]
+    [TestCase(Flags.FlatHasData | Flags.WipedForSync | Flags.Migrating | Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, "holds no state", Description = "Interrupted wipe while migrating")]
+    [TestCase(Flags.WipedForSync | Flags.MigrateFromPruningTrieState | Flags.PatriciaHasData, "holds no state", Description = "Resync in progress after a migration's wipe")]
     public void Resync_with_fast_sync_and_no_snap_is_refused_before_the_wipe(Flags flags, string remedy)
     {
         SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };

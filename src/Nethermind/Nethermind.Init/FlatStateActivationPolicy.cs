@@ -163,10 +163,13 @@ public sealed class FlatStateActivationPolicy(
             activateFlat = true;
         }
 
+        // A wipe deletes the cursor, ending the migration.
+        bool migrating = startMigration || (activateFlat && !wipe && BasePersistence.ReadMigrationCursor(metadata) is not null);
         if (activateFlat
             && syncConfig.FastSync
             && !syncConfig.SnapSync
-            && !((flatDbConfig.ImportFromPruningTrieState || flatDbConfig.MigrateFromPruningTrieState) && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
+            && !migrating
+            && !(flatDbConfig.ImportFromPruningTrieState && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
         {
             // TreeSync holes only form during state sync. An already-synced flat node can keep serving.
             if (existingFlat)
@@ -188,8 +191,7 @@ public sealed class FlatStateActivationPolicy(
             }
         }
 
-        // A wipe deletes the cursor, ending the migration.
-        if (startMigration || (activateFlat && !wipe && BasePersistence.ReadMigrationCursor(metadata) is not null))
+        if (migrating)
         {
             ValidateMigration(flatDbConfig);
             if (startMigration) StartMigration(db, metadata, initConfig);
