@@ -259,7 +259,7 @@ public partial class VmState<TGasPolicy> : IDisposable
     {
         _env = env;
         _snapshot = snapshot;
-        _accessTracker = stateForAccessLists;
+        _accessTracker.ShareStateWith(in stateForAccessLists);
         ResetMemoryFromPriorTransaction();
         if (executionType.IsAnyCreate())
         {
@@ -338,7 +338,8 @@ public partial class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _accessTracker = default;
+        // A cached frame keeps the tracked state, so its next use in the transaction stores no reference.
+        if (!_isCached) _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _snapshot = default;
         StateGasRefundAdvanced = 0;
