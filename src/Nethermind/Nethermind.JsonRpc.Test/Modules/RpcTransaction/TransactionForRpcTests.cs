@@ -13,6 +13,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -150,7 +151,7 @@ public class TransactionForRpcTests
         [Values(0, 2, 33)] int hashLength, [Values] bool invalidFee, [Values] bool suppliedBlobs)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithConfig(new JsonRpcConfig { EnableEthSignTransaction = true }).Build();
+            .WithConfig(new JsonRpcConfig { EnableEthSignTransaction = true }).Build(new TestSpecProvider(Cancun.Instance));
         Address sender = chain.TestWallet.GetAccounts()[0];
         string hash = "0x" + new string('0', hashLength * 2);
         string sidecar = suppliedBlobs ? "\"blobs\":[]," : "";
