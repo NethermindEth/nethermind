@@ -34,6 +34,40 @@ public class DebuggingLibrariesTests
         }
     }
 
+    [Test]
+    public void Reads_each_target_runtime_and_whether_it_runs_on_musl()
+    {
+        const string Output = """
+            glibc /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.14/libcoreclr.so
+            musl /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12/libcoreclr.so
+            sh: 1: cannot open /proc/7/maps
+
+            """;
+
+        Assert.That(DebuggingLibraries.ParseRuntimes(Output), Is.EqualTo(new[]
+        {
+            ("/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.14/libcoreclr.so", false),
+            ("/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12/libcoreclr.so", true),
+        }));
+    }
+
+    [TestCase("""{"runtimeOptions":{"tfm":"net10.0","includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.12"}]}}""", ExpectedResult = "10.0.12")]
+    [TestCase("""{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"10.0.0"}}}""", ExpectedResult = null)]
+    [TestCase("not json", ExpectedResult = null)]
+    public string? Reads_the_sidecars_own_runtime_version(string runtimeConfig) => DebuggingLibraries.IncludedRuntimeVersion(runtimeConfig);
+
+    [Test]
+    public void Refuses_only_a_target_that_loaded_musl()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => DebuggingLibraries.RequireGlibc(["/lib/ld-musl-x86_64.so.1", "/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12/libcoreclr.so"]),
+                Throws.InvalidOperationException.With.Message.Contains("musl"));
+            Assert.That(() => DebuggingLibraries.RequireGlibc(["/lib/x86_64-linux-gnu/libc.so.6", "/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.12/libcoreclr.so"]),
+                Throws.Nothing);
+        }
+    }
+
     [TestCase("native_memory", "1", ExpectedResult = true)]
     [TestCase("heap_stats", "/profmcp-home/heap/a.dmp", ExpectedResult = true)]
     [TestCase("heap_retention", "1", ExpectedResult = false)]

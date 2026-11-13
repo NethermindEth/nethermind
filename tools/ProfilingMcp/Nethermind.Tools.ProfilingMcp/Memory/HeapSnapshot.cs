@@ -26,6 +26,9 @@ public sealed record HeapSnapshot(
     IReadOnlyDictionary<string, long> GenerationBytes,
     IReadOnlyList<TypeStat> Types)
 {
+    /// <summary>The largest file <see cref="Load"/> reads; a snapshot holds one line per type, so even a large heap's is a few megabytes.</summary>
+    internal const long MaxFileBytes = 256L << 20;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
     public static HeapSnapshot Collect(string target, ClrHeap heap)
@@ -111,8 +114,20 @@ public sealed record HeapSnapshot(
 
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOptions));
 
-    public static HeapSnapshot Load(string path) =>
-        JsonSerializer.Deserialize<HeapSnapshot>(File.ReadAllText(path), JsonOptions) ?? throw new InvalidDataException($"Empty heap snapshot {path}");
+    /// <summary>Reads a snapshot that <see cref="Save"/> wrote.</summary>
+    /// <remarks>
+    /// The file is parsed as it streams, so one that is not JSON, such as a dump passed by mistake, fails on its first bytes rather than being read whole.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>, or holds no snapshot.</exception>
+    /// <exception cref="JsonException">The file is not a snapshot.</exception>
+    public static HeapSnapshot Load(string path, long maxBytes = MaxFileBytes)
+    {
+        using FileStream file = File.OpenRead(path);
+        if (file.Length > maxBytes)
+            throw new InvalidDataException($"{path} is {file.Length:N0} bytes, too large for a heap snapshot. heap_diff compares snapshots that heap_stats saved, not dumps.");
+
+        return JsonSerializer.Deserialize<HeapSnapshot>(file, JsonOptions) ?? throw new InvalidDataException($"Empty heap snapshot {path}");
+    }
 
     internal static string GenerationName(Generation generation) => generation switch
     {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
 using Nethermind.Tools.ProfilingMcp.EventPipe;
 using NUnit.Framework;
@@ -41,6 +42,33 @@ public class LiveEventPipeTests
         FunctionStat? spin = new NetTraceReader().Read(_trace).Functions.FirstOrDefault(static f => f.Name.EndsWith($"{nameof(LiveEventPipeTests)}.{nameof(Spin)}", StringComparison.Ordinal));
 
         Assert.That(spin?.OwnTime, Is.GreaterThan(Window.TotalMilliseconds / 4), "the spinning thread is sampled for a good part of the window");
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Cpu_sample_ends_when_its_session_cannot_be_stopped(CancellationToken cancellationToken)
+    {
+        // Moving the diagnostics socket keeps the running session's connection but fails the new one that stopping it needs.
+        string[] sockets = OperatingSystem.IsLinux() ? Directory.GetFiles(Path.GetTempPath(), $"dotnet-diagnostic-{Environment.ProcessId}-*-socket") : [];
+        if (sockets.Length != 1)
+            Assert.Ignore("Needs the runtime's diagnostics socket, which only Linux exposes as a file.");
+
+        string socket = sockets[0];
+        string moved = socket + ".moved";
+        try
+        {
+            Task sample = CpuSampler.CollectAsync(Environment.ProcessId, TimeSpan.FromSeconds(2), _trace, cancellationToken);
+            while (!File.Exists(_trace) || new FileInfo(_trace).Length == 0)
+                await Task.Delay(50, cancellationToken);
+            File.Move(socket, moved);
+
+            Assert.That(async () => await sample.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken), Throws.InstanceOf<ServerNotAvailableException>());
+        }
+        finally
+        {
+            if (File.Exists(moved))
+                File.Move(moved, socket);
+        }
     }
 
     [Test]

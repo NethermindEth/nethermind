@@ -47,6 +47,26 @@ public class HeapSnapshotTests
         }
     }
 
+    [Test]
+    public void Refuses_a_file_that_is_too_large_or_not_a_snapshot()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"heap-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllBytes(path, [(byte)'M', (byte)'D', (byte)'M', (byte)'P', .. new byte[4096]]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => HeapSnapshot.Load(path, maxBytes: 4096), Throws.InstanceOf<InvalidDataException>().With.Message.Contains("too large"));
+                Assert.That(() => HeapSnapshot.Load(path), Throws.InstanceOf<System.Text.Json.JsonException>());
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static HeapSnapshot Snapshot(params TypeStat[] types) =>
         new("1234", new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc), types.Sum(t => t.Count), types.Sum(t => t.Bytes), 0,
             new Dictionary<string, long> { ["gen2"] = types.Sum(t => t.Bytes) }, types);

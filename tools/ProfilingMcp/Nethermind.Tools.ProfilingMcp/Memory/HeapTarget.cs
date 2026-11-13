@@ -44,6 +44,8 @@ internal static class HeapTarget
             throw new InvalidOperationException("No .NET runtime found in the target.");
 
         ClrInfo clr = dataTarget.ClrVersions[0];
+        if (dataTarget.FileLocator is TargetRootLocator)
+            DebuggingLibraries.RequireGlibc(dataTarget.EnumerateModules().Select(static m => m.FileName));
 
         // In a sidecar, ClrMD would load the DAC next to the target's runtime, a native library the target controls, into a root process;
         // a trusted copy for that version is loaded instead. ClrMD reads the runtime's version as 0.0 there, so its version check is skipped.

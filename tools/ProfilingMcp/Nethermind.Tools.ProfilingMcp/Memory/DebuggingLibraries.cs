@@ -3,6 +3,7 @@
 
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.ProfilingMcp.Memory;
@@ -25,9 +26,9 @@ internal static partial class DebuggingLibraries
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     /// <summary>Tools that load the DAC: native_memory, and the heap tools when given a dump instead of a PID.</summary>
-    public static bool AreNeededBy(string tool, IReadOnlyDictionary<string, System.Text.Json.JsonElement> arguments) =>
+    public static bool AreNeededBy(string tool, IReadOnlyDictionary<string, JsonElement> arguments) =>
         tool == "native_memory"
-        || tool is "heap_stats" or "heap_retention" && arguments.TryGetValue("target", out System.Text.Json.JsonElement target) && !HeapTarget.IsProcess(target.ToString(), out _);
+        || tool is "heap_stats" or "heap_retention" && arguments.TryGetValue("target", out JsonElement target) && !HeapTarget.IsProcess(target.ToString(), out _);
 
     /// <summary>The .NET version and runtime identifier of a runtime loaded from <paramref name="coreclrPath"/>, or null when they cannot be told.</summary>
     /// <remarks>A shared framework lives in a folder named after its version; a self-contained app's runtime does not, and gets no DAC.</remarks>
@@ -38,31 +39,109 @@ internal static partial class DebuggingLibraries
         return version is not null && arch is not null && VersionPattern().IsMatch(version) ? ($"linux-{arch}", version) : null;
     }
 
+    /// <summary>
+    /// Lists the .NET runtimes the target's processes have loaded, one per line as <c>glibc|musl &lt;path of libcoreclr.so&gt;</c>.
+    /// The sidecar's own server maps its runtime from /profmcp; everything else is the target's.
+    /// </summary>
+    private const string RuntimesScript =
+        "for m in /proc/[0-9]*/maps; do " +
+        "c=$(grep -oE '/[^ ]*/libcoreclr\\.so$' \"$m\" 2>/dev/null | head -n 1); " +
+        "case \"$c\" in ''|/profmcp/*) continue;; esac; " +
+        "if grep -q '/ld-musl-' \"$m\" 2>/dev/null; then echo \"musl $c\"; else echo \"glibc $c\"; fi; " +
+        "done | sort -u";
+
     /// <summary>Run on the host: copies the DACs for every .NET runtime the target's processes have loaded into the sidecar, downloading them once.</summary>
+    /// <remarks>
+    /// Nothing is supplied for a runtime the sidecar's own DAC serves, nor for a musl one, whose DAC the glibc sidecar cannot load; the tools
+    /// report that themselves when they need it. A DAC is copied under a temporary name and renamed, so an interrupted copy is never taken for one.
+    /// </remarks>
     public static async Task ProvideAsync(string[] engine, string sidecar, string architecture, string cacheRoot, CancellationToken cancellationToken)
     {
-        // The sidecar's own server maps its runtime from /profmcp; everything else is the target's.
-        string maps = await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "sh", "-c",
-            "cat /proc/[0-9]*/maps 2>/dev/null | grep -oE '/[^ ]*(libcoreclr\\.so|ld-musl-[a-z0-9_]+\\.so\\.1)$' | grep -v '^/profmcp/' | sort -u || true");
-        string[] paths = maps.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        // The sidecar is a glibc image, so it cannot load the DAC of a musl runtime.
-        if (Array.Exists(paths, static p => p.Contains("ld-musl-", StringComparison.Ordinal)))
-            throw new InvalidOperationException("The target runs on musl libc (an Alpine-based image). The sidecar is a glibc image and cannot load a musl runtime's " +
-                                                "debugging library, so native_memory and dump analysis are not available for this container; the other tools are.");
-
-        foreach (string path in paths)
+        string? own = null;
+        foreach ((string path, bool musl) in ParseRuntimes(await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "sh", "-c", RuntimesScript)))
         {
-            if (!path.EndsWith("/libcoreclr.so", StringComparison.Ordinal) || Runtime(path, architecture) is not var (rid, version))
+            if (musl || Runtime(path, architecture) is not var (rid, version))
                 continue;
 
+            own ??= await OwnVersionAsync(engine, sidecar) ?? "";
             string target = $"{SidecarFolder}/{rid}/{version}";
-            if (await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "test", "-f", $"{target}/{Dac}"))
+            if (version == own || await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "test", "-f", $"{target}/{Dac}"))
                 continue;
 
             string local = await DownloadAsync(rid, version, cacheRoot, cancellationToken);
+            string partial = $"{target}/{Dac}.{Guid.NewGuid():N}.partial";
             await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "mkdir", "-p", target);
-            await ContainerSidecar.DockerAsync(engine, "cp", local, $"{sidecar}:{target}/{Dac}");
+            try
+            {
+                await ContainerSidecar.DockerAsync(engine, "cp", local, $"{sidecar}:{partial}");
+                await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "mv", "-f", partial, $"{target}/{Dac}");
+            }
+            catch
+            {
+                await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "rm", "-f", partial);
+                throw;
+            }
         }
+    }
+
+    /// <summary>Reads the output of <see cref="RuntimesScript"/>.</summary>
+    internal static IEnumerable<(string Path, bool Musl)> ParseRuntimes(string output)
+    {
+        foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int space = line.IndexOf(' ', StringComparison.Ordinal);
+            if (space > 0 && line[..space] is "glibc" or "musl")
+                yield return (line[(space + 1)..], line[..space] == "musl");
+        }
+    }
+
+    /// <summary>The .NET version of the sidecar's own runtime, whose DAC it bundles, or null when its image does not tell.</summary>
+    private static async Task<string?> OwnVersionAsync(string[] engine, string sidecar)
+    {
+        try
+        {
+            return IncludedRuntimeVersion(await ContainerSidecar.DockerAsync(engine, "exec", sidecar, "cat", $"{ContainerSidecar.ServerPath}.runtimeconfig.json"));
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The version of the .NET runtime a self-contained app's <c>runtimeconfig.json</c> says it includes, or null.</summary>
+    internal static string? IncludedRuntimeVersion(string runtimeConfig)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(runtimeConfig);
+            if (!document.RootElement.TryGetProperty("runtimeOptions", out JsonElement options)
+                || !options.TryGetProperty("includedFrameworks", out JsonElement frameworks)
+                || frameworks.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (JsonElement framework in frameworks.EnumerateArray())
+            {
+                if (framework.TryGetProperty("name", out JsonElement name) && name.ValueEquals("Microsoft.NETCore.App")
+                    && framework.TryGetProperty("version", out JsonElement version))
+                    return version.GetString();
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Refuses a target on musl libc, whose runtime's DAC the glibc sidecar cannot load.</summary>
+    /// <param name="modules">The paths of the target's loaded native modules.</param>
+    /// <exception cref="InvalidOperationException">The target loaded musl's dynamic loader.</exception>
+    public static void RequireGlibc(IEnumerable<string> modules)
+    {
+        if (modules.Any(static m => m.Contains("/ld-musl-", StringComparison.Ordinal)))
+            throw new InvalidOperationException("The target runs on musl libc (an Alpine-based image). The sidecar is a glibc image and cannot load a musl runtime's " +
+                                                "debugging library, so native_memory's managed breakdown and dump analysis are not available for it; the other tools are.");
     }
 
     /// <summary>Takes the DAC out of Microsoft's runtime pack for <paramref name="rid"/> and <paramref name="version"/>, caching it under <paramref name="cacheRoot"/>.</summary>

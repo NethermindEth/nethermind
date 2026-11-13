@@ -45,11 +45,16 @@ internal static class CpuSampler
             {
                 await session.StopAsync(CancellationToken.None);
             }
-            finally
+            catch
             {
-                // The file is disposed on return, so the copy into it must have ended even when stopping failed.
-                await copy;
+                // A session that was not stopped keeps its stream open while the target runs, so the copy would never end; disposing
+                // the session closes the stream. The file is disposed on return, so the copy must end first; the stop's error is the cause.
+                session.Dispose();
+                await copy.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                throw;
             }
+
+            await copy;
         }
     }
 }

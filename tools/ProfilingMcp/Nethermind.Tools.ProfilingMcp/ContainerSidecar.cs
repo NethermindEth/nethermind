@@ -54,7 +54,7 @@ internal static class ContainerSidecar
     private const string RuntimeImage = "mcr.microsoft.com/dotnet/runtime-deps:10.0";
     private const string Dockerfile = "sidecar.Dockerfile";
     private const string Executable = "Nethermind.Tools.ProfilingMcp";
-    private const string ServerPath = $"/profmcp/{Executable}";
+    internal const string ServerPath = $"/profmcp/{Executable}";
 
     /// <summary>Returns the docker CLI options that select an engine: a context name, or an address such as <c>ssh://user@host</c>.</summary>
     /// <param name="dockerHost">The engine, or null for the one the docker CLI uses by default.</param>
