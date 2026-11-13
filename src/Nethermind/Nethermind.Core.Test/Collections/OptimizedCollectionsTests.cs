@@ -46,6 +46,38 @@ public class OptimizedCollectionsTests
         }
     }
 
+    [TestCase(4)]
+    [TestCase(512)]
+    public void Clear_by_removal_keeps_the_order_of_a_full_clear(int count)
+    {
+        OptimizedDictionary<AddressAsKey, int> removed = new(4096);
+        OptimizedDictionary<AddressAsKey, int> cleared = new(4096);
+        for (int round = 0; round < 3; round++)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                AddressAsKey key = new(NumberedAddress((i * 7 + round) % (count + 3)));
+                removed[key] = i;
+                cleared[key] = i;
+            }
+
+            Assert.That(removed.Keys, Is.EqualTo(cleared.Keys));
+
+            removed.ClearByRemoval();
+            cleared.Clear();
+
+            Assert.That(removed, Is.Empty);
+        }
+
+        for (int i = 0; i < count / 2; i++)
+        {
+            removed[new AddressAsKey(NumberedAddress(count - i))] = i;
+            cleared[new AddressAsKey(NumberedAddress(count - i))] = i;
+        }
+
+        Assert.That(removed.ToArray(), Is.EqualTo(cleared.ToArray()));
+    }
+
     [Test]
     public void Hash_set_matches_bcl([Values] KeyKind kind, [Values(1, 2, 3)] int seed)
     {
