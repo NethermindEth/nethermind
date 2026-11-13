@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
 using Nethermind.Serialization.Rlp;
@@ -29,7 +30,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         ISignerStore signerStore,
         IKeyStore keyStore,
         ISpecProvider specProvider,
-        IPeerManager peerManager) : IParityRpcModule
+        IPeerManager peerManager,
+        IBlocksConfig blocksConfig) : IParityRpcModule
     {
         private readonly IEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -46,9 +48,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnumerable<Transaction> enumerable = address is null
                  ? _txPool.GetPendingTransactions()
                  : _txPool.GetPendingTransactionsBySender(address);
+            IReleaseSpec? pendingSpec = TransactionForRpcContext.ForPending(_specProvider, _blockFinder.Head?.Header, blocksConfig.SecondsPerSlot).Spec;
             return ResultWrapper<ParityTransaction[]>.Success(enumerable
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
-                t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
+                t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null, pendingSpec: pendingSpec)).ToArray());
         }
 
         public ResultWrapper<IEnumerable<ReceiptForRpc>> parity_getBlockReceipts(BlockParameter blockParameter) => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
