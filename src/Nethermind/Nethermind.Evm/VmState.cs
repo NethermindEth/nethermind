@@ -74,9 +74,7 @@ public partial class VmState<TGasPolicy> : IDisposable
     /// every call that can throw. <see cref="_isDisposed"/> cannot tell this apart from a disposal that threw
     /// midway, with memory not reset, because <see cref="Dispose"/> sets it first as its re-entrancy guard.
     /// </summary>
-    private bool _isReleased = true;
-
-    private bool IsReleased => _isReleased;
+    private bool IsReleased { get; set; } = true;
 
     private EvmPooledMemory _memory;
     private readonly EvmFrameMemory _inlineMemory = new();
@@ -259,8 +257,8 @@ public partial class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot,
         int frameJournalCheckpoint = 0)
     {
-        if (!ReferenceEquals(_env, env)) _env = env;
-        _isReleased = false;
+        if (!ExecutionEnvironment.KeepsCachedReferences || !ReferenceEquals(_env, env)) _env = env;
+        IsReleased = false;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
         ResetMemoryFromPriorTransaction();
@@ -345,9 +343,9 @@ public partial class VmState<TGasPolicy> : IDisposable
         if (!IsTopLevel) _env?.Dispose();
         _snapshot = default;
         StateGasRefundAdvanced = 0;
-        if (!_isCached) _env = null;
+        if (!_isCached || !ExecutionEnvironment.KeepsCachedReferences) _env = null;
         // Last, after everything that can throw: this is what releases a cached frame for reuse (IsReleased).
-        _isReleased = true;
+        IsReleased = true;
 
         if (!_isCached) _statePool.Enqueue(this);
     }

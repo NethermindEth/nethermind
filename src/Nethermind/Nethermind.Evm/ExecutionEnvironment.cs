@@ -17,7 +17,7 @@ namespace Nethermind.Evm
     {
         private UInt256 _value;
 
-        /// <summary>Owned by a call-frame cache slot, so disposal clears it but never hands it to the pool.</summary>
+        /// <summary>Owned by a call-frame cache slot, so disposal keeps its references for the next call and never hands it to the pool.</summary>
         private bool _isCached;
 
         /// <summary>
@@ -126,9 +126,7 @@ namespace Nethermind.Evm
             }
         }
 
-        private bool _isInUse;
-
-        internal bool IsInUse => _isInUse;
+        internal bool IsInUse { get; private set; }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Initialize(
@@ -141,14 +139,14 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             PooledObjectLeakDetector.OnRent(this, nameof(ExecutionEnvironment));
-            if (!ReferenceEquals(CodeInfo, codeInfo)) CodeInfo = codeInfo;
-            if (!ReferenceEquals(ExecutingAccount, executingAccount)) ExecutingAccount = executingAccount;
-            if (!ReferenceEquals(Caller, caller)) Caller = caller;
-            if (!ReferenceEquals(CodeSource, codeSource)) CodeSource = codeSource;
+            if (!KeepsCachedReferences || !ReferenceEquals(CodeInfo, codeInfo)) CodeInfo = codeInfo;
+            if (!KeepsCachedReferences || !ReferenceEquals(ExecutingAccount, executingAccount)) ExecutingAccount = executingAccount;
+            if (!KeepsCachedReferences || !ReferenceEquals(Caller, caller)) Caller = caller;
+            if (!KeepsCachedReferences || !ReferenceEquals(CodeSource, codeSource)) CodeSource = codeSource;
             CallDepth = callDepth;
             _value = value;
-            if (!InputData.Equals(inputData)) InputData = inputData;
-            _isInUse = true;
+            if (!KeepsCachedReferences || !InputData.Equals(inputData)) InputData = inputData;
+            IsInUse = true;
         }
 
         /// <summary>
@@ -159,18 +157,19 @@ namespace Nethermind.Evm
             PooledObjectLeakDetector.OnReturn(this);
             if (IsInUse)
             {
-                _isInUse = false;
-                CallDepth = 0;
-                _value = default;
-                if (!_isCached)
+                IsInUse = false;
+                if (!_isCached || !KeepsCachedReferences)
                 {
+                    CallDepth = 0;
+                    _value = default;
                     CodeInfo = null!;
                     ExecutingAccount = null!;
                     Caller = null!;
                     CodeSource = null;
                     InputData = default;
-                    _pool.Enqueue(this);
                 }
+
+                if (!_isCached) _pool.Enqueue(this);
             }
         }
     }
