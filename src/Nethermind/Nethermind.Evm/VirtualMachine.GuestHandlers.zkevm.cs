@@ -647,7 +647,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 }
                             }
                         }
-                        // No branch follows: the ISZERO only inverts the result, which it then replaces in the same step.
+                        // No branch follows: the ISZERO only inverts the result, so both run in one step.
                         else if (TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
                         {
                             nint inverse = -TCondition.Inputs * LimbsPerWord;
