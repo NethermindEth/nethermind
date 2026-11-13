@@ -435,95 +435,6 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // Admission checks run before witnesses exist, so a caller can learn of an unfunded transaction before evicting pending ones
-        // for its witnesses. The checks run out of a submission's context, so nothing is recorded: a later submission is judged
-        // on its own rather than refused as already known.
-        [TestCase(false, TestName = "Validation before proof admission rejects an unfunded transaction")]
-        [TestCase(true, TestName = "Validation before proof admission accepts a funded transaction without adding it")]
-        public void should_validate_before_proof_admission_without_adding(bool funded)
-        {
-            _txPool = CreatePool();
-            if (funded) EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            AcceptTxResult result = _txPool.ValidateTxBeforeProofAdmission(tx, TxHandlingOptions.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
-                Assert.That(_txPool.IsKnown(tx.Hash!), Is.False);
-                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(result));
-            }
-        }
-
-        // A wrapper may carry a sender's next nonces together, and a full pool rejects a peer's gap; the earlier ones are
-        // not pooled yet, so the caller checks contiguity and the dry run must not reject the later ones.
-        [Test]
-        public void Validation_before_proof_admission_leaves_nonce_contiguity_to_the_caller()
-        {
-            _txPool = CreatePool(new TxPoolConfig { Size = 1 });
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
-            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject, TxHandlingOptions.None),
-                Is.EqualTo(AcceptTxResult.Accepted));
-
-            Transaction next = Build.A.Transaction.WithNonce(1).WithGasPrice(10).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            Assert.That(_txPool.ValidateTxBeforeProofAdmission(next, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-        }
-
-        // A full pool refuses a peer's underpriced transaction but not a local one, so the dry run must judge as admission will.
-        [Test]
-        public void Validation_before_proof_admission_uses_the_admission_handling([Values] bool local)
-        {
-            _txPool = CreatePool(new TxPoolConfig { Size = 1 });
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
-            Assert.That(_txPool.SubmitTx(Build.A.Transaction.WithGasPrice(10).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject, TxHandlingOptions.None),
-                Is.EqualTo(AcceptTxResult.Accepted));
-
-            Transaction underpriced = Build.A.Transaction.WithGasPrice(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            Assert.That(_txPool.ValidateTxBeforeProofAdmission(underpriced, local ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None),
-                Is.EqualTo(local ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
-        }
-
-        // A dry run that kept its paymaster, code-dependency or payer-exposure reservation would let repeated validation
-        // exhaust them; with every cap at one transaction, a leak fails the next validation or the final submission.
-        [Test]
-        public void Validation_before_proof_admission_holds_no_reservations([Values] bool paymasterWithCode)
-        {
-            PrivateKey sponsor;
-            if (paymasterWithCode)
-            {
-                CreatePoolPaidByPayFrameTargets(maxPendingPerCode: 1, PayFrameCodeDependency);
-                sponsor = Paymasters[0];
-            }
-            else
-            {
-                CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD, DelegatingCodeDependency),
-                    config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxPendingPerDelegatingCode = 1 });
-                sponsor = TestItem.PrivateKeyD;
-            }
-
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
-            Transaction submitted = SponsoredFrameTx(TestItem.PrivateKeyB, sponsor);
-            if (!paymasterWithCode)
-            {
-                Assert.That(FrameTxValidation.TryCalculateMaxCost(submitted, Eip8141Prototype.Instance, out UInt256 oneTx), Is.True);
-                EnsureSenderBalance(TestItem.AddressD, oneTx);
-            }
-
-            AcceptTxResult[] dryRuns = new AcceptTxResult[3];
-            for (int i = 0; i < dryRuns.Length; i++) dryRuns[i] = _txPool.ValidateTxBeforeProofAdmission(SponsoredFrameTx(TestItem.PrivateKeyA, sponsor), TxHandlingOptions.None);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(dryRuns, Is.All.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(submitted, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            }
-        }
-
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {
@@ -3257,15 +3168,11 @@ namespace Nethermind.TxPool.Test
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
-            TxHandlingOptions handling = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
-            // The dry run before proof-capacity eviction must not pass what admission refuses while syncing.
-            AcceptTxResult dryRun = _txPool.ValidateTxBeforeProofAdmission(tx, handling);
-            AcceptTxResult result = _txPool.SubmitTx(tx, handling);
+            AcceptTxResult result = _txPool.SubmitTx(tx, isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal) ? 1 : 0));
                 Assert.That(result, Is.EqualTo((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
-                Assert.That(dryRun, Is.EqualTo(result));
             }
         }
 

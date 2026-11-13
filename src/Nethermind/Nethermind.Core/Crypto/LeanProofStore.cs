@@ -80,7 +80,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     private sealed class AdmissionScope(LeanProofStore store, AdmissionScope? previous,
-        Dictionary<FrameDependency, ProofRecord> records, IDisposable lease) : IDisposable
+        Dictionary<FrameDependency, ProofRecord> records, IDisposable lease, bool overCapacity) : IDisposable
     {
         private int _active = 1;
         public bool TryGet(FrameDependency dependency, out ProofRecord? record)
@@ -93,12 +93,16 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             if (Interlocked.Exchange(ref _active, 0) == 0) return;
             store._admission.Value = previous;
             lease.Dispose();
+            if (overCapacity)
+                lock (store._lock) store.MakeRoom(0, 0);
         }
     }
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
+    /// <param name="overCapacity">Stores the witnesses even beyond capacity. The caller bounds the excess, which the store sheds
+    /// once the admission ends, as far as unpinned records allow.</param>
     public bool TryBeginAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
-        byte[]? recursiveProof, out IDisposable? admission)
+        byte[]? recursiveProof, out IDisposable? admission, bool overCapacity = false)
     {
         ValidateShape(dependencies, witnesses, recursiveProof);
         admission = null;
@@ -112,14 +116,14 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             foreach (ProofRecord record in incoming) incomingBytes += record.Size;
             if (incoming.Count != 0)
             {
-                if (!MakeRoom(incomingBytes, incoming.Count))
+                if (!MakeRoom(incomingBytes, incoming.Count) && !overCapacity)
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;
                 }
                 foreach (ProofRecord record in incoming) Insert(record);
             }
-            AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]));
+            AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]), overCapacity);
             _admission.Value = scope;
             admission = scope;
             return true;

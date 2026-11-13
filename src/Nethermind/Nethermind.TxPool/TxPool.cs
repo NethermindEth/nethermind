@@ -1776,13 +1776,6 @@ namespace Nethermind.TxPool
             return true;
         }
 
-        private bool StartsBroadcast(TxHandlingOptions handlingOptions) =>
-            _txPoolConfig.PersistentBroadcastEnabled
-            && (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
-
-        // A local transaction is accepted even while syncing.
-        private bool RejectsWhileSyncing(bool startBroadcast) => !AcceptTxWhenNotSynced && _headInfo.IsSyncing && !startBroadcast;
-
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, object? peer, out bool canRecycle, bool reAddedFromReorg = false)
         {
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
@@ -1793,9 +1786,14 @@ namespace Nethermind.TxPool
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
             }
-            bool startBroadcast = StartsBroadcast(handlingOptions);
+            bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
+                                  && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+                                  TxHandlingOptions.PersistentBroadcast;
 
-            if (RejectsWhileSyncing(startBroadcast))
+            if (!AcceptTxWhenNotSynced &&
+                _headInfo.IsSyncing &&
+                // If local tx allow it to be accepted even when syncing
+                !startBroadcast)
             {
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Syncing;
@@ -1948,14 +1946,11 @@ namespace Nethermind.TxPool
             TxHandlingOptions handlingOptions,
             ref TxFilteringState state,
             ref bool canRecycle,
-            bool skipSamplingDeferredFilters = false,
-            bool skipDependencyProofFilters = false)
+            bool skipSamplingDeferredFilters = false)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                // Witnesses not stored yet: the checks a caller runs before making room for them.
-                if (skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter) continue;
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted)
@@ -1967,7 +1962,7 @@ namespace Nethermind.TxPool
 
             foreach (IIncomingTxFilter filter in _hashFilters)
             {
-                if ((skipSamplingDeferredFilters || skipDependencyProofFilters) && filter is AlreadyKnownTxFilter) continue;
+                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
                 AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
                 if (!accepted) return accepted;
             }
@@ -1979,8 +1974,7 @@ namespace Nethermind.TxPool
             for (int i = 0; i < filters.Length; i++)
             {
                 if (skipSamplingDeferredFilters
-                    && filters[i] is BlobProofsTxFilter
-                    || skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter or GapNonceFilter)
+                    && filters[i] is BlobProofsTxFilter)
                 {
                     continue;
                 }

@@ -149,27 +149,6 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx, TxHandlingOptions handlingOptions)
-        {
-            if (RejectsWhileSyncing(StartsBroadcast(handlingOptions))) return AcceptTxResult.Syncing;
-            // SubmitTx would reject a transaction already rejected on this block too, and the filters may simulate.
-            if (IsKnown(tx.Hash)) return AcceptTxResult.AlreadyKnown;
-
-            TxFilteringState state = default;
-            _newHeadLock.EnterReadLock();
-            try
-            {
-                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
-                bool canRecycle = false;
-                return FilterTransactions(tx, handlingOptions, ref state, ref canRecycle, skipSamplingDeferredFilters: tx.IsAwaitingAvailability(), skipDependencyProofFilters: true);
-            }
-            finally
-            {
-                ReleaseFilterReservations(tx, ref state);
-                _newHeadLock.ExitReadLock();
-            }
-        }
-
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
             => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);

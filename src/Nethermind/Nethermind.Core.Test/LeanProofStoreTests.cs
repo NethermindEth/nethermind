@@ -54,6 +54,48 @@ public class LeanProofStoreTests
         }
     }
 
+    // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves the store as it was, and once an
+    // admitted one's victims are unpinned the store sheds them back within capacity.
+    [Test]
+    public void Admission_beyond_capacity_is_shed_when_it_ends([Values] bool admitted)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<Transaction> pinned = [];
+        for (int i = 0; i < 64; i++)
+        {
+            FrameDependency dependency = Dependency(i);
+            store.AddVerified([dependency], [new byte[LeanProofStore.MaxWrapperBytes / 2 - 1024]], null);
+            Transaction transaction = Transaction([dependency], Sender(i + 1), 0);
+            Assert.That(store.PinPending(transaction), Is.True);
+            pinned.Add(transaction);
+        }
+        FrameDependency incoming = Dependency(1000);
+        Transaction incomingTransaction = Transaction([incoming], Sender(100), 0);
+        byte[][] witness = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]];
+        bool fitted = store.TryBeginAdmission([incoming], witness, null, out _);
+        bool overdrawn = store.TryBeginAdmission([incoming], witness, null, out IDisposable? admission, overCapacity: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fitted, Is.False);
+            Assert.That(overdrawn, Is.True);
+        }
+        if (admitted)
+        {
+            Assert.That(store.PinPending(incomingTransaction), Is.True);
+            store.UnpinPending(pinned[0].Hash!.ValueHash256);
+            store.UnpinPending(pinned[1].Hash!.ValueHash256);
+        }
+        admission!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Covers(incomingTransaction), Is.EqualTo(admitted));
+            Assert.That(store.Covers(pinned[0]), Is.EqualTo(!admitted));
+            Assert.That(pinned.Skip(2).All(store.Covers), Is.True);
+            Assert.That(store.TryBeginAdmission([Dependency(1001)], witness, null, out _), Is.False, "the store is full again");
+        }
+    }
+
     [Test]
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {
