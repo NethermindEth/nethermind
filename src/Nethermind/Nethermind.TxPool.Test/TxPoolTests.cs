@@ -435,6 +435,24 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Admission checks run before witnesses exist, so a caller can learn of an unfunded transaction before evicting pending ones
+        // for its witnesses; the transaction is neither added nor remembered as known.
+        [TestCase(false, TestName = "Validation before proof admission rejects an unfunded transaction")]
+        [TestCase(true, TestName = "Validation before proof admission accepts a funded transaction without adding it")]
+        public void should_validate_before_proof_admission_without_adding(bool funded)
+        {
+            _txPool = CreatePool();
+            if (funded) EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AcceptTxResult result = _txPool.ValidateTxBeforeProofAdmission(tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(funded ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.IsKnown(tx.Hash!), Is.False);
+            }
+        }
+
         [Test]
         public void should_ignore_transactions_with_different_chain_id()
         {

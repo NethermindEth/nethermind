@@ -151,6 +151,25 @@ namespace Nethermind.TxPool
             }
         }
 
+        public AcceptTxResult ValidateTxBeforeProofAdmission(Transaction tx)
+        {
+            TxFilteringState state = default;
+            _newHeadLock.EnterReadLock();
+            try
+            {
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                bool canRecycle = false;
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipDependencyProofFilters: true);
+            }
+            finally
+            {
+                state.ProofReservation?.Dispose();
+                state.SenderProofReservation?.Dispose();
+                state.SenderAdmissionGate?.Exit();
+                _newHeadLock.ExitReadLock();
+            }
+        }
+
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
             => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);

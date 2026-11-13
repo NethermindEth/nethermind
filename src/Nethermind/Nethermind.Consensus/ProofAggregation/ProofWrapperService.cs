@@ -392,13 +392,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// capacity is full.</summary>
     /// <remarks>Witnesses pinned by pending transactions are never evicted, so a full store would otherwise refuse every wrapper.
     /// Transactions the next blocks could not include give way, oldest first, to a wrapper whose new transactions the next blocks
-    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, and only those whose
-    /// eviction frees witness capacity.</remarks>
+    /// could, but only when evicting at most <see cref="MaxEvictedPerAdmission"/> of them frees enough, only those whose
+    /// eviction frees witness capacity, and only once every new incoming transaction passes admission but for its witnesses.</remarks>
     private bool TryBeginAdmission(MempoolWrapper decoded, out IDisposable? scope)
     {
         if (leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope)) return true;
         FeeFloors floors = ExecutableFeeFloors();
         if (!AddsOnlyExecutable(decoded.Transactions, floors)) return false;
+        // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside.
+        foreach (Transaction transaction in decoded.Transactions)
+            if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) && !txPool.ValidateTxBeforeProofAdmission(transaction)) return false;
         List<ValueHash256> hashes = [];
         HashSet<Transaction> stale = [];
         foreach (Transaction candidate in NotExecutable(decoded.Transactions, floors))
