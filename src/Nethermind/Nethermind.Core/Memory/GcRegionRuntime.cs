@@ -13,6 +13,8 @@ internal interface IGcRegionRuntime
     bool TryStart(long totalSize, long lohSize);
     void End();
     bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting);
+    /// <summary>The gen2 collections the runtime has started, background ones included; a no-GC region entry counts as one.</summary>
+    int Gen2CollectionCount { get; }
     /// <summary>Returns the memory load the runtime recorded at its last collection.</summary>
     GcMemoryLoad GetMemoryLoad();
 }
@@ -54,6 +56,9 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
         GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No,
             compacting: compacting > GcCompaction.No, trimNativeMemory: true,
             compactLoh: mode != GCCollectionMode.Aggressive && generation == GcLevel.Gen2 && compacting == GcCompaction.Full);
+    /// <remarks>Counted when a collection starts, so a background gen2 is counted before the call that started it returns
+    /// (dotnet/runtime v10.0.0, gc.cpp: gc1 updates the counts before background_mark_phase lets the triggering thread go).</remarks>
+    public int Gen2CollectionCount => System.GC.CollectionCount(2);
     public GcMemoryLoad GetMemoryLoad()
     {
         GCMemoryInfo info = System.GC.GetGCMemoryInfo();

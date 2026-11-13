@@ -13,7 +13,12 @@ using Nethermind.Core.Extensions;
 public class GCKeeper : IDisposable
 {
     private const int DecommitIdleDelayMs = 3_000;
-    private const int MinMsBetweenCollections = 3_000;
+    private const int DefaultMinMsBetweenCollections = 3_000;
+    // Payloads that leave less idle time than this come back to back (catch-up, replay): the timing stays as configured.
+    private const int MinIdleGapForCadenceMs = 40;
+    // The adapted post-block delay leaves the collection three quarters of the idle gap to finish before the next payload.
+    private const int IdleGapPerPostBlockDelay = 4;
+    private const int MinPostBlockDelayMs = 10;
     private long _payloadsSinceDecommit;
     private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
@@ -22,6 +27,12 @@ public class GCKeeper : IDisposable
     private readonly Func<int, CancellationToken, Task<bool>> _delay;
     private NoGCRegion? _region;
     private readonly int _postBlockDelayMs;
+    private readonly bool _adaptPostBlockDelay;
+    private readonly bool _entersRegion;
+    private readonly TimeProvider _time;
+    private readonly long _ticksPerMs;
+    private readonly PayloadCadence _cadence = new();
+    private int _payloadsInProcessing;
     private readonly ILogger _logger;
     // The runtime splits totalSize as soh = total - loh; when lohSize is omitted it budgets the
     // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
@@ -39,10 +50,14 @@ public class GCKeeper : IDisposable
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
-        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null)
+        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null, TimeProvider? time = null)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
+        _adaptPostBlockDelay = gcStrategy.AdaptivePostBlockDelay;
+        _entersRegion = gcStrategy.NoGcRegionOnNewPayload == NoGcRegionMode.Always;
+        _time = time ?? TimeProvider.System;
+        _ticksPerMs = Math.Max(1, _time.TimestampFrequency / 1000);
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
         _delay = delay ?? TaskExtensions.DelaySafe;
@@ -85,7 +100,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    /// <summary>Cancels the delayed collection if it has not yet been claimed for execution.</summary>
+    /// <summary>Cancels the delayed collection if it has not yet been claimed for execution, and the re-commit or decommit still to follow it.</summary>
     public void CancelPendingGC()
     {
         lock (_lock)
@@ -95,6 +110,10 @@ public class GCKeeper : IDisposable
     }
 
     /// <summary>Queues no-GC-region entry without waiting for the runtime; disposing the lease ends its protection.</summary>
+    /// <remarks>
+    /// With <see cref="NoGcRegionMode.Never"/> an eligible payload enters no region but is otherwise handled the same: it
+    /// pauses the <see cref="GCScheduler"/> for its lifetime, counts toward the decommit and schedules the post-block collection.
+    /// </remarks>
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
@@ -108,6 +127,12 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
+            _cadence.OnPayloadStart(NowMs(), idle: _payloadsInProcessing == 0);
+            Metrics.GcKeeperMedianIdleGapMs = _cadence.MedianIdleGapMs;
+            Metrics.GcKeeperMedianPayloadIntervalMs = _cadence.MedianIntervalMs;
+            _payloadsInProcessing++;
+            region.InProcessing = true;
+            if (!_entersRegion) return region;
             if (_region is not null)
             {
                 // A payload that starts while the previous one is still inside its region shares that region rather
@@ -134,6 +159,43 @@ public class GCKeeper : IDisposable
         return region;
     }
 
+    /// <summary>Marks an eligible payload done; once none is left in processing, the idle gap before the next one starts.</summary>
+    private void PayloadLeft()
+    {
+        lock (_lock)
+        {
+            if (--_payloadsInProcessing == 0) _cadence.OnIdle(NowMs());
+        }
+    }
+
+    private long NowMs() => _time.GetTimestamp() / _ticksPerMs;
+
+    /// <summary>The post-block delay: the strategy's, or a share of the idle gap payloads leave when that is shorter.</summary>
+    /// <remarks>
+    /// The strategy's delay suits the slot time, but payloads can come faster than their slots (a 200 ms block time on a
+    /// chain configured for 2 s), and a payload cancels the collection still waiting for it. Back to back, before there
+    /// are enough samples, or when the strategy fixes the delay, its delay stays. Called under <see cref="_lock"/>.
+    /// </remarks>
+    private int EffectivePostBlockDelayMs()
+    {
+        long idleGapMs = _cadence.MedianIdleGapMs;
+        if (!_adaptPostBlockDelay || idleGapMs < MinIdleGapForCadenceMs) return _postBlockDelayMs;
+        return (int)Math.Min(_postBlockDelayMs, Math.Max(MinPostBlockDelayMs, idleGapMs / IdleGapPerPostBlockDelay));
+    }
+
+    /// <summary>The minimum spacing between keeper collections: 3 s, or half the payload interval when that is shorter.</summary>
+    /// <remarks>
+    /// A fixed 3 s let a collection run after every other payload at 2 s blocks and after every fifteenth at 200 ms; half
+    /// the interval lets one run after every payload and still keeps two out of one idle gap. Back to back, or before
+    /// there are enough samples, the 3 s stay. Called under <see cref="_lock"/>.
+    /// </remarks>
+    private long EffectiveMinMsBetweenCollections()
+    {
+        long intervalMs = _cadence.MedianIntervalMs;
+        if (_cadence.MedianIdleGapMs < MinIdleGapForCadenceMs || intervalMs < 0) return DefaultMinMsBetweenCollections;
+        return Math.Min(DefaultMinMsBetweenCollections, intervalMs / 2);
+    }
+
     private void ReleaseRegion(NoGCRegion region)
     {
         lock (_lock)
@@ -152,6 +214,9 @@ public class GCKeeper : IDisposable
         private bool _active;
         private int _leases = 1;
         private bool _ownerReleased;
+
+        /// <summary>Set on an eligible payload's own lease, which the keeper counts as in processing until it is released.</summary>
+        public bool InProcessing;
 
         /// <summary>Takes a lease for a payload that starts while the payload that admitted this region is inside it.</summary>
         /// <remarks>
@@ -196,7 +261,7 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
+                // Waits for a re-commit after a collection to end its region (see RecommitAfterCollection).
                 lock (keeper._runtimeLock)
                 {
                     started = keeper._runtime.TryStart(_defaultSize, _lohSize);
@@ -236,19 +301,29 @@ public class GCKeeper : IDisposable
         {
             bool end;
             bool release;
+            bool left;
+            bool covering;
             lock (_stateLock)
             {
                 if (_released) return;
+                // The payload is done whether or not the region still covers another one.
+                left = owner && !_ownerReleased && InProcessing;
                 if (owner) _ownerReleased = true;
                 if (force) _leases = 0; else _leases--;
                 // Still covering another payload: the region is not this lease's to end.
-                if (_leases > 0) return;
-                _released = true;
-                end = _active;
-                _active = false;
-                release = !_starting;
+                covering = _leases > 0;
+                end = !covering && _active;
+                release = !covering && !_starting;
+                if (!covering)
+                {
+                    _released = true;
+                    _active = false;
+                }
             }
 
+            // Outside the region's lock: the keeper takes its own lock, which is held around TryAddLease.
+            if (left) keeper.PayloadLeft();
+            if (covering) return;
             if (pausedGCScheduler) GCScheduler.MarkGCResumed();
             if (end) EndRegion();
             else if (release) keeper.ReleaseRegion(this);
@@ -297,33 +372,41 @@ public class GCKeeper : IDisposable
     private long? _lastGcTimeMs;
 
     /// <summary>
-    /// Enters and at once ends a no-GC region right after a decommit, so the next payload's entry finds its budget
-    /// committed rather than committing it inside its own suspension.
+    /// Enters and at once ends a no-GC region right after a keeper collection, so the next payload's entry finds its
+    /// budget linked and committed rather than linking and committing it inside its own suspension.
     /// </summary>
     /// <remarks>
-    /// <para>The aggressive collection decommits every free region, so the entry after it commits the whole budget
-    /// while every thread is suspended, on the payload's path. Ending a region leaves the regions it linked committed
-    /// until the next collection (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the
-    /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
-    /// grow until they are allocated in. The decommit still returns everything else.</para>
-    /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
-    /// when the strategy disallows regions, and on shutdown. A payload admitted meanwhile queues its entry, which waits
-    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// <para>A collection releases the gen0 regions the last entry linked, and the aggressive one also decommits every
+    /// free region, so the entry after either links the whole budget again (after a decommit, committing it too) while
+    /// every thread is suspended, on the payload's path; without a collection in between, an entry links only what the
+    /// last payload allocated. Ending a region leaves the regions it linked committed until the next collection
+    /// (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the pages, and decommit only
+    /// takes regions a collection released), so the next entry reuses them and RSS does not grow until they are
+    /// allocated in. The decommit still returns everything else.</para>
+    /// <para>Skipped once the next payload has cancelled the pending collection, while a payload is in processing or a
+    /// region is pending or active, when the strategy disallows regions or payloads enter none
+    /// (<see cref="NoGcRegionMode.Never"/>), and on shutdown. A payload admitted meanwhile queues its entry, which waits
+    /// on <see cref="_runtimeLock"/> until the throwaway region has ended. The pending collection stays attached, so a
+    /// decommit still to come keeps its idle wait cancellable. It does not follow an ordinary collection the runtime took
+    /// to gen2, which may still run in the background: an entry waits for that to end.</para>
     /// </remarks>
-    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    private void RecommitAfterCollection(CancellationTokenSource pendingGcCts)
     {
-        bool allowed = _gcStrategy.CanStartNoGCRegion();
+        bool allowed = _entersRegion && _gcStrategy.CanStartNoGCRegion();
         lock (_lock)
         {
-            if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
-            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _region is not null || _runtime.IsActive) return;
+            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _payloadsInProcessing > 0 || _region is not null || _runtime.IsActive) return;
             // Taken under the keeper's lock, so no entry can be between its admission and its runtime call here.
             _runtimeLock.Enter();
         }
 
         try
         {
-            if (_runtime.TryStart(_defaultSize, _lohSize) && _runtime.IsActive) _runtime.End();
+            if (_runtime.TryStart(_defaultSize, _lohSize))
+            {
+                Interlocked.Increment(ref Metrics.NoGcRegionRecommits);
+                if (_runtime.IsActive) _runtime.End();
+            }
         }
         catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
         {
@@ -395,6 +478,50 @@ public class GCKeeper : IDisposable
         };
     }
 
+    private enum CollectionClaim { Granted, Cancelled, Busy, Throttled }
+
+    /// <summary>Claims a collection after all cancellable waits; never holds the gate during runtime collection.</summary>
+    /// <remarks>
+    /// Busy while a region is active or a payload is still in processing: a payload that starts while another is in
+    /// processing may find the <see cref="GCScheduler"/> already paused and so not hold it, and without a region of its
+    /// own (<see cref="NoGcRegionMode.Never"/>, or a third overlapping payload) nothing else keeps the collection out of it.
+    /// </remarks>
+    /// <param name="keepCancellable">Leaves the pending collection cancellable, for a re-commit or decommit still to come or running.</param>
+    /// <param name="exemptFromSpacing">Skips the minimum spacing, for a decommit that follows its own ordinary collection.</param>
+    private CollectionClaim ClaimCollection(CancellationTokenSource pendingGcCts, bool throttle, bool keepCancellable, bool exemptFromSpacing)
+    {
+        lock (_lock)
+        {
+            if (pendingGcCts.IsCancellationRequested) return CollectionClaim.Cancelled;
+            if (_runtime.IsActive || _payloadsInProcessing > 0) return CollectionClaim.Busy;
+            if (throttle)
+            {
+                long timeStamp = NowMs();
+                long minMsBetweenCollections = EffectiveMinMsBetweenCollections();
+                Metrics.GcKeeperMinMsBetweenCollections = minMsBetweenCollections;
+                if (!exemptFromSpacing && _lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= minMsBetweenCollections)
+                {
+                    return CollectionClaim.Throttled;
+                }
+
+                _lastGcTimeMs = timeStamp;
+            }
+
+            if (!keepCancellable && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+            return CollectionClaim.Granted;
+        }
+    }
+
+    private static void CountPostBlockClaim(CollectionClaim claim)
+    {
+        switch (claim)
+        {
+            case CollectionClaim.Cancelled: Interlocked.Increment(ref Metrics.GcKeeperPostBlockCancelled); break;
+            case CollectionClaim.Busy: Interlocked.Increment(ref Metrics.GcKeeperPostBlockSkipped); break;
+            case CollectionClaim.Throttled: Interlocked.Increment(ref Metrics.GcKeeperPostBlockThrottled); break;
+        }
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -416,16 +543,18 @@ public class GCKeeper : IDisposable
         if (generation > GcLevel.NoGC)
         {
             CancellationTokenSource pendingGcCts;
+            int postBlockDelayMs;
             lock (_lock)
             {
                 if (_disposed) return;
                 _pendingGcCts = pendingGcCts = new();
+                postBlockDelayMs = EffectivePostBlockDelayMs();
+                Metrics.GcKeeperPostBlockDelayMs = postBlockDelayMs;
             }
 
             try
             {
                 // Leave time for the Engine API response before attempting ordinary collection.
-                int postBlockDelayMs = _postBlockDelayMs;
                 if (postBlockDelayMs <= 0)
                 {
                     // Always async
@@ -434,16 +563,27 @@ public class GCKeeper : IDisposable
                 else
                 {
                     // A completed delay must not run collection under ScheduleGC's lock.
-                    if (!await _delay(postBlockDelayMs, pendingGcCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+                    if (!await _delay(postBlockDelayMs, pendingGcCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding))
+                    {
+                        Interlocked.Increment(ref Metrics.GcKeeperPostBlockCancelled);
+                        return;
+                    }
                 }
 
-                if (pendingGcCts.IsCancellationRequested) return;
-                if (!_runtime.IsActive)
+                if (pendingGcCts.IsCancellationRequested)
+                {
+                    Interlocked.Increment(ref Metrics.GcKeeperPostBlockCancelled);
+                    return;
+                }
+                if (_runtime.IsActive)
+                {
+                    Interlocked.Increment(ref Metrics.GcKeeperPostBlockSkipped);
+                }
+                else
                 {
                     long payloadsSinceDecommit = Interlocked.Read(ref _payloadsSinceDecommit);
                     int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
-                    GCCollectionMode mode = GCCollectionMode.Forced;
                     DecommitCheck decommitCheck = default;
                     bool decommit = false;
                     if (collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit)
@@ -451,43 +591,64 @@ public class GCKeeper : IDisposable
                         decommitCheck = CheckDecommit(payloadsSinceDecommit);
                         decommit = decommitCheck.Decision != DecommitDecision.Skip;
                     }
-                    if (decommit)
-                    {
-                        // Keep the debt pending through a longer idle gap; new payloads cancel this wait.
-                        int remainingIdleMs = DecommitIdleDelayMs - Math.Max(0, postBlockDelayMs);
-                        if (remainingIdleMs > 0 && !await _delay(remainingIdleMs, pendingGcCts.Token)) return;
 
-                        // Also decommit memory back to O/S
-                        mode = GCCollectionMode.Aggressive;
-                        generation = GcLevel.Gen2;
-                        compacting = GcCompaction.Full;
-                    }
-
-                    // Claim only after all cancellable waits; never hold the gate during runtime collection.
-                    lock (_lock)
+                    // A due decommit waits for a longer idle gap, which payloads arriving faster than that never leave: the
+                    // ordinary collection runs first, so the wait cannot cost the block its own. Without a wait left, the
+                    // decommit's full collection covers it.
+                    int remainingIdleMs = decommit ? DecommitIdleDelayMs - Math.Max(0, postBlockDelayMs) : 0;
+                    if (!decommit || remainingIdleMs > 0)
                     {
-                        if (pendingGcCts.IsCancellationRequested || _runtime.IsActive) return;
-                        if (throttle)
+                        // A throttled collection does not hold up the decommit, whose idle wait is longer than the spacing.
+                        // Cancellable while payloads enter a region, so the next payload still calls off the re-commit.
+                        CollectionClaim claim = ClaimCollection(pendingGcCts, throttle, keepCancellable: decommit || _entersRegion, exemptFromSpacing: false);
+                        CountPostBlockClaim(claim);
+                        if (claim is CollectionClaim.Cancelled or CollectionClaim.Busy) return;
+                        if (claim == CollectionClaim.Granted)
                         {
-                            long timeStamp = Environment.TickCount64;
-                            if (_lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= MinMsBetweenCollections)
+                            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+                            int gen2Collections = _runtime.Gen2CollectionCount;
+                            // Declined by the scheduler: another collection is running, or forced ones are excluded.
+                            if (_runtime.Collect(generation, GCCollectionMode.Forced, compacting))
                             {
-                                return;
+                                Interlocked.Increment(ref Metrics.GcKeeperPostBlockCollections);
+                                // Not after one the runtime took to gen2, which may still run in the background: a region
+                                // entry waits for it to end, and would hold up the next payload's entry and collection.
+                                if (_runtime.Gen2CollectionCount == gen2Collections) RecommitAfterCollection(pendingGcCts);
                             }
-
-                            _lastGcTimeMs = timeStamp;
+                            else
+                            {
+                                Interlocked.Increment(ref Metrics.GcKeeperPostBlockSkipped);
+                            }
                         }
-
-                        // A decommit stays cancellable through its collection: the next payload still calls off the re-commit.
-                        if (!decommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-                    bool collected = _runtime.Collect(generation, mode, compacting);
-                    if (collected && decommit)
+                    if (!decommit) return;
+
+                    // Keep the debt pending through a longer idle gap; new payloads cancel this wait and the decommit stays due.
+                    if (remainingIdleMs > 0 && !await _delay(remainingIdleMs, pendingGcCts.Token))
                     {
+                        Interlocked.Increment(ref Metrics.GcKeeperDecommitIdleWaitsCancelled);
+                        return;
+                    }
+
+                    // Not spaced from the ordinary collection that ran just before it; a decommit stays cancellable through
+                    // its collection, so the next payload still calls off the re-commit.
+                    CollectionClaim decommitClaim = ClaimCollection(pendingGcCts, throttle, keepCancellable: true, exemptFromSpacing: true);
+                    if (decommitClaim != CollectionClaim.Granted)
+                    {
+                        // Without its own wait the decommit stands in for the ordinary collection, and is counted as one.
+                        if (remainingIdleMs > 0) Interlocked.Increment(ref Metrics.GcKeeperDecommitIdleWaitsCancelled);
+                        else CountPostBlockClaim(decommitClaim);
+                        return;
+                    }
+
+                    // Also decommit memory back to O/S
+                    if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {GcLevel.Gen2}, compacting {GcCompaction.Full}, decommitting");
+                    if (_runtime.Collect(GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full))
+                    {
+                        Interlocked.Increment(ref Metrics.GcKeeperDecommits);
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
-                        RecommitAfterDecommit(pendingGcCts);
+                        RecommitAfterCollection(pendingGcCts);
                         // Only now: a payload can cancel the idle wait above, and the retry may run under another decision.
                         LogDecommitDecision(decommitCheck);
                     }
