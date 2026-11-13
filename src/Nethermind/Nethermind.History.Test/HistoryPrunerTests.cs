@@ -485,6 +485,44 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Blob_compaction_runs_once_the_head_lifts_the_required_history_clamp_to_the_barrier()
+    {
+        const int blocks = 100;
+        SyncConfig syncConfig = new()
+        {
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+            PivotNumber = blocks,
+            SnapSync = true,
+            RequiredHistoryBelowPivot = 70
+        };
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0, CompactBlocksOnPrune = true };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, syncConfig: syncConfig);
+
+        HistoryPruner pruner = CreatePrunerWithSpyBlocksDb(testBlockchain, historyConfig, out IDb blocksDb, syncConfig: syncConfig);
+        blocksDb.CompactReclaimingBlobFiles().Returns(true);
+        pruner.TryPruneHistory(CancellationToken.None);
+        await pruner.BlobCompactionTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(30UL));
+            blocksDb.DidNotReceive().CompactReclaimingBlobFiles();
+        }
+
+        // The clamp follows the head, so once the head is the required history above the barrier the reclaim reaches it.
+        for (int i = 0; i < 20; i++) await testBlockchain.AddBlock();
+        pruner.TryPruneHistory(CancellationToken.None);
+        await pruner.BlobCompactionTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(BeaconGenesisBlockNumber));
+            blocksDb.Received(1).CompactReclaimingBlobFiles();
+        }
+    }
+
+    [Test]
     public async Task Blob_compaction_runs_once_when_enabled_and_a_pass_reclaimed([Values] bool compactBlocksOnPrune)
     {
         const int blocks = 100;
