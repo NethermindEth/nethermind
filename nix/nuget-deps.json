@@ -676,9 +676,9 @@
   },
   {
     "pname": "Nethermind.Crypto.Lean",
-    "version": "0.12.0.21",
-    "hash": "sha256-SA+eMy7oklWAKVozXzVUwHoN1zhKWNo5tLZwTmdv+Yw=",
-    "url": "https://apiint.nugettest.org/v3-flatcontainer/nethermind.crypto.lean/0.12.0.21/nethermind.crypto.lean.0.12.0.21.nupkg"
+    "version": "0.14.0-feature-eip8288-batch-leaves.34",
+    "hash": "sha256-StqVsVV3Sx+ojDrzRGjvZDaZkH2dwKEScIcRxlcgVRU=",
+    "url": "https://apiint.nugettest.org/v3-flatcontainer/nethermind.crypto.lean/0.14.0-feature-eip8288-batch-leaves.34/nethermind.crypto.lean.0.14.0-feature-eip8288-batch-leaves.34.nupkg"
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
