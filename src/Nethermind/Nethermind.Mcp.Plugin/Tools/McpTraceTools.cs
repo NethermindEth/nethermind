@@ -139,6 +139,8 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         int frameLimit = maxFrames ?? Math.Min(DefaultMaxFrames, _maxFrames);
         return executor.ExecuteAsync<IDebugRpcModule>("trace_transaction", nameof(IDebugRpcModule.debug_traceTransaction), async (debug, token) =>
         {
+            // The rental below can yield, after which the trace no longer runs inside the tool call's request.
+            long request = ExternalRequest.Current;
             ulong blockNumber;
             using (ModuleLease<IEthRpcModule> eth = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_getTransactionByHash)))
             {
@@ -175,8 +177,14 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             }
 
             token.ThrowIfCancellationRequested();
-            (JsonObject? payload, IResultWrapper? failure) = McpTxCallTree.Run(debug, txHash, _timeout,
-                root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0);
+            JsonObject? payload;
+            IResultWrapper? failure;
+            using (ExternalRequest.Enter(request))
+            {
+                (payload, failure) = McpTxCallTree.Run(debug, txHash, _timeout,
+                    root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0);
+            }
+
             if (failure is not null)
             {
                 return executor.Failure("trace_transaction", failure);

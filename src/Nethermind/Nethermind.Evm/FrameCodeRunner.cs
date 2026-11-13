@@ -49,13 +49,13 @@ public abstract partial class FrameCodeRunner<TGasPolicy> where TGasPolicy : str
     /// <summary>As <see cref="Declined"/>; the machine then reports the opcodes the loop ran through <see cref="OnInterpreted"/>.</summary>
     public const EvmExceptionType DeclinedReportingOpcodes = (EvmExceptionType)(int.MinValue + 1);
 
-    /// <summary>The version of this contract: 1.</summary>
+    /// <summary>The version of this contract: 2, which adds <see cref="RequestId"/>.</summary>
     /// <remarks>
     /// Runners must check it before they run anything, and a runner built against another version must decline every
     /// frame. It is a property rather than a constant so the check reads the version of the core the runner is loaded
     /// into, not the one it was compiled against.
     /// </remarks>
-    public static int ContractVersion => 1;
+    public static int ContractVersion => 2;
 
     /// <summary>Runs the frame of <paramref name="codeInfo"/> from <paramref name="programCounter"/>.</summary>
     /// <param name="bodies">What each entry of the untraced dispatch table the frame would run on executes.</param>

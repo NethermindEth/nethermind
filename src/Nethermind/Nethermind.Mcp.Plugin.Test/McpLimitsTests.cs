@@ -369,6 +369,26 @@ public class McpLimitsTests
         }
     }
 
+    /// <summary>Each tool call runs its body as an external request of its own, as a JSON-RPC call runs its method.</summary>
+    [Test]
+    public async Task Each_tool_call_runs_as_an_external_request_of_its_own()
+    {
+        await using McpTestNode node = await McpTestNode.Create(start: false);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        long[] requests = new long[2];
+        for (int i = 0; i < requests.Length; i++)
+        {
+            int call = i;
+            McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId), (module, _) =>
+            {
+                requests[call] = ExternalRequest.Current;
+                return Task.FromResult(executor.Success(module.eth_chainId().Data));
+            }, CancellationToken.None));
+        }
+
+        Assert.That(requests, Has.None.EqualTo(ExternalRequest.None).And.Unique);
+    }
+
     [Test]
     public async Task Detached_work_keeps_the_concurrency_slot_until_it_finishes()
     {
