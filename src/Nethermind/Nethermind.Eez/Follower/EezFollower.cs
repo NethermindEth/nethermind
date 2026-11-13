@@ -109,7 +109,9 @@ public sealed class EezFollower(
     internal async Task<FollowerProgress> Poll(CancellationToken token)
     {
         engine.EnsureSoleDriver();
+        _heads.UnsafeHeadHeld = true;
         bool completed = await Attempt(FollowL1, token);
+        _heads.UnsafeHeadHeld = !completed || _followedLatest is null;
         await AdvanceUnsafeHead(token);
         return !completed ? FollowerProgress.Retry
             : _followedLatest is null ? FollowerProgress.Behind : FollowerProgress.CaughtUp;
@@ -306,6 +308,12 @@ public sealed class EezFollower(
     }
 
     /// <summary>Takes the sequencer's blocks as the unsafe head; its failures never hold back what L1 settled.</summary>
+    internal Task AdvanceUnsafeFromPeers(CancellationToken token)
+    {
+        engine.EnsureSoleDriver();
+        return AdvanceUnsafeHead(token);
+    }
+
     private async Task AdvanceUnsafeHead(CancellationToken token)
     {
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token);

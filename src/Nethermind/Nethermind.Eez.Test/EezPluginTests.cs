@@ -89,6 +89,48 @@ public class EezPluginTests
     public void EnsureFollowerConfig_FollowerDisabled_IgnoresItsFields() =>
         Assert.That(() => EezPlugin.EnsureFollowerConfig(new EezConfig()), Throws.Nothing, "a node that only executes EEZ blocks needs no L1");
 
+    [Test]
+    public void EnsurePeerSyncConfig_ValidFollower_Starts() =>
+        Assert.That(() => EezPlugin.EnsurePeerSyncConfig(PeerSyncConfig(), EezChainRules.Rollup0), Throws.Nothing);
+
+    [Test]
+    public void EnsurePeerSyncConfig_Disabled_DoesNotChangeOtherProfiles() =>
+        Assert.That(() => EezPlugin.EnsurePeerSyncConfig(new EezConfig(), RollupX), Throws.Nothing);
+
+    [Test]
+    public void EnsurePeerSyncConfig_RollupX_RefusesRollup0PeerRules() =>
+        Assert.That(() => EezPlugin.EnsurePeerSyncConfig(PeerSyncConfig(), RollupX),
+            Throws.TypeOf<InvalidConfigurationException>());
+
+    [Test]
+    public void EnsurePeerSyncConfig_InvalidCombination_RefusesToStart(
+        [Values("follower", "sequencer", "snap", "rpc", "zeroPort", "largePort", "host", "signer", "nullPeers", "peerId")] string field)
+    {
+        EezConfig config = PeerSyncConfig();
+        switch (field)
+        {
+            case "follower": config.FollowerEnabled = false; break;
+            case "sequencer": config.SequencerEnabled = true; break;
+            case "snap": config.SnapBootstrapEnabled = true; break;
+            case "rpc": config.SequencerRpcUrl = "http://127.0.0.1:8545"; break;
+            case "zeroPort": config.SequencerP2PPort = 0; break;
+            case "largePort": config.SequencerP2PPort = 65536; break;
+            case "host": config.SequencerP2PHost = "invalid"; break;
+            case "signer": config.SequencerP2PSigner = Address.Zero.ToString(); break;
+            case "nullPeers": config.SequencerP2PStaticPeers = null!; break;
+            case "peerId": config.SequencerP2PStaticPeers = ["/ip4/127.0.0.1/tcp/30304"]; break;
+        }
+        Assert.That(() => EezPlugin.EnsurePeerSyncConfig(config, EezChainRules.Rollup0),
+            Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    private static EezConfig PeerSyncConfig() => new()
+    {
+        FollowerEnabled = true,
+        PeerSyncEnabled = true,
+        SequencerP2PSigner = TestItem.AddressA.ToString()
+    };
+
     [TestCaseSource(nameof(IncompleteSequencerConfigs))]
     public void EnsureSequencerConfig_FieldMissingOrInvalid_RefusesToStart(EezConfig config, KeyStoreConfig keyStoreConfig, string field) =>
         Assert.That(() => EezPlugin.EnsureSequencerConfig(config, keyStoreConfig), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(field),

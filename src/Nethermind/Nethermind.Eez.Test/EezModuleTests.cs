@@ -4,6 +4,9 @@
 using System;
 using System.IO;
 using System.Security;
+using System.Threading.Tasks;
+using System.Threading;
+using System.Net;
 using Autofac;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
@@ -11,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -19,6 +23,7 @@ using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Posting;
+using Nethermind.Eez.Network;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Merge.Plugin;
@@ -28,6 +33,12 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.KeyStore;
 using Nethermind.Specs.Forks;
+using Nethermind.Network;
+using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
+using NetworkForkId = Nethermind.Network.ForkId;
+using EnrForkId = Nethermind.Network.Enr.ForkId;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -78,6 +89,92 @@ public class EezModuleTests
         Assert.That(container.Resolve<EezFollower>(), Is.Not.Null, "the follower and everything it drives resolve");
         using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
         Assert.That(session, Is.Not.Null, "a derived block session opens its own processing scope with the strict executor");
+    }
+
+    [Test]
+    public async Task Resolve_PeerSync_IsOptIn([Values] bool enabled)
+    {
+        EezConfig config = OverlayConfig(enabled);
+        await using IContainer container = OverlayContainer(config);
+        IUnsafeHeadSource source = container.Resolve<IUnsafeHeadSource>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.IsRegistered<EezPeerNetwork>(), Is.EqualTo(enabled));
+            Assert.That(source.GetType(), Is.EqualTo(enabled ? typeof(SequencerPeerHeadSource) : typeof(NullUnsafeHeadSource)));
+            Assert.That(container.Resolve<EezDriver>(), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Peer_driver_advances_between_L1_polls_only_when_enabled([Values] bool enabled)
+    {
+        IEezL2Engine engine = Substitute.For<IEezL2Engine>();
+        await using IContainer container = OverlayContainer(OverlayConfig(enabled), engine);
+        DateTimeOffset next = container.Resolve<ITimestamper>().UtcNowOffset.AddSeconds(1);
+
+        (DateTimeOffset poll, DateTimeOffset wake) = await container.Resolve<EezDriver>().Step(next, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(poll, Is.EqualTo(next));
+            Assert.That(wake, Is.EqualTo(next));
+        }
+        engine.Received(enabled ? 1 : 0).EnsureSoleDriver();
+    }
+
+    [Test]
+    public async Task Peer_ENR_has_a_signed_overlay_port_and_keeps_the_eth_fork()
+    {
+        EezConfig config = OverlayConfig(true);
+        await using IContainer container = OverlayContainer(config);
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(genesis);
+        tree.TryUpdateMainChain(genesis.Header, true, true);
+        NodeRecord record = await container.Resolve<INodeRecordProvider>().GetCurrentAsync();
+        byte[] port = record.GetObj<byte[]>("eez")!;
+        RlpReader reader = new(port);
+        int decoded = reader.DecodeInt();
+        reader.CheckEnd();
+        NodeRecordSigner verifier = new(container.Resolve<IEthereumEcdsa>());
+        EezPeerNetwork network = container.Resolve<EezPeerNetwork>();
+        NetworkForkId fork = container.Resolve<IForkInfo>().GetForkId(genesis.Number, genesis.Timestamp);
+        EnrForkId advertised = record.GetValue<EnrForkId>(EnrContentKey.Eth)!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.EqualTo(config.SequencerP2PPort));
+            Assert.That(verifier.Verify(record), Is.True);
+            Assert.That(advertised.ForkHash, Is.EqualTo(fork.HashBytes));
+            Assert.That(advertised.Next, Is.EqualTo(fork.Next));
+            Assert.That(network.TryAddress(record, out _), Is.True);
+        }
+        record.SetEntry(new EthEntry(fork.HashBytes, fork.Next + 1));
+        Assert.That(network.TryAddress(record, out _), Is.False);
+    }
+
+    private static EezConfig OverlayConfig(bool enabled) => new()
+    {
+        FollowerEnabled = true,
+        PeerSyncEnabled = enabled,
+        L1RpcUrl = "http://127.0.0.1:8545",
+        RegistryAddress = TestItem.AddressA.ToString(),
+        SequencerP2PSigner = TestItem.AddressB.ToString(),
+        RollupId = 1
+    };
+
+    private static IContainer OverlayContainer(EezConfig config, IEezL2Engine? engine = null)
+    {
+        IIPResolver resolver = Substitute.For<IIPResolver>();
+        resolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEezConfig>(config)
+            .AddSingleton(resolver)
+            .AddSingleton(Substitute.For<IEngineRpcModule>())
+            .AddModule(new EezModule(config, EezChainRules.Rollup0));
+        if (engine is not null) builder.AddSingleton(engine);
+        return builder.Build();
     }
 
     [Test]

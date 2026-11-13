@@ -72,6 +72,14 @@ public sealed class UnsafeHeadFollower(
     private readonly ILogger _logger = logManager.GetClassLogger<UnsafeHeadFollower>();
     private Hash256? _refused;
     private int _downloadLimit = MaxBlocksPerAdvance;
+    private readonly Func<Hash256, CancellationToken, Task<Block>>? _fetchBlock;
+
+    internal UnsafeHeadFollower(IEezSequencerApi source, IBlockTree tree, IEezL2Engine l2Engine,
+        IDerivedHeaderRules rules, ILogManager logs, IUnsafeBlockPreparation? blockPreparation,
+        Func<Hash256, CancellationToken, Task<Block>> fetchBlock)
+        : this(source, tree, l2Engine, rules, logs, blockPreparation) => _fetchBlock = fetchBlock;
+
+    internal void ResetRefusal() => _refused = null;
 
     /// <exception cref="L1SourceIncompleteException">The sequencer cannot be read; the next poll retries.</exception>
     /// <exception cref="EezEngineUnavailableException">The node has not taken the blocks yet; the next poll retries.</exception>
@@ -251,6 +259,7 @@ public sealed class UnsafeHeadFollower(
 
     private async Task<Block> Fetch(Hash256 hash, CancellationToken token)
     {
+        if (_fetchBlock is not null) return await _fetchBlock(hash, token);
         byte[] rlp = await sequencer.GetRawBlock(hash, token) ?? throw new L1SourceIncompleteException(0, $"The sequencer does not serve block {hash}.");
         return Rlp.Decode<Block>(rlp) ?? throw new L1SourceIncompleteException(0, $"The sequencer served no block for {hash}.");
     }

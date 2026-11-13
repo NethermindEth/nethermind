@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Network;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Logging;
 
@@ -26,7 +27,8 @@ public sealed class EezDriver(
     IEezConfig config,
     ITimestamper clock,
     IProcessExitSource processExit,
-    ILogManager logManager) : IStoppableService, IAsyncDisposable
+    ILogManager logManager,
+    EezPeerNetwork? peers = null) : IStoppableService, IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EezDriver>();
     private readonly CancellationTokenSource _cancellation = new();
@@ -59,7 +61,8 @@ public sealed class EezDriver(
                 TimeSpan wait = wake - clock.UtcNowOffset;
                 if (wait > TimeSpan.Zero)
                 {
-                    await Task.Delay(wait, token);
+                    if (peers is null) await Task.Delay(wait, token);
+                    else await peers.WaitForHead(wait, token);
                 }
             }
         }
@@ -88,6 +91,11 @@ public sealed class EezDriver(
             FollowerProgress progress = await follower.Poll(token);
             _caughtUp = progress == FollowerProgress.CaughtUp;
             nextPoll = progress == FollowerProgress.Behind ? now : now + TimeSpan.FromMilliseconds(config.L1PollingIntervalMs);
+        }
+
+        else if (peers is not null)
+        {
+            await follower.AdvanceUnsafeFromPeers(token);
         }
 
         if (sequencer is null || !_caughtUp)

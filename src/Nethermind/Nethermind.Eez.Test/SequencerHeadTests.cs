@@ -24,7 +24,7 @@ using Snappier;
 
 namespace Nethermind.Eez.Test;
 
-public class SequencerHeadTests
+public partial class SequencerHeadTests
 {
     private static readonly Address Registry = new("0x5FbDB2315678afecb367f032d93F642f64180aa3");
     private static readonly Address Signer = new("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");

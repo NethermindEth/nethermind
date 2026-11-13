@@ -22,6 +22,7 @@ using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Network;
 using Nethermind.Eez.Follower.RollupX;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
@@ -31,6 +32,7 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Client;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using Nethermind.Synchronization.FastSync;
@@ -104,7 +106,8 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
             .AddSingleton<EezFollower>()
             .AddSingleton<EezDriver>(static ctx => new EezDriver(ctx.Resolve<EezFollower>(),
                 ctx.Resolve<IEezConfig>().SequencerEnabled ? ctx.Resolve<IEezSequencer>() : null, ctx.Resolve<IEezConfig>(), ctx.Resolve<ITimestamper>(),
-                ctx.Resolve<IProcessExitSource>(), ctx.Resolve<ILogManager>()));
+                ctx.Resolve<IProcessExitSource>(), ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IEezConfig>().PeerSyncEnabled ? ctx.Resolve<EezPeerNetwork>() : null));
 
         if (config.SnapBootstrapEnabled)
         {
@@ -135,6 +138,17 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
         if (config.SequencerEnabled)
         {
             LoadSequencer(builder);
+        }
+
+        if (config.PeerSyncEnabled)
+        {
+            builder
+                .AddSingleton<EezPeerNetwork>()
+                .AddSingleton<SequencerHeadTracker, EezPeerNetwork>(static network => network.Tracker)
+                .AddSingleton<SequencerPeerBlocks>()
+                .AddSingleton<IUnsafeHeadSource, SequencerPeerHeadSource>()
+                .AddDecorator<INodeSource, EezPeerDiscovery>()
+                .AddDecorator<INodeRecordProvider, EezPeerRecordProvider>();
         }
 
         if (!string.IsNullOrEmpty(config.SequencerRpcUrl))

@@ -13,6 +13,11 @@ public class EezConfig : IEezConfig
     public bool SkipConsensusLayerCalls { get; set; }
     public bool FollowerEnabled { get; set; }
     public bool SnapBootstrapEnabled { get; set; }
+    public bool PeerSyncEnabled { get; set; }
+    public string SequencerP2PHost { get; set; } = "0.0.0.0";
+    public int SequencerP2PPort { get; set; } = 30304;
+    public string? SequencerP2PSigner { get; set; }
+    public string[] SequencerP2PStaticPeers { get; set; } = [];
     public string? SequencerRpcUrl { get; set; }
     public string? L1RpcUrl { get; set; }
     public ulong L1ChainId { get; set; }

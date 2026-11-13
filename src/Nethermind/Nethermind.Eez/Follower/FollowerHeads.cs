@@ -16,6 +16,8 @@ namespace Nethermind.Eez.Follower;
 /// </summary>
 public sealed class FollowerHeads(IEezL2Engine engine, IBlockTree blockTree, BlockHeader finalized)
 {
+    internal bool UnsafeHeadHeld { get; set; } = true;
+
     public BlockHeader Head { get; private set; } = finalized;
 
     public BlockHeader Safe { get; private set; } = finalized;

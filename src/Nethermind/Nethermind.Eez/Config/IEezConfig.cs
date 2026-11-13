@@ -21,6 +21,21 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "Whether to bootstrap a native EEZ follower from a finalized L1-authorized static SNAP pivot. First run with synchronization enabled and processing and RPC disabled. After the verified download exits, restart with synchronization disabled and processing enabled on the same database and pivot.", DefaultValue = "false")]
     bool SnapBootstrapEnabled { get; set; }
 
+    [ConfigItem(Description = "Whether a Rollup0 follower receives signed unsafe heads over the EEZ peer overlay instead of sequencer RPC.", DefaultValue = "false")]
+    bool PeerSyncEnabled { get; set; }
+
+    [ConfigItem(Description = "The IP address for the EEZ overlay listener.", DefaultValue = "0.0.0.0")]
+    string SequencerP2PHost { get; set; }
+
+    [ConfigItem(Description = "The fixed TCP port for the EEZ overlay listener and its eez ENR entry.", DefaultValue = "30304")]
+    int SequencerP2PPort { get; set; }
+
+    [ConfigItem(Description = "The authorized sequencer signing address for EEZ unsafe heads.", DefaultValue = "null")]
+    string? SequencerP2PSigner { get; set; }
+
+    [ConfigItem(Description = "Static EEZ overlay multiaddresses with peer IDs. Discovery peers must have an identical fork ID.", DefaultValue = "[]")]
+    string[] SequencerP2PStaticPeers { get; set; }
+
     [ConfigItem(Description = "The JSON-RPC URL of the rollup's sequencer. When set, the follower also takes the sequencer's latest blocks as the " +
         "unsafe head before L1 settles them; the safe and finalized heads still follow L1 alone.", DefaultValue = "null")]
     string? SequencerRpcUrl { get; set; }

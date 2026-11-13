@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Eez.Network;
 
 namespace Nethermind.Eez;
 
@@ -15,15 +16,15 @@ namespace Nethermind.Eez;
 /// other services, before anything is disposed.
 /// </remarks>
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
-public class StartEezDriver(EezDriver driver, ILogManager logManager) : IStep
+public class StartEezDriver(EezDriver driver, ILogManager logManager, EezPeerNetwork? peers = null) : IStep
 {
-    public Task Execute(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
+        if (peers is not null) await peers.Start(cancellationToken);
         _ = driver.Start();
 
         ILogger logger = logManager.GetClassLogger<StartEezDriver>();
         if (logger.IsInfo) logger.Info("EEZ driver started");
 
-        return Task.CompletedTask;
     }
 }

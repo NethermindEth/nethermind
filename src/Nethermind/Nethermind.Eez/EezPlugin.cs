@@ -20,6 +20,9 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
+using Multiformats.Address;
+using Nethermind.Libp2p.Core;
 using System;
 
 namespace Nethermind.Eez;
@@ -39,6 +42,7 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         EnsureEezGenesis(chainSpec, Rules);
         EnsureRolesSupported(eezConfig, Rules);
         EnsureFollowerConfig(eezConfig);
+        EnsurePeerSyncConfig(eezConfig, Rules);
         if (eezConfig.SnapBootstrapEnabled)
             EnsureSnapBootstrapConfig(eezConfig, Rules, api.Config<ISyncConfig>(), initConfig, api.Config<IJsonRpcConfig>());
         EnsureSequencerConfig(eezConfig, api.Config<IKeyStoreConfig>());
@@ -142,6 +146,38 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         {
             throw new InvalidConfigurationException(
                 $"{nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)} requires a valid {nameof(IEezConfig)}.{missing}.", ExitCodes.ConflictingConfigurations);
+        }
+    }
+
+    internal static void EnsurePeerSyncConfig(IEezConfig config, EezChainRules rules)
+    {
+        if (!config.PeerSyncEnabled) return;
+        string? violation = config switch
+        {
+            { FollowerEnabled: false } => "requires an L1 follower",
+            _ when rules.IsRollupX || rules.SystemTransactionType != EezConstants.SystemTxType => "requires the Rollup0 0x76 peer profile",
+            { SequencerEnabled: true } => "cannot run as a sequencer",
+            { SnapBootstrapEnabled: true } => "cannot run during static SNAP bootstrap",
+            { SequencerRpcUrl: { Length: > 0 } } => "excludes sequencer RPC",
+            { SequencerP2PPort: < 1 or > ushort.MaxValue } => "requires a fixed nonzero TCP port",
+            _ when !IPAddress.TryParse(config.SequencerP2PHost, out _) => "requires a listener IP address",
+            _ when !Address.TryParse(config.SequencerP2PSigner, out Address? signer) || signer == Address.Zero => "requires an authorized sequencer signing address",
+            { SequencerP2PStaticPeers: null } => "requires a non-null static peer list",
+            _ => null
+        };
+        if (violation is not null)
+            throw new InvalidConfigurationException($"Eez.PeerSyncEnabled {violation}.", ExitCodes.ConflictingConfigurations);
+        foreach (string peer in config.SequencerP2PStaticPeers!)
+        {
+            try
+            {
+                if (Multiaddress.Decode(peer).GetPeerId() is null)
+                    throw new ArgumentException("Static overlay addresses require a peer ID.");
+            }
+            catch (Exception exception) when (exception is ArgumentException or FormatException or InvalidOperationException)
+            {
+                throw new InvalidConfigurationException($"Invalid EEZ static overlay peer: {exception.Message}", ExitCodes.ConflictingConfigurations);
+            }
         }
     }
 
