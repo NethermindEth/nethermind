@@ -1845,8 +1845,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         yield return new TestCaseData(UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF")).SetName("Exp_matches_reference_for_base_wide");
     }
 
-    [TestCaseSource(nameof(ExpBaseCases))]
-    public void Exp_result_matches_reference(UInt256 baseValue)
+    private static List<UInt256> ExpExponentsFor(in UInt256 baseValue)
     {
         int bitIndex = 255 - baseValue.CountLeadingZeros();
         List<UInt256> exponents = [UInt256.Zero, UInt256.One, new UInt256(2), new UInt256(3), new UInt256(255), new UInt256(256), UInt256.One << 64, UInt256.One << 255, UInt256.MaxValue];
@@ -1857,6 +1856,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             exponents.Add(new UInt256(boundary));
             exponents.Add(new UInt256(boundary + 1));
         }
+
+        return exponents;
+    }
+
+    [TestCaseSource(nameof(ExpBaseCases))]
+    public void Exp_result_matches_reference(UInt256 baseValue)
+    {
+        List<UInt256> exponents = ExpExponentsFor(baseValue);
 
         Prepare code = Prepare.EvmCode;
         foreach (UInt256 exponent in exponents)
@@ -1880,6 +1887,29 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                 Assert.That(new UInt256(tracer.Pushes[i * 3 + 2], isBigEndian: true), Is.EqualTo(expected), $"exponent {exponents[i]}");
             }
         }
+    }
+
+    [TestCaseSource(nameof(ExpBaseCases))]
+    public void Exp_result_matches_reference_without_tracing(UInt256 baseValue)
+    {
+        List<UInt256> exponents = ExpExponentsFor(baseValue);
+
+        Prepare code = Prepare.EvmCode.PushData(UInt256.Zero);
+        UInt256 expectedFold = UInt256.Zero;
+        foreach (UInt256 exponent in exponents)
+        {
+            code = code
+                .PushData(exponent)
+                .PushData(baseValue)
+                .Op(Instruction.EXP)
+                .Op(Instruction.XOR);
+            UInt256.Exp(in baseValue, exponent, out UInt256 expected);
+            UInt256.Xor(expectedFold, expected, out expectedFold);
+        }
+
+        Execute(NullTxTracer.Instance, code.PushData(UInt256.Zero).Op(Instruction.SSTORE).Done);
+
+        AssertStorage(UInt256.Zero, expectedFold);
     }
 
     [Test]

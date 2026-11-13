@@ -458,21 +458,26 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+    private const int MaxBitIndex = 255;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsPowerOfTwo(in UInt256 value) =>
-        BitOperations.PopCount(value.u0) + BitOperations.PopCount(value.u1) + BitOperations.PopCount(value.u2) + BitOperations.PopCount(value.u3) == 1;
+    private static bool IsPowerOfTwo(in UInt256 value)
+    {
+        ulong u0 = value.u0, u1 = value.u1, u2 = value.u2, u3 = value.u3;
+        return BitOperations.IsPow2(u0 | u1 | u2 | u3) && ((u0 & u1) | (u2 & u3) | ((u0 | u1) & (u2 | u3))) == 0;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void PowerOfTwoExp(in UInt256 powerOfTwo, in UInt256 exponent, out UInt256 result)
     {
-        if ((exponent.u1 | exponent.u2 | exponent.u3) != 0 || exponent.u0 > byte.MaxValue)
+        if ((exponent.u1 | exponent.u2 | exponent.u3) != 0 || exponent.u0 > MaxBitIndex)
         {
             result = default;
             return;
         }
 
-        int shift = (byte.MaxValue - powerOfTwo.CountLeadingZeros()) * (int)exponent.u0;
-        if (shift > byte.MaxValue)
+        int shift = (MaxBitIndex - powerOfTwo.CountLeadingZeros()) * (int)exponent.u0;
+        if (shift > MaxBitIndex)
         {
             result = default;
             return;
