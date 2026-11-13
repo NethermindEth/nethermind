@@ -196,24 +196,6 @@ public class FrameDependencyTests
         }
     }
 
-    // ethereum/EIPs#12664 Test Case: two sponsors paying for one leaf are each charged in full; the block holds the payment once.
-    [Test]
-    public void Two_sponsors_of_one_leaf_both_pay_for_one_dependency()
-    {
-        FrameDependency payment = VectorDependency(Eip8288Constants.LeanStarkLeafPaymentScheme, 0x01, 7);
-        Transaction Sponsor() => new()
-        {
-            Type = TxType.FrameTx,
-            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, payment.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([payment]))]
-        };
-        Block block = Build.A.Block.WithTransactions(Sponsor(), Sponsor()).TestObject;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.Transactions.Sum(static tx => (long)tx.Frames![0].ExecutionGasLimit), Is.EqualTo(2 * 576_200));
-            Assert.That(Eip8288Dependencies.ForBlock(block, static _ => default), Is.EqualTo(new[] { payment }));
-        }
-    }
-
     // The scheme is part of a dependency: the same data and key under the other scheme is another digest.
     [Test]
     public void Same_data_and_key_under_the_other_scheme_is_another_digest() =>
@@ -253,42 +235,34 @@ public class FrameDependencyTests
         }
     }
 
-    // EIP-8288 Test Case 12: one native declaration costs 19,600 and one generic 576,200, the intrinsic proof share included;
-    // duplicates are charged separately.
-    [TestCase(Eip8288Constants.LeanSphincsScheme, 15_400UL, 19_600UL)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, 572_000UL, 576_200UL)]
-    public void VerificationGas_is_per_scheme(byte scheme, ulong expected, ulong withShare)
+    [TestCase(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsVerificationGas)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkVerificationGas)]
+    public void VerificationGas_is_per_scheme(byte scheme, ulong expected)
     {
         FrameDependency dep = new(scheme, default, default);
-        Transaction twice = new()
-        {
-            Type = TxType.FrameTx,
-            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 2 * dep.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dep, dep]))]
-        };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dep.VerificationGas, Is.EqualTo(expected));
-            Assert.That(dep.VerificationGas + Eip8288Constants.RecursiveProofShareGas, Is.EqualTo(withShare));
-            Assert.That(twice.Frames[0].ExecutionGasLimit + Eip8288Dependencies.RecursiveStarkGas(twice), Is.EqualTo(2 * withShare));
-        }
+        Assert.That(dep.VerificationGas, Is.EqualTo(expected));
     }
 
-    // ethereum/EIPs#12664: a batch claim's frame charge is LEANSTARK_CLAIM_GAS and a leaf payment's EIP-8288's leanSTARK
-    // verification plus proof share, neither paying the proof share itself.
-    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, 2_100UL)]
-    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, 576_200UL)]
-    public void Batch_pricing_schemes_replace_the_proof_share(byte scheme, ulong expected)
+    // ethereum/EIPs#12664 per-scheme charges (frame charge, proof share): EIP-8288's before activation, the batch-pricing table
+    // from it. The new schemes exist only from activation.
+    [TestCase(Eip8288Constants.LeanSphincsScheme, 3_000UL, 30_000UL, 15_400UL, 4_200UL)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, 30_000UL, 30_000UL, 572_000UL, 4_200UL)]
+    [TestCase(Eip8288Constants.BatchedLeanStarkScheme, null, null, 4_200UL, 0UL)]
+    [TestCase(Eip8288Constants.LeanStarkLeafPaymentScheme, null, null, 576_200UL, 0UL)]
+    public void Declarations_are_charged_per_scheme_and_activation(byte scheme, ulong? chargeBefore, ulong? shareBefore, ulong chargeFrom, ulong shareFrom)
     {
         FrameDependency dep = new(scheme, ValueKeccak.Compute("data"), default);
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
-            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dep]))]
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize([dep]))]
         };
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(dep.VerificationGas, Is.EqualTo(expected));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true), Is.Zero);
+            if (chargeBefore is { } charge) Assert.That(dep.FrameCharge(batchPricing: false), Is.EqualTo(charge));
+            if (shareBefore is { } share) Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: false), Is.EqualTo(share));
+            Assert.That(dep.FrameCharge(batchPricing: true), Is.EqualTo(chargeFrom));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled: true), Is.EqualTo(shareFrom));
         }
     }
 
@@ -369,7 +343,8 @@ public class FrameDependencyTests
         };
 
         Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx, batchedEnabled),
-            Is.EqualTo((ulong)(length / Eip8288Constants.DependencyTripleLength) * Eip8288Constants.RecursiveProofShareGas));
+            Is.EqualTo((ulong)(length / Eip8288Constants.DependencyTripleLength)
+                * (batchedEnabled ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas)));
     }
 
     [Test]
@@ -390,7 +365,7 @@ public class FrameDependencyTests
         {
             Assert.That(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
             Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.RecursiveProofShareGas));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
         }
     }
 

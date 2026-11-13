@@ -86,6 +86,9 @@ public static class Eip8288Constants
     /// every leanSPHINCS-only list at the spec digest.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
+    public const ulong LeanSphincsVerificationGas = 3_000;
+    public const ulong LeanStarkVerificationGas = 30_000;
+
     /// <summary>Batch-pricing EIP (ethereum/EIPs#12664) <c>BATCHED_LEANSTARK_SCHEME</c> (provisional): a claim of a sponsored
     /// leaf, <c>data_hash</c> the claim and <c>verification_key_hash</c> the leaf's key.</summary>
     public const byte BatchedLeanStarkScheme = 0x12;
@@ -95,20 +98,22 @@ public static class Eip8288Constants
     /// sources.</summary>
     public const byte LeanStarkLeafPaymentScheme = 0x13;
 
-    /// <summary>EIP-8288 <c>LEANSPHINCS_VERIFICATION_GAS</c> (provisional): a leanSPHINCS declaration's frame charge.</summary>
-    public const ulong LeanSphincsVerificationGas = 15_400;
+    /// <summary>Batch-pricing EIP <c>LEANSPHINCS_VERIFICATION_GAS</c> (provisional): from its activation, a leanSPHINCS
+    /// declaration's frame charge in place of <see cref="LeanSphincsVerificationGas"/>.</summary>
+    public const ulong BatchPricedLeanSphincsVerificationGas = 15_400;
 
-    /// <summary>EIP-8288 <c>LEANSTARK_VERIFICATION_GAS</c> (provisional): a leanSTARK declaration's frame charge, its recursive
-    /// child slot included.</summary>
-    public const ulong LeanStarkVerificationGas = 572_000;
+    /// <summary>Batch-pricing EIP <c>LEANSTARK_VERIFICATION_GAS</c> (provisional): from its activation, a leanSTARK declaration's
+    /// frame charge, its recursive child slot included, in place of <see cref="LeanStarkVerificationGas"/>.</summary>
+    public const ulong BatchPricedLeanStarkVerificationGas = 572_000;
 
-    /// <summary>EIP-8288 <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): each declared dependency's intrinsic share of the block's
-    /// recursive proof (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
+    /// <summary>Batch-pricing EIP <c>RECURSIVE_PROOF_SHARE_GAS</c> (provisional): from its activation, each ordinary declared
+    /// dependency's intrinsic share of the block's recursive proof, in place of EIP-8288's <see cref="LeanStarkVerificationGas"/>
+    /// (<see cref="Eip8288Dependencies.RecursiveStarkGas"/>).</summary>
     public const ulong RecursiveProofShareGas = 4_200;
 
     /// <summary>Batch-pricing EIP <c>LEANSTARK_CLAIM_GAS</c> (provisional): a batch claim's frame charge, in place of EIP-8288's
     /// proof share.</summary>
-    public const ulong LeanStarkClaimGas = 2_100;
+    public const ulong LeanStarkClaimGas = 4_200;
 
     public const int MaxSigsPerTx = 16;
     public const int MaxStarksPerTx = 1;

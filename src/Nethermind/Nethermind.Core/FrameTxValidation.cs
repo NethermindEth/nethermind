@@ -972,7 +972,7 @@ public static class FrameTxValidation
         ReadOnlySpan<byte> data = frame.Data.Span;
         ulong expectedGas = 0;
         for (int i = 31; i < data.Length; i += Eip8288Constants.DependencyTripleLength)
-            expectedGas += new FrameDependency(data[i], default, default).VerificationGas;
+            expectedGas += new FrameDependency(data[i], default, default).FrameCharge(batchedEnabled);
 
         if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)
         {

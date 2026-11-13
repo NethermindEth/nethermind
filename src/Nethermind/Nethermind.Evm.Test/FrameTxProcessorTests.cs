@@ -150,7 +150,7 @@ public partial class FrameTxProcessorTests
             Assert.That(dependency.ExecutionGasLimit, Is.GreaterThan(Eip8141Constants.MaxVerifyGas));
             Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(200_000));
             Assert.That(FrameTxValidation.TotalGasLimit(frames), Is.EqualTo(200_000 + dependency.ExecutionGasLimit));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.RecursiveProofShareGas));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
             Assert.That(receipt.Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(receipt.ExecutionGasUsed, Is.EqualTo(dependency.ExecutionGasLimit));
             Assert.That(receipt.StateGasUsed, Is.Zero);
@@ -548,7 +548,7 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(0, frames);
         OverridableReleaseSpec withoutRecursiveCharge = new(_spec) { IsEip8288Enabled = false };
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, withoutRecursiveCharge, out _, out ulong baseFloor, out _), Is.True);
-        ulong expectedGas = baseFloor + (ulong)declarations * Eip8288Constants.RecursiveProofShareGas;
+        ulong expectedGas = baseFloor + (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
         UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
         TestAllTracerWithOutput tracer = new();
 

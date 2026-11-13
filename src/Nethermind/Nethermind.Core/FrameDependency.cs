@@ -20,16 +20,25 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
     public ValueHash256 DataHash { get; } = dataHash;
     public ValueHash256 VerificationKey { get; } = verificationKey;
 
-    /// <summary>Per-scheme verification gas (spec <c>LEANSPHINCS/LEANSTARK_VERIFICATION_GAS</c>, and the batch-pricing EIP's
-    /// <c>LEANSTARK_CLAIM_GAS</c> and leaf payment charge).</summary>
-    public ulong VerificationGas => Scheme switch
+    /// <summary>Per-scheme verification gas (spec <c>LEANSPHINCS/LEANSTARK_VERIFICATION_GAS</c>).</summary>
+    public ulong VerificationGas => Scheme == Eip8288Constants.LeanStarkScheme
+        ? Eip8288Constants.LeanStarkVerificationGas
+        : Eip8288Constants.LeanSphincsVerificationGas;
+
+    /// <summary>Per-scheme frame charge from the batch-pricing EIP's activation (ethereum/EIPs#12664), which replaces
+    /// <see cref="VerificationGas"/>.</summary>
+    public ulong BatchPricedVerificationGas => Scheme switch
     {
-        Eip8288Constants.LeanStarkScheme => Eip8288Constants.LeanStarkVerificationGas,
+        Eip8288Constants.LeanStarkScheme => Eip8288Constants.BatchPricedLeanStarkVerificationGas,
         Eip8288Constants.BatchedLeanStarkScheme => Eip8288Constants.LeanStarkClaimGas,
-        // The batch-pricing EIP charges a leaf's verification and its proof share once, to its payment.
-        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.RecursiveProofShareGas,
-        _ => Eip8288Constants.LeanSphincsVerificationGas
+        // A leaf's verification and its proof share are charged once, to its payment.
+        Eip8288Constants.LeanStarkLeafPaymentScheme => Eip8288Constants.BatchPricedLeanStarkVerificationGas + Eip8288Constants.RecursiveProofShareGas,
+        _ => Eip8288Constants.BatchPricedLeanSphincsVerificationGas
     };
+
+    /// <summary>The frame charge <see cref="VerificationGas"/>, or <see cref="BatchPricedVerificationGas"/> once
+    /// <paramref name="batchPricing"/> is active.</summary>
+    public ulong FrameCharge(bool batchPricing) => batchPricing ? BatchPricedVerificationGas : VerificationGas;
 
     /// <summary>Writes the canonical 96-byte encoding <c>bytes32_be(scheme) || data_hash || verification_key</c>.</summary>
     public void WriteTo(Span<byte> destination)
@@ -141,8 +150,10 @@ public static class Eip8288Dependencies
     /// The EIP-8288 <c>recursive_stark_gas</c> of this transaction: part of its intrinsic gas, charged per
     /// declared dependency, duplicates included, on top of the per-scheme verification gas the frames already paid.
     /// </summary>
-    /// <remarks>Under the batch-pricing EIP (ethereum/EIPs#12664), when <paramref name="batchedEnabled"/>, neither batch claims nor
-    /// leaf payments pay it: their frame charges replace it.</remarks>
+    /// <remarks>EIP-8288 charges <see cref="Eip8288Constants.LeanStarkVerificationGas"/> per declaration. From the batch-pricing EIP's
+    /// activation (ethereum/EIPs#12664), when <paramref name="batchedEnabled"/>, it charges
+    /// <see cref="Eip8288Constants.RecursiveProofShareGas"/> instead, and neither batch claims nor leaf payments pay it: their frame
+    /// charges replace it.</remarks>
     public static ulong RecursiveStarkGas(Transaction tx, bool batchedEnabled = false)
     {
         TxFrame[]? frames = tx.Frames;
@@ -160,7 +171,7 @@ public static class Eip8288Dependencies
             }
         }
 
-        return count * Eip8288Constants.RecursiveProofShareGas;
+        return count * (batchedEnabled ? Eip8288Constants.RecursiveProofShareGas : Eip8288Constants.LeanStarkVerificationGas);
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>

@@ -210,9 +210,9 @@ public class InclusionListProofsTests
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEipBatchedDependencyPricingEnabled = true };
         Transaction ordinary = new();
-        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"));
-        Transaction claim = ValidDependencyFrame(ValueKeccak.Compute("claim"), Eip8288Constants.BatchedLeanStarkScheme);
-        Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme);
+        Transaction covered = ValidDependencyFrame(ValueKeccak.Compute("covered"), batchPricing: true);
+        Transaction claim = ValidDependencyFrame(ValueKeccak.Compute("claim"), Eip8288Constants.BatchedLeanStarkScheme, batchPricing: true);
+        Transaction payment = ValidDependencyFrame(ValueKeccak.Compute("payment"), Eip8288Constants.LeanStarkLeafPaymentScheme, batchPricing: true);
         Transaction[] entries = [claim, covered, payment, ordinary];
         Assert.That(entries.All(tx => InclusionListProofValidator.IsStaticallyValid(tx, spec)), Is.True);
         Transaction[] proven = proofNamesNewSchemes ? entries : [covered];
@@ -381,10 +381,10 @@ public class InclusionListProofsTests
         return transaction;
     }
 
-    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme)
+    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme, bool batchPricing = false)
     {
         FrameDependency dep = new(scheme, message, default);
-        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas,
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.FrameCharge(batchPricing),
             UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
         return new()
         {

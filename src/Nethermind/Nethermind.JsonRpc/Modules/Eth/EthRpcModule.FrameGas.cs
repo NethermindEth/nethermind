@@ -64,7 +64,7 @@ public partial class EthRpcModule
             return Result<FrameForRpc[]>.Fail(overrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
         FrameForRpc[]? requested = request.Frames;
-        FrameForRpc[]? input = WithDependencyFrameGas(requested);
+        FrameForRpc[]? input = WithDependencyFrameGas(requested, spec.IsEipBatchedDependencyPricingEnabled);
         Result<Transaction> converted;
         request.Frames = input;
         try
@@ -105,7 +105,7 @@ public partial class EthRpcModule
     /// <summary>Copies <paramref name="frames"/> with each dependency frame's omitted limits set to the only values
     /// EIP-8288 admits: the per-scheme verification gas of its triples, and zero state gas.</summary>
     /// <remarks>Explicit limits are kept, so validation still rejects wrong ones.</remarks>
-    private static FrameForRpc[]? WithDependencyFrameGas(FrameForRpc[]? frames)
+    private static FrameForRpc[]? WithDependencyFrameGas(FrameForRpc[]? frames, bool batchPricing)
     {
         if (frames is null) return null;
         FrameForRpc[] resolved = (FrameForRpc[])frames.Clone();
@@ -116,7 +116,7 @@ public partial class EthRpcModule
 
             ulong verificationGas = 0;
             foreach (FrameDependency dependency in Eip8288Dependencies.Parse(frame.Data.Span))
-                verificationGas += dependency.VerificationGas;
+                verificationGas += dependency.FrameCharge(batchPricing);
             resolved[i] = new FrameForRpc
             {
                 Mode = frame.Mode,
