@@ -93,7 +93,8 @@ public class GuestDispatchDifferentialTests
     private static readonly Instruction[] ContextOpcodes =
     [
         Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO,
-        Instruction.GASLIMIT, Instruction.CHAINID, Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SLOTNUM
+        Instruction.GASLIMIT, Instruction.CHAINID, Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SLOTNUM,
+        Instruction.ADDRESS, Instruction.ORIGIN, Instruction.CALLER, Instruction.CALLVALUE, Instruction.GASPRICE
     ];
 
     [Test]
@@ -143,7 +144,12 @@ public class GuestDispatchDifferentialTests
             Instruction.CHAINID => BlockchainIds.Mainnet,
             Instruction.BASEFEE => word + 2,
             Instruction.BLOBBASEFEE => word + 3,
-            _ => header.SlotNumber.GetValueOrDefault()
+            Instruction.SLOTNUM => header.SlotNumber.GetValueOrDefault(),
+            Instruction.ADDRESS => new UInt256(ContextAccount.Bytes, isBigEndian: true),
+            Instruction.ORIGIN => new UInt256(ContextOrigin.Bytes, isBigEndian: true),
+            Instruction.CALLER => new UInt256(ContextCaller.Bytes, isBigEndian: true),
+            Instruction.CALLVALUE => ContextCallValue,
+            _ => ContextGasPrice
         };
         using (Assert.EnterMultipleScope())
         {
@@ -152,6 +158,93 @@ public class GuestDispatchDifferentialTests
             Assert.That(VirtualMachine<EthereumGasPolicy>.PushesContextWordThroughGuestHandlerForTests(spec, opcode), Is.EqualTo(installed));
         }
     }
+
+    /// <remarks>
+    /// Every word the fork has of those the block, the transaction and the frame hold, each with distinct bytes in every limb
+    /// it fills, pushed in one program at stack heads that leave room for all, some, one or none of them, at every gas up to the program's need.
+    /// </remarks>
+    [Test]
+    public void Context_word_sequences_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Values(0, 1018, 1023, 1024)] int head)
+    {
+        UInt256 word = new(0x0102030405060708, 0x1112131415161718, 0x2122232425262728, 0x3132333435363738);
+        BlockHeader header = new(Hash256.Zero, Hash256.Zero, new Address("0x0102030405060708090a0b0c0d0e0f1011121314"), word,
+            0x123456789, 0x23456789a, 0x3456789ab, [])
+        {
+            IsPostMerge = true,
+            MixHash = new Hash256((word + 1).ToBigEndian()),
+            BaseFeePerGas = word + 2,
+            ExcessBlobGas = 0,
+            SlotNumber = 0x456789abc
+        };
+        BlockExecutionContext context = new(header, spec, word + 3);
+        Instruction[] words =
+        [
+            Instruction.ADDRESS, Instruction.ORIGIN, Instruction.CALLER, Instruction.CALLVALUE, Instruction.GASPRICE,
+            Instruction.COINBASE, Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
+            .. spec.ChainIdOpcodeEnabled ? [Instruction.CHAINID] : (Instruction[])[],
+            .. spec.BaseFeeEnabled ? [Instruction.BASEFEE] : (Instruction[])[],
+            .. spec.BlobBaseFeeEnabled ? [Instruction.BLOBBASEFEE] : (Instruction[])[],
+            .. spec.IsEip7843Enabled ? [Instruction.SLOTNUM] : (Instruction[])[],
+        ];
+        byte[] code = [.. words.Select(static opcode => (byte)opcode), (byte)Instruction.STOP];
+        const ulong ample = 1_000;
+        ulong needed = ample - Run(ample, [], head, new CodeInfo(code), Table.Traced, spec, context: context).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed; gas++)
+        {
+            Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced, spec, context: context);
+            Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced, spec, context: context);
+            if (!Matches(untraced, traced) && mismatches.Count < 5)
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// A frame with its own address, caller and value calls a child that returns its ADDRESS, CALLER, CALLVALUE, ORIGIN and
+    /// GASPRICE, then stores its own ADDRESS, CALLER and CALLVALUE. The child runs nested in the caller's dispatch chain, so a word
+    /// read from the wrong frame shows in the child's words, or in the caller's words after the child returns.
+    /// </remarks>
+    [Test]
+    public void Frame_words_follow_nested_frames([Values(Instruction.CALL, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction call)
+    {
+        Address child = ContextAddress(0xb0);
+        const byte childOutputSize = 5 * EvmStack.WordSize;
+        byte[] childCode =
+        [
+            .. StoreWords([Instruction.ADDRESS, Instruction.CALLER, Instruction.CALLVALUE, Instruction.ORIGIN, Instruction.GASPRICE], 0),
+            (byte)Instruction.PUSH1, childOutputSize, (byte)Instruction.PUSH0, (byte)Instruction.RETURN
+        ];
+        byte[] parentCode =
+        [
+            (byte)Instruction.PUSH1, childOutputSize, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            .. call is Instruction.CALL ? [(byte)Instruction.PUSH0] : (byte[])[],
+            (byte)Instruction.PUSH20, .. child.Bytes, (byte)Instruction.GAS, (byte)call, (byte)Instruction.POP,
+            .. StoreWords([Instruction.ADDRESS, Instruction.CALLER, Instruction.CALLVALUE], childOutputSize),
+            (byte)Instruction.PUSH2, 1, 0, (byte)Instruction.PUSH0, (byte)Instruction.RETURN
+        ];
+
+        GuestTransactionVirtualMachine vm = new(childCode, ContextOrigin, ContextGasPrice);
+        byte[] output = vm.Call(parentCode, 1_000_000, ContextAccount, ContextCaller, ContextCallValue);
+
+        (Address account, Address caller, UInt256 value) = call is Instruction.DELEGATECALL
+            ? (ContextAccount, ContextCaller, ContextCallValue)
+            : (child, ContextAccount, UInt256.Zero);
+        UInt256[] expected =
+        [
+            AddressWord(account), AddressWord(caller), value, AddressWord(ContextOrigin), ContextGasPrice,
+            AddressWord(ContextAccount), AddressWord(ContextCaller), ContextCallValue
+        ];
+        Assert.That(Convert.ToHexString(output), Is.EqualTo(string.Concat(expected.Select(static word => Convert.ToHexString(word.ToBigEndian())))));
+
+        static UInt256 AddressWord(Address address) => new(address.Bytes, isBigEndian: true);
+    }
+
+    /// <summary>Code that stores <paramref name="words"/> in consecutive memory words from <paramref name="offset"/>.</summary>
+    private static IEnumerable<byte> StoreWords(Instruction[] words, byte offset) =>
+        words.SelectMany((opcode, i) => (byte[])[(byte)opcode, (byte)Instruction.PUSH1, (byte)(offset + i * EvmStack.WordSize), (byte)Instruction.MSTORE]);
 
     /// <param name="WorldStateCalls">The world-state calls the run made, in order, with their arguments.</param>
     private readonly record struct Outcome(
@@ -1046,7 +1139,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(119);
+            int pick = random.Next(124);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -1131,7 +1224,7 @@ public class GuestDispatchDifferentialTests
                         code.Add((byte)pair[random.Next(4) == 0 ? 0 : 1]);
                         break;
                     }
-                case < 118: code.Add((byte)ContextOpcodes[pick - 109]); break;
+                case < 123: code.Add((byte)ContextOpcodes[pick - 109]); break;
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -1233,7 +1326,11 @@ public class GuestDispatchDifferentialTests
         UInt256? balance = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
-        if (context is { } blockContext) vm.SetBlockExecutionContext(blockContext);
+        if (context is { } blockContext)
+        {
+            vm.SetBlockExecutionContext(blockContext);
+            vm.SetTxExecutionContext(new TxExecutionContext(ContextOrigin, Substitute.For<ICodeInfoRepository>(), null, ContextGasPrice));
+        }
         IWorldState stateSubstitute = vm.WorldState;
         BalanceWorldState? balanceState = balance is { } value ? vm.UseBalance(value) : null;
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
@@ -1244,7 +1341,9 @@ public class GuestDispatchDifferentialTests
             // A precompile the calls reach runs inline, through the frame handlers.
             vm.PrepareFrameHandlersForTests();
         }
-        using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, balance is null ? Address.Zero : BalanceOwner, Address.Zero, null, 0, UInt256.Zero, inputData);
+        using ExecutionEnvironment env = context is not null
+            ? ExecutionEnvironment.Rent(codeInfo, ContextAccount, ContextCaller, null, 0, ContextCallValue, inputData)
+            : ExecutionEnvironment.Rent(codeInfo, balance is null ? Address.Zero : BalanceOwner, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
         vm.Enter(frame);
@@ -1322,6 +1421,22 @@ public class GuestDispatchDifferentialTests
     private static UInt256 StorageValueAt(UInt256 key) => key >= FirstEmptyKey ? UInt256.Zero : key * 7 + 3;
 
     private const int FirstEmptyKey = 0x80;
+
+    /// <summary>A word with a distinct byte at each of its 32 positions, from <paramref name="first"/> up.</summary>
+    private static UInt256 ContextWord(byte first)
+    {
+        byte[] bytes = new byte[32];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(first + i);
+        return new UInt256(bytes, isBigEndian: true);
+    }
+
+    private static Address ContextAddress(byte first) => new(ContextWord(first).ToBigEndian()[12..]);
+
+    private static readonly Address ContextAccount = ContextAddress(0x10);
+    private static readonly Address ContextCaller = ContextAddress(0x30);
+    private static readonly Address ContextOrigin = ContextAddress(0x90);
+    private static readonly UInt256 ContextCallValue = ContextWord(0x50);
+    private static readonly UInt256 ContextGasPrice = ContextWord(0x70);
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
