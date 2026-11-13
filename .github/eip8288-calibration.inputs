@@ -1,0 +1,5 @@
+# Inputs for eip8288-gas-calibration.yml. Edit and push to re-run.
+ARCHES=arm64,amd64
+LEAN_BINDINGS_REF=feature/gas-calibration-suite
+SCENARIOS=box-committed,box-flat
+TIMEOUT_MINUTES=160
