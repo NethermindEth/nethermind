@@ -78,23 +78,32 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3,
-                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = CalculateMessageId
-            })
+            .AddSingleton(GossipSettings(CalculateMessageId))
             .BuildServiceProvider();
+    }
+
+    internal static PubsubSettings GossipSettings(Func<Message, MessageId> messageId)
+    {
+        int frameSize = Snappy.GetMaxCompressedLength(MaxGossipSize) + 65536;
+        return new PubsubSettings
+        {
+            ReconnectionAttempts = int.MaxValue,
+            Degree = 3,
+            LowestDegree = 2,
+            HighestDegree = 6,
+            LazyDegree = 3,
+            MaxRpcBytes = frameSize,
+            MaxOutboundRpcBytesPerPeer = frameSize + 5L,
+            MaxIwantResponseBytes = frameSize,
+            DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+            GetMessageId = messageId
+        };
     }
 
     private void OnMessage(byte[] msg, CancellationToken token)
@@ -327,7 +336,7 @@ public class OptimismCLP2P : IDisposable
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
-        _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        _blocksV2Topic.OnMessage += (_, msg) => OnMessage(msg, token);
         try
         {
             await _localPeer.StartListenAsync([address], token);
