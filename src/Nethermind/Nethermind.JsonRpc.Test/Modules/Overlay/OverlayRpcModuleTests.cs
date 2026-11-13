@@ -56,10 +56,12 @@ public class OverlayRpcModuleTests
         .Done;
 
     [Test]
-    public async Task CallConstructor_returns_runtime_code_of_new_creation_code()
+    public async Task CallConstructor_returns_runtime_code_of_new_creation_code([Values] bool sendersRecovered)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Deployment deployment = await Deploy(chain);
+        // A block read back from the database carries no recovered senders.
+        if (!sendersRecovered) DebugRpcModuleTests.ClearSenders(chain, chain.BlockTree.FindBlock(deployment.First, BlockTreeLookupOptions.None)!);
         byte[] runtime = Emitter(TopicA, TopicB);
 
         using JsonDocument response = await Request(chain, "overlay_callConstructor", deployment.Contract, Prepare.EvmCode.ForInitOf(runtime).Done);

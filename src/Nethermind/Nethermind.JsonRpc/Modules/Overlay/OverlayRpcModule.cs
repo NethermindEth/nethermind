@@ -81,6 +81,9 @@ public class OverlayRpcModule(
             {
                 Transaction deployment = new();
                 block.Transactions[creation.TxIndex].CopyTo(deployment, copyHash: true);
+                // The block's transaction may carry no recovered sender, and with the new data its signature no longer
+                // recovers it, so the deployment takes the creator the trace found.
+                deployment.SenderAddress = creation.Creator;
                 deployment.Data = code;
                 deployment.GasLimit = gasLimit;
                 deployment.GasPrice = 0;
