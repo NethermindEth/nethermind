@@ -27,8 +27,8 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
   dotnet publish -c $BUILD_CONFIG -r $rid -o /publish --no-self-contained \
-  -p:PublishReadyToRun=false \
-  -p:SourceRevisionId=$COMMIT_HASH
+    -p:PublishReadyToRun=false \
+    -p:SourceRevisionId=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner

@@ -22,13 +22,13 @@ COPY nuget.config .
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet restore tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj -a $arch -p:SaveDiskSpace=true && \
   dotnet publish tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj \
-  -c $BUILD_CONFIG \
-  -a $arch \
-  -o /publish \
-  --no-restore \
-  --no-self-contained \
-  -p:SaveDiskSpace=true \
-  -p:SourceRevisionId=$COMMIT_HASH
+    -c $BUILD_CONFIG \
+    -a $arch \
+    -o /publish \
+    --no-restore \
+    --no-self-contained \
+    -p:SaveDiskSpace=true \
+    -p:SourceRevisionId=$COMMIT_HASH
 
 FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute@sha256:bc0d6653979efba491ab3d6f589d691f96c309c3c3ef81325efa6978e7b7f242
 
