@@ -51,10 +51,12 @@ namespace Nethermind.JsonRpc.Modules
         /// unknown, pending or reorganised-out transaction.
         /// </summary>
         /// <remarks>
-        /// A stored body is checked for the transaction because a compact index entry names a height: for a transaction
-        /// reorganised out of it, the entry resolves to the block now canonical there. At or above the floor the receipts
-        /// are read again rather than the caller's miss trusted, because the head moves before the index entry of a new
-        /// block is published: a transaction mined between the caller's lookup and this one has its receipts by then.
+        /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
+        /// history pruning, so a block below it may still be stored. A stored body is checked for the transaction
+        /// because a compact index entry names a height: for a transaction reorganised out of it, the entry resolves to
+        /// the block now canonical there. At or above the floor the receipts are read again rather than the caller's
+        /// miss trusted, because the head moves before the index entry of a new block is published: a transaction mined
+        /// between the caller's lookup and this one has its receipts by then.
         /// </remarks>
         internal static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
         {
@@ -72,10 +74,10 @@ namespace Nethermind.JsonRpc.Modules
         /// caller resolved from the transaction index and has shown to hold the transaction, with the receipts it read.
         /// </summary>
         /// <remarks>
-        /// Nothing is read again, so it decides on that block even if the index entry has moved since, and cannot start a
-        /// second regeneration. The head race needs no second read here: the caller found the index entry itself, and a
-        /// newly processed block's index entries are published only after its receipts are stored or held for the
-        /// deferred write.
+        /// No index entry, header, body or receipts are read again, so it decides on that block even if the index entry
+        /// has moved since, and cannot start a second regeneration. The head race needs no second read here: the caller
+        /// found the index entry itself, and a newly processed block's index entries are published only after its
+        /// receipts are stored or held for the deferred write.
         /// </remarks>
         internal static bool IsTransactionPruned(this IBlockFinder blockFinder, Block block, TxReceipt[] receipts) =>
             blockFinder.IsMainChain(block.Header)
