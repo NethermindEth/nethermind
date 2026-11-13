@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -13,10 +12,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using System;
-using System.Buffers;
 using System.Collections;
-using System.Collections.Generic;
-using System.Text;
 using System.Text.Json;
 
 namespace Nethermind.JsonRpc.Test.Data;
@@ -41,146 +37,13 @@ public class TransactionForRpcDeserializationTests
         "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
     ];
 
-    private static IEnumerable InvalidBlobHashFields()
-    {
-        string valid = "\"0x01" + new string('0', 62) + "\"";
-        foreach ((string invalid, string error) in InvalidBlobHashValues())
-        {
-            foreach (string fields in new[]
-                     {
-                         $"\"blobVersionedHashes\":[{invalid}]",
-                         $"\"blobVersionedHashes\":[{invalid}],\"blobVersionedHashes\":[{valid}]",
-                         $"\"blobVersionedHashes\":[{invalid}],\"blobVersionedHashes\":null",
-                         $"\"blobVersionedHashes\":[{valid},{invalid}]"
-                     })
-            {
-                yield return new TestCaseData(fields, false, error);
-                yield return new TestCaseData(fields, true, error);
-            }
-        }
-    }
-
-    private static IEnumerable<(string Value, string Error)> InvalidBlobHashValues()
-    {
-        foreach (string value in new[] { "\"0x\"", "\"0x0100\"", "\"0x" + new string('0', 66) + "\"",
-                     "\"0x" + new string('0', 63) + "\"" })
-            yield return (value, RpcTransactionErrors.InvalidBlobVersionedHashSize);
-        foreach (string value in new[] { "null", "1", "\"0x\\u0030" + new string('0', 63) + "\"" })
-            yield return (value, "Expected unescaped blob versioned hash hex string");
-        yield return ("\"" + new string('0', 64) + "\"", Bytes.ErrMissingPrefix);
-        yield return ("\"0x" + new string('z', 64) + "\"", "Invalid blob versioned hash hex");
-    }
-
-    [TestCaseSource(nameof(InvalidBlobHashFields))]
-    public void Blob_hash_binding_validates_every_occurrence(string fields, bool frame, string expectedError)
-    {
-        string frameFields = frame ? "\"frames\":[]," : "";
-        string json = $$"""{ {{frameFields}}"maxFeePerBlobGas":"0x1",{{fields}}}""";
-        using (Assert.EnterMultipleScope())
-        {
-            AssertBlobHashBindingError<TransactionForRpc>(json, expectedError);
-            AssertBlobHashBindingError<SignableTransactionForRpc>(json, expectedError);
-            if (frame) AssertBlobHashBindingError<FrameTransactionForRpc>(json, expectedError);
-            else AssertBlobHashBindingError<BlobTransactionForRpc>(json, expectedError);
-        }
-    }
-
-    private void AssertBlobHashBindingError<T>(string json, string expectedError) =>
-        Assert.That(Assert.Throws<SafePublicMessageFormatException>(() => _serializer.Deserialize<T>(json))!.Message, Is.EqualTo(expectedError));
-
-    private static IEnumerable<TestCaseData> InvalidSegmentedBlobHashes()
-    {
-        foreach ((string value, string error) in InvalidBlobHashValues())
-        {
-            foreach (bool frame in new[] { false, true })
-            {
-                foreach (int split in new[] { 0, 1, 2, 33 })
-                    yield return new TestCaseData(value, error, frame, split);
-            }
-        }
-    }
-
-    [TestCaseSource(nameof(InvalidSegmentedBlobHashes))]
-    public void Blob_hash_binding_rejects_raw_grammar_across_segments(string value, string expectedError, bool frame, int split)
-    {
-        ReadOnlySequence<byte> sequence = BlobHashSequence(value, frame, split);
-        Assert.That(Assert.Throws<SafePublicMessageFormatException>(() => DeserializeBlobHashSequence(sequence, frame))!.Message,
-            Is.EqualTo(expectedError));
-    }
-
     [Test]
-    public void Blob_hash_binding_preserves_segmented_values_and_reader_position(
-        [Values("0x", "0X")] string prefix, [Values] bool frame, [Values(0, 1, 2, 33)] int split)
-    {
-        string value = "\"" + prefix + "AB" + new string('0', 62) + "\"";
-        TransactionForRpc rpc = DeserializeBlobHashSequence(BlobHashSequence(value, frame, split), frame);
-        byte[][]? hashes = frame ? ((FrameTransactionForRpc)rpc).BlobVersionedHashes : ((BlobTransactionForRpc)rpc).BlobVersionedHashes;
-        Assert.That(hashes, Is.EqualTo(new[] { Bytes.FromHexString("AB" + new string('0', 62)) }));
-    }
-
-    private static ReadOnlySequence<byte> BlobHashSequence(string value, bool frame, int split)
-    {
-        string frameFields = frame ? "\"frames\":[]," : "";
-        string beforeValue = "[{" + frameFields + "\"blobVersionedHashes\":[";
-        byte[] json = Encoding.UTF8.GetBytes(beforeValue + value + "]},17]");
-        if (split == 0) return new(json);
-
-        int boundary = beforeValue.Length + Math.Min(split + (value.StartsWith('"') ? 1 : 0), value.Length - 1);
-        BufferSegment first = new(json.AsMemory(0, boundary));
-        BufferSegment last = first.Append(json.AsMemory(boundary));
-        return new(first, 0, last, last.Memory.Length);
-    }
-
-    private static TransactionForRpc DeserializeBlobHashSequence(ReadOnlySequence<byte> sequence, bool frame)
-    {
-        Utf8JsonReader reader = new(sequence);
-        bool readArray = reader.Read();
-        bool readTransaction = reader.Read();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(readArray, Is.True);
-            Assert.That(readTransaction, Is.True);
-        }
-        TransactionForRpc rpc = frame
-            ? TypeInfoJsonSerializer.Deserialize<FrameTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions)!
-            : TypeInfoJsonSerializer.Deserialize<BlobTransactionForRpc>(ref reader, EthereumJsonSerializer.JsonOptions)!;
-        JsonTokenType transactionEnd = reader.TokenType;
-        bool readSentinel = reader.Read();
-        int sentinel = reader.GetInt32();
-        bool readEnd = reader.Read();
-        JsonTokenType arrayEnd = reader.TokenType;
-        bool readTail = reader.Read();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(transactionEnd, Is.EqualTo(JsonTokenType.EndObject));
-            Assert.That(readSentinel, Is.True);
-            Assert.That(sentinel, Is.EqualTo(17));
-            Assert.That(readEnd, Is.True);
-            Assert.That(arrayEnd, Is.EqualTo(JsonTokenType.EndArray));
-            Assert.That(readTail, Is.False);
-        }
-        return rpc;
-    }
-
-    private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
-    {
-        public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
-
-        public BufferSegment Append(ReadOnlyMemory<byte> memory)
-        {
-            BufferSegment next = new(memory) { RunningIndex = RunningIndex + Memory.Length };
-            Next = next;
-            return next;
-        }
-    }
-
-    [Test]
-    public void Blob_hash_binding_preserves_null_empty_and_fixed_length_values(
-        [Values("missing", "null", "empty", "valid", "version", "upper-prefix", "upper-hex", "cleared", "replaced")] string kind,
+    public void Blob_hash_binding_uses_shared_byte_array_decoding(
+        [Values("missing", "null", "empty", "valid", "version", "short", "upper-hex", "cleared", "replaced")] string kind,
         [Values] bool frame)
     {
         string hash = "0x" + (kind == "version" ? "02" : "01") + new string('0', 62);
-        if (kind == "upper-prefix") hash = "0X" + hash[2..];
+        if (kind == "short") hash = "0x01";
         if (kind == "upper-hex") hash = "0xAB" + hash[4..];
         string hashes = kind == "null" ? "null" : kind == "empty" ? "[]" : $"[\"{hash}\"]";
         string duplicate = kind == "cleared" ? ",\"blobVersionedHashes\":null"
@@ -194,7 +57,7 @@ public class TransactionForRpcDeserializationTests
 
         if (kind is "missing" or "null" or "cleared") Assert.That(decodedHashes, Is.Null);
         else if (kind is "empty" or "replaced") Assert.That(decodedHashes, Is.Empty);
-        else Assert.That(decodedHashes, Has.Length.EqualTo(1).And.All.Length.EqualTo(Eip4844Constants.BytesPerBlobVersionedHash));
+        else Assert.That(decodedHashes, Is.EqualTo(new[] { Bytes.FromHexString(hash) }));
     }
 
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 1, false)]

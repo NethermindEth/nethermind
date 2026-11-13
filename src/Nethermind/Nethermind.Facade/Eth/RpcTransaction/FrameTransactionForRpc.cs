@@ -47,7 +47,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     /// <summary><c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    [JsonConverter(typeof(BlobVersionedHashesConverter))]
     public byte[][]? BlobVersionedHashes { get; set; }
 
     [JsonConstructor]

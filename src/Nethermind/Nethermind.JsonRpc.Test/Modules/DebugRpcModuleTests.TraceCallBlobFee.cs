@@ -12,6 +12,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
@@ -103,7 +104,7 @@ public partial class DebugRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
     }
 
-    [TestCase("0x01", false, "invalid argument 0: blob versioned hash must be 32 bytes", ErrorCodes.InvalidParams)]
+    [TestCase("0x01", false, RpcTransactionErrors.InvalidBlobVersionedHashSize, ErrorCodes.InvalidInput)]
     [TestCase("0x02", false, "blob versioned hash version must be 0x01", ErrorCodes.InvalidInput)]
     [TestCase("0x01", true, "maxFeePerGas (1) < maxPriorityFeePerGas (2)", ErrorCodes.InvalidInput)]
     public async Task Debug_traceCall_zero_blob_cap_preserves_other_validation(string hashPrefix, bool conflictingFees, string expectedError, int expectedCode)

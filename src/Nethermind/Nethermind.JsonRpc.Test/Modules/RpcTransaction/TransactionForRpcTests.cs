@@ -146,7 +146,7 @@ public class TransactionForRpcTests
     }
 
     [Test]
-    public async Task Malformed_blob_hashes_fail_binding_before_aliases_fees_and_sidecars(
+    public async Task Malformed_blob_hashes_use_semantic_validation_after_submission_defaults(
         [Values(0, 2, 33)] int hashLength, [Values] bool invalidFee, [Values] bool suppliedBlobs)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -167,12 +167,16 @@ public class TransactionForRpcTests
                 "trace_call" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call.RootElement, new[] { "trace" }, "latest"),
                 _ => await chain.TestEthRpc(method, call.RootElement)
             };
+            string expectedError = method is "eth_sendTransaction" or "eth_signTransaction" or "eth_fillTransaction"
+                && invalidFee && !suppliedBlobs ? "gasPrice must be non-zero after london fork"
+                : method == "eth_fillTransaction" ? RpcTransactionErrors.DataAndInputDiffer
+                : RpcTransactionErrors.InvalidBlobVersionedHashSize;
             JToken json = JToken.Parse(response);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), method + ": " + response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), method + ": " + response);
                 Assert.That((string?)json["error"]?["message"],
-                    Is.EqualTo("invalid argument 0: " + RpcTransactionErrors.InvalidBlobVersionedHashSize), method + ": " + response);
+                    Is.EqualTo(expectedError), method + ": " + response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }

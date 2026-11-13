@@ -1816,19 +1816,7 @@ public partial class EthRpcModuleTests
         };
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        if (expectedError == RpcTransactionErrors.InvalidBlobVersionedHashSize)
-        {
-            JToken json = JToken.Parse(serialized);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), serialized);
-                Assert.That(json["result"], Is.Null, serialized);
-            }
-        }
-        else
-        {
-            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
-        }
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"{expectedError}\"}},\"id\":67}}"));
     }
 
     [Test]
