@@ -93,6 +93,28 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // A typed request that keeps its signature and gives no chain id is taken as this chain's.
+    [TestCase(TxType.AccessList)]
+    [TestCase(TxType.EIP1559)]
+    public async Task Signed_typed_request_without_chain_id_runs_as_its_signer(TxType type)
+    {
+        using TestRpcBlockchain test = await SignedSendChain(NullWallet.Instance);
+        Transaction signed = SignedTransfer(test, type);
+        LegacyTransactionForRpc request = SignedRequest(signed, null);
+        request.ChainId = null;
+
+        string response = await test.TestEthRpc("eth_sendTransaction", request);
+        bool pooled = test.TxPool.TryGetPendingTransaction(signed.Hash!, out Transaction? inPool);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{signed.Hash}}","id":67}"""));
+            Assert.That(pooled, Is.True);
+            Assert.That(inPool?.SenderAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(inPool?.ChainId, Is.EqualTo(test.SpecProvider.ChainId));
+        }
+    }
+
     public enum FromField { Omitted, Signer, AddressRecoveredWithoutTheSignatureChainId }
 
     /// <remarks>
@@ -200,6 +222,28 @@ public partial class EthRpcModuleTests
             Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{sent?.Hash}}","id":67}"""));
             Assert.That(sent?.SenderAddress, Is.EqualTo(TestItem.AddressB));
             Assert.That(sent is null ? null : new EthereumEcdsa(test.SpecProvider.ChainId).RecoverAddress(sent), Is.EqualTo(TestItem.AddressB),
+                "the wallet signed it for B");
+        }
+    }
+
+    // The wallet signs a request without a nonce for this chain, whatever chain id the request gives.
+    [Test]
+    public async Task Signed_request_without_nonce_is_signed_by_the_wallet_for_this_chain()
+    {
+        using TestRpcBlockchain test = await SignedSendChain(Wallet(holdsC: false));
+        ulong chainId = test.SpecProvider.ChainId;
+        LegacyTransactionForRpc request = SignedRequest(SignedTransfer(test, TxType.EIP1559, signatureChainId: chainId + 1), TestItem.AddressB);
+        request.Nonce = null;
+
+        string response = await test.TestEthRpc("eth_sendTransaction", request);
+        Transaction? sent = test.TxPool.GetPendingTransactions().SingleOrDefault();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.ChainId, Is.EqualTo(chainId + 1), "precondition: the request gives another chain id");
+            Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{sent?.Hash}}","id":67}"""));
+            Assert.That(sent?.ChainId, Is.EqualTo(chainId));
+            Assert.That(sent is null ? null : new EthereumEcdsa(chainId).RecoverAddress(sent), Is.EqualTo(TestItem.AddressB),
                 "the wallet signed it for B");
         }
     }
