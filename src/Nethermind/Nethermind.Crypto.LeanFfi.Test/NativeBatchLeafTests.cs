@@ -148,7 +148,7 @@ public class NativeBatchLeafTests
     private static Transaction DependentTransaction(int nonce, FrameDependency dependency)
     {
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
+            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.FrameCharge(batchPricing: true),
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         Transaction transaction = new()
         {
