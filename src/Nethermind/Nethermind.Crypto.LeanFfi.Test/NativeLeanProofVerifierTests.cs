@@ -46,7 +46,7 @@ public class NativeLeanProofVerifierTests
         NativeLeanProofVerifier.Instance.EnsureAvailable();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(11u));
+            Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(13u));
             Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
         }
     }
@@ -105,7 +105,7 @@ public class NativeLeanProofVerifierTests
     [Test]
     public void Proofs_from_different_threads_run_on_one_prover_thread()
     {
-        // leanVM's arena keeps a slab resident per thread that ever proved, so every caller must share one thread.
+        // leanVM's worker pool starts on the first native caller, so every caller must share one prover thread.
         FrameDependency dep = Dependency("sphincs");
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dep]);
         AggregationInput input = new() { Deps = [dep], Witnesses = [Witness("sphincs")] };
@@ -234,7 +234,7 @@ public class NativeLeanProofVerifierTests
         byte[] triples = Eip8288Dependencies.Serialize(dependencies);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxMixedGuestProofBytes));
+            Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxProofBytes));
             for (int offset = 0; offset < triples.Length; offset += Eip8288Constants.DependencyTripleLength)
                 Assert.That(proof.AsSpan().IndexOf(triples.AsSpan(offset + 32, 64)), Is.EqualTo(-1));
         }

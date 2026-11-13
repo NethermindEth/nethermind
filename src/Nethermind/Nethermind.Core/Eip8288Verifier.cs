@@ -18,7 +18,7 @@ namespace Nethermind.Core;
 /// </remarks>
 public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
 {
-    /// <summary>The key of the recursive guest pinned by tools/lean-ffi.</summary>
+    /// <summary>The key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static readonly ValueHash256 PinnedAggregatedVk = new(Eip8288Constants.AggregatedVk);
 
     public static Eip8288Verifier Pinned { get; } = new(PinnedAggregatedVk);

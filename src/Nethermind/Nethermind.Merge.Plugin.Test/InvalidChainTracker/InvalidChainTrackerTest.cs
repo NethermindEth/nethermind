@@ -259,7 +259,7 @@ public class InvalidChainTrackerTest
         _tracker.SetupBlockchainProcessorInterceptor(queue);
         Block block = Build.A.Block.WithParent(Build.A.BlockHeader.TestObject).TestObject;
         block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }),
-            noDependencies ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : Keccak.OfAnEmptyString);
+            noDependencies ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : TestItem.KeccakA);
         block.Header.Hash = block.Header.CalculateHash();
         block.StarkProof = proof;
 

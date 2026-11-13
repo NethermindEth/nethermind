@@ -21,7 +21,7 @@ public class LeanProofCapacityTests
             Assert.That(LeanProofCapacity.CapacityError(dependencies), Is.Null);
             // EIP-8288: stark_proof carries no dependencies, so the guest proof is the whole proof; the native acceptance bound
             // covers the local aggregate proof bound, which callers enforce first.
-            Assert.That(Eip8288Constants.MaxMixedGuestProofBytes, Is.GreaterThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
+            Assert.That(Eip8288Constants.MaxProofBytes, Is.GreaterThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
         }
     }
 

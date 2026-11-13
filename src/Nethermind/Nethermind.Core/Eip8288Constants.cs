@@ -35,9 +35,8 @@ public static class Eip8288Constants
 
     /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): direct leanSTARK proofs, batch leaves and recursive
     /// proofs verified by one aggregation step together.</summary>
-    /// <remarks>Raw leanSPHINCS witnesses do not count. The pinned guest accepts up to this many per execution, but its trace
-    /// bound fits at most one leaf with two children, or seven children, so the native backend proves one call as a tree of
-    /// such executions under the same <see cref="AggregatedVk"/>.</remarks>
+    /// <remarks>Raw leanSPHINCS witnesses do not count. Discarded and redundant inputs do; the pinned guest verifies up to this
+    /// many in one execution.</remarks>
     public const int MaxInnerProofsPerStep = 16;
 
     /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
@@ -45,14 +44,6 @@ public static class Eip8288Constants
     /// included. Like every leanSTARK resource bound, it applies to each leaf at direct admission and in aggregation, even
     /// when all its claims are discarded.</remarks>
     public const int MaxLeanStarkInstructions = 2048;
-
-    /// <summary>Maximum log2 committed-polynomial size of a leanSTARK proof the pinned generic verifier accepts.</summary>
-    /// <remarks>An EIP-8288 verifier resource bound (trace dimensions); a proof above it is invalid.</remarks>
-    public const int MaxLeanStarkCommittedLog = 22;
-
-    /// <summary>Maximum log2 bus size of a leanSTARK proof the pinned generic verifier accepts.</summary>
-    /// <remarks>An EIP-8288 verifier resource bound (bus interactions); a proof above it is invalid.</remarks>
-    public const int MaxLeanStarkBusLog = 22;
 
     /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
@@ -79,10 +70,6 @@ public static class Eip8288Constants
     public static long IlProofBytes(int starkProofLength, int proofDepCount) =>
         IlProofOverheadBytes + (long)starkProofLength + (long)proofDepCount * DependencyTripleLength;
 
-    /// <summary>Native acceptance bound for the serialized mixed guest proof, which the pinned backend reports back.</summary>
-    /// <remarks>Above <see cref="MaxAggregateProofBytes"/>, which every caller checks first.</remarks>
-    public const int MaxMixedGuestProofBytes = 8 * 1024 * 1024;
-
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
 
@@ -92,7 +79,7 @@ public static class Eip8288Constants
     public const byte LeanSphincsScheme = 0x10;
     /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>, enabled here as a deviation from the EIP.</summary>
     /// <remarks>The EIP reserves it until <c>get_deps_hash</c> is defined for it. This node enables it with the pinned guest's
-    /// generic CPU-proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash"/>, which leaves
+    /// generic leanVM proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash"/>, which leaves
     /// every leanSPHINCS-only list at the spec digest.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
@@ -120,8 +107,8 @@ public static class Eip8288Constants
     /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
     public const int MaxWrapperBytes = 2 * 1024 * 1024;
 
-    /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
+    /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("11a02524eee37c856d80150f4c48a1636c5615f840e163968194b5cd1b49cc97");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("1fd3e66e9f052c194d53c6a7137dec08a3707edf8296a4406a15b42f7980340e");
 }
