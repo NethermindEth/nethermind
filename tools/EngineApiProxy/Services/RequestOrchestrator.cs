@@ -277,7 +277,7 @@ public class RequestOrchestrator(
             // Create getPayload request
             JsonRpcRequest getPayloadRequest = new(
                 _config.GetPayloadMethod,
-                [with(payloadId)],
+                [(JsonNode)payloadId],
                 Guid.NewGuid().ToString())
             {
                 OriginalHeaders = CopyAuthHeader(originalHeaders)

@@ -426,7 +426,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
                                 blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
                                 false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize, isEip8116Enabled);
-                            partialReceipts = [with(blockReceipts.Length + firstBlockReceiptIndex), .. blockReceipts];
+                            partialReceipts = [with(blockReceipts.Length + firstBlockReceiptIndex)];
+                            partialReceipts.AddRange(blockReceipts);
                             firstBlockReceiptIndex = partialReceipts.Count;
 
                             partialReceiptsGas = validationResult.GasUsedTotal;

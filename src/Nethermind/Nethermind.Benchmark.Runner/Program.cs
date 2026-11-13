@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Reflection;
 using System;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
@@ -50,7 +49,7 @@ namespace Nethermind.Benchmark.Runner
         {
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
-            Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
+            Job benchmarkJob = quickMode ? Job.ShortRun : Job.MediumRun;
 
             List<Assembly> additionalJobAssemblies = [
                 typeof(JsonRpc.Benchmark.EthModuleBenchmarks).Assembly,

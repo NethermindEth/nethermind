@@ -12,7 +12,6 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using Perfolizer.Mathematics.OutlierDetection;
 using Nethermind.Blockchain;
@@ -1063,7 +1062,6 @@ public unsafe class EvmOpcodesBenchmark
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
             AddJob(Job.Default
-                .WithRuntime(CoreRuntime.Core10_0)
                 .WithGcForce(true)
                 .WithEnvironmentVariable("DOTNET_GCServer", "1")
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
