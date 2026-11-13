@@ -87,14 +87,14 @@ public class BlockFinderExtensionsTests
             .ToArray();
         Block block = Build.A.Block.WithNumber(Number).WithTransactions(transactions).TestObject;
         // A compact entry of a transaction reorganised out of this height names the block now canonical there.
-        Hash256 txHash = body is Body.WithoutTheTransaction ? TestItem.KeccakD : transactions[1].Hash!;
+        Hash256 txHash = body is Body.WithoutTheTransaction ? TestItem.KeccakD : transactions[0].Hash!;
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         if (indexed) receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
         receiptFinder.Get(block, Arg.Any<bool>(), Arg.Any<bool>()).Returns(receipts switch
         {
             Receipts.Complete => transactions.Select(static (tx, i) => new TxReceipt { TxHash = tx.Hash, Index = i }).ToArray(),
-            Receipts.Partial => [new TxReceipt { TxHash = transactions[0].Hash, Index = 0 }],
+            Receipts.Partial => [new TxReceipt { TxHash = transactions[1].Hash, Index = 1 }],
             _ => []
         });
 
