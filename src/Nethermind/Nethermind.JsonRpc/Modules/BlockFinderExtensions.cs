@@ -51,28 +51,10 @@ namespace Nethermind.JsonRpc.Modules
         /// unknown, pending or reorganised-out transaction.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// This holds when the transaction index names a canonical block, and either its body is not stored and the
-        /// block is below <see cref="IBlockFinder.LowestServedBlock"/>, or its stored body holds the transaction and the
-        /// block is below that floor or <c>eth_getBlockReceipts</c> fails it as pruned history.
-        /// </para>
-        /// <para>
-        /// The floor can come from the configured ancient bodies barrier or the download frontiers as well as from
-        /// history pruning, so a block below it may still be stored. A compact index entry names a height, so for a
-        /// transaction reorganised out of that height it resolves to the block now canonical there; a stored body tells
-        /// the two apart. Without a body the entry is taken as it is, below the floor only.
-        /// </para>
-        /// <para>
-        /// At or above the floor, the block reads as <c>eth_getBlockReceipts</c> reads it: pruned history when it is
-        /// settled (<c>LogFinder.WasPruned</c>) and its stored receipts do not match its transactions. The receipts are
-        /// read again here because the head moves before the index entry of a new block is published: a transaction
-        /// mined between the caller's lookup and this one has its receipts by then, and is not reported.
-        /// </para>
-        /// <para>
-        /// A hash without an index entry costs one index read. Neither an entry that is not canonical nor a block at or
-        /// above the floor that is not settled reads a body. Only the number of receipts is used, so the read asks for
-        /// no recovery.
-        /// </para>
+        /// A stored body is checked for the transaction because a compact index entry names a height: for a transaction
+        /// reorganised out of it, the entry resolves to the block now canonical there. At or above the floor the receipts
+        /// are read again rather than the caller's miss trusted, because the head moves before the index entry of a new
+        /// block is published: a transaction mined between the caller's lookup and this one has its receipts by then.
         /// </remarks>
         internal static bool IsTransactionPruned(this IBlockFinder blockFinder, IReceiptFinder receiptFinder, Hash256 txHash)
         {
@@ -87,43 +69,43 @@ namespace Nethermind.JsonRpc.Modules
 
         /// <summary>
         /// The same decision as <see cref="IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/>, for a block the
-        /// caller resolved from the transaction index, whose body holds the transaction, and the receipts it read for it.
+        /// caller resolved from the transaction index and has shown to hold the transaction, with the receipts it read.
         /// </summary>
         /// <remarks>
-        /// Reads no index entry, header, body or receipts again, so it decides on that block even if the index entry has
-        /// moved since, and cannot start a second regeneration. The head race needs no second read here: the caller found
-        /// the index entry itself, and the entries of a newly processed block are published only after its receipts are
-        /// stored or held for the deferred write.
+        /// Nothing is read again, so it decides on that block even if the index entry has moved since, and cannot start a
+        /// second regeneration. The head race needs no second read here: the caller found the index entry itself, and a
+        /// newly processed block's index entries are published only after its receipts are stored or held for the
+        /// deferred write.
         /// </remarks>
-        internal static bool IsTransactionPruned(this IBlockFinder blockFinder, Block block, TxReceipt[] receipts, Hash256 txHash) =>
+        internal static bool IsTransactionPruned(this IBlockFinder blockFinder, Block block, TxReceipt[] receipts) =>
             blockFinder.IsMainChain(block.Header)
-            && IsPrunedHistory(blockFinder, block.Header, txHash, block, receipts, receiptFinder: null);
+            && IsPrunedHistory(blockFinder, block.Header, txHash: null, block, receipts, receiptFinder: null);
 
         /// <summary>The rule of <see cref="IsTransactionPruned(IBlockFinder, IReceiptFinder, Hash256)"/>, for the canonical block <paramref name="header"/>.</summary>
-        /// <param name="block">The block's body when the caller holds it; otherwise it is read here, after the checks that need no body.</param>
-        /// <param name="receipts">
-        /// The block's receipts when the caller has read them; otherwise they are read here from <paramref name="receiptFinder"/>,
-        /// only when the answer depends on them.
-        /// </param>
-        private static bool IsPrunedHistory(IBlockFinder blockFinder, BlockHeader header, Hash256 txHash, Block? block, TxReceipt[]? receipts, IReceiptFinder? receiptFinder)
+        /// <remarks>
+        /// A <paramref name="block"/> passed in is one the caller has shown to hold the transaction. Without one, the body
+        /// is read here once the checks that need none have passed, and searched for <paramref name="txHash"/>.
+        /// </remarks>
+        private static bool IsPrunedHistory(IBlockFinder blockFinder, BlockHeader header, Hash256? txHash, Block? block, TxReceipt[]? receipts, IReceiptFinder? receiptFinder)
         {
-            // IsBlockPruned for a block number, without building a BlockParameter.
             bool belowTheFloor = header.Number < blockFinder.LowestServedBlock;
-            // At or above the floor, a block that is not settled is not pruned history whatever its body holds.
             if (!belowTheFloor && !LogFinder.WasPruned(blockFinder, header))
             {
                 return false;
             }
 
-            block ??= blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
             if (block is null)
             {
-                return belowTheFloor;
-            }
+                block = blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+                if (block is null)
+                {
+                    return belowTheFloor;
+                }
 
-            if (block.GetTransactionIndex(txHash.ValueHash256) < 0)
-            {
-                return false;
+                if (block.GetTransactionIndex(txHash!.ValueHash256) < 0)
+                {
+                    return false;
+                }
             }
 
             if (belowTheFloor)
