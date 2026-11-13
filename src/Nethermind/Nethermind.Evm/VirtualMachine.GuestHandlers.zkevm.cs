@@ -148,7 +148,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BLOBBASEFEE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>);
         if (spec.IsEip7843Enabled)
             lookup[(int)Instruction.SLOTNUM] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>);
+        lookup[(int)Instruction.ADDRESS] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.AddressWord>);
+        lookup[(int)Instruction.CALLER] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallerWord>);
+        lookup[(int)Instruction.ORIGIN] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.OriginWord>);
+        lookup[(int)Instruction.CALLVALUE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>);
+        lookup[(int)Instruction.GASPRICE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
+        if (spec.IsEip4844Enabled)
+            lookup[(int)Instruction.BLOBHASH] = AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
         lookup[(int)Instruction.AND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AndOperation>);
@@ -1936,6 +1943,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
+        /// <summary>BLOBHASH: the transaction's versioned blob hash at the index the top word holds, or zero past the last.</summary>
+        /// <remarks>
+        /// The hash replaces the index in its slot. An empty stack, a short gas or a missing or odd-length hash runs the shared
+        /// handler instead, which faults on it or pads it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteBlobHash(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && Covers(gas, BlobHashGasCost.GasCost))
+            {
+                ref ulong index = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                byte[]?[]? hashes = state.Vm.TxExecutionContext.BlobVersionedHashes;
+                ulong at = index;
+                if (hashes is null || !FitsNativeWord(ref index) || at >= (ulong)hashes.Length)
+                {
+                    gas -= (nuint)BlobHashGasCost.GasCost;
+                    SetWord(ref index, 0);
+                    goto Dispatch;
+                }
+
+                // The shared handler left-pads a hash of another length; a versioned hash is always a whole word.
+                if (hashes[(nint)at] is { Length: EvmStack.WordSize } hash)
+                {
+                    gas -= (nuint)BlobHashGasCost.GasCost;
+                    LoadBigEndian(ref index, ref MemoryMarshal.GetArrayDataReference(hash));
+                    goto Dispatch;
+                }
+            }
+
+            nint shared = Entry(&ExecuteOpcode<BlobHashOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+
+        Dispatch:
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
         /// <summary>SELFBALANCE: the balance of the executing account, read off the state with no shell around the call.</summary>
         /// <remarks>A short gas or a full stack runs the shared handler instead, which faults on it.</remarks>
         [SkipLocalsInit]
@@ -1970,7 +2024,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>An opcode that pushes a word of the block's context, as <typeparamref name="TWord"/> writes it.</summary>
+        /// <summary>An opcode that pushes a word of the block's, the transaction's or the frame's context, as <typeparamref name="TWord"/> writes it.</summary>
         /// <remarks>
         /// The context does not change while a frame runs, so the word comes straight off <see cref="DispatchState.Vm"/>
         /// with no call. A short gas, a full stack, or a word the block does not have runs the shared handler of the
@@ -2003,7 +2057,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>A word of the block's context, of base cost, that <see cref="ExecutePushContextWord{TWord}"/> pushes.</summary>
+        /// <summary>A word of the block's, the transaction's or the frame's context, of base cost, that <see cref="ExecutePushContextWord{TWord}"/> pushes.</summary>
         internal interface IContextWord
         {
             /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
@@ -2023,18 +2077,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<BlkAddressOpcode<EvmInstructions.OpCoinbase<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(vm.BlockExecutionContext.Coinbase.Bytes);
-                slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
-                Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
-                // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
-                // alone, as the shift does not drop the gather of the four bytes after them.
-                Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
-                    ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
-                    : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
-                Unsafe.Add(ref slot, 3) = 0;
-            }
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.BlockExecutionContext.Coinbase);
+        }
+
+        /// <summary>Writes <paramref name="address"/> into <paramref name="slot"/>, in limb layout.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SetAddressWord(ref ulong slot, Address address)
+        {
+            ref byte bytes = ref MemoryMarshal.GetReference(address.Bytes);
+            slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - sizeof(ulong)));
+            Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, Address.Size - 2 * sizeof(ulong)));
+            // The leading four bytes of the address end the third limb. Without a byte reverse they are gathered
+            // alone, as the shift does not drop the gather of the four bytes after them.
+            Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.HasByteReverse
+                ? ZkEvmBitOperations.ReadUInt64BigEndian(ref bytes) >> 32
+                : ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) | ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
+            Unsafe.Add(ref slot, 3) = 0;
         }
 
         /// <summary>TIMESTAMP: the block's timestamp.</summary>
@@ -2123,6 +2181,59 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
                 SetWord(ref slot, vm.BlockExecutionContext.Header.SlotNumber.GetValueOrDefault());
+        }
+
+        /// <summary>ADDRESS: the address of the running frame's account.</summary>
+        internal readonly struct AddressWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvAddressOpcode<EvmInstructions.OpAddress<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.VmState.Env.ExecutingAccount);
+        }
+
+        /// <summary>CALLER: the address that called the running frame.</summary>
+        internal readonly struct CallerWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvAddressOpcode<EvmInstructions.OpCaller<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) => SetAddressWord(ref slot, vm.VmState.Env.Caller);
+        }
+
+        /// <summary>ORIGIN: the transaction's sender.</summary>
+        internal readonly struct OriginWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<Env32BytesOpcode<EvmInstructions.OpOrigin<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                LoadBigEndian(ref slot, ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in vm.TxExecutionContext.Origin)));
+        }
+
+        /// <summary>CALLVALUE: the value the running frame was called with.</summary>
+        internal readonly struct CallValueWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<EnvUInt256Opcode<EvmInstructions.OpCallValue<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in vm.VmState.Env.Value)), ref slot);
+        }
+
+        /// <summary>GASPRICE: the transaction's effective gas price.</summary>
+        internal readonly struct GasPriceWord : IContextWord
+        {
+            public static nint SharedHandler =>
+                Entry(&ExecuteOpcode<BlkUInt256Opcode<EvmInstructions.OpGasPrice<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Write(VirtualMachine<TGasPolicy> vm, ref ulong slot) =>
+                CopyWord(ref Unsafe.As<UInt256, ulong>(ref Unsafe.AsRef(in vm.TxExecutionContext.GasPrice)), ref slot);
         }
 
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>

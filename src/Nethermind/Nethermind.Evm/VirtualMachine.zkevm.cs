@@ -53,6 +53,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs BLOBHASH on the guest handler.</summary>
+    internal static bool ReadsBlobHashesThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.BLOBHASH] == (nint)AsTableEntry(&RawCalliHelper.ExecuteBlobHash);
+
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SSTORE on the guest handler.</summary>
     internal static bool StoresStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SSTORE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSStore);
@@ -61,7 +65,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     internal static bool ReadsSelfBalanceThroughGuestHandlerForTests(IReleaseSpec spec) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SELFBALANCE] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
 
-    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a block-context word, on the guest handler.</summary>
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs <paramref name="opcode"/>, a context word, on the guest handler.</summary>
     /// <remarks>The guest handler falls back to the shared one, so only the table shows that it is installed.</remarks>
     internal static bool PushesContextWordThroughGuestHandlerForTests(IReleaseSpec spec, Instruction opcode) =>
         (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)opcode] == opcode switch
@@ -75,6 +79,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             Instruction.BASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BaseFeeWord>),
             Instruction.BLOBBASEFEE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.BlobBaseFeeWord>),
             Instruction.SLOTNUM => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.SlotNumWord>),
+            Instruction.ADDRESS => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.AddressWord>),
+            Instruction.ORIGIN => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.OriginWord>),
+            Instruction.CALLER => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallerWord>),
+            Instruction.CALLVALUE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CallValueWord>),
+            Instruction.GASPRICE => (nint)AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.GasPriceWord>),
             _ => throw new ArgumentOutOfRangeException(nameof(opcode))
         };
 
