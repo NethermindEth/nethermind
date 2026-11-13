@@ -995,7 +995,8 @@ public class ProofWrapperServiceTests
 
     // Pinned witnesses are never evicted, so with proof capacity full a wrapper of executable transactions evicts pending ones the
     // next blocks could not include, oldest first, but only when that frees enough, never one whose witness stays pinned, and only
-    // once admission has pooled one of its transactions, each submitted once, as without eviction.
+    // as far as admission pooled transactions pinning its new witnesses, each submitted once, as without eviction. Should a victim
+    // become executable meanwhile, the admission is rolled back instead. Either way the store ends within capacity.
     [TestCase(64, false, false, 0UL, 2, TestName = "Non-executable transactions are evicted")]
     [TestCase(0, false, false, 0UL, 0, TestName = "Executable transactions are kept")]
     [TestCase(1, false, false, 0UL, 0, TestName = "Nothing is evicted when it would not free enough")]
@@ -1005,7 +1006,8 @@ public class ProofWrapperServiceTests
     [TestCase(64, false, false, 0UL, 2, true, TestName = "Locally submitted transactions are evicted last")]
     [TestCase(64, false, false, 0UL, 3, false, true, TestName = "A second wrapper at the same head reuses the pool scan")]
     [TestCase(64, false, false, 0UL, 3, false, true, true, TestName = "A candidate whose nonce gap was filled since the scan is kept")]
-    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept")]
+    [TestCase(64, false, false, 0UL, 1, false, false, false, "gap", TestName = "A candidate whose nonce gap admission filled is kept and the admission rolled back")]
+    [TestCase(64, false, false, 0UL, 0, false, false, false, "unpinned", TestName = "Admitting only transactions whose witnesses fit evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "simulation", TestName = "An incoming transaction admission rejects evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "known", TestName = "An incoming transaction the pool already knows evicts nothing")]
     [TestCase(64, false, false, 0UL, 0, false, false, false, "quota", TestName = "An incoming transaction over its sender's witness quota evicts nothing")]
@@ -1027,7 +1029,7 @@ public class ProofWrapperServiceTests
                 SenderAddress = sender,
                 Nonce = nonce,
                 Timestamp = timestamp,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
             };
             if (awaitsBlobs)
@@ -1069,11 +1071,13 @@ public class ProofWrapperServiceTests
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
             if (incoming == "gap") filled.Add(oldest.SenderAddress!);
+            Transaction submitted = call.Arg<Transaction>();
             return incoming switch
             {
                 "simulation" => AcceptTxResult.FrameSimulationFailed,
+                "unpinned" when submitted.SenderAddress == Address.Zero => AcceptTxResult.FrameSimulationFailed,
                 "known" => AcceptTxResult.AlreadyKnown,
-                _ => store.PinPending(call.Arg<Transaction>(), poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
+                _ => store.PinPending(submitted, poolOwner) ? AcceptTxResult.Accepted : AcceptTxResult.MissingDependencyProof
             };
         });
         pool.GetPendingTransactionsBySender().Returns(BySender([.. pinned]));
@@ -1097,23 +1101,32 @@ public class ProofWrapperServiceTests
                 Assert.That((await service.AcceptDetailedAsync(DirectWrapper(transaction))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
         Transaction Incoming(string name, Address sender) =>
             Transaction(new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(name), default), sender, nonce: incomingNonce, awaitsBlobs: incoming == "blobs");
-        byte[] Wrapper(Transaction transaction) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        // A transaction whose witness fits the store as it is, so admitting it alone needs no eviction.
+        FrameDependency small = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("small"), default);
+        Transaction existing = Transaction(small, Address.SystemUser);
+        byte[] Wrapper(params Transaction[] transactions)
         {
-            Transactions = [transaction],
-            Deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]]
-        }).Bytes;
+            List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+                transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+            return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = [.. transactions.OrderBy(static transaction => transaction.Hash!.ToString())],
+                Deps = dependencies,
+                Mode = MempoolWrapper.ModeDirect,
+                Proofs = [.. dependencies.Select(dependency => dependency.Equals(small)
+                    ? new byte[1] : new byte[LeanProofStore.MaxWrapperBytes * 3 / 4])]
+            }).Bytes;
+        }
 
         Transaction first = Incoming("incoming", Address.Zero);
-        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(Wrapper(first));
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(incoming == "unpinned" ? Wrapper(first, existing) : Wrapper(first));
         if (gapFilled) filled.Add(pinned[2].SenderAddress!);
         if (secondWrapper)
             Assert.That((await service.AcceptOwnedDetailedAsync(Wrapper(Incoming("second", Address.SystemUser)))).Status,
                 Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
 
-        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" ? ProofWrapperAcceptanceStatus.PoolRejected
-            : removed != 0 ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
+        ProofWrapperAcceptanceStatus expected = incoming is "simulation" or "known" or "quota" or "unpinned" ? ProofWrapperAcceptanceStatus.PoolRejected
+            : removed != 0 && incoming != "gap" ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.LocalFailure;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
@@ -1121,10 +1134,13 @@ public class ProofWrapperServiceTests
             if (secondWrapper) pool.Received(1).GetPendingTransactionsBySender();
             if (secondWrapper) pool.Received(gapFilled ? 0 : 1).RemoveTransaction(pinned[2].Hash);
             pool.Received(removed != 0 && !oldestSharedWithExecutable && !localVictims && incoming != "gap" ? 1 : 0).RemoveTransaction(oldest.Hash);
-            pool.Received(expected == ProofWrapperAcceptanceStatus.LocalFailure ? 0 : 1)
+            pool.Received(expected != ProofWrapperAcceptanceStatus.LocalFailure || incoming == "gap" ? 1 : 0)
                 .SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
+            pool.Received(incoming == "gap" ? 1 : 0).RemoveTransaction(first.Hash);
             blobAdmission.DidNotReceive().Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>());
             Assert.That(store.Covers(first), Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            if (incoming == "unpinned") Assert.That(store.Covers(existing), Is.True);
+            Assert.That(store.ShedExcess(), Is.True, "the store ends within capacity");
         }
     }
 

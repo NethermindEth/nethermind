@@ -54,10 +54,10 @@ public class LeanProofStoreTests
         }
     }
 
-    // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves the store as it was, and once an
-    // admitted one's victims are unpinned the store sheds them back within capacity.
+    // An admission beyond capacity holds its witnesses only while it runs: a rejected one leaves nothing to shed, and an admitted
+    // one fits again once the fewest pending transactions that make room are released.
     [Test]
-    public void Admission_beyond_capacity_is_shed_when_it_ends([Values] bool admitted)
+    public void Admission_beyond_capacity_fits_again_once_room_is_released([Values] bool admitted)
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pinned = [];
@@ -74,25 +74,29 @@ public class LeanProofStoreTests
         byte[][] witness = [new byte[LeanProofStore.MaxWrapperBytes * 3 / 4]];
         bool fitted = store.TryBeginAdmission([incoming], witness, null, out _);
         bool overdrawn = store.TryBeginAdmission([incoming], witness, null, out IDisposable? admission, overCapacity: true);
+        if (admitted) Assert.That(store.PinPending(incomingTransaction), Is.True);
+        admission!.Dispose();
+        ValueHash256 first = pinned[0].Hash!.ValueHash256, second = pinned[1].Hash!.ValueHash256;
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fitted, Is.False);
             Assert.That(overdrawn, Is.True);
+            Assert.That(store.ShedExcess(), Is.EqualTo(!admitted));
+            Assert.That(store.ReleasesToFit([first]), admitted ? Is.Null : Is.Empty);
+            Assert.That(store.ReleasesToFit([first, second, pinned[2].Hash!.ValueHash256]), admitted ? Is.EqualTo(new[] { first, second }) : Is.Empty);
         }
         if (admitted)
         {
-            Assert.That(store.PinPending(incomingTransaction), Is.True);
-            store.UnpinPending(pinned[0].Hash!.ValueHash256);
-            store.UnpinPending(pinned[1].Hash!.ValueHash256);
+            store.UnpinPending(first);
+            store.UnpinPending(second);
         }
-        admission!.Dispose();
-
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(store.ShedExcess(), Is.True);
             Assert.That(store.Covers(incomingTransaction), Is.EqualTo(admitted));
             Assert.That(store.Covers(pinned[0]), Is.EqualTo(!admitted));
             Assert.That(pinned.Skip(2).All(store.Covers), Is.True);
-            Assert.That(store.TryBeginAdmission([Dependency(1001)], witness, null, out _), Is.False, "the store is full again");
         }
     }
 

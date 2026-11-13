@@ -80,7 +80,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     private sealed class AdmissionScope(LeanProofStore store, AdmissionScope? previous,
-        Dictionary<FrameDependency, ProofRecord> records, IDisposable lease, bool overCapacity) : IDisposable
+        Dictionary<FrameDependency, ProofRecord> records, IDisposable lease) : IDisposable
     {
         private int _active = 1;
         public bool TryGet(FrameDependency dependency, out ProofRecord? record)
@@ -93,14 +93,12 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             if (Interlocked.Exchange(ref _active, 0) == 0) return;
             store._admission.Value = previous;
             lease.Dispose();
-            if (overCapacity)
-                lock (store._lock) store.MakeRoom(0, 0);
         }
     }
 
     /// <summary>Reserves immutable verified witnesses before transactions enter the pool.</summary>
-    /// <param name="overCapacity">Stores the witnesses even beyond capacity. The caller bounds the excess, which the store sheds
-    /// once the admission ends, as far as unpinned records allow.</param>
+    /// <param name="overCapacity">Stores the witnesses even beyond capacity. The caller bounds the excess and, once the admission
+    /// ends, restores capacity through <see cref="ShedExcess"/> and <see cref="ReleasesToFit"/>.</param>
     public bool TryBeginAdmission(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses,
         byte[]? recursiveProof, out IDisposable? admission, bool overCapacity = false)
     {
@@ -123,7 +121,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
                 }
                 foreach (ProofRecord record in incoming) Insert(record);
             }
-            AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]), overCapacity);
+            AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]));
             _admission.Value = scope;
             admission = scope;
             return true;
@@ -167,7 +165,25 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         lock (_lock)
         {
             (Dictionary<FrameDependency, ProofRecord> records, HashSet<ProofRecord> incoming) = PlanAdmission(dependencies, witnesses, recursiveProof);
-            HashSet<ProofRecord> selected = [.. records.Values];
+            return Releases([.. records.Values], incoming, candidates);
+        }
+    }
+
+    /// <summary>The fewest of <paramref name="candidates"/>, pending transactions considered in order, whose pins must be released
+    /// for the stored witnesses to fit capacity: empty when they fit already, null when releasing them all would not suffice.</summary>
+    /// <remarks>Counts as <see cref="ReleasesForAdmission"/> does, for an admission that adds nothing.</remarks>
+    public List<ValueHash256>? ReleasesToFit(IReadOnlyList<ValueHash256> candidates) => Releases([], [], candidates);
+
+    /// <summary>Removes unpinned records until the store fits capacity, returning whether it now does.</summary>
+    public bool ShedExcess()
+    {
+        lock (_lock) return MakeRoom(0, 0);
+    }
+
+    private List<ValueHash256>? Releases(HashSet<ProofRecord> selected, HashSet<ProofRecord> incoming, IReadOnlyList<ValueHash256> candidates)
+    {
+        lock (_lock)
+        {
             long bytes = _storedBytes;
             int count = _records.Count;
             foreach (ProofRecord record in incoming)
