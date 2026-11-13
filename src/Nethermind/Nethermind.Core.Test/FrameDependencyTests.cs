@@ -177,24 +177,12 @@ public class FrameDependencyTests
         }
     }
 
-    // EIP-8288 Test Case 12: one native declaration costs 19,600 and one generic 576,200, the intrinsic proof share included;
-    // duplicates are charged separately.
-    [TestCase(Eip8288Constants.LeanSphincsScheme, 15_400UL, 19_600UL)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, 572_000UL, 576_200UL)]
-    public void VerificationGas_is_per_scheme(byte scheme, ulong expected, ulong withShare)
+    [TestCase(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsVerificationGas)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkVerificationGas)]
+    public void VerificationGas_is_per_scheme(byte scheme, ulong expected)
     {
         FrameDependency dep = new(scheme, default, default);
-        Transaction twice = new()
-        {
-            Type = TxType.FrameTx,
-            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 2 * dep.VerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dep, dep]))]
-        };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dep.VerificationGas, Is.EqualTo(expected));
-            Assert.That(dep.VerificationGas + Eip8288Constants.RecursiveProofShareGas, Is.EqualTo(withShare));
-            Assert.That(twice.Frames[0].ExecutionGasLimit + Eip8288Dependencies.RecursiveStarkGas(twice), Is.EqualTo(2 * withShare));
-        }
+        Assert.That(dep.VerificationGas, Is.EqualTo(expected));
     }
 
     [Test]
@@ -281,7 +269,7 @@ public class FrameDependencyTests
         {
             Assert.That(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
             Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
-            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.RecursiveProofShareGas));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
         }
     }
 

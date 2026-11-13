@@ -145,7 +145,7 @@ public static class Eip8288Dependencies
             if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
         }
 
-        return count * Eip8288Constants.RecursiveProofShareGas;
+        return count * Eip8288Constants.LeanStarkVerificationGas;
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>
