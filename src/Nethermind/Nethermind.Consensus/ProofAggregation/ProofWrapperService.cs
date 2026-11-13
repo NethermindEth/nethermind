@@ -417,15 +417,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             is not { Count: > 0 } releases) return false;
         // Eviction cannot be undone: the incoming transactions must first pass admission, their witnesses aside. Checked last, as
         // it may simulate and recover signatures, once nothing cheaper has ruled eviction out. A transaction the pool already knows,
-        // or that failed this check on the head, fails it before any other is simulated, so repeating a wrapper costs no validation.
-        HashSet<ValueHash256> rejected = DryRunRejected();
+        // or whose content failed this check on the head, fails it before any other is simulated, so repeating a wrapper costs no
+        // validation; a deferral or a rejection the pool's contents decided is checked again.
+        HashSet<(ValueHash256, TxHandlingOptions)> rejected = DryRunRejected();
         foreach (Transaction transaction in decoded.Transactions)
             if (!txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)
-                && (rejected.Contains(transaction.Hash.ValueHash256) || txPool.IsKnown(transaction.Hash))) return false;
+                && (rejected.Contains((transaction.Hash.ValueHash256, handling)) || txPool.IsKnown(transaction.Hash))) return false;
         foreach (Transaction transaction in decoded.Transactions)
         {
-            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _) || txPool.ValidateTxBeforeProofAdmission(transaction, handling)) continue;
-            if (rejected.Count < MaxDryRunRejected) rejected.Add(transaction.Hash.ValueHash256);
+            if (txPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _)) continue;
+            AcceptTxResult result = txPool.ValidateTxBeforeProofAdmission(transaction, handling);
+            if (result) continue;
+            if (ContentBoundRejections.Contains(result) && rejected.Count < MaxDryRunRejected) rejected.Add((transaction.Hash.ValueHash256, handling));
             return false;
         }
         foreach (ValueHash256 hash in releases)
@@ -477,12 +480,23 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// the commit lock.</summary>
     /// <remarks>Kept here rather than in the pool's known set: the check runs out of the context a submission sees (witnesses,
     /// predecessors and evicted reservations aside), so its rejection must not refuse the transaction elsewhere.</remarks>
-    private (Hash256? Head, HashSet<ValueHash256> Hashes) _dryRunRejected = (null, []);
+    private (Hash256? Head, HashSet<(ValueHash256, TxHandlingOptions)> Hashes) _dryRunRejected = (null, []);
 
     /// <summary>Bounds <see cref="_dryRunRejected"/> per head; beyond it a rejection is validated again when repeated.</summary>
     private const int MaxDryRunRejected = 4_096;
 
-    private HashSet<ValueHash256> DryRunRejected()
+    /// <summary>Rejections that depend only on a transaction and the head, never on the pool's contents, reservations or budgets,
+    /// so repeating its admission check on the head would reach them again.</summary>
+    private static readonly HashSet<AcceptTxResult> ContentBoundRejections =
+    [
+        AcceptTxResult.FailedToResolveSender, AcceptTxResult.Int256Overflow, AcceptTxResult.Invalid, AcceptTxResult.NotSupportedTxType,
+        AcceptTxResult.MaxTxSizeExceeded, AcceptTxResult.InvalidBlobProofs, AcceptTxResult.SignFailed, AcceptTxResult.OldNonce,
+        AcceptTxResult.SenderIsContract, AcceptTxResult.FrameTxExpired, AcceptTxResult.FrameTxNoPayer, AcceptTxResult.FrameTxUnrecognizedPrefix,
+        AcceptTxResult.FrameTxMissingSidecar, AcceptTxResult.FrameTxVerifyAfterPrefix, AcceptTxResult.FrameTxMisplacedExpiryFrame,
+        AcceptTxResult.FrameTxMisplacedRecentRootFrame, AcceptTxResult.FrameSimulationFailed,
+    ];
+
+    private HashSet<(ValueHash256, TxHandlingOptions)> DryRunRejected()
     {
         Hash256? head = blockFinder.Head?.Hash;
         if (_dryRunRejected.Head != head) _dryRunRejected = (head, []);
