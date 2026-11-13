@@ -99,6 +99,10 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundResult.Invalid(TransactionResult.ErrorType.StateGasInvariantViolated.WithDetail(message));
         }
 
+        /// <summary>Without validation (simulations, replays), a transaction that already carries a sender runs as that sender.</summary>
+        private protected static bool KeepsSender(Transaction tx, ExecutionOptions opts) =>
+            tx.SenderAddress is not null && opts.HasFlag(ExecutionOptions.SkipValidation);
+
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
@@ -160,7 +164,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
-        protected IWorldState WorldState { get; }
+        protected IWorldState WorldState { get; private set; }
         protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         protected readonly ICodeInfoRepository _codeInfoRepository;
         private readonly bool _isCodeOverridable;
@@ -275,6 +279,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
+                IWorldState worldState = WorldState;
                 IBlockAccessListSource? diffRecorder = BeginAssertFrameDiffRecording(tx, opts, spec);
                 try
                 {
@@ -285,6 +290,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 finally
                 {
                     diffRecorder?.SetGeneratingBlockAccessList(null);
+                    WorldState = worldState;
                     // The VM holds its last TxExecutionContext, and RPC processors are pooled, so the
                     // view's diff and log payload would stay rooted while the processor sits idle.
                     if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
@@ -293,20 +299,20 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
             }
-            RecoverSenderBeforeIntrinsicGas(tx, spec);
+            RecoverSenderBeforeIntrinsicGas(tx, spec, opts);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
         // A sender still missing here is one the background recovery has not reached yet (blocks are
         // processed while it runs); EIP-2780 self-transfer pricing additionally needs the actual signer,
-        // so both resolve before intrinsic gas.
-        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
+        // so both resolve before intrinsic gas. A run without validation keeps a given sender.
+        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             if (tx.Signature is null) return;
 
             if (tx.SenderAddress is null
-                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
+                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress) && !KeepsSender(tx, opts)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
@@ -894,7 +900,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
                 }
             }
 
@@ -1131,8 +1137,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
                 // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
-                // repeating it here would only redo that work.
-                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
+                // repeating it here would only redo that work. A run without validation keeps a given sender.
+                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall) && !KeepsSender(tx, opts))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)
@@ -1433,6 +1439,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // A guest whose memory is swizzled takes call input laid out the same way (see EvmPooledMemory.LoadInputAfterGas).
+            if (EvmPooledMemory.IsSwizzled && !inputData.IsEmpty) inputData = SwizzledMemory.FromNatural(inputData.Span);
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
@@ -1864,7 +1872,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (VirtualMachine.TxExecutionContext.BalDataMeter?.TryMeter((ulong)code.Length) == false)
                 return false;
 
-            _codeInfoRepository.InsertCode(code, codeOwner, spec);
+            _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
 
             unspentGas = gasAfterCodeDeposit;
             return true;

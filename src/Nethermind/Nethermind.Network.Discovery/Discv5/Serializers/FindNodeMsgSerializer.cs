@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
@@ -12,7 +13,7 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
     protected override int GetContentLengthCore(FindNodeMsg msg)
         => GetDistancesLength(msg.Distances);
 
-    protected override void SerializeCore<TWriter>(ref TWriter writer, FindNodeMsg msg) => EncodeDistances(ref writer, msg.Distances);
+    protected override void SerializeCore(ref RlpWriter writer, FindNodeMsg msg) => EncodeDistances(ref writer, msg.Distances);
 
     protected override FindNodeMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeDistances(ref ctx), owner);
@@ -28,8 +29,7 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeDistances<TWriter>(ref TWriter writer, Distances distances)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void EncodeDistances(ref RlpWriter writer, Distances distances)
     {
         int contentLength = 0;
         for (int i = 0; i < distances.Count; i++)
@@ -37,20 +37,22 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
             contentLength += Rlp.LengthOf(distances[i]);
         }
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         for (int i = 0; i < distances.Count; i++)
         {
             Encode(ref writer, distances[i]);
         }
+
+        writer.EndSequence(sequence);
     }
 
-    private static Distances DecodeDistances(ref RlpReader ctx)
+    private static Distances DecodeDistances(ref RlpReader reader)
     {
-        int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
-        int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
+        RlpReader ctx = reader.EnterSequence(out int itemLength);
+        int count = ctx.CountItems();
         if (count > Distances.MaxCount)
         {
-            throw new RlpException($"discv5 FINDNODE distance count {count} exceeds {Distances.MaxCount}.");
+            throw new RlpReaderException($"discv5 FINDNODE distance count {count} exceeds {Distances.MaxCount}.");
         }
 
         Distances distances = new(count);
@@ -61,7 +63,7 @@ internal sealed class FindNodeMsgSerializer() : MsgSerializerBase<FindNodeMsg>(M
                 distances.Set(i, ctx.DecodePositiveInt());
             }
 
-            ctx.Check(checkPosition);
+            reader.ExitSequence(ctx, itemLength);
             return distances;
         }
         catch

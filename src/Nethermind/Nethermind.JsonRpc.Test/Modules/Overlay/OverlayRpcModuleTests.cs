@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -55,10 +56,12 @@ public class OverlayRpcModuleTests
         .Done;
 
     [Test]
-    public async Task CallConstructor_returns_runtime_code_of_new_creation_code()
+    public async Task CallConstructor_returns_runtime_code_of_new_creation_code([Values] bool sendersRecovered)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Deployment deployment = await Deploy(chain);
+        // A block read back from the database carries no recovered senders.
+        if (!sendersRecovered) DebugRpcModuleTests.ClearSenders(chain, chain.BlockTree.FindBlock(deployment.First, BlockTreeLookupOptions.None)!);
         byte[] runtime = Emitter(TopicA, TopicB);
 
         using JsonDocument response = await Request(chain, "overlay_callConstructor", deployment.Contract, Prepare.EvmCode.ForInitOf(runtime).Done);
@@ -283,6 +286,29 @@ public class OverlayRpcModuleTests
             Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
             Assert.That(reloaded.Transactions.Select(static tx => tx.Nonce), Is.EqualTo(nonces));
             Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx).Bytes), Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
+    public async Task GetLogs_replays_copies_that_keep_the_transaction_type([Values] bool stateOverride)
+    {
+        List<Transaction> replayed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+
+        ReplayCopies.Stored stored = await ReplayCopies.MineSubclassTransaction(chain, TestItem.PrivateKeyA, replayed);
+        Block head = chain.BlockTree.Head!;
+
+        object filter = new { fromBlock = head.Number.ToHexString(true), toBlock = head.Number.ToHexString(true) };
+        using JsonDocument response = stateOverride
+            ? await Request(chain, "overlay_getLogs", filter,
+                new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } })
+            : await Request(chain, "overlay_getLogs", filter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.TryGetProperty("error", out _), Is.False, response.RootElement.ToString());
+            ReplayCopies.AssertReplayedCopies(replayed, 1, stored);
         }
     }
 

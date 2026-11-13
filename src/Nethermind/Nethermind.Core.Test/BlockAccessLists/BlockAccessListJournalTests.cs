@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 /// mutators (<see cref="BlockAccessListAtIndex.AddBalanceChange"/>, <c>AddNonceChange</c>,
 /// <c>AddCodeChange</c>, <c>AddStorageChange</c>, <c>DeleteAccount</c>) push undo records onto an
 /// internal <c>_changes</c> log so <see cref="BlockAccessListAtIndex.Restore"/> can revert to a
-/// prior snapshot — exercised by EVM revert paths through <see cref="Nethermind.State.TracedAccessWorldState"/>.
+/// prior snapshot — exercised by EVM revert paths through <see cref="Nethermind.Evm.State.TracedAccessWorldState"/>.
 /// </summary>
 [TestFixture]
 public class BlockAccessListJournalTests
@@ -438,6 +438,7 @@ public class BlockAccessListJournalTests
             Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)11));
             Assert.That(account.StorageChanges[key].Index, Is.EqualTo(3u));
             Assert.That(account.StorageReads, Does.Not.Contain(key));
+            Assert.That(account.StorageChangeCount, Is.EqualTo(1));
         }
     }
 

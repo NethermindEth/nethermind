@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Reflection;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 

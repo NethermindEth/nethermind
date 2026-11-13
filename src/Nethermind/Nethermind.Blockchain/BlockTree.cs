@@ -24,6 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -1431,7 +1432,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
                 Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                RlpWriter writer = new(pivotData);
+                RlpWriter writer = RlpWriter.ContentWriter(pivotData);
                 writer.Encode(value.BlockNumber);
                 writer.Encode(value.BlockHash);
                 _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);

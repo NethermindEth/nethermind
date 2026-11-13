@@ -12,7 +12,7 @@ namespace Nethermind.Core.Test.Builders
 
         public AccountBuilder WithBalance(UInt256 balance)
         {
-            TestObjectInternal = TestObjectInternal.WithChangedBalance((ulong)balance);
+            TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
             return this;
         }
 

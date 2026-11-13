@@ -23,6 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -30,7 +31,7 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.History;
 
-public class HistoryPruner : IHistoryPruner
+public class HistoryPruner : IHistoryPruner, IAsyncDisposable
 {
     private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
 
@@ -60,6 +61,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
     private readonly bool _balPruningOnly;
+    private readonly bool _compactBlocksOnPrune;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
@@ -94,6 +96,15 @@ public class HistoryPruner : IHistoryPruner
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
     private bool _hasLoadedBalsDeletePointer;
+    // The reclaim cursor the last completed blob-reclaiming compaction covered; only a reclaim past it owes another.
+    private ulong _blobCompactionReclaimedThrough;
+    private bool _blobCompactionOwed;
+    private bool _blobCompactionAttempted;
+    private volatile bool _disposed;
+    private Task? _disposeTask;
+    private readonly CancellationTokenSource _maintenanceCancellation = new();
+    private readonly IBlockProcessingQueue _blockProcessingQueue;
+    internal Task BlobCompactionTask { get; private set; } = Task.CompletedTask;
     private volatile bool _stampsValidated;
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
@@ -130,9 +141,13 @@ public class HistoryPruner : IHistoryPruner
         _blocksDb = dbProvider.BlocksDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
+        _blockProcessingQueue = blockProcessingQueue;
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
+        // Armed only under fixed barriers: Rolling advances the cutoff on every pass, so each pass would owe another
+        // store-wide rewrite of hours. Under a fixed barrier one run per barrier suffices.
+        _compactBlocksOnPrune = historyConfig.CompactBlocksOnPrune && historyConfig.Pruning == PruningModes.UseAncientBarriers;
         _balPruningOnly = !_enabled
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
@@ -147,7 +162,7 @@ public class HistoryPruner : IHistoryPruner
 
         byte[]? balsPointer = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
-        _balAdmissionFloor = ulong.Max(balsPointer is null ? 0 : new RlpReader(balsPointer).DecodeULong(), persistedPointer ?? 0);
+        _balAdmissionFloor = ulong.Max(balsPointer is null ? 0 : DecodePointer(balsPointer), persistedPointer ?? 0);
         ulong snapshotPointer = persistedPointer ?? 0;
         ulong barrierFloor = _blockTree.GetLowestBlock(); // still the config barrier here - nothing has raised it yet
         // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
@@ -157,6 +172,8 @@ public class HistoryPruner : IHistoryPruner
 
         if (_enabled)
         {
+            if (historyConfig.CompactBlocksOnPrune && historyConfig.Pruning != PruningModes.UseAncientBarriers && _logger.IsWarn)
+                _logger.Warn("History.CompactBlocksOnPrune applies only to UseAncientBarriers pruning and is ignored under Rolling.");
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             // With no pointer yet (pruning just enabled) the first pass starts from the oldest stored block.
@@ -292,7 +309,7 @@ public class HistoryPruner : IHistoryPruner
 
     protected void SchedulePruneHistory(CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _currentlyPruning) == 0)
+        if (!_disposed && Volatile.Read(ref _currentlyPruning) == 0)
         {
             Task.Run(() =>
             {
@@ -336,6 +353,7 @@ public class HistoryPruner : IHistoryPruner
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
     {
+        if (_disposed) return;
         if (_balPruningOnly)
         {
             TryPruneBlockAccessListsOnly(cancellationToken);
@@ -357,6 +375,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (lockTaken)
             {
+                if (_disposed) return;
                 if (!TryLoadDeletePointers())
                 {
                     SkipLocalPruning();
@@ -409,6 +428,7 @@ public class HistoryPruner : IHistoryPruner
                 // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
                 // whole timeout every pass and starve them.
                 SweepTransactionIndex(cancellationToken);
+                TryCompactBlocksReclaimingBlobFiles();
             }
             else if (_logger.IsDebug)
             {
@@ -495,7 +515,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
-        ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
+        ulong? pointer = pointerBytes is null ? null : DecodePointer(pointerBytes);
         ulong barrier = AncientBodiesBarrier;
         if (pointer <= barrier)
         {
@@ -574,7 +594,7 @@ public class HistoryPruner : IHistoryPruner
         byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         _balsDeletePointer = balsVal is null
             ? _minDeletableBlockNumber
-            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _minDeletableBlockNumber);
+            : ulong.Max(DecodePointer(balsVal), _minDeletableBlockNumber);
         _lastSavedBalsDeletePointer = _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
         _hasLoadedBalsDeletePointer = true;
@@ -635,7 +655,10 @@ public class HistoryPruner : IHistoryPruner
             // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
             // still started incidentally by the access-list clause above, which is rolling in every mode.
             || _txIndexSweepCursor is not null
-            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
+            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber)
+            // An owed one-shot blob compaction (e.g. aborted by a process exit) keeps the pass re-entrant so it is
+            // retried after a restart, even on a quiescent node where none of the clauses above has any work left.
+            || IsBlobCompactionOwed();
     }
 
     private bool PruningIntervalHasElapsed()
@@ -698,6 +721,11 @@ public class HistoryPruner : IHistoryPruner
 
                 DeleteBlockAccessListsRange(from, to);
 
+                if (to > from && !_blobCompactionOwed)
+                {
+                    _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [1]);
+                    _blobCompactionOwed = true;
+                }
                 _blocksReclaimCursor = to;
                 if (_balsDeletePointer < to)
                 {
@@ -731,6 +759,97 @@ public class HistoryPruner : IHistoryPruner
             {
                 _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
+        }
+    }
+
+    /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
+    /// fixed barriers), a reclaim has removed history from the blocks database and reached the configured ancient
+    /// barrier, and no completed run covered that reclaim yet.</summary>
+    /// <remarks>Actual reclaim work is persisted separately from the cursor: a freshly synced database can start
+    /// with its cursor at the barrier without ever having stored the older bodies. It is deferred until the
+    /// cursor reaches the barrier because each run takes hours: under fast sync the live pivot clamps
+    /// <see cref="AncientBodiesBarrier"/> and the reclaim, so a rewrite fired on a partial reclaim would be followed
+    /// by another once the pivot moves. The target is therefore the configured barrier, not the pivot-clamped one.
+    /// A raised barrier moves the cursor past the one a completed run covered, so the rewrite is owed again.</remarks>
+    private bool IsBlobCompactionOwed() =>
+        _compactBlocksOnPrune
+        && _blobCompactionReclaimedThrough < _blocksReclaimCursor
+        && !_blobCompactionAttempted
+        && _blobCompactionOwed
+        && _blocksReclaimCursor > _minDeletableBlockNumber
+        && _blocksReclaimCursor >= (_fastSync ? _syncConfig.AncientBodiesBarrier : _syncConfig.AncientBodiesBarrierCalc);
+
+    private void TryCompactBlocksReclaimingBlobFiles()
+    {
+        if (!IsBlobCompactionOwed() || _processExitSource.Token.IsCancellationRequested) return;
+        // Finish pending deletions before rewriting bodies that would immediately become garbage again.
+        if (_blocksReclaimCursor < _blocksDeletePointer
+            || ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber) < SliceCleanupTarget()) return;
+        _blobCompactionAttempted = true;
+        ulong reclaimedThrough = _blocksReclaimCursor;
+        BlobCompactionTask = Task.Factory.StartNew(() => CompactBlocksReclaimingBlobFiles(reclaimedThrough),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    /// <summary>Runs, after pruning has reclaimed history, the store-wide blocks-database compaction that
+    /// retires the stale RocksDB blob files a plain range reclaim cannot free while a surviving key still
+    /// references the oldest blob file. Persists the reclaim cursor it covered, so it repeats only after a later
+    /// reclaim moves past it.</summary>
+    /// <remarks>Runs on a dedicated maintenance thread without the pruning lock. Disposal cancels and joins it
+    /// before its database dependencies are released. A failed or declined attempt is retried only after restart.</remarks>
+    private void CompactBlocksReclaimingBlobFiles(ulong reclaimedThrough)
+    {
+        try
+        {
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _processExitSource.Token, _maintenanceCancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+
+            long startTimestamp = Stopwatch.GetTimestamp();
+            if (_logger.IsInfo) _logger.Info("Compacting the blocks database to reclaim stale blob files left by history pruning. This one-time maintenance operation may take hours.");
+
+            bool completed;
+            using (cancellation.Token.Register(static db => ((IDb)db!).InterruptCompactions(), _blocksDb))
+            {
+                completed = _blocksDb.CompactReclaimingBlobFiles();
+            }
+            if (!completed) return;
+
+            lock (_pruneLock)
+            {
+                _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionDone, Rlp.Encode(reclaimedThrough).Bytes);
+                _blobCompactionReclaimedThrough = reclaimedThrough;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Completed the blocks database blob-file compaction in {Stopwatch.GetElapsedTime(startTimestamp)}.");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Blocks database blob-file compaction failed; it will be retried after restart.", e);
+        }
+    }
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
+    {
+        lock (_pruneLock)
+        {
+            _disposed = true;
+            return new ValueTask(_disposeTask ??= DisposeMaintenanceAsync());
+        }
+    }
+
+    private async Task DisposeMaintenanceAsync()
+    {
+        _blockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+        try
+        {
+            await _maintenanceCancellation.CancelAsync();
+        }
+        finally
+        {
+            await BlobCompactionTask;
+            _maintenanceCancellation.Dispose();
         }
     }
 
@@ -1107,7 +1226,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong OldestStoredReceipts()
     {
         ulong receiptsFloor = _defaultReceiptsColumn.Get(PersistentReceiptStorage.LowestInsertedReceiptBlockKey) is { } lowestInserted
-            ? new RlpReader(lowestInserted).DecodeULong()
+            ? DecodePointer(lowestInserted)
             : _fastSync ? _blockTree.SyncPivot.BlockNumber : 0;
 
         return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
@@ -1117,8 +1236,8 @@ public class HistoryPruner : IHistoryPruner
     {
         byte[]? pointerBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
         byte[]? cursorBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
-        return (pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong(),
-            cursorBytes is null ? null : new RlpReader(cursorBytes).DecodeULong());
+        return (pointerBytes is null ? null : DecodePointer(pointerBytes),
+            cursorBytes is null ? null : DecodePointer(cursorBytes));
     }
 
     private bool TryLoadDeletePointers()
@@ -1153,7 +1272,7 @@ public class HistoryPruner : IHistoryPruner
         // deleted alongside blocks in PruneBlocksAndReceipts. Default to the blocks pointer on first load.
         _balsDeletePointer = balsVal is null
             ? _blocksDeletePointer
-            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _blocksDeletePointer);
+            : ulong.Max(DecodePointer(balsVal), _blocksDeletePointer);
         // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
@@ -1161,7 +1280,7 @@ public class HistoryPruner : IHistoryPruner
         byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
         _sliceCleanupCursor = cleanupVal is null
             ? _minDeletableBlockNumber
-            : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
+            : ulong.Max(DecodePointer(cleanupVal), _minDeletableBlockNumber);
         _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
 
         // A frozen frontier must not leak to disk through the first-save sentinels either.
@@ -1175,6 +1294,15 @@ public class HistoryPruner : IHistoryPruner
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
         LoadTxIndexSweepCursor();
+
+        byte[]? compactionDone = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionDone);
+        _blobCompactionReclaimedThrough = compactionDone is null ? 0 : DecodePointer(compactionDone);
+        byte[]? compactionOwed = _metadataDb.Get(MetadataDbKeys.HistoryPruningBlobCompactionOwed);
+        // Legacy pointers cannot distinguish completed pruning from a database synced directly to the barrier.
+        // Only recorded reclaim work arms the rewrite; an unfinished legacy reclaim will record it as it resumes.
+        _blobCompactionOwed = compactionOwed is [1];
+        if (compactionOwed is null && !_frontierFrozen)
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningBlobCompactionOwed, [_blobCompactionOwed ? (byte)1 : (byte)0]);
 
         _hasLoadedDeletePointers = true;
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_blocksDeletePointer}, oldest BAL stored #{_balsDeletePointer}.");
@@ -1246,5 +1374,11 @@ public class HistoryPruner : IHistoryPruner
             _oldestBlockHeader = oldest;
             NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));
         }
+    }
+
+    private static ulong DecodePointer(byte[] pointerBytes)
+    {
+        RlpReader reader = new(pointerBytes);
+        return reader.DecodeULong<OffFlag>();
     }
 }

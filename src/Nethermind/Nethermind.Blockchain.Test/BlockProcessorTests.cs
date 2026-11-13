@@ -417,6 +417,25 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task Block_processing_recovers_the_signer_of_a_transaction_whose_given_sender_has_no_account()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Block parent = chain.BlockTree.Head!;
+        Block block = await AddThreeTransferBlock(chain);
+        Block copy = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
+        copy.Transactions[0].SenderAddress = TestItem.AddressF;
+
+        Block processed = chain.BranchProcessor.Process(parent.Header, [copy], ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance)[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Hash, Is.EqualTo(block.Hash));
+            Assert.That(copy.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    [Test]
     public void TransactionTraceBoundary_WhenReused_ResetsCompletion()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -841,15 +860,24 @@ public partial class BlockProcessorTests
     private sealed class ExecutionCounter
     {
         private int _calls;
+        private readonly ConcurrentQueue<Transaction> _executed = new();
         public int Calls => _calls;
-        public void Count() => Interlocked.Increment(ref _calls);
+
+        /// <summary>The transaction instances executed, in the order the workers reached them.</summary>
+        public Transaction[] Executed => [.. _executed];
+
+        public void Count(Transaction transaction)
+        {
+            Interlocked.Increment(ref _calls);
+            _executed.Enqueue(transaction);
+        }
     }
 
     private sealed class CountingTransactionAdapter(ITransactionProcessorAdapter inner, ExecutionCounter counter) : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
-            counter.Count();
+            counter.Count(transaction);
             return inner.Execute(transaction, txTracer);
         }
 
@@ -1324,7 +1352,8 @@ public partial class BlockProcessorTests
     private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, changesetSeeds: true);
 
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
-        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
+        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null,
+        ConcurrentQueue<Block>? processed = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
@@ -1341,8 +1370,82 @@ public partial class BlockProcessorTests
             if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
             // The factory, not the adapter, so that the processors the access list manager builds are counted too.
             if (executions is not null) builder.AddDecorator<TransactionProcessorAdapterFactory>((_, inner) => processor => new CountingTransactionAdapter(inner(processor), executions));
+            if (processed is not null) builder.AddDecorator<IBlockProcessor>((_, inner) => new ProcessedBlocksRecorder(inner, processed));
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
+    }
+
+    /// <summary>Records each block the facade hands to the block processor.</summary>
+    private sealed class ProcessedBlocksRecorder(IBlockProcessor inner, ConcurrentQueue<Block> processed) : IBlockProcessor
+    {
+        public event Action<Block>? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+        {
+            processed.Enqueue(suggestedBlock);
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
+    }
+
+    /// <remarks>
+    /// Every transaction of a block traced in parallel is a replay of its own. All of them run on one set of copies of the
+    /// block's transactions, made once for the block: the block tree's transactions keep their values, and a block of
+    /// <c>n</c> transactions is copied once rather than <c>n</c> times.
+    /// </remarks>
+    [Test]
+    public async Task ParallelBlockTracer_ReplaysOneSetOfCopiesOfTheBlockTransactions()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        Block stored = chain.BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None)!;
+        Transaction[] storedTransactions = stored.Transactions;
+        (ulong Nonce, Address? Sender, Hash256? Hash)[] before = [.. storedTransactions.Select(static tx => (tx.Nonce, tx.SenderAddress, tx.Hash))];
+        // Gas values no execution writes, so that a replay writing the value processing wrote still shows.
+        foreach (Transaction tx in storedTransactions)
+        {
+            tx.SpentGas = 1_234_567;
+            tx.BlockGasUsed = 7_654_321;
+        }
+
+        ExecutionCounter executions = new();
+        ConcurrentQueue<Block> processed = new();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions, processed: processed), seeds, Budgets(chain, budget), LimboLogs.Instance);
+
+        IReadOnlyList<GethLikeTxTrace> traces = TraceInParallel(parallel, chain, parent, stored, new GethTraceOptions());
+
+        Transaction[] executed = executions.Executed;
+        Transaction[][] processedTransactions = [.. processed.Select(static b => b.Transactions)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Select(static trace => trace.TxHash), Is.EqualTo(storedTransactions.Select(static tx => tx.Hash)), "every transaction is traced, in block order");
+            Assert.That(processedTransactions, Has.Length.EqualTo(storedTransactions.Length), "each transaction is a replay of its own");
+            Assert.That(processedTransactions.Distinct(ReferenceEqualityComparer.Instance).Count(), Is.EqualTo(1),
+                "every replay of the block runs the same set of copies, so the block is copied once");
+            Assert.That(processedTransactions.FirstOrDefault(), Is.Not.SameAs(storedTransactions), "the replays do not run the block tree's transaction array");
+            Assert.That(executed.Select(static tx => tx.Hash), Is.EquivalentTo(storedTransactions.Select(static tx => tx.Hash)), "each worker executes only its target");
+            Assert.That(executed, Has.None.Matches<Transaction>(tx => storedTransactions.Any(s => ReferenceEquals(s, tx))), "the workers execute copies");
+            Assert.That(executed, Is.All.Matches<Transaction>(tx => processedTransactions.FirstOrDefault()?.Any(c => ReferenceEquals(c, tx)) == true),
+                "each worker executes its target from the one set of copies");
+            Assert.That(stored.Transactions, Is.SameAs(storedTransactions), "the block tree keeps its transaction array");
+            for (int i = 0; i < storedTransactions.Length; i++)
+            {
+                Transaction tx = storedTransactions[i];
+                Assert.That((tx.Nonce, tx.SenderAddress, tx.Hash), Is.EqualTo(before[i]), $"transaction {i} keeps its nonce, sender and hash");
+                Assert.That((tx.SpentGas, tx.BlockGasUsed), Is.EqualTo((1_234_567UL, 7_654_321UL)), $"transaction {i} keeps its gas values");
+            }
+        }
     }
 
     [Test]
@@ -1442,7 +1545,8 @@ public partial class BlockProcessorTests
         BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
         using IDisposable pinned = env.BuildAndOverride(parent);
         IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, new GethTraceOptions(), scope.Resolve<IWorldState>(), chain.SpecProvider);
-        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(tracer, block.Transactions[0].Hash!), CancellationToken.None);
+        // The block's transactions are the test's own, handed over as copies would be, so that it sees what recovery reached.
+        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(tracer, block.Transactions[0].Hash!), ownsTransactions: true, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

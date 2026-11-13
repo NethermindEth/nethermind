@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -36,13 +43,24 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_intermediateRoots_returns_one_root_per_transaction()
+    public async Task Debug_intermediateRoots_returns_one_root_per_transaction([Values] bool withWithdrawals)
     {
-        using Context context = await Context.Create();
-        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        using Context context = await Context.Create(new TestSpecProvider(Shanghai.Instance));
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Assert.That(block.Withdrawals, Is.Null.Or.Empty, "the produced block has no withdrawals, so its state root is the root after its last transaction");
+        Hash256 rootAfterLastTx = block.StateRoot!;
 
-        Hash256 blockHash = context.Blockchain.BlockTree.Head!.Hash!;
-        ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(blockHash);
+        if (withWithdrawals)
+        {
+            // Withdrawals apply after the last transaction, so the same transactions must yield the same roots.
+            BlockHeader header = block.Header.Clone();
+            header.StateRoot = TestItem.KeccakH;
+            header.Hash = header.CalculateHash();
+            block = new Block(header, block.Transactions, block.Uncles, [new Withdrawal { Address = TestItem.AddressC, AmountInGwei = 1 }]);
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        }
+
+        ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(block.Hash!);
 
         using (Assert.EnterMultipleScope())
         {
@@ -51,6 +69,36 @@ public partial class DebugRpcModuleTests
         }
         Assert.That(result.Data, Is.Unique, "each tx mutates state, producing a distinct post-tx root");
         Assert.That(result.Data, Does.Not.Contain(Keccak.Zero));
+        Assert.That(result.Data.Last(), Is.EqualTo(rootAfterLastTx));
+    }
+
+    [Test]
+    public async Task Debug_intermediateRoots_stops_at_rejected_transaction_of_bad_block([Values] bool wrongNonce)
+    {
+        using Context context = await Context.Create();
+        Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        ulong nonce = valid.Transactions[1].Nonce;
+        Transaction rejected = Build.A.Transaction
+            .WithNonce(wrongNonce ? nonce + 1 : nonce)
+            .WithValue(wrongNonce ? UInt256.Zero : UInt256.MaxValue / 2)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Hash256 badHash = InsertBadBlock(context, valid, [valid.Transactions[0], rejected, valid.Transactions[1]]);
+
+        IReadOnlyCollection<Hash256> validRoots = context.DebugRpcModule.debug_intermediateRoots(valid.Hash!).Data;
+        ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(badHash);
+
+        Assert.That(result.Data, Is.EqualTo(new[] { validRoots.First() }), result.Result.Error);
+    }
+
+    private static Hash256 InsertBadBlock(Context context, Block sibling, Transaction[] transactions)
+    {
+        BlockHeader badHeader = sibling.Header.Clone();
+        badHeader.StateRoot = TestItem.KeccakH;
+        badHeader.Hash = badHeader.CalculateHash();
+        Block bad = new(badHeader, new BlockBody(transactions, sibling.Uncles, sibling.Withdrawals));
+        context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(bad);
+        return bad.Hash!;
     }
 
     [Test]

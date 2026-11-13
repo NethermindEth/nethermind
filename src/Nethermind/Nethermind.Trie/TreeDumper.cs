@@ -6,6 +6,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.NodeBuffer;
 
@@ -19,6 +20,8 @@ namespace Nethermind.Trie
         public void Reset() => _builder.Clear();
 
         public bool IsFullDbScan { get; init; } = true;
+
+        public bool IsRangeScan => IsFullDbScan;
 
         public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode) => true;
 

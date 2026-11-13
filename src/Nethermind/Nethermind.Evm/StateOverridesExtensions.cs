@@ -27,9 +27,13 @@ public static class StateOverridesExtensions
         overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            foreach ((Address address, AccountOverride? value) in overrides)
+            // As in geth, accounts are overridden in ascending address order, so of two precompiles moved to one
+            // address the higher one is at the destination.
+            Address[] addresses = [.. overrides.Keys];
+            Array.Sort(addresses);
+            foreach (Address address in addresses)
             {
-                AccountOverride accountOverride = value ?? new AccountOverride();
+                AccountOverride accountOverride = overrides[address] ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 
@@ -104,7 +108,7 @@ public static class StateOverridesExtensions
     /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
     /// <param name="overrides">The account overrides to apply.</param>
     public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
-        !isPrecompile ? $"Account {source} is not a precompile"
+        !isPrecompile ? $"account {source.ToString(withEip55Checksum: true)} is not a precompile"
         : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
         : null;
 
