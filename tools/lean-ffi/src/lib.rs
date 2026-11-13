@@ -1421,7 +1421,7 @@ mod tests {
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1"
+            "19a019548e0cf13cbc781ecd31e2e13c3cc8db8c5c3a6a5380f381cb67fda2c4"
         );
         let mut limits = [0u32; 9];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);

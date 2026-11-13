@@ -106,5 +106,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("19a019548e0cf13cbc781ecd31e2e13c3cc8db8c5c3a6a5380f381cb67fda2c4");
 }

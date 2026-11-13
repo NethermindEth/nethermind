@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/e2bc4212013087c0823188e975b224ade286d878),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/f58279bf065cdc987cf42140b7b9b991847eec51),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims, generic leanVM programs and its own child proofs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
