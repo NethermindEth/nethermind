@@ -34,6 +34,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -1517,7 +1518,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState, Substitute.For<IWorldState>());
         Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
             .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
@@ -1566,7 +1567,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState, Substitute.For<IWorldState>());
         Transaction first = new() { GasLimit = 150_000 };
         Transaction second = new() { GasLimit = 150_000 };
         Transaction third = new() { GasLimit = 500_000 };
@@ -1610,7 +1611,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState, Substitute.For<IWorldState>());
         Transaction first = new() { GasLimit = 80_000 };
         Transaction second = new() { GasLimit = 500_000 };
         using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
@@ -1654,7 +1655,7 @@ public class BlockchainBridgeTests
         simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 80_001, Transaction = new Transaction() }];
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState, Substitute.For<IWorldState>());
         Transaction explicitGas = new() { GasLimit = 80_001 };
 
         InvalidTransactionException exception = Assert.Throws<InvalidTransactionException>(
@@ -1677,7 +1678,7 @@ public class BlockchainBridgeTests
         };
         simulateRequestState.Calls = [new() { HadGasLimitInRequest = false, Transaction = new Transaction() }];
 
-        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState, Substitute.For<IWorldState>());
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Amsterdam.Instance, UInt256.Zero));
         Transaction omittedGas = new();
         adapter.PrepareForInclusionCheck(omittedGas, 40_000_000);
@@ -1699,7 +1700,7 @@ public class BlockchainBridgeTests
         };
         simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 2 * (frameExecutionGas + 300_000), Transaction = new Transaction() }];
 
-        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState, Substitute.For<IWorldState>());
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
         Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).TestObject;
         frameTx.Frames =
@@ -1735,7 +1736,7 @@ public class BlockchainBridgeTests
         };
         simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 1_000_000, Transaction = new Transaction() }];
 
-        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState, Substitute.For<IWorldState>());
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
         Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).WithGasLimit(1_000_000).TestObject;
         frameTx.Frames =
