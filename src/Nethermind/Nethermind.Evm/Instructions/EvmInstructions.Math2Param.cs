@@ -442,7 +442,7 @@ public static partial class EvmInstructions
 
         // The result goes to a local first: the exponent it overwrites is still an input.
         UInt256 expResult;
-        if (IsPowerOfTwo(in a))
+        if (DispatchFlags.PowerOfTwoExp && IsPowerOfTwo(in a))
         {
             PowerOfTwoExp(in a, in exponent, out expResult);
         }

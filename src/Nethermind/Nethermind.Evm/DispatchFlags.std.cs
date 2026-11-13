@@ -28,6 +28,8 @@ internal static partial class DispatchFlags
     /// <remarks>See <c>IOpcodeBody.HasUntracedFastPath</c> and <c>FallbackHandlersOffset</c>.</remarks>
     public static bool UntracedFastPaths => true;
 
+    public const bool PowerOfTwoExp = true;
+
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 
