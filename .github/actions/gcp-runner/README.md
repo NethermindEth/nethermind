@@ -1,6 +1,6 @@
 # GCP runner scripts
 
-The composite action sets up .NET 10.0.403 before running `create.cs` or `destroy.cs`.
+The composite action sets up the .NET SDK from `global.json` before running `create.cs` or `destroy.cs`.
 Both programs preserve the action's environment inputs and GitHub output names.
 Runner names include the run attempt so retries can register a new JIT runner.
 
