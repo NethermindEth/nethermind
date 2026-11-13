@@ -1978,7 +1978,7 @@ namespace Nethermind.TxPool
             {
                 if (skipSamplingDeferredFilters
                     && filters[i] is BlobProofsTxFilter
-                    || skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter)
+                    || skipDependencyProofFilters && filters[i] is DependencyProofTxFilter or DependencyProofSenderQuotaTxFilter or GapNonceFilter)
                 {
                     continue;
                 }
