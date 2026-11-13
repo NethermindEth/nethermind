@@ -135,6 +135,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
+        if (!spec.IsEip7709Enabled)
+            lookup[(int)Instruction.BLOCKHASH] = AsTableEntry(&RawCalliHelper.ExecuteBlockHash);
         if (spec.SelfBalanceOpcodeEnabled)
             lookup[(int)Instruction.SELFBALANCE] = AsTableEntry(&RawCalliHelper.ExecuteSelfBalance);
         lookup[(int)Instruction.COINBASE] = AsTableEntry(&RawCalliHelper.ExecutePushContextWord<RawCalliHelper.CoinbaseWord>);
@@ -169,6 +171,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
         lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
         lookup[(int)Instruction.NOT] = AsTableEntry(&RawCalliHelper.ExecuteNot);
+        if (spec.CLZEnabled)
+            lookup[(int)Instruction.CLZ] = AsTableEntry(&RawCalliHelper.ExecuteClz);
         lookup[(int)Instruction.BYTE] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ByteOperation>);
         lookup[(int)Instruction.DUP2] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op2>);
         lookup[(int)Instruction.DUP3] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op3>);
@@ -549,7 +553,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>
         /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, or <c>PUSH1</c> <c>JUMPI</c> -
-        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds.
+        /// whenever that branch falls through or lands on a destination the incremental bitmap already holds, or with a
+        /// lone <c>ISZERO</c> after it that only inverts the result.
         /// </summary>
         /// <remarks>
         /// Compilers branch on nearly every comparison they emit, so fusing saves the comparison its result slot and
@@ -671,6 +676,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     goto Dispatch;
                                 }
                             }
+                        }
+                        // No branch follows: the ISZERO only inverts the result, so both run in one step. A PUSH1 JUMPI
+                        // after the ISZERO is left to the ISZERO's own branch fusion.
+                        else if (!(CodeByte(ref opcode, inverted, 2, 2) == (byte)Instruction.PUSH1 && CodeByte(ref opcode, inverted, 2, 4) == (byte)Instruction.JUMPI) &&
+                            TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+                        {
+                            nint inverse = -TCondition.Inputs * LimbsPerWord;
+                            Unsafe.Add(ref end, inverse) = condition ^ 1;
+                            Unsafe.Add(ref end, inverse + 1) = 0;
+                            Unsafe.Add(ref end, inverse + 2) = 0;
+                            Unsafe.Add(ref end, inverse + 3) = 0;
+                            head -= TCondition.Inputs - 1;
+                            sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
+                            ip = ref Unsafe.Add(ref ip, 2);
+                            goto Dispatch;
                         }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
@@ -1222,6 +1242,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (limb < 2) Unsafe.Add(ref end, -6) = fill;
                 if (limb < 3) Unsafe.Add(ref end, -5) = fill;
             }
+        }
+
+        /// <summary>CLZ (EIP-7939) of the top word, in place.</summary>
+        /// <remarks>
+        /// An empty stack runs the shared CLZ handler instead, which faults on it. A short gas takes the fast path and leaves
+        /// the gas negative, and the next test halts the frame (see <see cref="ChargeUntested"/>).
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteClz(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && ChargeUntested(ref gas, LowGasCost.GasCost))
+            {
+                ref byte top = ref SlotBelow(ref sp, 1);
+                SetWord(ref Unsafe.As<byte, ulong>(ref top), (ulong)EvmInstructions.CountLeadingZeroBitsOfLimbs(ref top));
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<CountLeadingZerosOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
         /// <summary>NOT of the top word, in place.</summary>
@@ -1906,6 +1956,57 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
+        }
+
+        /// <summary>BLOCKHASH, before EIP-7709: the hash of the block whose number the top word holds, or zero outside the last 256.</summary>
+        /// <remarks>
+        /// The hash replaces the number in its slot, read as bytes the provider already holds. An empty stack or a short
+        /// gas runs the shared handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteBlockHash(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 0 && TryCharge(ref gas, BlockHashGasCost.GasCost))
+            {
+                ref ulong number = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                BlockHeader header = vm.BlockExecutionContext.Header;
+                ulong at = number;
+                // The current block, a later one, and a number past 64 bits have no hash.
+                if ((Unsafe.Add(ref number, 1) | Unsafe.Add(ref number, 2) | Unsafe.Add(ref number, 3)) != 0 || at >= header.Number)
+                {
+                    SetWord(ref number, 0);
+                }
+                else
+                {
+                    bool found = vm.BlockHashProvider.TryGetBlockhash(header, at, vm.Spec, out ReadOnlySpan<byte> hash);
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                    number = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                    if (found)
+                        LoadBigEndian(ref number, ref MemoryMarshal.GetReference(hash));
+                    else
+                        SetWord(ref number, 0);
+                }
+
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = NextHandler(handlers, ref ip);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<BlockHashOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
         /// <summary>BLOBHASH: the transaction's versioned blob hash at the index the top word holds, or zero past the last.</summary>

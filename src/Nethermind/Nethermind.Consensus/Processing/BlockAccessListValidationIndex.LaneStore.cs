@@ -502,7 +502,16 @@ internal sealed partial class BlockAccessListValidationIndex
         {
             if (length <= 1) return;
             int start = RowStarts[row];
-            AccountOrdinals.AsSpan(start, length).Sort(_values.AsSpan(start, length));
+            Span<int> ordinals = AccountOrdinals.AsSpan(start, length);
+            // A row filled from a block-level access list arrives in account order already.
+            for (int i = 1; i < ordinals.Length; i++)
+            {
+                if (ordinals[i - 1] > ordinals[i])
+                {
+                    ordinals.Sort(_values.AsSpan(start, length));
+                    return;
+                }
+            }
         }
 
         public override void Dispose()
@@ -644,10 +653,16 @@ internal sealed partial class BlockAccessListValidationIndex
         {
             if (length <= 1) return;
             int start = RowStarts[row];
+            StorageOrderComparer order = new(AccountOrdinals, _keys, start);
+            // A row filled from a block-level access list arrives in account and slot order already.
+            int sorted = 1;
+            while (sorted < length && order.Compare(sorted - 1, sorted) <= 0) sorted++;
+            if (sorted == length) return;
+
             _scratch.EnsureLength(length);
             for (int i = 0; i < length; i++) _scratch.Order[i] = i;
 
-            _scratch.Order.AsSpan(0, length).Sort(new StorageOrderComparer(AccountOrdinals, _keys, start));
+            _scratch.Order.AsSpan(0, length).Sort(order);
 
             for (int i = 0; i < length; i++)
             {

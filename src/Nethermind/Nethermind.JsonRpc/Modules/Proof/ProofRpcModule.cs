@@ -54,6 +54,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             (Block block, int txIndex) = resolved;
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
+            // The block's transaction may not carry its sender, so it is recovered here, as eth_getTransactionByHash does.
+            transaction.SenderAddress ??= blockchainBridge.RecoverTxSender(transaction);
 
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             TransactionForRpcWithProof txWithProof = new();

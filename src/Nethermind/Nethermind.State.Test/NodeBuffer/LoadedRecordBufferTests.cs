@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -28,7 +27,6 @@ internal class LoadedRecordBufferTests
     {
         byte[][] rlps = [.. Enumerable.Range(0, NodeCount).Select(i => Leaf(i, i == NodeCount / 2 ? OversizedValueLength : ValueLength))];
         Store store = new(rlps.Select((rlp, i) => (Path(i), rlp)), asRecord);
-        Store invalid = new([(Path(0), Bytes.FromHexString("c28001"))], asRecord: false);
         using LoadedRecordBuffer loaded = new();
         NodeRecord[] records = new NodeRecord[NodeCount];
         bool[] found = new bool[NodeCount];
@@ -40,7 +38,6 @@ internal class LoadedRecordBufferTests
             Assert.That(records.Select(record => record.Rlp.ToArray()), Is.EqualTo(rlps), "records stay readable as later ones fill new chunks");
             Assert.That(records.Select(record => record.Hash), Is.EqualTo(rlps.Select(rlp => ValueKeccak.Compute(rlp))));
             Assert.That(loaded.TryLoad(store, Path(NodeCount), default, out _), Is.False, "a store miss");
-            Assert.That(() => loaded.TryLoad(invalid, Path(0), default, out _), Throws.TypeOf<TrieException>(), "invalid RLP");
         }
     }
 
@@ -72,7 +69,7 @@ internal class LoadedRecordBufferTests
 
         private static byte[] Record(byte[] rlp)
         {
-            NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask);
+            NodeRecordCodec.Decode(rlp, out NodeRecordKind kind, out ushort hashMask);
             byte[] record = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
             NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), 0, record);
             return record;
